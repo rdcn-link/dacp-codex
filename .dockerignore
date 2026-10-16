@@ -1,0 +1,7 @@
+**/target
+**/.bsp
+**/__pycache__
+.venv
+.git
+examples/certs
+examples/output

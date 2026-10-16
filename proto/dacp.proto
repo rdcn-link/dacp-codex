@@ -1,0 +1,20 @@
+syntax = "proto3";
+package dacp.protocol;
+option java_outer_classname = "Metadata";
+message Item { string path = 1; string format = 2; bytes arrow_schema = 3; }
+message DataSet { string uri = 1; repeated Item items = 2; }
+enum ErrorCode { UNKNOWN = 0; NOT_FOUND = 1; EXPIRED = 2; FORBIDDEN = 3; SCHEMA_CONFLICT = 4; INVALID_ARGUMENT = 5; }
+message Error { ErrorCode code = 1; string message = 2; }
+message Ticket { string dataset = 1; string item = 2; string view = 3; }
+
+// Control-plane actions use the existing mTLS connection, never login/token messages.
+message ExecuteTaskRequest {
+  string id = 1;
+  repeated string inputs = 2;
+  string operator = 3;
+  bytes params_json = 4;
+  string output = 5;
+}
+message ExecuteTaskResult { string output_uri = 1; }
+message RunJobRequest { string yaml = 1; }
+message RunJobResult { map<string, string> outputs = 1; }

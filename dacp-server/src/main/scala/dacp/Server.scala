@@ -1,0 +1,207 @@
+package dacp
+
+import java.nio.file.{Files, Path}
+import java.nio.charset.StandardCharsets.UTF_8
+import java.net.URI
+import java.util.concurrent.atomic.AtomicBoolean
+import scala.jdk.CollectionConverters._
+import org.apache.arrow.flight._
+import org.apache.arrow.memory.{BufferAllocator, RootAllocator}
+import org.apache.arrow.vector.{VarBinaryVector, VectorSchemaRoot}
+import org.apache.arrow.vector.types.pojo.Schema
+import dacp.protocol.Metadata
+import org.yaml.snakeyaml.Yaml
+
+case class Config(host: String, port: Int, publicHost: String, datasets: Map[String, Path], prefixes: Seq[String],
+                  cert: Path, key: Path, ca: Path, batchSize: Int = 1024, byteChunk: Int = 65536,
+                  inferSample: Int = 4, ttlSeconds: Long = 3600, operatorLibrary: Path = Path.of("../operators"),
+                  outputRoot: Path = Path.of("../examples/output"), taskPeers: Seq[String] = Seq.empty,
+                  taskInputPrefixes: Seq[String] = Seq.empty, maxConcurrentTasks: Int = 2,
+                  operatorLibraryUrl: Option[String] = None, operatorCache: Path = Path.of(".operator-cache"),
+                  operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
+                  sqlDatasets: Map[String, SqlConfig] = Map.empty) {
+  require((datasets.keySet intersect sqlDatasets.keySet).isEmpty, "duplicate file/SQL dataset name")
+  require((datasets.keySet ++ sqlDatasets.keySet).forall(n => n.nonEmpty && !n.contains("/") && n != "." && n != ".."), "invalid dataset name")
+  def hasDataset(name: String): Boolean = datasets.contains(name) || sqlDatasets.contains(name)
+  require(operatorMaxBytes > 0, "operator_max_bytes must be positive")
+  require(batchSize > 0 && byteChunk > 0 && inferSample > 0 && ttlSeconds > 0 && maxConcurrentTasks > 0)
+  def uri(ds: String, item: String = ""): String = s"dacp://$publicHost:$port/$ds" + (if (item.isEmpty) "" else s"/$item")
+  def authorize(ds: String, item: String): Unit = {
+    val candidate = uri(ds, item)
+    // Connection identity comes from mandatory mTLS. This node-wide allowlist is URI-segment bounded.
+    require(prefixes.exists { p => val clean = p.stripSuffix("/"); candidate == clean || candidate.startsWith(clean + "/") }, "FORBIDDEN: URI prefix denied")
+  }
+}
+object Config {
+  def load(path: Path): Config = {
+    val in = Files.newInputStream(path)
+    val m = try new Yaml().load[java.util.Map[String,Object]](in).asScala finally in.close()
+    def str(k: String) = m(k).toString
+    def n(k: String, d: Int) = m.get(k).map(_.toString.toInt).getOrElse(d)
+    def strings(k: String): Seq[String] = m.get(k).map(_.asInstanceOf[java.util.List[String]].asScala.toSeq).getOrElse(Seq.empty)
+    val sql = m.get("sql_datasets").map(_.asInstanceOf[java.util.Map[String,java.util.Map[String,Object]]].asScala.map { case (name,raw) =>
+      val v = raw.asScala
+      def opt(k: String) = v.get(k).map(_.toString)
+      def secret(k: String): Option[String] = opt(k + "_env").map(e => sys.env.getOrElse(e,throw new IllegalArgumentException(s"missing environment variable $e"))).orElse(opt(k))
+      name -> SqlConfig(v("url").toString,secret("user"),secret("password"),opt("schema"),
+        v.get("tables").map(_.asInstanceOf[java.util.List[String]].asScala.toSeq),
+        opt("fetch_size").map(_.toInt).getOrElse(n("batch_size",1024)),opt("query_timeout_seconds").map(_.toInt).getOrElse(60))
+    }.toMap).getOrElse(Map.empty[String,SqlConfig])
+    Config(str("host"), n("port",8815), str("public_host"),
+      m.getOrElse("datasets",new java.util.LinkedHashMap[String,String]()).asInstanceOf[java.util.Map[String,String]].asScala.map { case (k,v) => require(!k.contains("/") && k != "." && k != ".."); k -> Path.of(v) }.toMap,
+      m("allowed_uri_prefixes").asInstanceOf[java.util.List[String]].asScala.toSeq,
+      Path.of(str("tls_cert")), Path.of(str("tls_key")), Path.of(str("tls_ca")), n("batch_size",1024), n("byte_chunk",65536), n("infer_sample",4),
+      n("output_ttl_seconds",3600).toLong, Path.of(m.get("operator_library").map(_.toString).getOrElse("../operators")), Path.of(str("output_root")), strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), m.get("operator_library_url").map(_.toString),
+      Path.of(m.get("operator_cache").map(_.toString).getOrElse(".operator-cache")),
+      m.get("operator_max_bytes").map(_.toString.toLong).getOrElse(8L * 1024 * 1024 * 1024), sql)
+  }
+}
+class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegistry, tasks: Option[TaskService] = None) extends NoOpFlightProducer {
+  override def listActions(ctx: FlightProducer.CallContext, listener: FlightProducer.StreamListener[ActionType]): Unit = {
+    tasks.foreach { _ =>
+      listener.onNext(new ActionType(TaskService.ExecuteAction,"Execute one task on this node"))
+      listener.onNext(new ActionType(TaskService.JobAction,"Coordinate a distributed YAML DAG"))
+    }
+    listener.onCompleted()
+  }
+  override def doAction(ctx: FlightProducer.CallContext, action: Action, listener: FlightProducer.StreamListener[Result]): Unit = {
+    tasks match {
+      case Some(service) => service.handle(action,listener)
+      case None => listener.onError(CallStatus.UNIMPLEMENTED.withDescription("task execution disabled").toRuntimeException)
+    }
+  }
+  private def adapter(ds: String, item: String): DataSetAdapter = {
+    config.authorize(ds,item)
+    val output = outputs.lookup(ds)
+    output.orElse(config.datasets.get(ds)) match {
+      case Some(base) => new DirectoryAdapter(base,config.batchSize,config.inferSample,excludeMetadata = output.nonEmpty)
+      case None => new SqlAdapter(config.sqlDatasets.getOrElse(ds,throw new java.io.FileNotFoundException(ds)),config.batchSize)
+    }
+  }
+  private def fail(t: Throwable): FlightRuntimeException = t match {
+    case e: FlightRuntimeException => e
+    case e: Expired => CallStatus.NOT_FOUND.withDescription(e.getMessage).toRuntimeException
+    case e: java.io.FileNotFoundException => CallStatus.NOT_FOUND.withDescription("NOT_FOUND: " + e.getMessage).toRuntimeException
+    case e: java.nio.file.NoSuchFileException => CallStatus.NOT_FOUND.withDescription("NOT_FOUND: " + e.getMessage).toRuntimeException
+    case e: java.sql.SQLException =>
+      System.err.println(s"SQL_ERROR: state=${e.getSQLState}, code=${e.getErrorCode}")
+      CallStatus.INTERNAL.withDescription("SQL_ERROR: database operation failed; see server log").toRuntimeException
+    case e if Option(e.getMessage).exists(_.contains("FORBIDDEN")) => CallStatus.UNAUTHORIZED.withDescription(e.getMessage).toRuntimeException
+    case e => CallStatus.INVALID_ARGUMENT.withDescription(Option(e.getMessage).getOrElse(e.toString)).toRuntimeException
+  }
+  override def getFlightInfo(ctx: FlightProducer.CallContext, desc: FlightDescriptor): FlightInfo = try {
+    val p = desc.getPath.asScala.toSeq
+    require(p.size == 2 || p.size == 3, "descriptor must be [datasets,dataset,item?]")
+    require(p.head == "datasets", "unknown descriptor namespace")
+    val ds = p(1); val item = p.lift(2).getOrElse("")
+    val a = adapter(ds,item)
+    if (p.size == 2) {
+      val meta = Metadata.DataSet.newBuilder().setUri(config.uri(ds))
+      // Permit item-specific prefixes while keeping list itself restricted by the dataset prefix.
+      a.list().foreach { i =>
+        val b = Metadata.Item.newBuilder().setPath(i.path).setFormat(i.format)
+        i.schema.foreach(s => b.setArrowSchema(com.google.protobuf.ByteString.copyFrom(s.serializeAsMessage())))
+        meta.addItems(b)
+      }
+      new FlightInfo(Data.bytesSchema, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,meta.build.toByteArray)
+    } else {
+      val description = a.describe(item)
+      val schema = description.schema.get
+      val ticket = Metadata.Ticket.newBuilder().setDataset(ds).setItem(item).setView("records").build()
+      new FlightInfo(schema,desc,List(new FlightEndpoint(new Ticket(ticket.toByteArray))).asJava,-1,-1,false,
+        org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,
+        Metadata.Item.newBuilder().setPath(item).setFormat(description.format)
+          .setArrowSchema(com.google.protobuf.ByteString.copyFrom(schema.serializeAsMessage())).build().toByteArray)
+    }
+  } catch { case t: Throwable => throw fail(t) }
+  override def getStream(ctx: FlightProducer.CallContext, ticket: Ticket, listener: FlightProducer.ServerStreamListener): Unit = {
+    try {
+      val t = Metadata.Ticket.parseFrom(ticket.getBytes)
+      require(Set("records","bytes").contains(t.getView), "invalid view")
+      val source = adapter(t.getDataset,t.getItem)
+      val lock = new Object
+      listener.setOnReadyHandler(() => lock.synchronized(lock.notifyAll()))
+      listener.setOnCancelHandler(() => lock.synchronized(lock.notifyAll()))
+      def ready(): Unit = lock.synchronized {
+        while (!listener.isReady && !listener.isCancelled) lock.wait(100)
+        if (listener.isCancelled) throw new java.util.concurrent.CancellationException()
+        // Expiry invalidates active streams too, before reading the next batch.
+        outputs.lookup(t.getDataset)
+      }
+      source match {
+        case sql: SqlAdapter =>
+          ready()
+          if (t.getView == "records") sql.stream(t.getItem,allocator)(root => listener.start(root),root => listener.putNext(),() => ready())
+          else SqlAdapter.bytes(sql,t.getItem,allocator,config.byteChunk,listener,() => ready())
+          listener.completed()
+          return
+        case _ => ()
+      }
+      val p = source.asInstanceOf[DirectoryAdapter].resolve(t.getItem)
+      val bytes = t.getView == "bytes" || Data.format(p) == "bin"
+      if (bytes) {
+        val root = VectorSchemaRoot.create(Data.bytesSchema,allocator)
+        val in = Files.newInputStream(p)
+        try {
+          listener.start(root)
+          val buffer = new Array[Byte](config.byteChunk)
+          var done = false
+          while (!done) { ready(); val n = in.read(buffer)
+            if (n < 0) done = true else {
+              root.clear(); root.allocateNew(); root.getVector(0).asInstanceOf[VarBinaryVector].setSafe(0,buffer,0,n)
+              root.setRowCount(1); listener.putNext()
+            }
+          }
+        } finally { in.close(); root.close() }
+      } else if (Data.format(p) == "parquet") {
+        Parquet.stream(p,allocator,config.batchSize)(root => { listener.start(root) }, root => { ready(); listener.putNext() }, () => ready())
+      } else {
+        val schema = Data.schema(p,config.batchSize,config.inferSample)
+        val root = VectorSchemaRoot.create(schema,allocator)
+        val rows = Data.rows(p)
+        try {
+          listener.start(root)
+          val it = rows.iterator
+          var done = false
+          while (!done) { ready(); val batch = it.take(config.batchSize).toVector
+            if (batch.isEmpty) done = true else { Data.fill(root,batch); listener.putNext() }
+          }
+        } finally { rows.close(); root.close() }
+      }
+      listener.completed()
+    } catch { case _: java.util.concurrent.CancellationException => (); case t: Throwable => listener.error(fail(t)) }
+  }
+}
+object Main {
+  def main(args: Array[String]): Unit = {
+    if (args.headOption.contains("operator")) {
+      val a = new RootAllocator(Long.MaxValue)
+      try sys.env.getOrElse("DACP_OPERATOR","format_convert@1.0") match {
+        case "format_convert@1.0" =>
+          FormatConvert.run(Path.of(args(1)),Path.of(args(2)),Path.of(args(3)))
+          OperatorOutput.encode(Path.of(args(2)),a)
+        case "identity@1.0" => Identity.run(Path.of(args(1)),Path.of(args(2)),a)
+        case op => throw new IllegalArgumentException("unknown built-in operator " + op)
+      } finally a.close()
+      return
+    }
+    val config = Config.load(Path.of(args.headOption.getOrElse("../examples/server.yaml")))
+    val allocator = new RootAllocator(Long.MaxValue)
+    val outputs = new OutputRegistry(config.ttlSeconds * 1000)
+    val executor = new TaskExecutor(config,allocator,outputs)
+    val tasks = new TaskService(config,allocator,executor.execute)
+    val producer = new Producer(config,allocator,outputs,Some(tasks))
+    val server = FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),producer)
+      .useTls(config.cert.toFile,config.key.toFile).useMTlsClientVerification(config.ca.toFile)
+      .build().start()
+    Runtime.getRuntime.addShutdownHook(new Thread(() => { server.close(); tasks.close(); outputs.close(); allocator.close() }))
+    println(s"dacp listening on ${config.uri("")}")
+    val jobFailure = new java.util.concurrent.atomic.AtomicReference[Throwable]()
+    if (args.length > 1) {
+      val thread = new Thread(() => try { val result = tasks.runJob(Files.readString(Path.of(args(1)))); println("job outputs: " + result) } catch { case e: Throwable => jobFailure.set(e); e.printStackTrace(); server.close() }, "dacp-job")
+      thread.start()
+    }
+    server.awaitTermination()
+    Option(jobFailure.get()).foreach(e => throw new IllegalStateException("job failed",e))
+  }
+}

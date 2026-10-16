@@ -1,0 +1,16 @@
+job: demo
+tasks:
+  - id: convert_directory
+    input: dacp://localhost:8815/csv_data
+    operator: format_convert@1.0
+    params: {from: auto, to: parquet, schema: infer, compression: zstd, row_group_size: 128MB}
+    output: s1
+  - id: convert_item
+    input: dacp://localhost:8815/data1/nested/orders.csv
+    operator: format_convert@1.0
+    params:
+      from: csv
+      to: parquet
+      schema: {id: int64, amount: float64}
+      on_conflict: fail
+    output: s2

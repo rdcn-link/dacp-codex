@@ -1,0 +1,24 @@
+# Start from dacp-server/. H2 initializes a local demo database on first connection.
+host: 0.0.0.0
+public_host: localhost
+port: 8815
+datasets:
+  files: ../examples/data
+sql_datasets:
+  sales:
+    url: "jdbc:h2:../examples/sql/sales;INIT=RUNSCRIPT FROM '../examples/sql/init.sql'"
+    user: sa
+    password: ""
+    schema: PUBLIC
+    tables: [ORDERS, CUSTOMERS]
+    fetch_size: 256
+    query_timeout_seconds: 60
+allowed_uri_prefixes:
+  - dacp://localhost:8815/files
+  - dacp://localhost:8815/sales
+tls_cert: ../examples/certs/server.crt
+tls_key: ../examples/certs/server.key
+tls_ca: ../examples/certs/ca.crt
+batch_size: 128
+byte_chunk: 65536
+output_root: ../examples/output
