@@ -43,6 +43,33 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 URI 默认端口为 8815，也支持直接打开 Item：`Source.open("dacp://localhost:8815/data1/nested/orders.csv")`。三份证书也可用 `tls_root_certs`、`cert_chain`、`private_key` 的 bytes 参数传给 `Source.open`。Dataset 和直接打开的 Stream 支持 context manager。
 
+## 交互式客户端
+
+安装 Python SDK 后，可连接远端数据集，在终端列举 Item 并预览内容。使用已有的 `DACP_CA`、`DACP_CERT`、`DACP_KEY` 环境变量，或显式提供证书路径：
+
+```bash
+.venv/bin/pip install -e './dacp-client[test]'
+.venv/bin/dacp dacp://localhost:8815/data1 --ca examples/certs/ca.crt --cert examples/certs/client.crt --key examples/certs/client.key
+```
+
+连接远端时，将 `localhost:8815/data1` 替换为实际服务器地址、端口和数据集名称。也可用 `.venv/bin/python -m dacp.cli` 替代 `.venv/bin/dacp`。
+
+```text
+ls
+show 1
+show "nested/orders.csv" records
+show "events.json" text
+show "pixel.png" hex
+use csv_data
+connect dacp://localhost:8815/data1
+help
+quit
+```
+
+`ls` 刷新清单并显示编号、格式和路径。`show` 接受编号或带引号的路径；默认对 CSV/JSON/NDJSON/Parquet 使用记录视图，其他格式使用十六进制预览。`text` 按 UTF-8 显示原始字节并转义终端控制字符；SQL 表应使用 `records`，其 bytes 视图为 Arrow IPC。默认最多显示 20 行或 4096 字节，可用 `--rows`、`--bytes` 调整；每行渲染文本也受 `--bytes` 字符数限制。记录预览停止时取消上游读取，避免下载整个数据集。二进制文件显示十六进制及 ASCII，不直接打开图片。失败后可重试命令或重新连接；连接切换失败保留旧连接。
+
+服务器目前不提供数据集发现接口，因此启动和 `connect` 必须指定已知数据集 URI；`use` 切换同一服务器上的已知数据集。使用 `quit`、`exit` 或 EOF 退出并关闭连接。
+
 ## 同时提供目录和 SQL 数据库
 
 新增 `sql_datasets` 配置，现有 `datasets` 目录配置保持兼容。SQL 表通过同样的 `Source.open / list / open / as_records` API 访问；表清单包含 Arrow schema，字节视图为 Arrow IPC 流。内置 H2 与 PostgreSQL JDBC 驱动，支持表白名单、环境变量凭据和有界 fetch/batch。详见 [SQL 配置、类型与运行步骤](examples/sql/README.md)。

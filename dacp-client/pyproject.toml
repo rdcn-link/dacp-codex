@@ -8,3 +8,5 @@ requires-python = ">=3.10"
 dependencies = ["pyarrow>=18,<24", "protobuf>=4.25,<7"]
 [project.optional-dependencies]
 test = ["pytest>=8"]
+[project.scripts]
+dacp = "dacp.cli:main"

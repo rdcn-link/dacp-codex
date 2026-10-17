@@ -43,6 +43,33 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 The default URI port is 8815. An Item can also be opened directly: `Source.open("dacp://localhost:8815/data1/nested/orders.csv")`. The three certificates can instead be passed to `Source.open` as bytes through `tls_root_certs`, `cert_chain`, and `private_key`. Datasets and directly opened Streams support context managers.
 
+## Interactive client
+
+After installing the Python SDK, connect to a remote dataset to list Items and preview their contents in the terminal. Use the existing `DACP_CA`, `DACP_CERT`, and `DACP_KEY` environment variables, or provide certificate paths explicitly:
+
+```bash
+.venv/bin/pip install -e './dacp-client[test]'
+.venv/bin/dacp dacp://localhost:8815/data1 --ca examples/certs/ca.crt --cert examples/certs/client.crt --key examples/certs/client.key
+```
+
+For a remote connection, replace `localhost:8815/data1` with the actual server address, port, and dataset name. You can also replace `.venv/bin/dacp` with `.venv/bin/python -m dacp.cli`.
+
+```text
+ls
+show 1
+show "nested/orders.csv" records
+show "events.json" text
+show "pixel.png" hex
+use csv_data
+connect dacp://localhost:8815/data1
+help
+quit
+```
+
+`ls` refreshes the listing and shows item numbers, formats, and paths. `show` accepts a number or a quoted path; it defaults to records for CSV/JSON/NDJSON/Parquet and hexadecimal previews for other formats. `text` displays raw bytes as UTF-8 while escaping terminal control characters. Use `records` for SQL tables, whose bytes view is Arrow IPC. Previews default to at most 20 rows or 4096 bytes, configurable with `--rows` and `--bytes`; rendered rows also have a character limit set by `--bytes`. Stopping a record preview cancels upstream reading to avoid downloading the entire dataset. Binary files appear as hexadecimal and ASCII; images are not opened directly. After a failure, retry the command or reconnect; a failed connection switch preserves the previous connection.
+
+The server currently has no dataset discovery endpoint, so startup and `connect` require a known dataset URI. `use` switches to a known dataset on the same server. Exit with `quit`, `exit`, or EOF to close the connection.
+
 ## Serving directories and SQL databases together
 
 The `sql_datasets` configuration adds SQL support while remaining compatible with the existing `datasets` directory configuration. SQL tables use the same `Source.open / list / open / as_records` API. Table listings include Arrow schemas, and the bytes view is an Arrow IPC stream. H2 and PostgreSQL JDBC drivers are included, with table allowlists, credentials from environment variables, and bounded fetch and batch sizes. See [SQL configuration, types, and run instructions](examples/sql/README.md).
