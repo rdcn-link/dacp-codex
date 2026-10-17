@@ -14,7 +14,8 @@ object Identity {
     val result = Data.mapper.createArrayNode()
     manifest.elements.asScala.zipWithIndex.foreach { case (entry,index) =>
       val format = entry.get("format").asText()
-      require(Set("csv","json","parquet","bin").contains(format),"unsupported input format")
+      require((format == "sql" || scala.util.Try(Formats.byId(format)).isSuccess),"unsupported input format")
+      val extension = format match { case "excel" => "xlsx"; case "sql" => "bin"; case other => other }
       val name = s"_stream-$index.arrow"
       val reader = new ArrowStreamReader(Files.newInputStream(input.resolve(entry.get("file").asText())),allocator)
       try {
@@ -23,7 +24,7 @@ object Identity {
         try { writer.start();while(reader.loadNextBatch()) writer.writeBatch();writer.end() }
         finally writer.close()
       } finally reader.close()
-      val item = result.addObject();item.put("file",name);item.put("path",s"part-$index.$format");item.put("format",format)
+      val item = result.addObject();item.put("file",name);item.put("path",s"part-$index.$extension");item.put("format",format)
     }
     Files.write(output.resolve("_output.json"),Data.mapper.writeValueAsBytes(result))
   }

@@ -9,6 +9,7 @@ import shlex
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from .source import Source
+from .errors import user_message
 
 
 def safe(value):
@@ -52,7 +53,7 @@ class Browser(cmd.Cmd):
         try:
             return super().onecmd(line)
         except Exception as error:
-            self.write(f'Error: {error}')
+            self.write(f'Error: {user_message(error)}')
         except KeyboardInterrupt:
             self.write('Preview interrupted.')
 
@@ -133,7 +134,7 @@ class Browser(cmd.Cmd):
     def do_show(self, arg):
         """show ITEM [auto|records|text|hex]: preview an item by ls number or quoted path.
 
-        auto uses records for CSV/JSON/Parquet and hex for other formats.
+        auto uses the advertised records view when available, otherwise hex.
         records prints at most --rows rows; text/hex reads at most --bytes bytes.
         """
         args = shlex.split(arg)
@@ -141,16 +142,14 @@ class Browser(cmd.Cmd):
             raise ValueError('usage: show ITEM [auto|records|text|hex]')
         path = self.item(args[0])
         listed = next((i for i in self.items if i.path == path), None)
-        if listed is not None and listed.kind == "folder":
+        if listed is not None and listed.kind == "folder" and not listed.views:
             raise ValueError("folder has no content; use ls " + path)
         mode = args[1] if len(args) == 2 else 'auto'
         if mode not in ('auto', 'records', 'text', 'hex'):
             raise ValueError('view must be auto, records, text, or hex')
-        if mode == 'auto':
-            item = next((i for i in self.items if i.path == path), None)
-            fmt = item.format.lower() if item else Path(path).suffix.lstrip('.').lower()
-            mode = 'records' if (item and 'records' in item.views) or fmt in ('csv', 'json', 'ndjson', 'parquet', 'arrow') else 'hex'
         with self.dataset.open(path) as stream:
+            if mode == 'auto':
+                mode = 'records' if 'records' in stream.views else 'hex'
             if mode == 'records':
                 records = stream.as_records()
                 remaining = self.rows
@@ -228,7 +227,7 @@ def main(argv=None):
     except KeyboardInterrupt:
         return 130
     except Exception as error:
-        print('Error: ' + safe(error))
+        print('Error: ' + safe(user_message(error)))
         return 1
     finally:
         if browser is not None:

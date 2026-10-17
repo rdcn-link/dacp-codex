@@ -5,7 +5,7 @@ port: 8815
 datasets:
   data1:
     items:
-      /events: {file: ../examples/data/events.json}
+      /events: {file: ../examples/data/events.json, format: ndjson}
       /reports/orders: {file: ../examples/data/nested/orders.csv}
       /image: {file: ../examples/data/pixel.png}
       /empty: {kind: folder}

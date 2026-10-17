@@ -68,7 +68,7 @@ class SqlAdapter(config: SqlConfig, batchSize: Int) extends DataSetAdapter {
       statement.setQueryTimeout(config.queryTimeoutSeconds)
       val rs = statement.executeQuery(s"SELECT * FROM $name WHERE 1=0")
       val schema = try SqlAdapter.schema(rs.getMetaData) finally rs.close()
-      Item(item,"arrow",Some(schema))
+      Item(item,"sql",Some(schema))
     } finally statement.close()
   }
   def count(item: String): Long = withConnection { c =>

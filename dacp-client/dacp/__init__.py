@@ -3,3 +3,6 @@ __all__ = ["Source", "DataSet", "Item"]
 
 from .jobs import Job
 __all__.append("Job")
+
+from .errors import DacpError
+__all__.append("DacpError")

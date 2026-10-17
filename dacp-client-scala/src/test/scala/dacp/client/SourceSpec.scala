@@ -11,6 +11,20 @@ import scala.jdk.CollectionConverters._
 import scala.util.Using
 
 class SourceSpec extends AnyFunSuite {
+  test("transport diagnostics become public DACP errors without causes") {
+    val cases = Seq(
+      (CallStatus.NOT_FOUND.withDescription("dataset not found; private JDBC detail"), "NOT_FOUND", "Dataset not found."),
+      (CallStatus.UNAUTHORIZED.withDescription("private URI prefix"), "ACCESS_DENIED", "Access denied."),
+      (CallStatus.UNAVAILABLE.withDescription("private gRPC endpoint"), "UNAVAILABLE", "Cannot reach"),
+      (CallStatus.TIMED_OUT.withDescription("private timeout"), "TIMEOUT", "timed out"),
+      (CallStatus.INTERNAL.withDescription("private database table"), "REQUEST_FAILED", "request failed"))
+    cases.foreach { case (status, code, message) =>
+      val error = intercept[DacpException](DacpErrors.protect(throw status.toRuntimeException))
+      assert(error.code == code && error.getMessage.contains(message))
+      assert(!error.toString.contains("private") && error.getCause == null)
+    }
+  }
+
   val recordsSchema = new Schema(List(new Field("id", FieldType.nullable(new ArrowType.Int(32, true)), null)).asJava)
   val bytesSchema = new Schema(List(new Field("data", FieldType.nullable(new ArrowType.Binary()), null)).asJava)
 
@@ -114,10 +128,10 @@ class SourceSpec extends AnyFunSuite {
   test("failed record and byte readers are terminal") { server { ds =>
     Using.resource(ds.open("/fail")) { item =>
       val records = item.asRecords()
-      intercept[FlightRuntimeException](records.next())
+      intercept[DacpException](records.next())
       intercept[IllegalArgumentException](records.next())
       val bytes = item.asBytes()
-      intercept[FlightRuntimeException](bytes.read())
+      intercept[DacpException](bytes.read())
       intercept[java.io.IOException](bytes.read())
     }
   }}
@@ -140,9 +154,21 @@ class SourceSpec extends AnyFunSuite {
         Using.resource(Source.open(uri)) { ds =>
           assert(ds.list().exists(_.path == "/reports/orders"))
           assert(ds.list("/").exists(i => i.path == "/reports" && i.kind == "folder"))
+          sys.env.get("DACP_SCALA_EXCEL_PATH").foreach { path =>
+            assert(ds.list().find(_.path == path).get.format == "excel")
+            assert(ds.count(path).contains(2L))
+            Using.resource(ds.open(path)) { item =>
+              assert(item.views == Seq("records","bytes"))
+              Using.resource(item.asRecords()) { reader =>
+                var count = 0
+                while (reader.next()) count += reader.root.getRowCount
+                assert(count == 2)
+              }
+            }
+          }
           val listed = ds.list("/reports")
           assert(listed.map(_.path) == Seq("/reports/orders"))
-          assert(listed.head.recordCount.contains(2L) && listed.head.totalSizeBytes.isDefined && listed.head.lastModifiedTime.isDefined)
+          assert(listed.head.recordCount.isEmpty && listed.head.totalSizeBytes.isDefined && listed.head.lastModifiedTime.isDefined)
           Using.resource(ds.open("/reports/orders")) { item =>
             Using.resource(item.asRecords()) { reader => assert(reader.next()); assert(reader.root.getRowCount == 2) }
           }

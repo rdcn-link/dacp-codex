@@ -8,6 +8,7 @@ from dacp import cli
 
 
 class FakeStream:
+    views = ("records", "bytes")
     def __init__(self):
         self.cancelled = False
         self.reader = io.BytesIO(b'hello\x1b[31m world\n')
@@ -85,7 +86,7 @@ def test_failed_switch_keeps_existing_connection(browser, monkeypatch):
     b.onecmd('connect dacp://other/data2')
     assert b.dataset is ds and not ds.closed
     assert bad.closed
-    assert 'Error: connection refused' in out.getvalue()
+    assert 'Error: The operation failed.' in out.getvalue()
 
 
 def test_invalid_selection_and_mode_do_not_exit(browser):
@@ -237,3 +238,29 @@ def test_nonrecord_previews_keep_plain_display(browser, mode):
         assert rendered.startswith(r'hello\x1b[31m world')
     else:
         assert rendered.startswith('00000000  68 65 6c 6c 6f')
+
+
+def test_auto_preview_uses_advertised_views_for_new_formats(browser):
+    b, ds, out = browser
+    b.items[0].format = 'excel'
+    b.onecmd('show 1')
+    assert '3 rows shown' in out.getvalue()
+
+
+def test_auto_preview_does_not_infer_records_from_filename(browser):
+    b, ds, out = browser
+    ds.stream.views = ('bytes',)
+    b.items[0].path = '/orders.csv'
+    b.onecmd('show 1')
+    assert '68 65 6c 6c 6f' in out.getvalue()
+    assert 'rows shown' not in out.getvalue()
+
+
+def test_zip_folder_supports_bytes_preview(browser):
+    b, ds, out = browser
+    b.items = [SimpleNamespace(path='/archive', kind='folder', format='zip', views=('bytes',))]
+    ds.stream.views = ('bytes',)
+    b.onecmd('show 1 hex')
+    assert 'folder has no content' not in out.getvalue()
+    assert ds.opened == '/archive'
+    assert 'Error:' not in out.getvalue()

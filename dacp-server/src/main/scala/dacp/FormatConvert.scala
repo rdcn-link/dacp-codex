@@ -33,7 +33,7 @@ object FormatConvert {
       val iterator = parser.iterator.asScala.map(r => { require(r.size == names.size,"SCHEMA_CONFLICT: CSV width"); names.map(n => { val s = r.get(n); if (s.isEmpty) null else s }) })
       def close(): Unit = parser.close()
     }
-    case "json" => new Data.Rows {
+    case "json" | "ndjson" => new Data.Rows {
       private val reader = new BufferedReader(new InputStreamReader(in,UTF_8))
       private val nodes = Iterator.continually(reader.readLine()).takeWhile(_ != null).filter(_.trim.nonEmpty).map(Data.mapper.readTree).buffered
       val names = if (nodes.hasNext) nodes.head.fieldNames.asScala.toSeq else Seq.empty
@@ -42,7 +42,7 @@ object FormatConvert {
       }}
       def close(): Unit = reader.close()
     }
-    case _ => throw new IllegalArgumentException("format_convert accepts csv/json only")
+    case _ => throw new IllegalArgumentException("format_convert accepts csv/ndjson only")
   }
   def size(value: String): Long = {
     val pattern = "(?i)([0-9]+)(B|KB|MB|GB)?".r

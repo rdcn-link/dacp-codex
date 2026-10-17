@@ -3,9 +3,11 @@ from urllib.parse import urlsplit
 import pyarrow.flight as flight
 from . import dacp_pb2 as pb
 from .source import _flight_client
+from .errors import public_errors
 
 class Job:
     @staticmethod
+    @public_errors
     def run(node, yaml, *, tls_root_certs=None, cert_chain=None, private_key=None, timeout=3600):
         u = urlsplit(node)
         if (u.scheme != "dacp" or not u.hostname or u.username or u.password

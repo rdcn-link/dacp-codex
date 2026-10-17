@@ -30,7 +30,7 @@ class SqlSpec extends AnyFunSuite {
     val a = new SqlAdapter(conf,2)
     assert(a.list().map(_.path) == Seq("EMPTY_TABLE","ORDERS","odd\"name"))
     val item = a.describe("ORDERS")
-    assert(item.format == "arrow" && item.schema.get.getFields.size == 10)
+    assert(item.format == "sql" && item.schema.get.getFields.size == 10)
     assert(item.recordCount.isEmpty && item.totalSizeBytes.isEmpty && item.lastModifiedTimeMs.isEmpty)
     assert(a.describe("EMPTY_TABLE").recordCount.isEmpty)
     assert(a.count("EMPTY_TABLE") == 0L && a.count("ORDERS") == 3L)
@@ -84,7 +84,7 @@ class SqlSpec extends AnyFunSuite {
       val children = Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets","db","list","/reports")).getAppMetadata)
       assert(children.getItemsList.asScala.map(_.getPath) == Seq("/reports/file"))
       assert(TaskInputs.discover(client,"db",None).map(_._1).toSet == Set("/orders","/reports/file"))
-      assert(TaskInputs.discover(client,"db",Some("/orders")) == Seq("/orders" -> "arrow"))
+      assert(TaskInputs.discover(client,"db",Some("/orders")) == Seq("/orders" -> "sql"))
       val publicMetadata = meta("db")
       val stats = publicMetadata.getItemsList.asScala.find(_.getPath == "/orders").get
       assert(!stats.hasRecordCount)

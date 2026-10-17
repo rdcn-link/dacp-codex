@@ -14,7 +14,7 @@ case class Item(path: String, format: String, schema: Option[Schema], kind: Stri
                 lastModifiedTimeMs: Option[Long] = None, totalSizeBytes: Option[Long] = None,
                 recordCount: Option[Long] = None)
 trait DataSetAdapter { def list(): Seq[Item]; def describe(item: String): Item }
-class DirectoryAdapter(base: Path, batchSize: Int, inferSample: Int, excludeMetadata: Boolean = false) extends DataSetAdapter {
+class DirectoryAdapter(base: Path, batchSize: Int, inferSample: Int, excludeMetadata: Boolean = false, val options: FileOptions = FileOptions()) extends DataSetAdapter {
   private val root = base.toRealPath()
   def resolve(item: String): Path = {
     require(item.nonEmpty && !Path.of(item).isAbsolute && !item.split("/", -1).exists(x => x == ".." || x == "." || x.isEmpty), "invalid item path")
@@ -23,13 +23,8 @@ class DirectoryAdapter(base: Path, batchSize: Int, inferSample: Int, excludeMeta
     p
   }
   def describe(item: String): Item = {
-    val p = resolve(item); val f = Data.format(p)
-    val schema = f match {
-      case "csv" | "json" => Data.schema(p,batchSize,inferSample)
-      case "parquet" => Parquet.schema(p)
-      case _ => Data.bytesSchema
-    }
-    Item(item,f,Some(schema))
+    val p = resolve(item); val handler = Formats.detect(p,options)
+    Item(item,handler.id,Some(handler.schema(p,options,batchSize,inferSample)))
   }
   // Architecture: recurse and flatten files, never return directories or follow escaping symlinks.
   def list(): Seq[Item] = {
@@ -69,12 +64,11 @@ class Expired(id: String) extends RuntimeException(s"EXPIRED: output $id has exp
 object Data {
   val mapper = new ObjectMapper()
   val bytesSchema = new Schema(List(new Field("data", FieldType.nullable(new ArrowType.Binary()), null)).asJava)
-  def format(p: Path): String = p.getFileName.toString.split("\\.").last.toLowerCase match {
-    case "csv" => "csv"; case "json" | "jsonl" | "ndjson" => "json"; case "parquet" => "parquet"; case _ => "bin"
-  }
+  def format(p: Path): String = Formats.detect(p).id
   def deleteTree(p: Path): Unit = if (Files.exists(p)) { val s = Files.walk(p); try s.iterator.asScala.toSeq.reverse.foreach(Files.deleteIfExists) finally s.close() }
   trait Rows extends AutoCloseable { def names: Seq[String]; def iterator: Iterator[Seq[Any]] }
-  def rows(p: Path): Rows = format(p) match {
+  def rows(p: Path): Rows = Formats.detect(p).rows(p,FileOptions())
+  def delimitedRows(p: Path, format: String): Rows = format match {
     case "csv" => new Rows {
       private val reader = Files.newBufferedReader(p, UTF_8)
       private val parser = CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).get().parse(reader)
@@ -85,7 +79,7 @@ object Data {
       }
       def close(): Unit = parser.close()
     }
-    case "json" => new Rows {
+    case "ndjson" => new Rows {
       private val reader = Files.newBufferedReader(p, UTF_8)
       private val lines = Iterator.continually(reader.readLine()).takeWhile(_ != null).filter(_.trim.nonEmpty).buffered
       private def parse(s: String): JsonNode = { val n = mapper.readTree(s); require(n.isObject, "JSON must be newline-delimited objects"); n }
@@ -113,8 +107,10 @@ object Data {
     case x => throw new IllegalArgumentException(s"unsupported schema type $x")
   }), null)
   def schema(p: Path, batchSize: Int, sample: Int, explicit: Option[Schema] = None): Schema = {
+    inferSchema(rows(p),batchSize,sample,explicit)
+  }
+  def inferSchema(r: Rows, batchSize: Int, sample: Int, explicit: Option[Schema] = None): Schema = {
     require(batchSize > 0 && sample > 0)
-    val r = rows(p)
     try {
       explicit match {
         case Some(s) => require(s.getFields.asScala.map(_.getName).toSeq == r.names, "SCHEMA_CONFLICT: explicit columns do not match"); s

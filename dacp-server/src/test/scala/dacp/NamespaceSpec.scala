@@ -101,7 +101,7 @@ class NamespaceSpec extends AnyFunSuite {
     val item = all("/events")
     assert(item.hasLastModifiedTimeMs && item.getLastModifiedTimeMs == 0L)
     assert(item.hasTotalSizeBytes && item.getTotalSizeBytes == Files.size(file))
-    assert(item.hasRecordCount && item.getRecordCount == 1L)
+    assert(!item.hasRecordCount)
     Seq("/nested", "/empty").foreach { path =>
       val folder = all(path)
       assert(!folder.hasTotalSizeBytes && !folder.hasRecordCount && !folder.hasLastModifiedTimeMs)
@@ -117,7 +117,8 @@ class NamespaceSpec extends AnyFunSuite {
       assert(folder.totalSizeBytes.isEmpty && folder.recordCount.isEmpty && folder.lastModifiedTimeMs.isEmpty)
     }
     val info = p.getFlightInfo(null,FlightDescriptor.path("datasets","public","/events"))
-    assert(Metadata.Item.parseFrom(info.getAppMetadata).getRecordCount == 1L)
+    assert(!Metadata.Item.parseFrom(info.getAppMetadata).hasRecordCount)
+    assert(adapter.count("/events").contains(1L))
   }}
   test("CSV counts records rather than lines; NDJSON skips blanks; binary record count is unknown") {
     val dir = Files.createTempDirectory("statistics-")
@@ -127,9 +128,12 @@ class NamespaceSpec extends AnyFunSuite {
       val empty = dir.resolve("empty.csv"); Files.writeString(empty,"id\n")
       val binary = dir.resolve("empty.bin"); Files.write(binary,Array.emptyByteArray)
       def stat(path: Path) = ItemProperties.file(Item("/data",Data.format(path),None),path)
-      assert(stat(csv).recordCount.contains(2L))
-      assert(stat(json).recordCount.contains(2L))
-      assert(stat(empty).recordCount.contains(0L))
+      assert(stat(csv).recordCount.isEmpty)
+      assert(stat(json).recordCount.isEmpty)
+      assert(stat(empty).recordCount.isEmpty)
+      assert(Formats.detect(csv).count(csv,FileOptions()).contains(2L))
+      assert(Formats.detect(json).count(json,FileOptions()).contains(2L))
+      assert(Formats.detect(empty).count(empty,FileOptions()).contains(0L))
       assert(stat(binary).totalSizeBytes.contains(0L) && stat(binary).recordCount.isEmpty)
     } finally Data.deleteTree(dir)
   }

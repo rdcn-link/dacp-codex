@@ -19,7 +19,7 @@ private[client] object Resources {
   def closeAll(values: Seq[AutoCloseable]): Unit = {
     var failure: Throwable = null
     values.foreach { value =>
-      try value.close() catch {
+      try DacpErrors.protect(value.close()) catch {
         case NonFatal(error) => if (failure == null) failure = error else failure.addSuppressed(error)
       }
     }
@@ -66,7 +66,7 @@ object Source {
         builder.build()
       }.get
       new Dataset(client, allocator, name, timeoutSeconds)
-    } catch { case t: Throwable => allocator.close(); throw t }
+    } catch { case t: Throwable => allocator.close(); throw DacpErrors.translate(t) }
   }
 
   /** Direct item access; closing the item also closes its private connection. */
@@ -78,7 +78,7 @@ object Source {
       val stream = ds.open(item.get)
       stream.ownsDataset = true
       stream
-    } catch { case t: Throwable => ds.close(); throw t }
+    } catch { case t: Throwable => ds.close(); throw DacpErrors.translate(t) }
   }
 }
 
@@ -100,7 +100,7 @@ final class Dataset private[client] (
   def list(path: String): Seq[Item] = listing(FlightDescriptor.path("datasets", name, "list", logical(path)))
   private def listing(descriptor: FlightDescriptor): Seq[Item] = {
     check()
-    val info = client.getInfo(descriptor, option)
+    val info = DacpErrors.protect(client.getInfo(descriptor, option))
     Metadata.DataSet.parseFrom(info.getAppMetadata).getItemsList.asScala.map { i =>
       val schema = if (i.getArrowSchema.isEmpty) None else Some(Schema.deserializeMessage(java.nio.ByteBuffer.wrap(i.getArrowSchema.toByteArray)))
       Item(i.getPath, i.getFormat, schema, i.getKind, i.getViewsList.asScala.toVector,
@@ -112,14 +112,14 @@ final class Dataset private[client] (
   /** Explicit exact record count; absent for non-record data. */
   def count(path: String): Option[Long] = {
     check()
-    val info = client.getInfo(FlightDescriptor.path("datasets", name, "count", logical(path)), option)
+    val info = DacpErrors.protect(client.getInfo(FlightDescriptor.path("datasets", name, "count", logical(path)), option))
     val metadata = Metadata.Item.parseFrom(info.getAppMetadata)
     if (metadata.hasRecordCount) Some(metadata.getRecordCount) else None
   }
   def open(path: String): ItemStream = {
     check()
     logical(path)
-    val info = client.getInfo(FlightDescriptor.path("datasets", name, path), option)
+    val info = DacpErrors.protect(client.getInfo(FlightDescriptor.path("datasets", name, path), option))
     require(!info.getEndpoints.isEmpty, "item has no Flight endpoint")
     val metadata = Metadata.Item.parseFrom(info.getAppMetadata)
     require(metadata.getKind == "data", "only data items can be opened; use list(path) for folders")
@@ -143,7 +143,7 @@ final class ItemStream private[client] (dataset: Dataset, ticket: Ticket, val vi
     require(!closed, "item stream is closed")
     require(views.contains(view), "item does not support requested view")
     val t = Metadata.Ticket.parseFrom(ticket.getBytes).toBuilder.setView(view).build()
-    dataset.client.getStream(new Ticket(t.toByteArray), dataset.option)
+    DacpErrors.protect(dataset.client.getStream(new Ticket(t.toByteArray), dataset.option))
   }
   def asRecords(): RecordStream = {
     val reader = new RecordStream(flight("records"), r => readers -= r)
@@ -169,8 +169,8 @@ final class ItemStream private[client] (dataset: Dataset, ticket: Ticket, val vi
 final class RecordStream private[client] (stream: FlightStream, released: AutoCloseable => Unit) extends AutoCloseable {
   private var closed = false
   private var ended = false
-  def schema: Schema = { require(!closed, "reader is closed"); stream.getSchema }
-  def root: VectorSchemaRoot = { require(!closed, "reader is closed"); stream.getRoot }
+  def schema: Schema = { require(!closed, "reader is closed"); DacpErrors.protect(stream.getSchema) }
+  def root: VectorSchemaRoot = { require(!closed, "reader is closed"); DacpErrors.protect(stream.getRoot) }
   def next(): Boolean = {
     require(!closed, "reader is closed; reopen the item to retry")
     if (ended) return false
@@ -178,11 +178,11 @@ final class RecordStream private[client] (stream: FlightStream, released: AutoCl
       val more = stream.next()
       ended = !more
       more
-    } catch { case t: Throwable => close(); throw t }
+    } catch { case t: Throwable => close(); throw DacpErrors.translate(t) }
   }
   override def close(): Unit = if (!closed) {
     closed = true
-    try stream.close() finally released(this)
+    try DacpErrors.protect(stream.close()) finally released(this)
   }
 }
 
@@ -216,11 +216,11 @@ private[client] final class ByteStream(stream: FlightStream, released: AutoClose
       System.arraycopy(current, offset, target, start, n)
       offset += n
       n
-    } catch { case t: Throwable => close(); throw t }
+    } catch { case t: Throwable => close(); throw DacpErrors.translate(t) }
   }
   override def close(): Unit = if (!closed) {
     closed = true
     current = Array.emptyByteArray
-    try stream.close() finally released(this)
+    try DacpErrors.protect(stream.close()) finally released(this)
   }
 }

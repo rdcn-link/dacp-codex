@@ -8,12 +8,12 @@ An Arrow Flight data collaboration protocol for autonomous data nodes. It uses a
 
 ## Core concepts: Dataset, Item, and Stream
 
-A Dataset is a named logical namespace published by a node. Items have two kinds: `folder` groups child Items, and `data` provides readable content. Files and SQL tables both map to `data`, so clients do not need to depend on storage type. A Stream is the reading interface obtained by opening a data Item.
+A Dataset is a named logical namespace published by a node. Items have two kinds: `folder` groups child Items, and `data` provides readable content. Ordinary files and SQL tables map to `data`, while ZIP archives map to `folder`, so clients do not need to depend on storage type. A Stream is the reading interface obtained by opening an Item with advertised views.
 
 | Concept | Meaning | Example |
 |---|---|---|
 | Dataset | A root folder on a node with a public name | `dacp://localhost:8815/data1` |
-| folder Item | A logical grouping of child Items, with no content Stream | `/reports` |
+| folder Item | A logical grouping of child Items; ZIP folders offer a bytes Stream | `/reports` |
 | data Item | A readable logical resource with a format, optional Arrow schema, and supported views | `/reports/orders`, `/image` |
 | Stream | Pulls one data Item's content through records or bytes views | `ds.open("/reports/orders")` |
 
@@ -26,11 +26,11 @@ All Item paths begin with `/` and are rooted in the Dataset's logical namespace.
 | `ds.list("/reports")` | Returns only immediate children of `/reports`, excluding the folder itself |
 | `ds.open("/reports/orders")` | Opens a data Item and returns a Stream |
 
-Returned paths always start at the Dataset root. Empty folders return an empty list. Missing paths, `list(path)` on data Items, and `open(path)` on folders produce errors. Relative paths, `.`, `..`, repeated separators, and trailing `/` (except root `/`) are rejected. URIs join the Dataset name and logical path, for example `dacp://localhost:8815/data1/reports/orders`. Listings return metadata without downloading content.
+Returned paths always start at the Dataset root. Empty folders return an empty list. Missing paths, `list(path)` on data Items, and `open(path)` on folders without views produce errors. Relative paths, `.`, `..`, repeated separators, and trailing `/` (except root `/`) are rejected. URIs join the Dataset name and logical path, for example `dacp://localhost:8815/data1/reports/orders`. Listings return metadata without downloading content.
 
 An Item's `views` metadata describes its supported Stream views:
 
-- `records`: reads Arrow RecordBatches with a schema, supporting CSV, NDJSON, DACP Parquet with Arrow schema metadata, and SQL tables.
+- `records`: reads Arrow RecordBatches with a schema, supporting CSV, NDJSON, Excel, DACP Parquet with Arrow schema metadata, and SQL tables.
 - `bytes`: reads binary content incrementally. File mappings return original file bytes; SQL mappings return an Arrow IPC stream. Binary resources such as PNG images offer only the bytes view.
 
 After configuring the mTLS certificates from the quick start:
@@ -52,6 +52,72 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 Streams created through a Dataset share its connection and must be used before it closes. Streams opened directly through an Item URI own a separate connection. Use a context manager for byte readers, and close record iterators when stopping early to cancel reading. After failure, reopen and read from the beginning; reads are not resumable.
 
+## Formats and views
+
+A format identifies the source representation; a view describes how it can be read. Clients use the advertised `views`, including for formats added later, rather than guessing capabilities from a filename. Format names are lowercase.
+
+| Source | Format | Views |
+|---|---|---|
+| `.csv` | `csv` | `records`, `bytes` |
+| `.jsonl`, `.ndjson` | `ndjson` | `records`, `bytes` |
+| `.json` | `json` | `bytes` |
+| `.zip`, `.ZIP` | `zip` | `bytes` |
+| `.xls`, `.xlsx` | `excel` | `records`, `bytes` |
+| DACP Parquet | `parquet` | `records`, `bytes` |
+| SQL table | `sql` | `records`, `bytes` |
+| Other files | `bin` | `bytes` |
+
+The registry uses an explicit `format` override first, then registered signature checks and case-insensitive extensions, with `bin` as fallback. Detection reads at most eight signature bytes; it does not validate the entire file. Invalid structured content fails when its records view is opened. A recognized file remains available unchanged through bytes. Parquet currently requires DACP Arrow schema footer metadata. Ordinary JSON has bytes only; publish newline-delimited `.json` files with `format: ndjson` to enable records. SQL now reports `sql` instead of `arrow`; its bytes view still uses Arrow IPC.
+
+### Browsing ZIP archives
+
+Map a ZIP file using an ordinary file alias. The server publishes it as `kind=folder`, `format=zip`, with a `bytes` view returning the original archive. `list("/archive")` returns immediate children, while `list()` includes all archive entries; missing parent folders are inferred. Entry formats are selected by extension in listings and detected by existing readers when opened. ZIPs inside ZIPs remain `bin` data Items without recursive expansion. Modification time, size, and record count remain unknown for every folder.
+
+```yaml
+datasets:
+  public:
+    items:
+      /archive: {file: /private/reports.ZIP}
+```
+
+```python
+ds.list("/archive")
+ds.list("/archive/reports")
+with ds.open("/archive/reports/orders.csv") as stream:
+    records = stream.as_records()
+with ds.open("/archive") as stream:
+    archive_bytes = stream.as_bytes()
+```
+
+Listings read the ZIP directory without decompressing entries. Opening, inferring schema, or counting stages only the requested entry into a temporary server file, cleaned after completion, failure, or cancellation; the first response for a large entry therefore waits for decompression. Archives allow at most 10,000 entries, 512 MiB decompressed per entry, and 2 GiB total declared size. Absolute paths, traversal, duplicate entries, and file/parent conflicts are rejected. Entries never extract into the source directory or follow archived symlinks. In `dacp-shell`, use `ls /archive` to browse and `show /archive hex` to preview original archive bytes.
+
+File mappings accept these private reader options:
+
+```yaml
+datasets:
+  office:
+    items:
+      /orders:
+        file: /private/sales.xlsx
+        format: excel
+        sheet: Orders
+        header_row: 2
+        schema:
+          - {name: id, type: int64}
+          - {name: amount, type: float64}
+      /events:
+        file: /private/events.json
+        format: ndjson
+```
+
+`sheet` and `header_row` apply to Excel; the header row is one-based and defaults to 1. A single-sheet workbook selects its only sheet automatically; multiple sheets require an explicit selection. Publish multiple logical aliases to expose separate sheets. The original workbook is returned through bytes for each alias; records and counts refer only to its selected sheet. Sheet bindings and private filenames never appear in metadata or tickets.
+
+Excel uses Apache POI 5.5.1 event readers for both XLS and XLSX. Empty headers become `column_N`, duplicate names receive deterministic `_2`, `_3` suffixes, and missing cells become null. Empty data rows are skipped; data beyond the header width fails. Cached formula values are read without recalculation; missing cached values become null when identifiable. Cell errors and encrypted or invalid workbooks fail with a DACP format error. Numeric cells are int64 when integral and in range, otherwise float64; booleans and strings retain their values. Excel numeric dates remain serial numbers, with no implicit locale or timezone conversion. Optional `schema` supports ordered `name`/`type` entries using `int64`, `float64`, `bool`, and `utf8`/`string`. Without it, sampling is bounded by `batch_size * infer_sample`; later incompatible values fail instead of changing the schema.
+
+Listings do not parse CSV, NDJSON, or Excel records, and leave their counts unknown. Opening records infers a schema from a bounded sample. Only explicit `count` scans these files; Parquet can obtain its count cheaply from the footer. Excel parsers have a queue of at most 16 rows and stop on close/cancellation; schemas, current batches, individual cells, and POI shared-string dictionaries use additional memory. Large shared-string tables can still require substantial memory. No full worksheet is materialized.
+
+The server extension API is [`FormatHandler`](dacp-server/src/main/scala/dacp/Formats.scala). Providers implement detection, optional cheap metadata, schema, record reading, explicit counting, and cleanup; file bytes use the shared reader. Add a provider JAR and register its public no-argument class in `META-INF/services/dacp.FormatHandler`, then restart. Format IDs and extension registrations must be unique; `sql` is reserved for the SQL adapter. The core server and SDKs need no format-specific changes. See [handler development](docs/format-handlers.md).
+
 ## Item properties
 
 Item metadata includes the following optional properties, with unknown values distinct from a known `0`:
@@ -60,11 +126,11 @@ Item metadata includes the following optional properties, with unknown values di
 |---|---|
 | `last_modified_time_ms` / `lastModifiedTimeMs` | UTC Unix epoch milliseconds. Python's `last_modified_time` returns a timezone-aware UTC datetime; Scala's `lastModifiedTime` returns `Option[Instant]`. |
 | `total_size_bytes` / `totalSizeBytes` | Total content bytes; file mappings use original file size. |
-| `record_count` / `recordCount` | Exact logical record count. CSV excludes the header and supports quoted multiline records; NDJSON skips blank lines; Parquet uses footer metadata; SQL counts are unknown during ordinary browsing; explicit `ds.count("/reports/orders")` executes `COUNT(*)`. |
+| `record_count` / `recordCount` | Exact logical record count. CSV excludes the header, NDJSON skips blank lines, and Excel counts data rows in the selected sheet. These files and SQL leave counts unknown during browsing; use explicit `ds.count(path)`. Parquet uses footer metadata. |
 
 Unknown values are `None` in Python and Scala (known Scala values use `Some`), with absent protobuf fields. SQL mappings do not estimate modification time or byte size. Non-record data such as PNG images has an unknown record count. All three folder properties are always unknown, including for empty folders; computing folder properties never visits child Items.
 
-Properties are returned by `list()`, `list(path)`, and data Item FlightInfo, and displayed by the interactive client's `ls`. Exact CSV/NDJSON counts scan files; explicit SQL counts execute queries, so listing many data Items can be expensive. SQL counts respect the source query timeout. Folder metadata does not trigger descendant scans; data Item statistics are not cached across requests. Properties are observations rather than an atomic snapshot with subsequent reads, and can change when source data changes.
+Properties are returned by `list()`, `list(path)`, and data Item FlightInfo, and displayed by the interactive client's `ls`. Explicit CSV/NDJSON/Excel counts scan files and SQL counts execute queries; ordinary listing does not perform those counts. SQL counts respect the source query timeout. Folder metadata does not trigger descendant scans; data Item statistics are not cached across requests. Properties are observations rather than an atomic snapshot with subsequent reads, and can change when source data changes.
 
 ```python
 with Source.open("dacp://localhost:8815/data1") as ds:
@@ -137,6 +203,8 @@ Ordinary SQL browsing and `show` do not execute `COUNT(*)`. Request an exact cou
 
 Requests for nonexistent datasets return `NOT_FOUND: dataset not found; check the dataset name`. Existing datasets still enforce URI allowlist authorization.
 
+SDKs translate transport failures into DACP errors: `DacpError` in Python and `DacpException` in Scala, each with a stable `code` and readable message. The shell shows concise messages such as `Dataset not found. Check the dataset name.` without Arrow Flight/gRPC wrappers, remote diagnostics, or private storage details. Midstream failures are translated too; reopen the item after failure. Underlying exceptions are not attached as public exception causes.
+
 ## Interactive client dacp-shell
 
 `dacp-shell` is the interactive client command; `dacp` remains a compatibility alias. `ls` displays a table with an outer border and column headers: Path, #, Format, Bytes, Records, and Modified (UTC). The Kind column is omitted. Times use the format `2026-10-16 06:22:02`; unavailable values display as `-`. Empty listings also show headers and borders. Record previews from `show` use bordered tables with field names as headers; text keeps its plain text display, and hex keeps its original offset, hexadecimal, and ASCII layout. Folder paths are highlighted in bold cyan in terminals; redirected output, `NO_COLOR`, and `TERM=dumb` disable color.
@@ -163,7 +231,7 @@ help
 quit
 ```
 
-`ls` lists all Items recursively; `ls /` or `ls /reports` lists only immediate folder children, showing numbers, formats, and logical paths. Browse folders with `ls` and preview data with `show`. `show` accepts a number or a quoted path; it defaults to records for CSV/JSON/NDJSON/Parquet and hexadecimal previews for other formats. `text` displays raw bytes as UTF-8 while escaping terminal control characters. Use `records` for SQL tables, whose bytes view is Arrow IPC. Previews default to at most 20 rows or 4096 bytes, configurable with `--rows` and `--bytes`; rendered field text per row shares a character budget set by `--bytes` (excluding truncation markers and table borders). Stopping a record preview cancels upstream reading to avoid downloading the entire dataset. Binary files appear as hexadecimal and ASCII; images are not opened directly. After a failure, retry the command or reconnect; a failed connection switch preserves the previous connection.
+`ls` lists all Items recursively; `ls /` or `ls /reports` lists only immediate folder children, showing numbers, formats, and logical paths. Browse folders with `ls` and preview data with `show`. `show` accepts a number or a quoted path; it defaults to records when advertised by the server, otherwise hexadecimal previews. `text` displays raw bytes as UTF-8 while escaping terminal control characters. Use `records` for SQL tables, whose bytes view is Arrow IPC. Previews default to at most 20 rows or 4096 bytes, configurable with `--rows` and `--bytes`; rendered field text per row shares a character budget set by `--bytes` (excluding truncation markers and table borders). Stopping a record preview cancels upstream reading to avoid downloading the entire dataset. Binary files appear as hexadecimal and ASCII; images are not opened directly. After a failure, retry the command or reconnect; a failed connection switch preserves the previous connection.
 
 The server currently has no dataset discovery endpoint, so startup and `connect` require a known dataset URI. `use` switches to a known dataset on the same server. Exit with `quit`, `exit`, or EOF to close the connection.
 
@@ -214,7 +282,7 @@ From the project root, using the certificate environment variables above:
 .venv/bin/python examples/verify_job.py
 ```
 
-Parquet Items in output listings must include a schema. Listing schemas for raw CSV/JSON may be empty because enumeration does not scan data; schemas are inferred when retrieving FlightInfo for a specific Item.
+Parquet Items in output listings must include a schema. Listing schemas for raw CSV/NDJSON/Excel may be empty because enumeration does not scan data; schemas are inferred when retrieving FlightInfo for a specific Item.
 
 The operator library supports a standalone web service. When `operator_library_url` is configured, execution nodes download the image archive for the requested operator version, verify and cache it, and execute it in local Docker isolation. See [dacp-operator-library](dacp-operator-library/README.md) for startup, publishing, and configuration. Without a URL, the local `operators/<name>/<version>/operator.yaml` is used. Versions cannot be overwritten, and there are no dynamic version updates. The standard Dockerfile runs `sbt stage` during the build and retains only the JRE and application at runtime. Do not mount generated certificates or data into operator images.
 
@@ -258,7 +326,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | GetFlightInfo `[datasets, dataset, /logical/item]` | Arrow schema and a FlightEndpoint containing a protobuf `Ticket` |
 | DoGet `Ticket(dataset,item,view)` | `view=records` returns records; `view=bytes` returns a single binary column containing raw file bytes |
 
-The records view supports CSV, NDJSON, and dacp-generated Parquet. Any file can use the bytes view. The SDK wraps binary batches in an incrementally readable `io.BufferedReader`. Tickets describe resources and views; they are not authentication tokens. Both GetFlightInfo and DoGet validate URI allowlists, normalized paths, and symbolic-link boundaries. Links outside allowed boundaries are excluded from listings.
+The records view supports CSV, NDJSON, Excel, SQL, and dacp-generated Parquet. Any file can use the bytes view. The SDK wraps binary batches in an incrementally readable `io.BufferedReader`. Tickets describe resources and views; they are not authentication tokens. Both GetFlightInfo and DoGet validate URI allowlists, normalized paths, and symbolic-link boundaries. Links outside allowed boundaries are excluded from listings.
 
 Configuration in `examples/server.yaml`:
 
@@ -269,7 +337,7 @@ Configuration in `examples/server.yaml`:
 | `datasets` | Dataset name → explicit `items` logical mappings; names occupy one URI path segment |
 | `allowed_uri_prefixes` | Node-level URI prefix allowlist, matched at path segment boundaries; output names also require authorization |
 | `tls_cert` / `tls_key` / `tls_ca` | PEM certificate, private key, and trusted client CA; mTLS is mandatory |
-| `batch_size` | Maximum rows per batch in CSV/JSON records views |
+| `batch_size` | Maximum rows per batch in file records views |
 | `byte_chunk` | Maximum bytes per binary row in bytes views |
 | `infer_sample` | Number of batches sampled for server-side records schema inference |
 | `output_ttl_seconds` | Output lifetime starting at successful registration |
@@ -296,7 +364,7 @@ Service errors use Flight/gRPC statuses and explicit dacp error names: missing r
 .venv/bin/python examples/verify_job.py
 ```
 
-Validation for this logical namespace update includes 29 server Scala tests, 9 Scala SDK tests, and 44 Python tests (including operator library service tests), plus real mTLS checks for hierarchical listing, logical aliases, CSV/PNG, H2 SQL records/Arrow IPC bytes, and the interactive client. Both SDKs were verified against servers started on isolated ports. Docker socket access is unavailable in this session, so container DAG integration was not rerun; previous container checks covered zstd conversion, materialized dual inputs/snappy, output schemas, and DoGet after TTL expiry. Building the standard Dockerfile still requires access to Docker Hub to download base images.
+Validation for this logical namespace update includes 41 server Scala tests, 10 Scala SDK tests (including a real mTLS server test), and 59 Python tests (including operator library service tests), plus real mTLS checks for hierarchical listing, logical aliases, CSV/PNG, H2 SQL records/Arrow IPC bytes, and the interactive client. Both SDKs were verified against servers started on isolated ports. Docker socket access is unavailable in this session, so container DAG integration was not rerun; previous container checks covered zstd conversion, materialized dual inputs/snappy, output schemas, and DoGet after TTL expiry. Building the standard Dockerfile still requires access to Docker Hub to download base images.
 
 Unit tests cover placement across nodes, upstream URI resolution, worker permissions, capacity rejection, no retry on failure, descriptors/protobuf, recursive enumeration, path traversal boundaries, TTL cleanup, schema inference/explicit declarations/conflicts, DAG validation, Arrow binary chunk conversion to Parquet, container Arrow output contract round trips, and partial byte reads in the SDK. Security checks verify connection failure without a client certificate and rejection of unauthorized datasets even with a valid certificate.
 

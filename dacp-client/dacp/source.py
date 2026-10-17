@@ -7,7 +7,9 @@ from urllib.parse import urlsplit, unquote
 import pyarrow as pa
 import pyarrow.flight as flight
 from . import dacp_pb2 as pb
+from .errors import public_errors, translate, TRANSPORT_ERRORS
 
+@public_errors
 def _flight_client(u, tls_root_certs=None, cert_chain=None, private_key=None):
     def credential(value, env):
         if value is not None: return value
@@ -70,6 +72,7 @@ class Source:
 class DataSet:
     def __init__(self, client, name, uri):
         self._client, self.name, self.uri = client, name, uri
+    @public_errors
     def list(self, path=None):
         descriptor = ("datasets", self.name) if path is None else ("datasets", self.name, "list", _logical_path(path))
         info = self._client.get_flight_info(flight.FlightDescriptor.for_path(*descriptor))
@@ -79,12 +82,14 @@ class DataSet:
                      x.last_modified_time_ms if x.HasField("last_modified_time_ms") else None,
                      x.total_size_bytes if x.HasField("total_size_bytes") else None,
                      x.record_count if x.HasField("record_count") else None) for x in meta.items]
+    @public_errors
     def count(self, path):
         """Request an exact record count explicitly; None for non-record data."""
         info = self._client.get_flight_info(flight.FlightDescriptor.for_path(
             "datasets", self.name, "count", _logical_path(path)))
         metadata = pb.Item.FromString(info.app_metadata)
         return metadata.record_count if metadata.HasField("record_count") else None
+    @public_errors
     def open(self, path):
         _logical_path(path)
         info = self._client.get_flight_info(flight.FlightDescriptor.for_path("datasets", self.name, path))
@@ -92,6 +97,7 @@ class DataSet:
         if metadata.kind != "data" or not info.endpoints:
             raise ValueError("only data items can be opened; use list(path) for folders")
         return Stream(self._client, info.endpoints[0].ticket, tuple(metadata.views))
+    @public_errors
     def close(self): self._client.close()
     def __enter__(self): return self
     def __exit__(self, *args): self.close()
@@ -100,10 +106,12 @@ class Stream:
     def __init__(self, client, ticket, views=("records", "bytes")):
         self._client, self._ticket, self._owns_client = client, ticket, False
         self.views = views
+    @public_errors
     def close(self):
         if self._owns_client: self._client.close()
     def __enter__(self): return self
     def __exit__(self, *args): self.close()
+    @public_errors
     def _reader(self, view):
         if view not in self.views:
             raise ValueError(f"item does not support {view} view")
@@ -115,13 +123,19 @@ class Stream:
         try:
             for chunk in reader:
                 if chunk.data is not None: yield chunk.data
-        finally: reader.cancel()
+        except TRANSPORT_ERRORS as error:
+            raise translate(error) from None
+        finally:
+            try: reader.cancel()
+            except TRANSPORT_ERRORS: pass
+    @public_errors
     def as_bytes(self): return io.BufferedReader(_Bytes(self._reader("bytes")))
 
 class _Bytes(io.RawIOBase):
     def __init__(self, reader):
         super().__init__(); self.reader = reader; self.chunks = iter(reader); self.pending = memoryview(b""); self.failed = False
     def readable(self): return True
+    @public_errors
     def readinto(self, target):
         if not len(target): return 0
         if self.failed: raise OSError("stream failed; reopen source")
@@ -133,7 +147,11 @@ class _Bytes(io.RawIOBase):
                 self.pending = memoryview(b"".join(chunk.data.column(0).to_pylist()))
             n = min(len(target), len(self.pending)); target[:n] = self.pending[:n]; self.pending = self.pending[n:]; return n
         except Exception:
-            self.failed = True; self.reader.cancel(); raise
+            self.failed = True
+            try: self.reader.cancel()
+            except TRANSPORT_ERRORS: pass
+            raise
+    @public_errors
     def close(self):
         if not self.closed: self.reader.cancel()
         super().close()

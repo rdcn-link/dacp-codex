@@ -33,6 +33,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
 }
 object Config {
   def load(path: Path): Config = {
+    Formats.initialize()
     val in = Files.newInputStream(path)
     val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
     val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala finally in.close()
@@ -53,7 +54,13 @@ object Config {
       val items = dataset("items").asInstanceOf[java.util.Map[String,java.util.Map[String,Object]]].asScala.map { case (logical, mapping) =>
         val v = mapping.asScala
         PublishedItem(logical, v.get("file").map(x => Path.of(x.toString)), v.get("sql").map(_.toString),
-          v.get("table").map(_.toString), v.get("kind").map(_.toString).getOrElse("data"))
+          v.get("table").map(_.toString), v.get("kind").map(_.toString).getOrElse("data"),
+          FileOptions(v.get("format").map(_.toString),v.get("sheet").map(_.toString),
+            v.get("header_row").map(_.toString.toInt).getOrElse(1),
+            v.get("schema").map { raw =>
+              val columns = raw.asInstanceOf[java.util.List[java.util.Map[String,String]]].asScala
+              new org.apache.arrow.vector.types.pojo.Schema(columns.map(c => Data.field(c.get("name"),c.get("type"))).asJava)
+            }))
       }.toVector
       name -> items
     }.toMap).getOrElse(Map.empty[String,Seq[PublishedItem]])
@@ -98,6 +105,7 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
     case e: Expired => CallStatus.NOT_FOUND.withDescription(e.getMessage).toRuntimeException
     case e: java.io.FileNotFoundException => CallStatus.NOT_FOUND.withDescription("NOT_FOUND: logical resource unavailable").toRuntimeException
     case e: java.nio.file.NoSuchFileException => CallStatus.NOT_FOUND.withDescription("NOT_FOUND: logical resource unavailable").toRuntimeException
+    case e: FormatFailure => CallStatus.INVALID_ARGUMENT.withDescription("FORMAT_ERROR: " + e.getMessage).toRuntimeException
     case e: java.sql.SQLException =>
       System.err.println(s"SQL_ERROR: state=${e.getSQLState}, code=${e.getErrorCode}")
       CallStatus.INTERNAL.withDescription("SQL_ERROR: database operation failed; see server log").toRuntimeException
@@ -139,11 +147,10 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
       }
       new FlightInfo(Data.bytesSchema, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,meta.build.toByteArray)
     } else {
-      require(!a.isFolder(item), "folder has no content stream")
       val description = a.describe(item)
-      require(description.kind == "data", "folder has no content stream")
+      require(NamespaceAdapter.views(description).nonEmpty, "folder has no content stream")
       val schema = description.schema.get
-      val ticket = Metadata.Ticket.newBuilder().setDataset(ds).setItem(item).setView("records").build()
+      val ticket = Metadata.Ticket.newBuilder().setDataset(ds).setItem(item).setView(NamespaceAdapter.views(description).head).build()
       new FlightInfo(schema,desc,List(new FlightEndpoint(new Ticket(ticket.toByteArray))).asJava,-1,-1,false,
         org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,
         itemMetadata(description).toByteArray)
@@ -154,12 +161,6 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
       val t = Metadata.Ticket.parseFrom(ticket.getBytes)
       require(Set("records","bytes").contains(t.getView), "invalid view")
       val namespace = adapter(t.getDataset,t.getItem)
-      val (source, internalItem) = namespace.resolve(t.getItem)
-      val recordsSupported = source match {
-        case _: SqlAdapter => true
-        case d: DirectoryAdapter => Set("csv", "json", "parquet")(Data.format(d.resolve(internalItem)))
-      }
-      require(t.getView == "bytes" || recordsSupported, "unsupported stream view")
       val lock = new Object
       listener.setOnReadyHandler(() => lock.synchronized(lock.notifyAll()))
       listener.setOnCancelHandler(() => lock.synchronized(lock.notifyAll()))
@@ -169,6 +170,12 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
         // Expiry invalidates active streams too, before reading the next batch.
         outputs.lookup(t.getDataset)
       }
+      namespace.withResolved(t.getItem, () => ready()) { (source, internalItem) =>
+      val recordsSupported = source match {
+        case _: SqlAdapter => true
+        case d: DirectoryAdapter => Formats.detect(d.resolve(internalItem),d.options).records
+      }
+      require(t.getView == "bytes" || recordsSupported, "unsupported stream view")
       source match {
         case sql: SqlAdapter =>
           ready()
@@ -179,7 +186,7 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
         case _ => ()
       }
       val p = source.asInstanceOf[DirectoryAdapter].resolve(internalItem)
-      val bytes = t.getView == "bytes" || Data.format(p) == "bin"
+      val bytes = t.getView == "bytes"
       if (bytes) {
         val root = VectorSchemaRoot.create(Data.bytesSchema,allocator)
         val in = Files.newInputStream(p)
@@ -194,22 +201,13 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
             }
           }
         } finally { in.close(); root.close() }
-      } else if (Data.format(p) == "parquet") {
-        Parquet.stream(p,allocator,config.batchSize)(root => { listener.start(root) }, root => { ready(); listener.putNext() }, () => ready())
       } else {
-        val schema = Data.schema(p,config.batchSize,config.inferSample)
-        val root = VectorSchemaRoot.create(schema,allocator)
-        val rows = Data.rows(p)
-        try {
-          listener.start(root)
-          val it = rows.iterator
-          var done = false
-          while (!done) { ready(); val batch = it.take(config.batchSize).toVector
-            if (batch.isEmpty) done = true else { Data.fill(root,batch); listener.putNext() }
-          }
-        } finally { rows.close(); root.close() }
+        val options = source.asInstanceOf[DirectoryAdapter].options
+        Formats.detect(p,options).stream(p,options,allocator,config.batchSize,config.inferSample)(
+          root => listener.start(root), root => listener.putNext(), () => ready())
       }
       listener.completed()
+      }
     } catch { case _: java.util.concurrent.CancellationException => (); case t: Throwable => listener.error(fail(t)) }
   }
 }

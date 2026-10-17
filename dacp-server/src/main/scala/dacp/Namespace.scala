@@ -14,7 +14,7 @@ object LogicalPath {
 }
 
 case class PublishedItem(path: String, file: Option[Path] = None, sql: Option[String] = None,
-                         table: Option[String] = None, kind: String = "data") {
+                         table: Option[String] = None, kind: String = "data", options: FileOptions = FileOptions()) {
   LogicalPath.validate(path)
   require(path != "/", "root folder is implicit")
   require(kind == "data" || kind == "folder", "unknown item kind")
@@ -37,13 +37,50 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config) extends Dat
       }
       parent = LogicalPath.parent(parent)
     }
+    require(b.file.isDefined || b.options == FileOptions(), "format options require a file source")
+    b.options.format.foreach(Formats.byId)
     b.sql.foreach(source => require(config.sqlSources.contains(source), "unknown private SQL source"))
+  }
+  private case class Archived(archive: Path, entry: ZipArchive.Entry)
+  private def archives: Map[String, Path] = bindings.flatMap { b =>
+    b.file.filter(p => b.options.format.getOrElse(Formats.extensionFormat(p.getFileName.toString).id) == "zip").map(b.path -> _)
+  }.toMap
+  private def archived(roots: Map[String,Path] = archives): Map[String, Archived] = roots.toSeq.flatMap { case (alias,file) =>
+    ZipArchive.index(file).map(e => (alias + "/" + e.name) -> Archived(file,e))
+  }.toMap
+  private def virtual(parent: Option[String] = None): Map[String, Item] = {
+    val result = mutable.Map.empty[String,Item]
+    val roots = archives.filter { case (alias,_) => parent.forall(p => p == alias || p.startsWith(alias + "/")) }
+    archived(roots).foreach { case (path,a) =>
+      require(!entries.contains(path), "ZIP entry conflicts with published alias")
+      result(path) = if (a.entry.directory) ItemProperties.folder(path) else
+        Item(path,{ val id = Formats.extensionFormat(a.entry.name).id; if (id == "zip") "bin" else id },None,lastModifiedTimeMs=a.entry.modified,totalSizeBytes=a.entry.size)
+      var parent = LogicalPath.parent(path)
+      while (parent != "/" && !archives.contains(parent)) {
+        require(!entries.contains(parent), "ZIP folder conflicts with published alias")
+        result.getOrElseUpdate(parent,ItemProperties.folder(parent))
+        parent = LogicalPath.parent(parent)
+      }
+    }
+    result.toMap
+  }
+  def withResolved[A](path: String, demand: () => Unit = () => ())(f: (DataSetAdapter,String) => A): A = {
+    LogicalPath.validate(path)
+    if (entries.contains(path)) { val (a,i) = resolve(path); f(a,i) }
+    else {
+      val a = archived(archives.filter { case (alias,_) => path.startsWith(alias + "/") }).getOrElse(path,throw new java.io.FileNotFoundException("logical item not found"))
+      ZipArchive.withFile(a.archive,a.entry.name,demand) { p =>
+        // Nested ZIPs remain data Items until recursive archive browsing is explicitly supported.
+        val options = if (Formats.detect(p).id == "zip") FileOptions(format=Some("bin")) else FileOptions()
+        f(new DirectoryAdapter(p.getParent,config.batchSize,config.inferSample,options=options),p.getFileName.toString)
+      }
+    }
   }
   private def entry(path: String): PublishedItem = {
     LogicalPath.validate(path)
     entries.getOrElse(path, throw new java.io.FileNotFoundException("logical item not found"))
   }
-  def isFolder(path: String): Boolean = path == "/" || entry(path).kind == "folder"
+  def isFolder(path: String): Boolean = path == "/" || describe(path).kind == "folder"
   def resolve(path: String): (DataSetAdapter, String) = {
     require(path != "/", "folder has no content stream")
     val b = entry(path)
@@ -51,7 +88,7 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config) extends Dat
     b.file match {
       case Some(file) =>
         val absolute = file.toAbsolutePath.normalize()
-        (new DirectoryAdapter(absolute.getParent, config.batchSize, config.inferSample), absolute.getFileName.toString)
+        (new DirectoryAdapter(absolute.getParent, config.batchSize, config.inferSample, options=b.options), absolute.getFileName.toString)
       case None => (new SqlAdapter(config.sqlSources(b.sql.get), config.batchSize), b.table.get)
     }
   }
@@ -62,37 +99,50 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config) extends Dat
       val description = adapter match {
         case d: DirectoryAdapter if !infer =>
           val p = d.resolve(internal)
-          val format = Data.format(p)
-          Item(b.path, format, if (format == "parquet") Some(Parquet.schema(p)) else None)
+          val handler = Formats.detect(p,d.options)
+          Item(b.path, handler.id, handler.cheapSchema(p,d.options))
         case other => other.describe(internal).copy(path = b.path)
       }
       val enriched = adapter match {
-        case d: DirectoryAdapter => ItemProperties.file(description, d.resolve(internal))
+        case d: DirectoryAdapter => ItemProperties.file(description, d.resolve(internal), d.options)
         case _ => description
       }
-      enriched.copy(path = b.path)
+      if (description.format == "zip") Item(b.path,"zip",Some(Data.bytesSchema),"folder")
+      else enriched.copy(path = b.path)
     }
   }
   private def snapshot(selected: Seq[PublishedItem], infer: Boolean): Seq[Item] =
     selected.map(metadata(_, infer))
 
   def count(path: String): Option[Long] = {
-    val (source, internal) = resolve(path)
-    source match {
-      case sql: SqlAdapter => Some(sql.count(internal))
-      case _ => describe(path).recordCount
+    LogicalPath.validate(path)
+    val folder = path == "/" || entries.get(path).exists(_.kind == "folder") || archives.contains(path) ||
+      (!entries.contains(path) && virtual(Some(path)).get(path).exists(_.kind == "folder"))
+    if (folder) None else withResolved(path) { (source,internal) =>
+      source match {
+        case sql: SqlAdapter => Some(sql.count(internal))
+        case d: DirectoryAdapter => val p = d.resolve(internal); Formats.detect(p,d.options).count(p,d.options)
+      }
     }
   }
   def describe(path: String): Item = {
+    LogicalPath.validate(path)
     if (path == "/") ItemProperties.folder("/")
-    else metadata(entry(path), infer = true)
+    else if (entries.contains(path)) metadata(entry(path), infer = true)
+    else {
+      val item = virtual(Some(path)).getOrElse(path,throw new java.io.FileNotFoundException("logical item not found"))
+      if (item.kind == "folder") item else withResolved(path) { (a,i) => a.describe(i).copy(path=path,
+        lastModifiedTimeMs=item.lastModifiedTimeMs,totalSizeBytes=item.totalSizeBytes) }
+    }
   }
-  def list(): Seq[Item] = snapshot(entries.values.toVector.sortBy(_.path), infer = false)
+  def list(): Seq[Item] = (snapshot(entries.values.toVector,infer=false) ++ virtual().values).sortBy(_.path)
   def list(path: String): Seq[Item] = {
     LogicalPath.validate(path)
-    if (path != "/") require(entry(path).kind == "folder", "listing requires a folder")
-    snapshot(entries.values.toVector.filter(b => LogicalPath.parent(b.path) == path).sortBy(_.path), infer = false)
+    require(isFolder(path), "listing requires a folder")
+    (snapshot(entries.values.toVector.filter(b => LogicalPath.parent(b.path) == path),infer=false) ++
+      virtual(Some(path)).values.filter(b => LogicalPath.parent(b.path) == path)).sortBy(_.path)
   }
+
 }
 
 object NamespaceAdapter {
@@ -104,23 +154,16 @@ object NamespaceAdapter {
     }
     new NamespaceAdapter(bindings, config)
   }
-  def views(item: Item): Seq[String] = if (item.kind == "folder") Seq.empty
-    else if (Set("csv", "json", "parquet", "arrow")(item.format)) Seq("records", "bytes") else Seq("bytes")
+  def views(item: Item): Seq[String] = if (item.format.isEmpty) Seq.empty
+    else Formats.views(item.format)
 }
 
 /** Exact metadata, with unknown distinct from zero. Contents and metadata are not a shared snapshot. */
 object ItemProperties {
-  def file(item: Item, path: Path): Item = {
+  def file(item: Item, path: Path, options: FileOptions = FileOptions()): Item = {
     val attributes = Files.readAttributes(path, classOf[java.nio.file.attribute.BasicFileAttributes])
-    val records = item.format match {
-      case "csv" | "json" =>
-        val rows = Data.rows(path)
-        try Some(rows.iterator.foldLeft(0L)((n, _) => Math.addExact(n, 1L))) finally rows.close()
-      case "parquet" => Some(Parquet.recordCount(path))
-      case _ => None
-    }
     item.copy(lastModifiedTimeMs=Some(attributes.lastModifiedTime().toMillis),
-      totalSizeBytes=Some(attributes.size()), recordCount=records)
+      totalSizeBytes=Some(attributes.size()), recordCount=Formats.detect(path,options).cheapCount(path,options))
   }
   def folder(path: String): Item = Item(path, "", None, "folder")
 }
