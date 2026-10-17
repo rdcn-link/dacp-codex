@@ -6,6 +6,45 @@
 
 面向自治数据节点的 Arrow Flight 数据协作协议。Scala 2.13 服务端、Python/PyArrow SDK、protobuf 元数据、YAML DAG、一任务一 Docker 容器。节点无需部署集群或中心注册服务。目录与 JDBC SQL 数据库可同时作为数据集暴露，SQL 表作为单层 Item。
 
+## 核心概念：Dataset、Item 与 Stream
+
+DACP 以 `Dataset → Item → Stream` 组织数据：Dataset 是一个节点上有名称的数据集合，Item 是集合中可单独打开的资源，Stream 是读取某个 Item 内容的接口。
+
+| 概念 | 含义 | 示例 |
+|---|---|---|
+| Dataset（数据集） | 由服务器以名称发布的集合，可对应本地目录、配置的 SQL 数据库表集合，或任务输出目录。一个 Dataset 中的 Item 可以具有不同格式和 schema。 | `dacp://localhost:8815/data1` |
+| Item（数据项） | Dataset 中可独立寻址的文件或 SQL 表。清单中的 Item 元数据包含 `path`、`format` 和可选的 Arrow schema，不包含文件或表的全部内容。 | `nested/orders.csv`、`pixel.png`；SQL 示例中的 `ORDERS` 表 |
+| Stream（读取流） | 打开 Item 后得到的 SDK 对象，通过 `as_records()` 或 `as_bytes()` 拉取内容。Stream 不是另一个持久资源，也不需要独立名称。 | `ds.open("nested/orders.csv")` 返回的对象 |
+
+Dataset URI 的结构是 `dacp://host:port/dataset`；在其后附加 Item 的相对路径，即可直接定位资源，例如 `dacp://localhost:8815/data1/nested/orders.csv`。目录数据集递归列举文件，子目录体现在 Item 路径中，不需要逐层打开子数据集。SQL 数据集将配置允许的表作为单层 Item 暴露。数据集名称在其所在节点内标识集合，不要求所有节点使用相同名称。
+
+`Source.open(dataset_uri)` 返回 DataSet；`ds.list()` 获取 Item 清单；`ds.open(item_path)` 返回 Stream。`Source.open(item_uri)` 也可直接返回 Stream。列举清单与读取内容分开，调用 `list()` 不会把所有 Item 的内容下载到客户端。
+
+Stream 提供两种读取视图：
+
+- **记录视图 `as_records()`**：逐批返回带 schema 的 Arrow RecordBatch，适用于 CSV、NDJSON、DACP 生成且带 Arrow schema 元数据的 Parquet，以及 SQL 表。不同 Item 可以有不同 schema。
+- **字节视图 `as_bytes()`**：返回可增量读取的二进制文件接口。文件 Item 返回原始文件字节，包括 PNG 等非表格文件；SQL 表返回 Arrow IPC stream 字节，并非 CSV 文本。传输层以单列 binary Arrow batch 承载字节块，SDK 将其还原为连续字节读取接口。
+
+内容按客户端读取需求通过 Flight 拉取。以下示例需先配置下方快速运行中使用的 mTLS 证书环境变量：
+
+```python
+from dacp import Source
+
+with Source.open("dacp://localhost:8815/data1") as ds:
+    for item in ds.list():
+        print(item.path, item.format)
+
+    with ds.open("nested/orders.csv") as stream:
+        for batch in stream.as_records():
+            print(batch.to_pydict())
+
+    with ds.open("pixel.png") as stream:
+        with stream.as_bytes() as reader:
+            print(reader.read(8))
+```
+
+通过 `ds.open()` 创建的 Stream 共用 Dataset 的连接，应在 Dataset 关闭前使用；直接用 Item URI 打开的 Stream 拥有自己的连接，退出其上下文时关闭连接。字节 reader 应使用上下文管理器及时释放；提前停止记录迭代时，应关闭迭代器以取消读取。读取失败后需重新打开资源从头读取，当前实现没有断点续传。
+
 ## 快速运行
 
 需要 JDK 17、sbt 1.10.x、Python 3.10+。执行容器任务还需要 Linux、`mkfifo`、本地 Docker Engine，运行服务的用户须能访问 Docker socket。示例路径按以下工作目录编写。
@@ -18,6 +57,8 @@ bash scripts/certs.sh
 cd dacp-server
 sbt run
 ```
+
+服务器启动成功后，会按名称排序输出 `datasets` 和 `sql_datasets` 中配置的数据集名称、类型（`directory` / `sql`）及完整 DACP URI。可将 URI 直接用于交互式客户端；任务运行时产生的临时输出不在此启动清单中。
 
 另一终端，从项目根目录运行：
 

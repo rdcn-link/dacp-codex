@@ -6,6 +6,45 @@
 
 An Arrow Flight data collaboration protocol for autonomous data nodes. It uses a Scala 2.13 server, a Python/PyArrow SDK, protobuf metadata, YAML DAGs, and one Docker container per task. Nodes require neither a cluster nor a central registry. Directories and JDBC SQL databases can both be exposed as datasets, with SQL tables represented as a single level of Items.
 
+## Core concepts: Dataset, Item, and Stream
+
+DACP organizes data as `Dataset → Item → Stream`: a Dataset is a named collection on a node, an Item is an individually addressable resource in that collection, and a Stream is the interface for reading an Item's contents.
+
+| Concept | Meaning | Example |
+|---|---|---|
+| Dataset | A collection published by the server under a name. It can represent a local directory, a configured collection of SQL database tables, or a task output directory. Items in one Dataset can have different formats and schemas. | `dacp://localhost:8815/data1` |
+| Item | An independently addressable file or SQL table within a Dataset. Item metadata in a listing includes `path`, `format`, and an optional Arrow schema, rather than the full contents of the file or table. | `nested/orders.csv`, `pixel.png`; the `ORDERS` table in the SQL example |
+| Stream | An SDK object returned when opening an Item, used to pull contents through `as_records()` or `as_bytes()`. A Stream is not another persistent resource and needs no separate name. | The object returned by `ds.open("nested/orders.csv")` |
+
+A Dataset URI has the form `dacp://host:port/dataset`. Append an Item's relative path to address it directly, for example `dacp://localhost:8815/data1/nested/orders.csv`. Directory datasets list files recursively: subdirectories appear in Item paths, so you do not need to open nested datasets one level at a time. SQL datasets expose configured allowed tables as a single level of Items. Dataset names identify collections within their node; names need not be the same across nodes.
+
+`Source.open(dataset_uri)` returns a DataSet; `ds.list()` retrieves Item metadata; `ds.open(item_path)` returns a Stream. `Source.open(item_uri)` can also return a Stream directly. Listing and reading are separate: calling `list()` does not download every Item's contents to the client.
+
+Streams offer two reading views:
+
+- **Records view, `as_records()`**: yields Arrow RecordBatches with a schema, supporting CSV, NDJSON, DACP-generated Parquet with Arrow schema metadata, and SQL tables. Different Items can have different schemas.
+- **Bytes view, `as_bytes()`**: returns an incrementally readable binary file interface. File Items return original file bytes, including non-tabular files such as PNG images. SQL tables return Arrow IPC stream bytes, rather than CSV text. The transport carries byte chunks in single-column binary Arrow batches, which the SDK exposes as a continuous byte reader.
+
+Contents are pulled through Flight as the client reads. Before running this example, configure the mTLS certificate environment variables described in the quick start below:
+
+```python
+from dacp import Source
+
+with Source.open("dacp://localhost:8815/data1") as ds:
+    for item in ds.list():
+        print(item.path, item.format)
+
+    with ds.open("nested/orders.csv") as stream:
+        for batch in stream.as_records():
+            print(batch.to_pydict())
+
+    with ds.open("pixel.png") as stream:
+        with stream.as_bytes() as reader:
+            print(reader.read(8))
+```
+
+Streams created with `ds.open()` share the Dataset's connection and should be used before the Dataset closes. A Stream opened directly through an Item URI owns its connection and closes it when its context exits. Use a context manager for a bytes reader to release it promptly; if you stop iterating records early, close the iterator to cancel reading. After a read failure, reopen the resource and read from the beginning; the current implementation has no resumable reads.
+
 ## Quick start
 
 Requires JDK 17, sbt 1.10.x, and Python 3.10+. Container tasks also require Linux, `mkfifo`, and a local Docker Engine. The user running the service must have access to the Docker socket. The examples use the following working directories.
@@ -18,6 +57,8 @@ bash scripts/certs.sh
 cd dacp-server
 sbt run
 ```
+
+After successful startup, the server prints the configured dataset names from `datasets` and `sql_datasets`, their types (`directory` / `sql`), and complete DACP URIs, sorted by name. Use these URIs directly in the interactive client. Temporary outputs created by tasks are not part of this startup listing.
 
 In another terminal, run from the project root:
 

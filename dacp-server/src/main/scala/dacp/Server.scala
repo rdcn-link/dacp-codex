@@ -196,6 +196,12 @@ object Main {
       .build().start()
     Runtime.getRuntime.addShutdownHook(new Thread(() => { server.close(); tasks.close(); outputs.close(); allocator.close() }))
     println(s"dacp listening on ${config.uri("")}")
+    val datasetNames = (config.datasets.keySet ++ config.sqlDatasets.keySet).toSeq.sorted
+    println(s"configured datasets (${datasetNames.size}):")
+    datasetNames.foreach { name =>
+      val kind = if (config.sqlDatasets.contains(name)) "sql" else "directory"
+      println(s"  $name [$kind] ${config.uri(name)}")
+    }
     val jobFailure = new java.util.concurrent.atomic.AtomicReference[Throwable]()
     if (args.length > 1) {
       val thread = new Thread(() => try { val result = tasks.runJob(Files.readString(Path.of(args(1)))); println("job outputs: " + result) } catch { case e: Throwable => jobFailure.set(e); e.printStackTrace(); server.close() }, "dacp-job")
