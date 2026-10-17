@@ -94,7 +94,7 @@ datasets:
 
 Excel uses Apache POI 5.5.1 event readers for both XLS and XLSX. Empty headers become `column_N`, duplicate names receive deterministic `_2`, `_3` suffixes, and missing cells become null. Empty data rows are skipped; data beyond the header width fails. Cached formula values are read without recalculation; missing cached values become null when identifiable. Cell errors and encrypted or invalid workbooks fail with a DACP format error. Numeric cells are int64 when integral and in range, otherwise float64; booleans and strings retain their values. Excel numeric dates remain serial numbers, with no implicit locale or timezone conversion. Optional `schema` supports ordered `name`/`type` entries using `int64`, `float64`, `bool`, and `utf8`/`string`. Without it, sampling is bounded by `batch_size * infer_sample`; later incompatible values fail instead of changing the schema.
 
-Listings do not parse CSV, NDJSON, or Excel records, and leave their counts unknown. Opening records infers a schema from a bounded sample. Only explicit `count` scans these files; Parquet can obtain its count cheaply from the footer. Excel parsers have a queue of at most 16 rows and stop on close/cancellation; schemas, current batches, individual cells, and POI shared-string dictionaries use additional memory. Large shared-string tables can still require substantial memory. No full worksheet is materialized.
+Listings do not parse CSV, NDJSON, or Excel records; their counts remain unknown unless populated at publication. Opening records infers a schema from a bounded sample. Outside optional startup counting, only explicit `count` scans these files; Parquet can obtain its count cheaply from the footer. Excel parsers have a queue of at most 16 rows and stop on close/cancellation; schemas, current batches, individual cells, and POI shared-string dictionaries use additional memory. Large shared-string tables can still require substantial memory. No full worksheet is materialized.
 
 The server extension API is [`FormatHandler`](../dacp-server/src/main/scala/dacp/Formats.scala). Providers implement detection, optional cheap metadata, schema, record reading, explicit counting, and cleanup; file bytes use the shared reader. Add a provider JAR and register its public no-argument class in `META-INF/services/dacp.FormatHandler`, then restart. Format IDs and extension registrations must be unique; `sql` is reserved for the SQL adapter. The core server and SDKs need no format-specific changes. See [handler development](../docs/format-handlers.md).
 
@@ -106,17 +106,29 @@ Item metadata includes the following optional properties, with unknown values di
 |---|---|
 | `last_modified_time_ms` / `lastModifiedTimeMs` | UTC Unix epoch milliseconds. Python's `last_modified_time` returns a timezone-aware UTC datetime; Scala's `lastModifiedTime` returns `Option[Instant]`. |
 | `total_size_bytes` / `totalSizeBytes` | Total content bytes; file mappings use original file size. |
-| `record_count` / `recordCount` | Exact logical record count. CSV excludes the header, NDJSON skips blank lines, and Excel counts data rows in the selected sheet. These files and SQL leave counts unknown during browsing; use explicit `ds.count(path)`. Parquet uses footer metadata. |
+| `record_count` / `recordCount` | Exact logical record count. CSV excludes the header, NDJSON skips blank lines, and Excel counts data rows in the selected sheet. These files expose saved publication counts when enabled; otherwise their counts, and SQL counts, remain unknown during browsing. Use explicit `ds.count(path)`. Parquet uses footer metadata. |
 
 Unknown values are `None` in Python and Scala (known Scala values use `Some`), with absent protobuf fields. SQL mappings do not estimate modification time or byte size. Non-record data such as PNG images has an unknown record count. All three folder properties are always unknown, including for empty folders; computing folder properties never visits child Items.
 
-Properties are returned by `list()`, `list(path)`, and Item FlightInfo, and displayed by the interactive client's `ls`. Explicit CSV/NDJSON/Excel counts scan files and SQL counts execute queries; ordinary listing does not perform those counts. SQL counts respect the source query timeout. Folder metadata does not trigger descendant scans; data Item statistics are not cached across requests. Properties are observations rather than an atomic snapshot with subsequent reads, and can change when source data changes.
+Properties are returned by `list()`, `list(path)`, and Item FlightInfo, and displayed by the interactive client's `ls`. Explicit CSV/NDJSON/Excel counts scan files and SQL counts execute queries; ordinary listing does not perform those counts. SQL counts respect the source query timeout. Folder metadata does not trigger descendant scans; size and modification time are read per request, while publication counts are retained until restart. Properties are observations rather than an atomic snapshot with subsequent reads, and can change when source data changes.
 
 ```python
 with Source.open("dacp://localhost:8815/data1") as ds:
     for item in ds.list("/"):
         print(item.path, item.last_modified_time, item.total_size_bytes, item.record_count)
 ```
+
+### Populating counts at publication
+
+Set `count_file_records_on_startup: true` to count custom file mappings and initially discovered directory record files once while loading configuration and reuse those counts in ordinary browsing. It defaults to false. Counts are tied to file size and modification time; changes detected during or after counting leave the result unknown. Restarting recounts files. Explicit `count` still reads current content without changing saved metadata. SQL, archive children, and folders are excluded. Invalid record files fail startup when this option is enabled.
+
+## Dataset construction
+
+Built-in providers are `directory`, `sqldb`, and `custom`. Each Dataset selects one provider to interpret private `source` and `items` settings and expose a common data access interface. Directory providers discover relative paths dynamically, SQLDB providers use explicit public table aliases, and custom providers may combine sources. Omitting provider preserves existing custom configurations; legacy `datasets: {name: /directory}` shorthand is unsupported.
+
+Directory Datasets do not follow symlinks. Folder metadata and immediate-child listings do not recursively scan ordinary child directories; `list()` discovers all files and archive entries recursively. Optional startup counting scans initial files; later files are discovered without automatic counting. Reader overrides match public paths without renaming files. SQL bindings or absolute file mappings in a directory Dataset are rejected; use custom for those combinations.
+
+Dataset providers construct datasets, container readers browse archives, and format handlers interpret content. Future providers such as MongoDB can implement their own listing, metadata, and streaming without pretending to be files or SQL tables, or changing the protocol or SDKs. See the [provider development guide](dataset-providers.md).
 
 ## Task execution and operators
 
@@ -168,9 +180,10 @@ Configuration in `examples/server.yaml`:
 |---|---|
 | `host` / `port` | Listening address / port |
 | `public_host` | Hostname for external URIs; allowlists use this name and an explicit port |
-| `datasets` | Dataset name → explicit `items` logical mappings; names occupy one URI path segment |
+| `datasets` | Dataset name → provider, source, and items; names occupy one URI path segment |
 | `allowed_uri_prefixes` | Node-level URI prefix allowlist, matched at path segment boundaries; output names also require authorization |
 | `tls_cert` / `tls_key` / `tls_ca` | PEM certificate, private key, and trusted client CA; mTLS is mandatory |
+| `count_file_records_on_startup` | Populate directly published record file counts at startup; defaults to false and adds startup scanning cost |
 | `batch_size` | Maximum rows per batch in file records views |
 | `byte_chunk` | Maximum bytes per binary row in bytes views |
 | `infer_sample` | Number of batches sampled for server-side records schema inference |

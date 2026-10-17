@@ -2,8 +2,11 @@
 host: 0.0.0.0
 public_host: localhost
 port: 8815
+# Count directly published record files once; browsing does not scan records.
+count_file_records_on_startup: true
 datasets:
   data1:
+    provider: custom
     items:
       /events: {file: ../examples/data/events.json, format: ndjson}
       /reports/orders: {file: ../examples/data/nested/orders.csv}
@@ -15,10 +18,18 @@ datasets:
       /bundle_gzip: {file: ../examples/data/reports.tar.gz}
       /orders.csv.gz: {file: ../examples/data/orders.csv.gz}
   csv_data:
+    provider: custom
     items:
       /orders: {file: ../examples/data/nested/orders.csv}
+  documents:
+    provider: directory
+    source:
+      root: ../examples/data
+    items:
+      /events.json: {format: ndjson}
 allowed_uri_prefixes:
   - dacp://localhost:8815/data1
+  - dacp://localhost:8815/documents
   - dacp://localhost:8815/csv_data
   - dacp://localhost:8815/s1
   - dacp://localhost:8815/s2

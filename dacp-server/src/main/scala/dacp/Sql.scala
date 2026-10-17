@@ -20,7 +20,7 @@ case class SqlConfig(url: String, user: Option[String] = None, password: Option[
   override def toString: String = "SqlConfig(<redacted>)"
 }
 
-/** Database = DataSet; table = Item. Clients supply table names, never SQL text. */
+/** Private JDBC reader for sqldb/custom providers; public aliases are resolved before calling it. */
 class SqlAdapter(config: SqlConfig, batchSize: Int) extends DataSetAdapter {
   require(batchSize > 0)
   private def connection(): Connection = {

@@ -32,7 +32,7 @@ with Source.open("dacp://localhost:8815/sales") as ds:
         print(batch.to_pydict())
 ```
 
-`list()` returns all Items recursively; `list(path)` returns immediate children of a folder. All paths start with `/`. Files and SQL tables both become `data` Items; parent groups are `folder` Items. Empty folders can be declared with `kind: folder`. One logical folder may combine file and SQL mappings.
+`list()` returns all Items recursively; `list(path)` returns immediate children of a folder. All paths start with `/`. Files and SQL tables both become `data` Items; parent groups are `folder` Items. Empty folders can be declared with `kind: folder`. The `sales` Dataset uses `provider: sqldb` with `source.connection: warehouse`; table mappings need only `table`. The `files` Dataset uses `custom`. A custom Dataset may combine file and SQL mappings.
 
 ## PostgreSQL
 
@@ -41,9 +41,12 @@ The PostgreSQL and H2 JDBC drivers are bundled. Replace the private `warehouse` 
 ```yaml
 datasets:
   sales:
+    provider: sqldb
+    source:
+      connection: warehouse
     items:
-      /reports/orders: {sql: warehouse, table: orders}
-      /clients: {sql: warehouse, table: customers}
+      /reports/orders: {table: orders}
+      /clients: {table: customers}
 sql_sources:
   warehouse:
     url: jdbc:postgresql://db-host:5432/sales?sslmode=verify-full
@@ -55,9 +58,9 @@ sql_sources:
     query_timeout_seconds: 60
 ```
 
-Set those environment variables before starting the node, and configure the PostgreSQL driver's trusted server CA for `verify-full`. Use a database account with SELECT privileges on exposed tables and schema USAGE. Credentials remain on the server and are never sent to DACP clients. Plain `user` / `password` fields are also accepted; environment fields take precedence and missing referenced variables fail configuration loading. Each private SQL source describes one database schema. Publish aliases from multiple sources in a single logical dataset if desired.
+Set those environment variables before starting the node, and configure the PostgreSQL driver's trusted server CA for `verify-full`. Use a database account with SELECT privileges on exposed tables and schema USAGE. Credentials remain on the server and are never sent to DACP clients. Plain `user` / `password` fields are also accepted; environment fields take precedence and missing referenced variables fail configuration loading. Each private SQL source describes one database schema. Use `provider: custom` with Item-level `sql` bindings to combine multiple sources if desired.
 
-Legacy directory auto-publication (`datasets: {name: /directory}`) and `sql_datasets` are no longer supported. Configure public `datasets.<name>.items` mappings and private `sql_sources` explicitly. Private sources and tables are not published unless mapped. File mappings use `{file: /private/path.csv}`; SQL mappings use `{sql: warehouse, table: private_table}`. Names and paths visible to the client are independently chosen aliases. Each private SQL source supports:
+Legacy directory auto-publication (`datasets: {name: /directory}`) and `sql_datasets` are no longer supported. Use `provider: directory` with `source.root` for automatic file discovery, or configure `sqldb` / `custom` public Item mappings and private `sql_sources` explicitly. Private sources and tables are not published unless mapped. File mappings use `{file: /private/path.csv}`; SQL mappings use `{sql: warehouse, table: private_table}`. Names and paths visible to the client are independently chosen aliases. Each private SQL source supports:
 
 | Field | Meaning |
 |---|---|

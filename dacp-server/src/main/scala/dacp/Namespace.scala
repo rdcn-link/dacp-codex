@@ -13,9 +13,30 @@ object LogicalPath {
   def parent(path: String): String = { val i = path.lastIndexOf('/'); if (i <= 0) "/" else path.take(i) }
 }
 
+/** Publisher-provided count tied to the file version observed during registration. */
+case class FileRecordCount(value: Long, size: Long, modified: java.nio.file.attribute.FileTime) {
+  require(value >= 0 && size >= 0,"file count and size must be nonnegative")
+  def matches(attributes: java.nio.file.attribute.BasicFileAttributes): Boolean =
+    size == attributes.size() && modified == attributes.lastModifiedTime()
+}
+object FileRecordCount {
+  def capture(path: Path, options: FileOptions): Option[FileRecordCount] = {
+    val handler = Formats.detect(path,options)
+    if (!handler.records) None else {
+      val before = Files.readAttributes(path,classOf[java.nio.file.attribute.BasicFileAttributes])
+      handler.count(path,options).flatMap { value =>
+        val snapshot = FileRecordCount(value,before.size(),before.lastModifiedTime())
+        val after = Files.readAttributes(path,classOf[java.nio.file.attribute.BasicFileAttributes])
+        if (snapshot.matches(after)) Some(snapshot) else None
+      }
+    }
+  }
+}
+
 case class PublishedItem(path: String, file: Option[Path] = None, sql: Option[String] = None,
-                         table: Option[String] = None, kind: String = "data", options: FileOptions = FileOptions()) {
+                         table: Option[String] = None, kind: String = "data", options: FileOptions = FileOptions(), recordCount: Option[FileRecordCount] = None, fileRoot: Option[Path] = None) {
   LogicalPath.validate(path)
+  require(recordCount.isEmpty || (file.isDefined && kind == "data"), "published counts require a file data source")
   require(path != "/", "root folder is implicit")
   require(kind == "data" || kind == "folder", "unknown item kind")
   require(if (kind == "folder") file.isEmpty && sql.isEmpty && table.isEmpty
@@ -24,7 +45,7 @@ case class PublishedItem(path: String, file: Option[Path] = None, sql: Option[St
 }
 
 /** Resolves published aliases only; no automatic publication of private source names. */
-class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDemand: () => Unit = () => ()) extends DataSetAdapter {
+class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDemand: () => Unit = () => ()) extends DatasetAccess {
   private val entries = mutable.Map.empty[String, PublishedItem]
   require(bindings.map(_.path).distinct.size == bindings.size, "duplicate logical path")
   bindings.foreach(b => entries(b.path) = b)
@@ -96,7 +117,9 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDem
     b.file match {
       case Some(file) =>
         val absolute = file.toAbsolutePath.normalize()
-        (new DirectoryAdapter(absolute.getParent, config.batchSize, config.inferSample, options=b.options), absolute.getFileName.toString)
+        val base = b.fileRoot.getOrElse(absolute.getParent)
+        b.fileRoot.foreach(root => require(absolute.toRealPath().startsWith(root),"file escapes dataset root"))
+        (new DirectoryAdapter(base, config.batchSize, config.inferSample, options=b.options), base.relativize(absolute).toString.replace('\\','/'))
       case None => (new SqlAdapter(config.sqlSources(b.sql.get), config.batchSize), b.table.get)
     }
   }
@@ -112,7 +135,7 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDem
         case other => other.describe(internal).copy(path = b.path)
       }
       val enriched = adapter match {
-        case d: DirectoryAdapter => ItemProperties.file(description, d.resolve(internal), d.options)
+        case d: DirectoryAdapter => ItemProperties.file(description, d.resolve(internal), d.options, b.recordCount)
         case _ => description
       }
       if (Containers.supports(description.format)) Item(b.path,description.format,Some(Data.bytesSchema),"folder")
@@ -151,6 +174,10 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDem
       virtual(Some(path)).values.filter(b => LogicalPath.parent(b.path) == path)).sortBy(_.path)
   }
 
+  def stream(path: String, view: String, allocator: org.apache.arrow.memory.BufferAllocator,
+             listener: org.apache.arrow.flight.FlightProducer.ServerStreamListener, ready: () => Unit): Unit =
+    DatasetStreams.stream(this,path,view,allocator,config,listener,ready)
+
 }
 
 object NamespaceAdapter {
@@ -162,16 +189,18 @@ object NamespaceAdapter {
     }
     new NamespaceAdapter(bindings, config, metadataDemand)
   }
-  def views(item: Item): Seq[String] = if (item.format.isEmpty) Seq.empty
-    else Formats.views(item.format)
+  def views(item: Item): Seq[String] = item.views.getOrElse {
+    if (item.format.isEmpty) Seq.empty else Formats.views(item.format)
+  }
 }
 
 /** Exact metadata, with unknown distinct from zero. Contents and metadata are not a shared snapshot. */
 object ItemProperties {
-  def file(item: Item, path: Path, options: FileOptions = FileOptions()): Item = {
+  def file(item: Item, path: Path, options: FileOptions = FileOptions(), knownCount: Option[FileRecordCount] = None): Item = {
     val attributes = Files.readAttributes(path, classOf[java.nio.file.attribute.BasicFileAttributes])
     item.copy(lastModifiedTimeMs=Some(attributes.lastModifiedTime().toMillis),
-      totalSizeBytes=Some(attributes.size()), recordCount=Formats.detect(path,options).cheapCount(path,options))
+      totalSizeBytes=Some(attributes.size()), recordCount=knownCount.filter(_.matches(attributes)).map(_.value)
+        .orElse(Formats.detect(path,options).cheapCount(path,options)))
   }
   def folder(path: String): Item = Item(path, "", None, "folder")
 }

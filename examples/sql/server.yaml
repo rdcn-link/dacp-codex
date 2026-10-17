@@ -4,13 +4,17 @@ public_host: localhost
 port: 8815
 datasets:
   files:
+    provider: custom
     items:
       /image: {file: ../examples/data/pixel.png}
       /reports/orders: {file: ../examples/data/nested/orders.csv}
   sales:
+    provider: sqldb
+    source:
+      connection: warehouse
     items:
-      /reports/orders: {sql: warehouse, table: ORDERS}
-      /clients: {sql: warehouse, table: CUSTOMERS}
+      /reports/orders: {table: ORDERS}
+      /clients: {table: CUSTOMERS}
 sql_sources:
   warehouse:
     url: "jdbc:h2:../examples/sql/sales;INIT=RUNSCRIPT FROM '../examples/sql/init.sql'"

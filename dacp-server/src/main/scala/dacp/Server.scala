@@ -12,15 +12,20 @@ import org.apache.arrow.vector.types.pojo.Schema
 import dacp.protocol.Metadata
 import org.yaml.snakeyaml.Yaml
 
-case class Config(host: String, port: Int, publicHost: String, datasets: Map[String, Seq[PublishedItem]], prefixes: Seq[String],
+case class Config(host: String, port: Int, publicHost: String, datasets: Map[String, DatasetDefinition], prefixes: Seq[String],
                   cert: Path, key: Path, ca: Path, batchSize: Int = 1024, byteChunk: Int = 65536,
                   inferSample: Int = 4, ttlSeconds: Long = 3600, operatorLibrary: Path = Path.of("../operators"),
                   outputRoot: Path = Path.of("../examples/output"), taskPeers: Seq[String] = Seq.empty,
                   taskInputPrefixes: Seq[String] = Seq.empty, maxConcurrentTasks: Int = 2,
                   operatorLibraryUrl: Option[String] = None, operatorCache: Path = Path.of(".operator-cache"),
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
-                  sqlSources: Map[String, SqlConfig] = Map.empty) {
+                  sqlSources: Map[String, SqlConfig] = Map.empty, countFileRecordsOnStartup: Boolean = false) {
   require(datasets.keySet.forall(n => n.nonEmpty && !n.contains("/") && n != "." && n != ".." && !n.contains("\\") && !n.exists(_.isControl)), "invalid dataset name")
+  private lazy val published = datasets.map { case (name,definition) =>
+    name -> DatasetProviders.byId(definition.provider).create(definition,this)
+  }
+  def initializeDatasets(): Unit = { published; () }
+  def openDataset(name: String, check: () => Unit = () => ()): DatasetAccess = published(name).open(check)
   def hasDataset(name: String): Boolean = datasets.contains(name)
   require(operatorMaxBytes > 0, "operator_max_bytes must be positive")
   require(batchSize > 0 && byteChunk > 0 && inferSample > 0 && ttlSeconds > 0 && maxConcurrentTasks > 0)
@@ -48,30 +53,27 @@ object Config {
         v.get("tables").map(_.asInstanceOf[java.util.List[String]].asScala.toSeq),
         opt("fetch_size").map(_.toInt).getOrElse(n("batch_size",1024)),opt("query_timeout_seconds").map(_.toInt).getOrElse(60))
     }.toMap).getOrElse(Map.empty[String,SqlConfig])
-    val published = m.get("datasets").map(_.asInstanceOf[java.util.Map[String,Object]].asScala.map { case (name, raw) =>
-      require(raw.isInstanceOf[java.util.Map[_,_]], "datasets must use explicit logical item mappings")
-      val dataset = raw.asInstanceOf[java.util.Map[String,Object]].asScala
-      val items = dataset("items").asInstanceOf[java.util.Map[String,java.util.Map[String,Object]]].asScala.map { case (logical, mapping) =>
-        val v = mapping.asScala
-        PublishedItem(logical, v.get("file").map(x => Path.of(x.toString)), v.get("sql").map(_.toString),
-          v.get("table").map(_.toString), v.get("kind").map(_.toString).getOrElse("data"),
-          FileOptions(v.get("format").map(_.toString),v.get("sheet").map(_.toString),
-            v.get("header_row").map(_.toString.toInt).getOrElse(1),
-            v.get("schema").map { raw =>
-              val columns = raw.asInstanceOf[java.util.List[java.util.Map[String,String]]].asScala
-              new org.apache.arrow.vector.types.pojo.Schema(columns.map(c => Data.field(c.get("name"),c.get("type"))).asJava)
-            }))
-      }.toVector
-      name -> items
-    }.toMap).getOrElse(Map.empty[String,Seq[PublishedItem]])
+    val definitions = m.get("datasets").map(_.asInstanceOf[java.util.Map[String,Object]].asScala.map { case (name,raw) =>
+      require(raw.isInstanceOf[java.util.Map[_,_]],"datasets require provider settings or explicit items")
+      val v = raw.asInstanceOf[java.util.Map[String,Object]].asScala.toMap
+      require(v.keySet.subsetOf(Set("provider","source","items")),"unknown dataset setting")
+      val provider = v.get("provider").map(_.toString).getOrElse("custom")
+      DatasetProviders.byId(provider)
+      val source = v.get("source").map(_.asInstanceOf[java.util.Map[String,Object]].asScala.toMap).getOrElse(Map.empty[String,Object])
+      val items = v.get("items").map(_.asInstanceOf[java.util.Map[String,java.util.Map[String,Object]]].asScala.map {
+        case (path,settings) => path -> settings.asScala.toMap
+      }.toMap).getOrElse(Map.empty[String,Map[String,Object]])
+      name -> DatasetDefinition(provider,source,items)
+    }.toMap).getOrElse(Map.empty[String,DatasetDefinition])
     require(!m.contains("sql_datasets"), "use private sql_sources and explicit datasets item mappings")
-    val config = Config(str("host"), n("port",8815), str("public_host"), published,
+    val config = Config(str("host"), n("port",8815), str("public_host"), definitions,
       m("allowed_uri_prefixes").asInstanceOf[java.util.List[String]].asScala.toSeq,
       Path.of(str("tls_cert")), Path.of(str("tls_key")), Path.of(str("tls_ca")), n("batch_size",1024), n("byte_chunk",65536), n("infer_sample",4),
       n("output_ttl_seconds",3600).toLong, Path.of(m.get("operator_library").map(_.toString).getOrElse("../operators")), Path.of(str("output_root")), strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), m.get("operator_library_url").map(_.toString),
       Path.of(m.get("operator_cache").map(_.toString).getOrElse(".operator-cache")),
-      m.get("operator_max_bytes").map(_.toString.toLong).getOrElse(8L * 1024 * 1024 * 1024), sql)
-    published.values.foreach(items => new NamespaceAdapter(items,config))
+      m.get("operator_max_bytes").map(_.toString.toLong).getOrElse(8L * 1024 * 1024 * 1024), sql,
+      m.get("count_file_records_on_startup").exists(_.toString.toBoolean))
+    config.initializeDatasets()
     config
   }
 }
@@ -89,7 +91,7 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
       case None => listener.onError(CallStatus.UNIMPLEMENTED.withDescription("task execution disabled").toRuntimeException)
     }
   }
-  private def adapter(ds: String, item: String, ctx: FlightProducer.CallContext): NamespaceAdapter = {
+  private def adapter(ds: String, item: String, ctx: FlightProducer.CallContext): DatasetAccess = {
     def active(): Unit = if (ctx.isCancelled) throw new java.util.concurrent.CancellationException()
     val output = outputs.lookup(ds)
     if (output.isEmpty && !config.hasDataset(ds))
@@ -97,7 +99,7 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
     config.authorize(ds,item)
     output match {
       case Some(base) => NamespaceAdapter.output(base,config,() => active())
-      case None => new NamespaceAdapter(config.datasets(ds),config,() => active())
+      case None => config.openDataset(ds,() => active())
     }
   }
 
@@ -171,44 +173,7 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
         // Expiry invalidates active streams too, before reading the next batch.
         outputs.lookup(t.getDataset)
       }
-      namespace.withResolved(t.getItem, () => ready()) { (source, internalItem) =>
-      val recordsSupported = source match {
-        case _: SqlAdapter => true
-        case d: DirectoryAdapter => Formats.detect(d.resolve(internalItem),d.options).records
-      }
-      require(t.getView == "bytes" || recordsSupported, "unsupported stream view")
-      source match {
-        case sql: SqlAdapter =>
-          ready()
-          if (t.getView == "records") sql.stream(internalItem,allocator)(root => listener.start(root),root => listener.putNext(),() => ready())
-          else SqlAdapter.bytes(sql,internalItem,allocator,config.byteChunk,listener,() => ready())
-          listener.completed()
-          return
-        case _ => ()
-      }
-      val p = source.asInstanceOf[DirectoryAdapter].resolve(internalItem)
-      val bytes = t.getView == "bytes"
-      if (bytes) {
-        val root = VectorSchemaRoot.create(Data.bytesSchema,allocator)
-        val in = Files.newInputStream(p)
-        try {
-          listener.start(root)
-          val buffer = new Array[Byte](config.byteChunk)
-          var done = false
-          while (!done) { ready(); val n = in.read(buffer)
-            if (n < 0) done = true else {
-              root.clear(); root.allocateNew(); root.getVector(0).asInstanceOf[VarBinaryVector].setSafe(0,buffer,0,n)
-              root.setRowCount(1); listener.putNext()
-            }
-          }
-        } finally { in.close(); root.close() }
-      } else {
-        val options = source.asInstanceOf[DirectoryAdapter].options
-        Formats.detect(p,options).stream(p,options,allocator,config.batchSize,config.inferSample)(
-          root => listener.start(root), root => listener.putNext(), () => ready())
-      }
-      listener.completed()
-      }
+      namespace.stream(t.getItem,t.getView,allocator,listener,() => ready())
     } catch { case _: java.util.concurrent.CancellationException => (); case t: Throwable => listener.error(fail(t)) }
   }
 }

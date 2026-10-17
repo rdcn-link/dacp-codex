@@ -17,8 +17,8 @@ class ZipSpec extends AnyFunSuite {
     try {
       val file = dir.resolve("private.ZIP")
       write(file,Seq("reports/orders.csv" -> "id\n1\n2\n","empty/" -> "","nested.zip" -> "opaque"))
-      val config = Config("localhost",8815,"localhost",Map("public" -> Seq(PublishedItem("/archive",file=Some(file)))),Seq("dacp://localhost:8815/public"),dir,dir,dir)
-      val ns = new NamespaceAdapter(config.datasets("public"),config)
+      val config = Config("localhost",8815,"localhost",Map("public" -> DatasetDefinition.custom(Seq(PublishedItem("/archive",file=Some(file))))),Seq("dacp://localhost:8815/public"),dir,dir,dir)
+      val ns = config.openDataset("public")
       val folder = ns.list("/").head
       assert(folder.kind == "folder" && folder.format == "zip" && folder.totalSizeBytes.isEmpty && folder.lastModifiedTimeMs.isEmpty && folder.recordCount.isEmpty)
       assert(ns.list("/archive").map(_.path) == Seq("/archive/empty","/archive/nested.zip","/archive/reports"))

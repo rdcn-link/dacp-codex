@@ -27,7 +27,7 @@ class ContainerSpec extends AnyFunSuite {
     bytes.toByteArray
   }
   private def config(dir: Path, file: Path, alias: String = "/archive"): Config =
-    Config("localhost",8815,"localhost",Map("public" -> Seq(PublishedItem(alias,file=Some(file)))),
+    Config("localhost",8815,"localhost",Map("public" -> DatasetDefinition.custom(Seq(PublishedItem(alias,file=Some(file))))),
       Seq("dacp://localhost:8815/public"),dir,dir,dir)
 
   for ((suffix,format) <- Seq("tar" -> "tar","tar.gz" -> "tar-gzip","TGZ" -> "tar-gzip")) {
@@ -39,7 +39,7 @@ class ContainerSpec extends AnyFunSuite {
           "nested.tar" -> tar(Seq.empty)))
         if (format == "tar") Files.write(file,bytes) else gzip(file,bytes)
         assert(Formats.detect(file).id == format)
-        val c = config(dir,file); val ns = new NamespaceAdapter(c.datasets("public"),c)
+        val c = config(dir,file); val ns = c.openDataset("public").asInstanceOf[NamespaceAdapter]
         val root = ns.list("/").head
         assert(root.kind == "folder" && root.format == format && NamespaceAdapter.views(root) == Seq("bytes"))
         assert(root.totalSizeBytes.isEmpty && root.recordCount.isEmpty && root.lastModifiedTimeMs.isEmpty)
@@ -57,7 +57,7 @@ class ContainerSpec extends AnyFunSuite {
     val dir = Files.createTempDirectory("gzip-test-")
     try {
       val file = dir.resolve("private-storage.gz"); gzip(file,csv)
-      val c = config(dir,file,"/orders.csv.GZ"); val ns = new NamespaceAdapter(c.datasets("public"),c)
+      val c = config(dir,file,"/orders.csv.GZ"); val ns = c.openDataset("public").asInstanceOf[NamespaceAdapter]
       val child = ns.list("/orders.csv.GZ").head
       assert(child.path == "/orders.csv.GZ/orders.csv" && child.format == "csv")
       assert(child.totalSizeBytes.isEmpty && child.lastModifiedTimeMs.isEmpty && child.recordCount.isEmpty)
@@ -118,7 +118,7 @@ class ContainerSpec extends AnyFunSuite {
     try {
       val file = dir.resolve("private.tar.gz"); gzip(file,tar(Seq("reports/orders.csv" -> csv)))
       val gz = dir.resolve("private.csv.gz"); gzip(gz,csv)
-      val c = config(dir,file).copy(datasets=Map("public" -> Seq(PublishedItem("/archive",file=Some(file)),PublishedItem("/orders.csv.gz",file=Some(gz)))))
+      val c = config(dir,file).copy(datasets=Map("public" -> DatasetDefinition.custom(Seq(PublishedItem("/archive",file=Some(file)),PublishedItem("/orders.csv.gz",file=Some(gz))))))
       val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator,outputs)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()
       try {

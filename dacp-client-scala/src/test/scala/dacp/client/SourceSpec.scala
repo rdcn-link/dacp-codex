@@ -203,7 +203,7 @@ class SourceSpec extends AnyFunSuite {
           }
           val listed = ds.list("/reports")
           assert(listed.map(_.path) == Seq("/reports/orders"))
-          assert(listed.head.recordCount.isEmpty && listed.head.totalSizeBytes.isDefined && listed.head.lastModifiedTime.isDefined)
+          assert(listed.head.recordCount.forall(_ == 2L) && listed.head.totalSizeBytes.isDefined && listed.head.lastModifiedTime.isDefined)
           Using.resource(ds.open("/reports/orders")) { item =>
             Using.resource(item.asRecords()) { reader => assert(reader.next()); assert(reader.root.getRowCount == 2) }
           }

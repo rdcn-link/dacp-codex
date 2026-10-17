@@ -37,7 +37,7 @@ class CoreSpec extends AnyFunSuite {
   test("protobuf metadata and descriptor namespaces round-trip") { temp { p =>
     Files.writeString(p.resolve("x.csv"),"id\n1\n")
     val a = new RootAllocator(); val r = new OutputRegistry(10000)
-    val c = Config("localhost",8815,"localhost",Map("d" -> Seq(PublishedItem("/records", file = Some(p.resolve("x.csv"))))),Seq("dacp://localhost:8815/d"),p,p,p)
+    val c = Config("localhost",8815,"localhost",Map("d" -> DatasetDefinition.custom(Seq(PublishedItem("/records", file = Some(p.resolve("x.csv")))))),Seq("dacp://localhost:8815/d"),p,p,p)
     val producer = new Producer(c,a,r)
     try {
       val info = producer.getFlightInfo(null,FlightDescriptor.path("datasets","d"))

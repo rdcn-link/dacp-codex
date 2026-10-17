@@ -12,7 +12,9 @@ import org.apache.commons.csv.CSVFormat
 
 case class Item(path: String, format: String, schema: Option[Schema], kind: String = "data",
                 lastModifiedTimeMs: Option[Long] = None, totalSizeBytes: Option[Long] = None,
-                recordCount: Option[Long] = None)
+                recordCount: Option[Long] = None, views: Option[Seq[String]] = None) {
+  require(views.forall(v => v.distinct.size == v.size && v.forall(Set("records","bytes"))), "invalid item views")
+}
 trait DataSetAdapter { def list(): Seq[Item]; def describe(item: String): Item }
 class DirectoryAdapter(base: Path, batchSize: Int, inferSample: Int, excludeMetadata: Boolean = false, val options: FileOptions = FileOptions()) extends DataSetAdapter {
   private val root = base.toRealPath()

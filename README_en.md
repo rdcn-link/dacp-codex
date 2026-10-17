@@ -137,18 +137,39 @@ libraryDependencies += "io.github.rdcn-link" %% "dacp-client-scala" % "0.1.0"
 
 Use `Source.open`, `Dataset.list`, `Dataset.open`, `asRecords()`, and `asBytes()`, managing resources with `scala.util.Using`. The SDK guide covers complete examples, TLS, timeouts, and Arrow JVM options. The artifact is not yet published to Maven Central.
 
-## Publishing data
+## Constructing and publishing Datasets
 
-Configure public paths under `datasets.<name>.items`, binding private sources through `file` or `sql` / `table`. For example, this Dataset publishes a CSV file, a SQL table, a ZIP archive, and an empty folder together:
+Datasets are constructed by extensible providers. Three providers are built in, exposing the same `list`, `open`, and `count` APIs to clients:
+
+| provider | Construction | Private source |
+|---|---|---|
+| `directory` | Discovers files, subdirectories, and archives beneath a root | `source.root` |
+| `sqldb` | Publishes tables from one SQL connection under public aliases | `source.connection` |
+| `custom` | Defines each Item explicitly, combining files, SQL tables, and logical folders | Item `file`, `sql`, and `table` bindings |
 
 ```yaml
 datasets:
-  public:
+  documents:
+    provider: directory
+    source:
+      root: /home/test/dataset1
     items:
-      /reports/orders: {file: ../examples/data/nested/orders.csv}
-      /clients: {sql: warehouse, table: CUSTOMERS}
-      /archive: {file: /private/reports.zip}
+      /events.json: {format: ndjson}
+
+  sales:
+    provider: sqldb
+    source:
+      connection: warehouse
+    items:
+      /customers: {table: CUSTOMERS}
+
+  research:
+    provider: custom
+    items:
+      /measurements: {file: /private/results.csv}
+      /customers: {sql: warehouse, table: CUSTOMERS}
       /empty: {kind: folder}
+
 sql_sources:
   warehouse:
     url: jdbc:h2:../examples/sql/sales
@@ -158,9 +179,13 @@ sql_sources:
     tables: [CUSTOMERS]
 ```
 
-This is a configuration fragment; merge it with listener, TLS, and URI allowlist settings. Paths resolve relative to the server process working directory. Replace `/private/reports.zip` with a real file, and create SQL tables beforehand. Parent folders are inferred; other files and tables are not automatically published.
+This is a configuration fragment; merge it with listener, TLS, and URI allowlist settings, and replace example paths and database connections. Relative paths resolve against the server process working directory.
 
-SQL supports H2 and PostgreSQL JDBC, with table allowlists, environment-based credentials, fetch sizes, and query timeouts. See the [SQL example](examples/sql/README.md) for initialization and run instructions. Legacy automatic directory publication and `sql_datasets` configurations should migrate to explicit Item mappings.
+Directory Datasets expose paths relative to their root, such as `/reports/orders.csv`. Empty directories are folders, and supported archives can be browsed further. Subsequent listings reflect additions, deletions, and changes. The root stays private, all symbolic links are ignored, and access remains confined to the root. Optional directory `items` override reader format, sheet, header row, and schema; they do not rename paths or add other sources.
+
+SQL Dataset `items` bind public paths to private tables in the selected connection; tables are not automatically exposed. `custom` retains explicit mappings and mixed-source flexibility. Existing `items` configurations without `provider` continue to use `custom`.
+
+The default example provides `data1` and `csv_data` (custom), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](examples/sql/README.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](docs/dataset-providers.md).
 
 ### Formats and views
 
@@ -190,7 +215,9 @@ See the [technical reference](docs/reference_en.md) for format details, Excel be
 
 Items may carry modification time, byte size, and an exact record count. Unknown values differ from `0`. All three properties remain unknown for every folder; computing them never traverses children.
 
-Ordinary browsing does not scan CSV, NDJSON, or Excel to count records, or execute SQL `COUNT(*)`. Request counts explicitly with `count`; Parquet can obtain them from its footer. Metadata is an observation at request time, rather than an atomic snapshot with subsequent reads.
+The example server enables `count_file_records_on_startup: true`: custom file mappings and initially discovered directory record files such as CSV, NDJSON, and Excel are counted once when published, so `/events` and `/reports/orders` show `2` in Records. This option defaults to off; enabling it increases startup time, and counting failures fail startup. SQL, archive children, and all folders are excluded from startup counting. Newly discovered directory files do not trigger counting during browsing; query explicitly or restart to populate them.
+
+Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Saved file counts become unknown when size or modification time changes. Restart to repopulate them, or use `count` to request the latest value explicitly; explicit requests do not update saved listing counts. Parquet can still obtain counts from its footer. Metadata is not an atomic snapshot with subsequent reads.
 
 ## Collaboration and tasks
 

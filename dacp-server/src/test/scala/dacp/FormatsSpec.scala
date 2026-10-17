@@ -94,7 +94,7 @@ datasets:
           - {name: id, type: int64}
           - {name: amount, type: float64}
 """)
-      val binding = Config.load(yaml).datasets("office").head
+      val binding = DatasetProviders.customBindings(Config.load(yaml).datasets("office")).head
       assert(binding.options.format.contains("excel") && binding.options.sheet.contains("Orders"))
       assert(binding.options.headerRow == 2)
       assert(binding.options.columns.get.getFields.asScala.map(_.getName).toSeq == Seq("id","amount"))
@@ -156,9 +156,9 @@ datasets:
     val outputs = new OutputRegistry(10000)
     try {
       val file = dir.resolve("private-workbook.xlsx"); workbook(file,multiple=true)
-      val config = Config("localhost",8815,"localhost",Map("public" -> Seq(
+      val config = Config("localhost",8815,"localhost",Map("public" -> DatasetDefinition.custom(Seq(
         PublishedItem("/orders",file=Some(file),options=FileOptions(sheet=Some("Orders"))),
-        PublishedItem("/other",file=Some(file),options=FileOptions(sheet=Some("Other"))))),
+        PublishedItem("/other",file=Some(file),options=FileOptions(sheet=Some("Other")))))),
         Seq("dacp://localhost:8815/public"),dir,dir,dir,batchSize=1,inferSample=1)
       val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(config,allocator,outputs)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()

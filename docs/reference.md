@@ -94,7 +94,7 @@ datasets:
 
 Excel 使用 Apache POI 5.5.1 的 XLS/XLSX 事件读取接口。空表头生成 `column_N`，重复名称依次添加 `_2`、`_3`，缺失单元格返回 null。空数据行跳过，超出表头宽度的数据报错。公式只读取缓存结果，不重新计算；可识别的缺失缓存返回 null。错误单元格、加密或无效工作簿返回 DACP 格式错误。整数且未越界的数字单元格使用 int64，其余数字使用 float64，布尔值及字符串保留其值。Excel 数字日期保留序列值，不自动推断地区或时区。可选 `schema` 通过有序的 `name`/`type` 配置列，支持 `int64`、`float64`、`bool` 和 `utf8`/`string`。未配置时采样不超过 `batch_size * infer_sample`，后续类型冲突报错，不修改既定 schema。
 
-列举不解析 CSV、NDJSON 或 Excel 记录，其记录数保持未知。打开记录视图时通过有限采样推断 schema；只有显式 `count` 扫描文件，Parquet 可直接读取 footer 中的数量。Excel 解析队列最多保留 16 行，关闭或取消时停止解析；schema、当前 batch、单个单元格及 POI 共享字符串表还会占用内存，大型共享字符串表仍可能需要较多内存。不会在内存中构建完整工作表。
+列举不解析 CSV、NDJSON 或 Excel 记录；除发布时已填充的记录数外，其记录数保持未知。打开记录视图时通过有限采样推断 schema；除可选的启动计数外，只有显式 `count` 扫描文件，Parquet 可直接读取 footer 中的数量。Excel 解析队列最多保留 16 行，关闭或取消时停止解析；schema、当前 batch、单个单元格及 POI 共享字符串表还会占用内存，大型共享字符串表仍可能需要较多内存。不会在内存中构建完整工作表。
 
 服务端扩展接口为 [`FormatHandler`](../dacp-server/src/main/scala/dacp/Formats.scala)。提供者实现检测、可选的低成本元数据、schema、记录读取、显式计数及资源释放；文件 bytes 使用公共读取器。将提供者 JAR 加入类路径，在 `META-INF/services/dacp.FormatHandler` 注册公开的无参类并重启。格式 ID 和扩展名注册必须唯一，`sql` 保留给 SQL adapter。新增格式不需要修改核心服务端或 SDK。参见[处理器开发说明](../docs/format-handlers.md)。
 
@@ -106,7 +106,7 @@ Item 元数据新增以下可选属性；未知值与已知的 `0` 明确区分�
 |---|---|
 | `last_modified_time_ms` / `lastModifiedTimeMs` | UTC Unix 毫秒时间戳。Python 的 `last_modified_time` 返回带 UTC 时区的 datetime；Scala 的 `lastModifiedTime` 返回 `Option[Instant]`。 |
 | `total_size_bytes` / `totalSizeBytes` | 内容的总字节数；文件映射使用原始文件大小。 |
-| `record_count` / `recordCount` | 精确的逻辑记录数。CSV 不包含表头，NDJSON 忽略空行，Excel 统计所选工作表的数据行。这些文件和 SQL 在普通浏览时不计数，使用显式 `ds.count(path)`；Parquet 从 footer 读取。 |
+| `record_count` / `recordCount` | 精确的逻辑记录数。CSV 不包含表头，NDJSON 忽略空行，Excel 统计所选工作表的数据行。这些文件可使用发布时保存的数量；未填充时及 SQL 在普通浏览时数量为未知，使用显式 `ds.count(path)`；Parquet 从 footer 读取。 |
 
 Python 未知值为 `None`，Scala 为 `None`（已知值为 `Some`），protobuf 中对应字段缺省。SQL 映射不推测修改时间或字节数；PNG 等非记录数据的记录数为未知。folder 的三个属性始终为未知，包括空集合；计算集合属性时不会访问其子 Item。
 
@@ -117,6 +117,18 @@ with Source.open("dacp://localhost:8815/data1") as ds:
     for item in ds.list("/"):
         print(item.path, item.last_modified_time, item.total_size_bytes, item.record_count)
 ```
+
+### 发布时填充记录数
+
+配置 `count_file_records_on_startup: true` 后，服务器在加载配置时对 custom 文件映射和目录初次发现的记录文件执行一次精确计数并保存结果，普通浏览复用该结果。默认关闭。计数与文件大小和修改时间绑定；计数期间或之后检测到文件变化时，结果为未知。重启会重新计数，显式 `count` 仍按当前内容计算且不修改保存的元数据。该选项不计数 SQL、归档子项或 folder；启用时无效记录文件会导致启动失败。
+
+## Dataset 构建
+
+内置 `directory`、`sqldb` 和 `custom` provider。每个 Dataset 选择一个 provider，由它解释私有 `source` 和 `items`，并提供统一的数据访问接口。目录 provider 动态发现相对路径，SQLDB provider 使用显式公开表别名，custom provider 可混合来源。省略 provider 时兼容 custom 配置；不支持旧版 `datasets: {name: /directory}` 简写。
+
+目录 Dataset 不跟随符号链接。集合属性和直接子项列举不递归扫描普通子目录；只有 `list()` 才递归发现所有文件和归档条目。配置加载时启用启动计数会扫描初始文件，后续新文件只被发现、不自动计数。读取选项覆盖按公开路径匹配，不改变文件命名。目录中的新增 SQL 绑定或绝对路径映射被拒绝；这类组合应使用 custom。
+
+Dataset provider、容器 reader、格式 handler 分别负责构建数据集、浏览归档、解释内容。MongoDB 等未来 provider 可自行实现列举、元数据及流式读取，无需伪装成文件或 SQL 表，也不要求修改协议或 SDK。参见 [provider 开发指南](dataset-providers.md)。
 
 ## 任务执行与算子
 
@@ -168,9 +180,10 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 |---|---|
 | `host` / `port` | 监听地址 / 端口 |
 | `public_host` | 对外 URI 主机名，白名单使用该名字及显式端口 |
-| `datasets` | Dataset 名称 → `items` 显式逻辑映射；名称为一个 URI 路径段 |
+| `datasets` | Dataset 名称 → provider、source 及 items；名称为一个 URI 路径段 |
 | `allowed_uri_prefixes` | 节点级 URI 前缀白名单，按路径段边界匹配；输出名称也必须授权 |
 | `tls_cert` / `tls_key` / `tls_ca` | PEM 证书、私钥、可信客户端 CA；强制 mTLS |
+| `count_file_records_on_startup` | 启动时填充直接发布的记录文件数量，默认 false；增加启动扫描成本 |
 | `batch_size` | 文件记录视图每个 batch 的最大行数 |
 | `byte_chunk` | 字节视图每个 binary 行的最大字节数 |
 | `infer_sample` | 服务端记录视图推断采样 batch 数 |

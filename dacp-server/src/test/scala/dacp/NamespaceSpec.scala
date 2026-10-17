@@ -15,7 +15,7 @@ class NamespaceSpec extends AnyFunSuite {
     Files.writeString(dir.resolve("unpublished.csv"),"hidden\n1\n")
     val entries = Seq(PublishedItem("/events",file=Some(file)), PublishedItem("/nested/orders",file=Some(file)),
       PublishedItem("/nested/archive/old",file=Some(file)), PublishedItem("/empty",kind="folder"))
-    val config = Config("localhost",8815,"localhost",Map("public"->entries),Seq("dacp://localhost:8815/public"),dir,dir,dir)
+    val config = Config("localhost",8815,"localhost",Map("public"->DatasetDefinition.custom(entries)),Seq("dacp://localhost:8815/public"),dir,dir,dir)
     val allocator = new RootAllocator(); val outputs = new OutputRegistry(10000)
     try test(config,new Producer(config,allocator,outputs),outputs)
     finally { outputs.close(); allocator.close(); Data.deleteTree(dir) }
@@ -69,15 +69,15 @@ class NamespaceSpec extends AnyFunSuite {
     }
   }}
   test("invalid mappings reject duplicate aliases, data parents, and unknown sources") { fixture { (c,_,_) =>
-    val data = c.datasets("public").head
+    val data = DatasetProviders.customBindings(c.datasets("public")).head
     intercept[IllegalArgumentException](new NamespaceAdapter(Seq(data,data),c))
     intercept[IllegalArgumentException](new NamespaceAdapter(Seq(data,PublishedItem("/events/child",kind="folder")),c))
     intercept[IllegalArgumentException](PublishedItem("relative",kind="folder"))
     intercept[IllegalArgumentException](new NamespaceAdapter(Seq(PublishedItem("/data",sql=Some("unknown"),table=Some("SECRET"))),c))
   }}
   test("missing private files produce sanitized client errors") { fixture { (c,_,outputs) =>
-    val missing = c.datasets("public").head.file.get.resolveSibling("private-missing.csv")
-    val config = c.copy(datasets=Map("public" -> Seq(PublishedItem("/published",file=Some(missing)))))
+    val missing = DatasetProviders.customBindings(c.datasets("public")).head.file.get.resolveSibling("private-missing.csv")
+    val config = c.copy(datasets=Map("public" -> DatasetDefinition.custom(Seq(PublishedItem("/published",file=Some(missing))))))
     val a = new RootAllocator()
     try {
       val p = new Producer(config,a,outputs)
@@ -95,7 +95,7 @@ class NamespaceSpec extends AnyFunSuite {
     } finally Data.deleteTree(output)
   }}
   test("file statistics preserve zero timestamps; folder statistics remain unknown") { fixture { (c,p,_) =>
-    val file = c.datasets("public").head.file.get
+    val file = DatasetProviders.customBindings(c.datasets("public")).head.file.get
     Files.setLastModifiedTime(file,java.nio.file.attribute.FileTime.fromMillis(0))
     val all = list(p,"datasets","public").map(i => i.getPath -> i).toMap
     val item = all("/events")
@@ -110,7 +110,7 @@ class NamespaceSpec extends AnyFunSuite {
     val inaccessible = new NamespaceAdapter(Seq(PublishedItem("/parent/child", file=Some(file.resolveSibling("missing.csv")))), c)
     assert(inaccessible.list("/").head.kind == "folder")
     assert(inaccessible.describe("/parent").recordCount.isEmpty)
-    val adapter = new NamespaceAdapter(c.datasets("public"), c)
+    val adapter = c.openDataset("public")
     Seq("/", "/nested", "/empty").foreach { path =>
       val folder = adapter.describe(path)
       assert(folder.kind == "folder")
@@ -135,6 +135,64 @@ class NamespaceSpec extends AnyFunSuite {
       assert(Formats.detect(json).count(json,FileOptions()).contains(2L))
       assert(Formats.detect(empty).count(empty,FileOptions()).contains(0L))
       assert(stat(binary).totalSizeBytes.contains(0L) && stat(binary).recordCount.isEmpty)
+    } finally Data.deleteTree(dir)
+  }
+
+  test("publication counts are included without recounting; file changes invalidate them and folders remain unknown") {
+    val dir = Files.createTempDirectory("published-count-")
+    try {
+      val csv = dir.resolve("orders.csv"); Files.writeString(csv,"id\n1\n2\n")
+      val empty = dir.resolve("empty.csv"); Files.writeString(empty,"id\n")
+      val config = Config("localhost",8815,"localhost",Map.empty,Seq.empty,dir,dir,dir)
+      val saved = FileRecordCount.capture(csv,FileOptions()).get
+      assert(saved.value == 2L)
+      val ns = new NamespaceAdapter(Seq(
+        PublishedItem("/reports/orders",file=Some(csv),recordCount=Some(saved)),
+        PublishedItem("/empty",file=Some(empty),recordCount=FileRecordCount.capture(empty,FileOptions()))),config)
+      assert(ns.list("/reports").head.recordCount.contains(2L))
+      assert(ns.describe("/reports/orders").recordCount.contains(2L))
+      assert(ns.list().find(_.path == "/empty").get.recordCount.contains(0L))
+      assert(ns.describe("/reports").recordCount.isEmpty)
+      Files.setLastModifiedTime(csv,java.nio.file.attribute.FileTime.fromMillis(saved.modified.toMillis+1000))
+      assert(ns.list("/reports").head.recordCount.isEmpty)
+      Files.writeString(csv,"id\n1\n2\n3\n")
+      assert(ns.list("/reports").head.recordCount.isEmpty)
+      assert(ns.count("/reports/orders").contains(3L))
+      assert(ns.list("/reports").head.recordCount.isEmpty)
+      val binary = dir.resolve("image.bin"); Files.write(binary,Array[Byte](1,2))
+      assert(FileRecordCount.capture(binary,FileOptions()).isEmpty)
+    } finally Data.deleteTree(dir)
+  }
+  test("example config fills direct file counts at publication without counting container children") {
+    val config = Config.load(Path.of("../examples/server.yaml"))
+    val ns = config.openDataset("data1")
+    assert(ns.list("/reports").head.recordCount.contains(2L))
+    val root = ns.list("/").map(i => i.path -> i).toMap
+    assert(root("/events").recordCount.contains(2L))
+    assert(root("/image").recordCount.isEmpty && root("/archive").recordCount.isEmpty)
+    assert(ns.list("/archive/reports").head.recordCount.isEmpty)
+  }
+
+  test("startup counting is opt in and ordinary configuration loading does not open record files") {
+    val dir = Files.createTempDirectory("count-config-")
+    try {
+      val yaml = dir.resolve("server.yaml")
+      val text = s"""host: localhost
+public_host: localhost
+tls_cert: cert.pem
+tls_key: key.pem
+tls_ca: ca.pem
+output_root: output
+allowed_uri_prefixes: [dacp://localhost:8815/public]
+datasets:
+  public:
+    items:
+      /missing: {file: ${dir.resolve("missing.csv")}}
+"""
+      Files.writeString(yaml,text)
+      assert(DatasetProviders.customBindings(Config.load(yaml).datasets("public")).head.recordCount.isEmpty)
+      Files.writeString(yaml,text + "count_file_records_on_startup: true\n")
+      intercept[java.nio.file.NoSuchFileException](Config.load(yaml))
     } finally Data.deleteTree(dir)
   }
 

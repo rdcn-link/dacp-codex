@@ -137,18 +137,39 @@ libraryDependencies += "io.github.rdcn-link" %% "dacp-client-scala" % "0.1.0"
 
 使用 `Source.open`、`Dataset.list`、`Dataset.open`、`asRecords()` 和 `asBytes()`，通过 `scala.util.Using` 管理资源。SDK 文档提供完整示例、TLS 配置、超时及 Arrow JVM 参数；构件尚未发布到 Maven Central。
 
-## 发布数据
+## 构建与发布 Dataset
 
-在服务端用 `datasets.<name>.items` 配置公开路径，用 `file` 或 `sql` / `table` 绑定私有来源。例如，下面的 Dataset 同时发布 CSV、SQL 表、ZIP 和空集合：
+Dataset 由可扩展的 provider 构建。内置三种方式，对客户端提供相同的 `list`、`open` 和 `count`：
+
+| provider | 构建方式 | 私有来源 |
+|---|---|---|
+| `directory` | 自动发现根目录中的文件、子目录和归档 | `source.root` |
+| `sqldb` | 从一个 SQL 连接发布具有公开别名的表 | `source.connection` |
+| `custom` | 逐个定义 Item，可组合文件、SQL 表及逻辑集合 | Item 的 `file`、`sql`、`table` |
 
 ```yaml
 datasets:
-  public:
+  documents:
+    provider: directory
+    source:
+      root: /home/test/dataset1
     items:
-      /reports/orders: {file: ../examples/data/nested/orders.csv}
-      /clients: {sql: warehouse, table: CUSTOMERS}
-      /archive: {file: /private/reports.zip}
+      /events.json: {format: ndjson}
+
+  sales:
+    provider: sqldb
+    source:
+      connection: warehouse
+    items:
+      /customers: {table: CUSTOMERS}
+
+  research:
+    provider: custom
+    items:
+      /measurements: {file: /private/results.csv}
+      /customers: {sql: warehouse, table: CUSTOMERS}
       /empty: {kind: folder}
+
 sql_sources:
   warehouse:
     url: jdbc:h2:../examples/sql/sales
@@ -158,9 +179,13 @@ sql_sources:
     tables: [CUSTOMERS]
 ```
 
-这是配置片段，需与监听地址、TLS、URI 白名单等完整配置合并。路径相对于服务进程的工作目录解析；`/private/reports.zip` 需替换为实际文件，SQL 表也需预先存在。父集合自动创建，其余文件和表不会自动发布。
+这是配置片段，需与监听地址、TLS 和 URI 白名单合并，并替换示例路径及数据库连接。相对路径以服务进程工作目录为基准。
 
-SQL 支持 H2 和 PostgreSQL JDBC，提供表白名单、环境变量凭据、fetch 大小和查询超时配置。完整初始化及运行步骤见 [SQL 示例](examples/sql/README.md)。旧版目录自动发布和 `sql_datasets` 配置应迁移为显式 Item 映射。
+目录 Dataset 将根目录内的相对路径作为公开逻辑路径，例如 `/reports/orders.csv`；空目录也是 folder，受支持的归档可继续浏览。后续列举会反映文件新增、删除和修改。根目录保持私有，所有符号链接均忽略；不会访问根目录之外的数据。目录的 `items` 是可选读取选项覆盖，支持格式、工作表、表头行和 schema，不用于重命名或额外添加来源。
+
+SQL Dataset 的 `items` 将公开路径绑定到选定连接的私有表名，不自动暴露所有表。`custom` 保留逐项映射和混合来源的灵活性；省略 `provider` 的原有 `items` 配置仍按 `custom` 解析。
+
+默认示例同时提供 `data1`、`csv_data`（custom）和 `documents`（directory）。在 shell 中执行 `use documents`、`ls /`，或读取 `/nested/orders.csv`。SQLDB 的完整初始化示例见 [SQL 示例](examples/sql/README.md)。添加 MongoDB 等新来源时，可通过 provider JAR 扩展，无需修改客户端；开发接口见 [Dataset provider 指南](docs/dataset-providers.md)。
 
 ### 格式与视图
 
@@ -190,7 +215,9 @@ ZIP 列举只读取目录索引；TAR 需要顺序扫描，`.tar.gz` / `.tgz` �
 
 Item 可携带修改时间、字节大小和精确记录数。未知值与 `0` 不同；所有 folder 的这三个属性始终为未知，不遍历子项来计算。
 
-普通浏览不扫描 CSV、NDJSON、Excel 来计数，也不执行 SQL `COUNT(*)`。需要数量时显式调用 `count`；Parquet 可从 footer 读取记录数。元数据是请求时的观察值，与之后读取的内容不构成原子快照。
+示例服务启用了 `count_file_records_on_startup: true`：在发布时对 custom 文件映射及目录初次发现的 CSV、NDJSON、Excel 等记录文件计算一次精确记录数，因此 `/events` 和 `/reports/orders` 的 Records 显示为 `2`。此选项默认关闭；启用后会增加启动时间，计数失败会使启动失败。SQL、归档子项和所有 folder 不参与启动计数。目录中新发现的文件不会在浏览时触发计数，可显式查询或重启后填充。
+
+普通浏览不扫描文件计数，也不执行 SQL `COUNT(*)`。已保存的文件计数在大小或修改时间变化后回到未知；重启可重新填充，也可用 `count` 显式查询最新数量，但显式查询不更新已保存的列表计数。Parquet 仍可从 footer 获取记录数。元数据与之后读取的内容不构成原子快照。
 
 ## 数据协作与任务
 

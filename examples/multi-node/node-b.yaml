@@ -4,6 +4,7 @@ public_host: localhost
 port: 8816
 datasets:
   csv_data:
+    provider: custom
     items:
       /orders: {file: ../examples/data/nested/orders.csv}
 # Whole-node prefixes keep this demo rerunnable with unique output names.
