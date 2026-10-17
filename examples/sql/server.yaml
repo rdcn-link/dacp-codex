@@ -3,9 +3,16 @@ host: 0.0.0.0
 public_host: localhost
 port: 8815
 datasets:
-  files: ../examples/data
-sql_datasets:
+  files:
+    items:
+      /image: {file: ../examples/data/pixel.png}
+      /reports/orders: {file: ../examples/data/nested/orders.csv}
   sales:
+    items:
+      /reports/orders: {sql: warehouse, table: ORDERS}
+      /clients: {sql: warehouse, table: CUSTOMERS}
+sql_sources:
+  warehouse:
     url: "jdbc:h2:../examples/sql/sales;INIT=RUNSCRIPT FROM '../examples/sql/init.sql'"
     user: sa
     password: ""

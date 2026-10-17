@@ -4,46 +4,95 @@
 
 [English](README_en.md)
 
-面向自治数据节点的 Arrow Flight 数据协作协议。Scala 2.13 服务端、Python/PyArrow SDK、protobuf 元数据、YAML DAG、一任务一 Docker 容器。节点无需部署集群或中心注册服务。目录与 JDBC SQL 数据库可同时作为数据集暴露，SQL 表作为单层 Item。
+面向自治数据节点的 Arrow Flight 数据协作协议。Scala 2.13 服务端、Python/PyArrow 与 Scala SDK、protobuf 元数据、YAML DAG、一任务一 Docker 容器。节点无需部署集群或中心注册服务。文件与 JDBC SQL 表通过显式逻辑别名发布，folder 和 data Item 统一组织内容。
 
 ## 核心概念：Dataset、Item 与 Stream
 
-DACP 以 `Dataset → Item → Stream` 组织数据：Dataset 是一个节点上有名称的数据集合，Item 是集合中可单独打开的资源，Stream 是读取某个 Item 内容的接口。
+Dataset 是节点发布的命名逻辑空间。Item 有两种 kind：`folder` 用于组织子 Item，`data` 提供可读取的内容。文件和 SQL 表都映射为 `data`，客户端无需依赖存储类型。Stream 是打开 data Item 后得到的读取接口。
 
 | 概念 | 含义 | 示例 |
 |---|---|---|
-| Dataset（数据集） | 由服务器以名称发布的集合，可对应本地目录、配置的 SQL 数据库表集合，或任务输出目录。一个 Dataset 中的 Item 可以具有不同格式和 schema。 | `dacp://localhost:8815/data1` |
-| Item（数据项） | Dataset 中可独立寻址的文件或 SQL 表。清单中的 Item 元数据包含 `path`、`format` 和可选的 Arrow schema，不包含文件或表的全部内容。 | `nested/orders.csv`、`pixel.png`；SQL 示例中的 `ORDERS` 表 |
-| Stream（读取流） | 打开 Item 后得到的 SDK 对象，通过 `as_records()` 或 `as_bytes()` 拉取内容。Stream 不是另一个持久资源，也不需要独立名称。 | `ds.open("nested/orders.csv")` 返回的对象 |
+| Dataset | 节点上的根集合，具有公开名称 | `dacp://localhost:8815/data1` |
+| folder Item | 包含子 Item 的逻辑集合，不提供内容 Stream | `/reports` |
+| data Item | 可读取的逻辑资源，具有格式、可选 Arrow schema 和支持的 views | `/reports/orders`、`/image` |
+| Stream | 通过记录或字节视图拉取某个 data Item 的内容 | `ds.open("/reports/orders")` |
 
-Dataset URI 的结构是 `dacp://host:port/dataset`；在其后附加 Item 的相对路径，即可直接定位资源，例如 `dacp://localhost:8815/data1/nested/orders.csv`。目录数据集递归列举文件，子目录体现在 Item 路径中，不需要逐层打开子数据集。SQL 数据集将配置允许的表作为单层 Item 暴露。数据集名称在其所在节点内标识集合，不要求所有节点使用相同名称。
+所有 Item 路径都以 `/` 开头，相对于 Dataset 的逻辑根；它们不是服务器文件路径或 SQL 表名。公开名称由管理员显式配置。集合可以同时包含文件和 SQL 表映射，父集合可从路径自动推导，也可显式配置空集合。`/` 是隐式根集合，不作为 Item 出现在清单中。Dataset 内的 data Item 可以具有不同格式和 schema。
 
-`Source.open(dataset_uri)` 返回 DataSet；`ds.list()` 获取 Item 清单；`ds.open(item_path)` 返回 Stream。`Source.open(item_uri)` 也可直接返回 Stream。列举清单与读取内容分开，调用 `list()` 不会把所有 Item 的内容下载到客户端。
+| 调用 | 行为 |
+|---|---|
+| `ds.list()` | 递归返回所有 Item，包括 folder 和 data |
+| `ds.list("/")` | 只返回根集合的直接子 Item |
+| `ds.list("/reports")` | 只返回 `/reports` 的直接子 Item，不包含集合自身 |
+| `ds.open("/reports/orders")` | 打开 data Item，返回 Stream |
 
-Stream 提供两种读取视图：
+返回路径始终从 Dataset 根开始。空集合返回空列表；不存在的路径、对 data Item 调用 `list(path)`、对 folder 调用 `open(path)` 都会报错。不接受相对路径、`.`、`..`、重复分隔符或末尾 `/`（根 `/` 除外）。URI 将 Dataset 名称与逻辑路径拼接，例如 `dacp://localhost:8815/data1/reports/orders`。列举仅返回元数据，不下载内容。
 
-- **记录视图 `as_records()`**：逐批返回带 schema 的 Arrow RecordBatch，适用于 CSV、NDJSON、DACP 生成且带 Arrow schema 元数据的 Parquet，以及 SQL 表。不同 Item 可以有不同 schema。
-- **字节视图 `as_bytes()`**：返回可增量读取的二进制文件接口。文件 Item 返回原始文件字节，包括 PNG 等非表格文件；SQL 表返回 Arrow IPC stream 字节，并非 CSV 文本。传输层以单列 binary Arrow batch 承载字节块，SDK 将其还原为连续字节读取接口。
+Stream 支持的视图由 Item 的 `views` 元数据表示：
 
-内容按客户端读取需求通过 Flight 拉取。以下示例需先配置下方快速运行中使用的 mTLS 证书环境变量：
+- `records`：逐批读取带 schema 的 Arrow RecordBatch，适用于 CSV、NDJSON、带 Arrow schema 的 DACP Parquet 和 SQL 表。
+- `bytes`：增量读取二进制内容。文件映射返回原始文件字节，SQL 映射返回 Arrow IPC stream；PNG 等二进制资源只提供 bytes 视图。
+
+配置好快速运行中的 mTLS 证书后：
 
 ```python
 from dacp import Source
 
 with Source.open("dacp://localhost:8815/data1") as ds:
-    for item in ds.list():
-        print(item.path, item.format)
-
-    with ds.open("nested/orders.csv") as stream:
+    for item in ds.list("/"):
+        print(item.path, item.kind, item.views)
+    print(ds.list("/reports"))
+    with ds.open("/reports/orders") as stream:
         for batch in stream.as_records():
             print(batch.to_pydict())
-
-    with ds.open("pixel.png") as stream:
+    with ds.open("/image") as stream:
         with stream.as_bytes() as reader:
             print(reader.read(8))
 ```
 
-通过 `ds.open()` 创建的 Stream 共用 Dataset 的连接，应在 Dataset 关闭前使用；直接用 Item URI 打开的 Stream 拥有自己的连接，退出其上下文时关闭连接。字节 reader 应使用上下文管理器及时释放；提前停止记录迭代时，应关闭迭代器以取消读取。读取失败后需重新打开资源从头读取，当前实现没有断点续传。
+Dataset 创建的 Stream 共用连接，须在 Dataset 关闭前使用；直接用 Item URI 打开的 Stream 拥有独立连接。字节 reader 应使用上下文管理器；提前停止记录迭代时关闭迭代器以取消读取。失败后重新打开资源从头读取，没有断点续传。
+
+## Item 属性
+
+Item 元数据新增以下可选属性；未知值与已知的 `0` 明确区分：
+
+| 属性（Python / Scala） | 含义 |
+|---|---|
+| `last_modified_time_ms` / `lastModifiedTimeMs` | UTC Unix 毫秒时间戳。Python 的 `last_modified_time` 返回带 UTC 时区的 datetime；Scala 的 `lastModifiedTime` 返回 `Option[Instant]`。 |
+| `total_size_bytes` / `totalSizeBytes` | 内容的总字节数；文件映射使用原始文件大小。 |
+| `record_count` / `recordCount` | 精确的逻辑记录数。CSV 不包含表头，支持带引号的跨行记录；NDJSON 忽略空行；Parquet 从 footer 读取；SQL 在普通浏览中为未知；显式调用 `ds.count("/reports/orders")` 才执行 `COUNT(*)`。 |
+
+Python 未知值为 `None`，Scala 为 `None`（已知值为 `Some`），protobuf 中对应字段缺省。SQL 映射不推测修改时间或字节数；PNG 等非记录数据的记录数为未知。folder 的三个属性始终为未知，包括空集合；计算集合属性时不会访问其子 Item。
+
+这些属性由 `list()`、`list(path)` 和 data Item 的 FlightInfo 返回，交互式客户端 `ls` 也显示它们。精确的 CSV/NDJSON 计数会扫描文件，显式 SQL 计数会执行查询，因此列举大量 data Item 的成本可能较高。SQL 计数遵循源查询超时。集合元数据不会触发后代扫描；data Item 的统计不跨请求缓存。属性是观测值，不与后续读取组成原子快照，源数据变化时可能改变。
+
+```python
+with Source.open("dacp://localhost:8815/data1") as ds:
+    for item in ds.list("/"):
+        print(item.path, item.last_modified_time, item.total_size_bytes, item.record_count)
+```
+
+## 逻辑命名空间配置与迁移
+
+`datasets` 为每个 Dataset 显式配置公开逻辑路径；`file`、`sql`、`table` 是仅服务器可见的源映射。SQL 连接配置放在私有 `sql_sources` 中，不会自动发布表名：
+
+```yaml
+datasets:
+  public:
+    items:
+      /reports/orders: {file: ../examples/data/nested/orders.csv}
+      /clients: {sql: warehouse, table: CUSTOMERS}
+      /empty: {kind: folder}
+sql_sources:
+  warehouse:
+    url: jdbc:h2:../examples/sql/sales
+    user: sa
+    password: ""
+    schema: PUBLIC
+    tables: [CUSTOMERS]
+```
+
+此片段需与服务器的监听、TLS、白名单等配置合并；数据库表需预先存在，完整初始化示例见 SQL 配置。父集合 `/reports` 自动创建；不自动发布其余文件或数据库表。旧版 `datasets: {name: /directory}` 和 `sql_datasets` 配置不再支持，须迁移到显式映射并更新客户端路径。元数据、ticket 和数据服务错误不携带底层路径或表名；内容中的字段和值仍按源数据返回。任务输出使用 `/result-1`、`/result-2` 等逻辑别名，避免暴露算子内部文件名。
 
 ## 快速运行
 
@@ -58,7 +107,7 @@ cd dacp-server
 sbt run
 ```
 
-服务器启动成功后，会按名称排序输出 `datasets` 和 `sql_datasets` 中配置的数据集名称、类型（`directory` / `sql`）及完整 DACP URI。可将 URI 直接用于交互式客户端；任务运行时产生的临时输出不在此启动清单中。
+服务器启动成功后，会按名称排序输出 `datasets` 中配置的公开数据集名称及完整 DACP URI。可将 URI 直接用于交互式客户端；任务运行时产生的临时输出不在此启动清单中。
 
 另一终端，从项目根目录运行：
 
@@ -69,51 +118,75 @@ export DACP_KEY="$PWD/examples/certs/client.key"
 .venv/bin/python examples/client.py
 ```
 
-输出包含 `events.json`、`nested/orders.csv`、`pixel.png`，CSV 两条记录和 PNG 字节数。TLS 证书仅用于本地示例；脚本生成 CA、服务端和客户端证书，服务端证书也允许 clientAuth，供本节点任务执行器连接其他信任该 CA 的节点。
+输出包含 `/events`、`/reports/orders`、`/image` 等逻辑 Item，CSV 两条记录和 PNG 字节数。TLS 证书仅用于本地示例；脚本生成 CA、服务端和客户端证书，服务端证书也允许 clientAuth，供本节点任务执行器连接其他信任该 CA 的节点。
 
 ```python
 from dacp import Source
 
 with Source.open("dacp://localhost:8815/data1") as ds:
     print(ds.list())
-    for batch in ds.open("nested/orders.csv").as_records():
+    for batch in ds.open("/reports/orders").as_records():
         print(batch.to_pydict())
-    with ds.open("pixel.png").as_bytes() as stream:
+    with ds.open("/image").as_bytes() as stream:
         header = stream.read(8)
 ```
 
-URI 默认端口为 8815，也支持直接打开 Item：`Source.open("dacp://localhost:8815/data1/nested/orders.csv")`。三份证书也可用 `tls_root_certs`、`cert_chain`、`private_key` 的 bytes 参数传给 `Source.open`。Dataset 和直接打开的 Stream 支持 context manager。
+URI 默认端口为 8815，也支持直接打开 Item：`Source.open("dacp://localhost:8815/data1/reports/orders")`。三份证书也可用 `tls_root_certs`、`cert_chain`、`private_key` 的 bytes 参数传给 `Source.open`。Dataset 和直接打开的 Stream 支持 context manager。
 
-## 交互式客户端
+普通 SQL 浏览和 `show` 不执行 `COUNT(*)`。需要精确数量时，在 shell 使用 `count /reports/orders` 或 `count 1`，在 Python/Scala SDK 使用 `ds.count("/reports/orders")`。显式计数可能耗时并遵循 SQL 查询超时；不会更新列表中的缓存元数据。folder 不支持计数，非记录 data 返回未知。
+
+请求不存在的数据集时，服务器返回 `NOT_FOUND: dataset not found; check the dataset name`，提示检查名称；已存在数据集仍按 URI 白名单校验访问权限。
+
+## 交互式客户端 dacp-shell
+
+`dacp-shell` 是交互式客户端命令，原 `dacp` 命令作为兼容别名保留。`ls` 以带外边框和列名的表格显示 Path、编号、Format、Bytes、Records 和 Modified (UTC)，不显示 Kind 列。时间格式为 `2026-10-16 06:22:02`，未知值显示为 `-`，空列表也显示表头和边框。`show` 的记录预览以字段名为列名显示带边框的表格；text 保持纯文本显示，hex 保持偏移量、十六进制和 ASCII 的原有显示样式。终端中 folder 路径以加粗青色高亮；重定向输出、`NO_COLOR` 或 `TERM=dumb` 时不使用颜色。
 
 安装 Python SDK 后，可连接远端数据集，在终端列举 Item 并预览内容。使用已有的 `DACP_CA`、`DACP_CERT`、`DACP_KEY` 环境变量，或显式提供证书路径：
 
 ```bash
 .venv/bin/pip install -e './dacp-client[test]'
-.venv/bin/dacp dacp://localhost:8815/data1 --ca examples/certs/ca.crt --cert examples/certs/client.crt --key examples/certs/client.key
+.venv/bin/dacp-shell dacp://localhost:8815/data1 --ca examples/certs/ca.crt --cert examples/certs/client.crt --key examples/certs/client.key
 ```
 
-连接远端时，将 `localhost:8815/data1` 替换为实际服务器地址、端口和数据集名称。也可用 `.venv/bin/python -m dacp.cli` 替代 `.venv/bin/dacp`。
+连接远端时，将 `localhost:8815/data1` 替换为实际服务器地址、端口和数据集名称。也可用 `.venv/bin/python -m dacp.cli` 替代 `.venv/bin/dacp-shell`。
 
 ```text
-ls
+ls /
+ls /reports
 show 1
-show "nested/orders.csv" records
-show "events.json" text
-show "pixel.png" hex
+show "/reports/orders" records
+show "/events" text
+show "/image" hex
 use csv_data
 connect dacp://localhost:8815/data1
 help
 quit
 ```
 
-`ls` 刷新清单并显示编号、格式和路径。`show` 接受编号或带引号的路径；默认对 CSV/JSON/NDJSON/Parquet 使用记录视图，其他格式使用十六进制预览。`text` 按 UTF-8 显示原始字节并转义终端控制字符；SQL 表应使用 `records`，其 bytes 视图为 Arrow IPC。默认最多显示 20 行或 4096 字节，可用 `--rows`、`--bytes` 调整；每行渲染文本也受 `--bytes` 字符数限制。记录预览停止时取消上游读取，避免下载整个数据集。二进制文件显示十六进制及 ASCII，不直接打开图片。失败后可重试命令或重新连接；连接切换失败保留旧连接。
+`ls` 递归列举所有 Item；`ls /` 或 `ls /reports` 只列举集合的直接子 Item，并显示编号、格式和逻辑路径。folder 使用 `ls` 浏览，data 使用 `show` 预览。`show` 接受编号或带引号的路径；默认对 CSV/JSON/NDJSON/Parquet 使用记录视图，其他格式使用十六进制预览。`text` 按 UTF-8 显示原始字节并转义终端控制字符；SQL 表应使用 `records`，其 bytes 视图为 Arrow IPC。默认最多显示 20 行或 4096 字节，可用 `--rows`、`--bytes` 调整；每行字段文本合计受 `--bytes` 字符预算限制（省略标记和表格边框除外）。记录预览停止时取消上游读取，避免下载整个数据集。二进制文件显示十六进制及 ASCII，不直接打开图片。失败后可重试命令或重新连接；连接切换失败保留旧连接。
 
 服务器目前不提供数据集发现接口，因此启动和 `connect` 必须指定已知数据集 URI；`use` 切换同一服务器上的已知数据集。使用 `quit`、`exit` 或 EOF 退出并关闭连接。
 
+## Scala 客户端 SDK
+
+独立 Scala 2.13 SDK 位于 [dacp-client-scala](dacp-client-scala/README.md)，需要 JDK 17 和 sbt 1.10.x，不依赖服务端项目。它提供 `Source.open(datasetUri)`、`Dataset.list()` / `Dataset.list(path)`、`Dataset.open(itemPath)`、`ItemStream.asRecords()` 和 `ItemStream.asBytes()`；直接访问 Item URI 使用 `Source.openItem(itemUri)`。
+
+```bash
+cd dacp-client-scala
+sbt test publishLocal
+```
+
+在 Scala 2.13 应用的 `build.sbt` 中添加本地发布的依赖：
+
+```scala
+libraryDependencies += "io.github.rdcn-link" %% "dacp-client-scala" % "0.1.0"
+```
+
+该构件尚未发布到 Maven Central。证书默认读取 `DACP_CA`、`DACP_CERT`、`DACP_KEY`，也可显式传入 `TlsConfig`。记录读取器通过 `next()` 推进并从 `root` 访问 Arrow batch；root 会被复用，须在下一次读取前消费或复制。字节读取器为 Java `InputStream`。使用 `scala.util.Using.resource` 关闭连接、Item 和读取器；默认每次 Flight RPC 的完整生命周期超时为 30 秒，可用 `timeoutSeconds` 调整。JVM 的 Arrow 参数、完整示例及测试方法见 SDK 文档。
+
 ## 同时提供目录和 SQL 数据库
 
-新增 `sql_datasets` 配置，现有 `datasets` 目录配置保持兼容。SQL 表通过同样的 `Source.open / list / open / as_records` API 访问；表清单包含 Arrow schema，字节视图为 Arrow IPC 流。内置 H2 与 PostgreSQL JDBC 驱动，支持表白名单、环境变量凭据和有界 fetch/batch。详见 [SQL 配置、类型与运行步骤](examples/sql/README.md)。
+通过私有 `sql_sources` 配置数据库，再在 `datasets` 中显式映射公开逻辑路径。SQL 映射与文件映射可位于同一集合，通过相同的 `Source.open / list / open / as_records` API 访问；SQL data Item 的清单包含 Arrow schema，字节视图为 Arrow IPC 流。内置 H2 与 PostgreSQL JDBC 驱动，支持表白名单、环境变量凭据和有界 fetch/batch。详见 [SQL 配置、类型与运行步骤](examples/sql/README.md)。
 
 ```bash
 cd dacp-server
@@ -133,7 +206,7 @@ cd dacp-server
 sbt 'run ../examples/server.yaml ../examples/convert.yaml'
 ```
 
-启动 Flight 后执行 YAML 中的 DAG。`csv_data` 是指向 `examples/data/nested` 的 CSV 数据集；它与演示 PNG 读取的混合数据集 `data1` 共用本地文件。成功日志显示 `s1`、`s2` 的 URI，Parquet 位于 `examples/output/<output>-<uuid>/`。服务继续运行并暴露输出，TTL 到期自动删除；停止服务也会清理输出。
+启动 Flight 后执行 YAML 中的 DAG。`csv_data` 显式发布指向示例 CSV 的逻辑 Item `/orders`；它与演示 PNG 读取的混合数据集 `data1` 共用本地文件。成功日志显示 `s1`、`s2` 的 URI，Parquet 位于 `examples/output/<output>-<uuid>/`。服务继续运行并暴露输出，TTL 到期自动删除；停止服务也会清理输出。
 
 从项目根目录、沿用上面的证书环境变量：
 
@@ -147,7 +220,7 @@ sbt 'run ../examples/server.yaml ../examples/convert.yaml'
 
 ### DAG 与算子契约
 
-`input` 是单个 URI 或上游 `output` 名；`inputs` 是多个此类值组成的列表。上游引用也支持 `s1/part-0.parquet`。任务先校验重复名称、未知依赖、环和目标节点，再按拓扑顺序串行执行。默认在第一个输入 URI 所在节点执行，也可用 `node: dacp://host:port` 显式指定。协调节点把上游引用解析为具体 URI，再通过 mTLS Flight action 分发；无中心注册服务。每个子任务新建容器，禁用容器网络，挂载只读 `/input` 和可写 `/output`。
+`input` 是单个 URI 或上游 `output` 名；`inputs` 是多个此类值组成的列表。上游引用也支持 `s1/result-1`。任务先校验重复名称、未知依赖、环和目标节点，再按拓扑顺序串行执行。默认在第一个输入 URI 所在节点执行，也可用 `node: dacp://host:port` 显式指定。协调节点把上游引用解析为具体 URI，再通过 mTLS Flight action 分发；无中心注册服务。每个子任务新建容器，禁用容器网络，挂载只读 `/input` 和可写 `/output`。
 
 `/input/manifest.json` 包含 `file/path/format`；`file` 指向 Arrow IPC stream，bytes 视图为 `data: binary`，每行一个原始字节块。`/input/params.json` 是参数对象。单输入使用 FIFO，IPC 的 EOS 表示结束，容器读取消费驱动上游；多输入在启动容器前全部落盘。结束或失败均删除输入临时目录；失败的输出目录也删除。仅容器退出码为 0 才注册输出。任务超时上限为 30 分钟。
 
@@ -179,8 +252,10 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 
 | Flight 调用 | 响应 |
 |---|---|
-| GetFlightInfo `[datasets, dataset]` | `app_metadata` 为 protobuf `DataSet`，包含递归打平的 Item 清单，无 DoGet endpoint |
-| GetFlightInfo `[datasets, dataset, relative/item]` | Arrow schema + 含 protobuf `Ticket` 的 FlightEndpoint |
+| GetFlightInfo `[datasets, dataset]` | `app_metadata` 为 protobuf `DataSet`，包含全部逻辑 Item（folder 和 data），无 DoGet endpoint |
+| GetFlightInfo `[datasets, dataset, list, /path]` | 只返回集合的直接子 Item |
+| GetFlightInfo `[datasets, dataset, count, /path]` | 显式返回 data Item 的精确记录数（非记录数据为未知），无 DoGet endpoint |
+| GetFlightInfo `[datasets, dataset, /logical/item]` | Arrow schema + 含 protobuf `Ticket` 的 FlightEndpoint |
 | DoGet `Ticket(dataset,item,view)` | `view=records` 为记录，`view=bytes` 为单列 binary（原始文件字节） |
 
 记录视图支持 CSV、NDJSON、dacp 生成的 Parquet；任意文件可用 bytes。SDK 将 binary batch 包装成可增量读取的 `io.BufferedReader`。ticket 只描述资源和视图，不是认证 token。GetFlightInfo 和 DoGet 均校验 URI 白名单、规范化路径和符号链接边界。越界链接不会出现在清单中。
@@ -191,14 +266,14 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 |---|---|
 | `host` / `port` | 监听地址 / 端口 |
 | `public_host` | 对外 URI 主机名，白名单使用该名字及显式端口 |
-| `datasets` | 数据集名称 → 本地目录；MVP 名称为一个 URI 路径段 |
+| `datasets` | Dataset 名称 → `items` 显式逻辑映射；名称为一个 URI 路径段 |
 | `allowed_uri_prefixes` | 节点级 URI 前缀白名单，按路径段边界匹配；输出名称也必须授权 |
 | `tls_cert` / `tls_key` / `tls_ca` | PEM 证书、私钥、可信客户端 CA；强制 mTLS |
 | `batch_size` | CSV/JSON 记录视图每个 batch 的最大行数 |
 | `byte_chunk` | 字节视图每个 binary 行的最大字节数 |
 | `infer_sample` | 服务端记录视图推断采样 batch 数 |
 | `output_ttl_seconds` | 从成功注册开始计算输出寿命 |
-| `sql_datasets` | JDBC 数据集，url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
+| `sql_sources` | 私有 JDBC 数据源（不自动发布表），url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
 | `operator_library_url` / `operator_cache` / `operator_max_bytes` | 远程算子库 URL / 本地不可变版本缓存 / 最大归档字节数（默认 8 GiB） |
 | `operator_library` / `output_root` | 本地算子库 / 临时输出根目录 |
 | `task_peers` | 允许分发任务的节点 origin；自身始终允许，无中心发现服务 |
@@ -221,7 +296,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 .venv/bin/python examples/verify_job.py
 ```
 
-当前环境已通过 20 项 Scala 测试、15 项 Python 测试（含算子库服务测试），以及真实 mTLS 同节点目录/H2 SQL 表（records 与 Arrow IPC 字节视图）、枚举/CSV/PNG、容器内 zstd 转换、双输入物化/snappy、输出 schema 和 TTL 过期 DoGet 检查。`sbt run` 已实际启动验证。当前网络无法拉取 Docker Hub 的 Temurin 基础镜像，容器联调使用本机 JRE 与同一 `sbt stage` 产物构建的临时测试镜像；仓库内标准多阶段 Dockerfile 的基础镜像下载仍需可访问 Docker Hub 的环境。
+本次逻辑命名空间更新已通过 29 项服务端 Scala 测试、9 项 Scala SDK 测试、44 项 Python 测试（含算子库服务测试），以及真实 mTLS 下的分层列举、逻辑别名、CSV/PNG、H2 SQL records/Arrow IPC bytes 和交互式客户端检查。已启动隔离端口的服务验证两种 SDK。本次会话无权访问 Docker socket，未重新运行容器 DAG 联调；此前的容器验证包括 zstd 转换、双输入物化/snappy、输出 schema 和 TTL 过期 DoGet。标准 Dockerfile 构建仍需访问 Docker Hub 下载基础镜像。
 
 单元测试覆盖跨节点放置、上游 URI 解析、worker 权限、容量拒绝、失败不重试、描述符/protobuf、递归枚举、路径越界、TTL 销毁、schema 推断/显式声明/冲突、DAG 校验、Arrow 二进制分块到 Parquet 的转换、容器 Arrow 输出契约往返以及 SDK 部分字节读取。安全检查验证缺少客户端证书时连接失败，合法证书下未授权数据集仍被拒绝。
 
@@ -236,7 +311,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | 无 chunk 重试 / checkpoint / resume / 去重 | reader 失败终止，任务从源头重开，未添加这些机制 |
 | 连接级 mTLS + URI 前缀白名单 | `useMTlsClientVerification`、GetFlightInfo/DoGet 两处授权；无登录/token |
 | DataSet → Item → Stream | `DataSetAdapter`、`Item`、SDK `DataSet/Stream` |
-| 目录递归打平、数据库单层同构 | `DirectoryAdapter` 递归文件；`SqlAdapter` JDBC 单层表与 Arrow schema |
+| 与存储无关的层级命名空间 | `NamespaceAdapter` 显式映射；folder/data、绝对逻辑路径与分层列举 |
 | Records / bytes 双视图 | Arrow schema / 单列 binary + SDK 字节输入流 |
 | YAML DAG、名称@版本全局库 | `Jobs` 拓扑排序、独立 HTTP(S) 算子库、执行节点校验镜像归档并缓存；保留本地目录模式，无热更新 |
 | 计算跟随数据，节点协作 | `JobCoordinator` 按 URI 放置任务，mTLS Flight action 分发；worker 本地执行且不转发 |
@@ -247,9 +322,9 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | infer / 显式 schema，冲突仅 fail | 有界采样、后续校验、显式列映射；不自动拓宽 |
 | 输出 schema 写入元数据 | Parquet footer、`_schema.json`、输出 Item protobuf |
 | 跨语言 protobuf / YAML | `proto/dacp.proto`、YAML job；Python 绑定无需部署 protoc |
-| 不做 S3 / 下钻 / pandas / HF | 未实现，保持基础接口；SQL 适配按后续升级需求新增 |
+| 不做 S3 / pandas / HF | 未实现，保持基础接口；SQL 适配按后续升级需求新增 |
 
-本版输出注册表仅驻内存，重启后需要重跑任务；不会恢复旧任务。Parquet 记录读取支持本转换器生成且带 Arrow schema footer 的文件，其他 Parquet 文件仍可按字节读取。目录清单规模随文件数量增长，数据正文始终流式读取。
+本版输出注册表仅驻内存，重启后需要重跑任务；不会恢复旧任务。Parquet 记录读取支持本转换器生成且带 Arrow schema footer 的文件，其他 Parquet 文件仍可按字节读取。逻辑清单规模随发布的 Item 数量增长，数据正文始终流式读取。
 
 跨节点协作已实现：任意获授权节点可接收 `Job.run(node, yaml)`，通过 Flight `dacp.run_job` 协调 DAG，并用 `dacp.execute_task` 将已解析任务分发到输入所在节点或 YAML 指定节点。输出保留在执行节点，通过原有 Flight 数据接口拉取。详见 [双节点示例与运行步骤](examples/multi-node/README.md)。
 

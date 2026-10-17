@@ -1,0 +1,155 @@
+package dacp.client
+
+import java.io.ByteArrayOutputStream
+import org.apache.arrow.flight._
+import org.apache.arrow.memory.RootAllocator
+import org.apache.arrow.vector.{IntVector, VarBinaryVector, VectorSchemaRoot}
+import org.apache.arrow.vector.types.pojo.{ArrowType, Field, FieldType, Schema}
+import org.scalatest.funsuite.AnyFunSuite
+import dacp.protocol.Metadata
+import scala.jdk.CollectionConverters._
+import scala.util.Using
+
+class SourceSpec extends AnyFunSuite {
+  val recordsSchema = new Schema(List(new Field("id", FieldType.nullable(new ArrowType.Int(32, true)), null)).asJava)
+  val bytesSchema = new Schema(List(new Field("data", FieldType.nullable(new ArrowType.Binary()), null)).asJava)
+
+  def server(test: Dataset => Unit): Unit = {
+    val serverAllocator = new RootAllocator()
+    val producer = new NoOpFlightProducer {
+      override def getFlightInfo(ctx: FlightProducer.CallContext, desc: FlightDescriptor): FlightInfo = {
+        val parts = desc.getPath.asScala
+        if (parts(1) == "missing") throw CallStatus.NOT_FOUND.withDescription("missing dataset").toRuntimeException
+        val meta = Metadata.DataSet.newBuilder().setUri("dacp://localhost/data1")
+          .addItems(Metadata.Item.newBuilder().setPath("/records").setLastModifiedTimeMs(0L).setTotalSizeBytes(0L).setRecordCount(0L).setFormat("csv").setKind("data").addViews("records").addViews("bytes")
+            .setArrowSchema(com.google.protobuf.ByteString.copyFrom(recordsSchema.serializeAsMessage())))
+          .addItems(Metadata.Item.newBuilder().setPath("/unknown").setKind("data")).build()
+        val ticket = Metadata.Ticket.newBuilder().setDataset(parts(1)).setItem(if(parts.size == 3) parts(2) else "/records").build()
+        new FlightInfo(recordsSchema, desc, List(new FlightEndpoint(new Ticket(ticket.toByteArray))).asJava,
+          -1, -1, false, org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT, if(parts.size == 3) meta.getItems(0).toByteArray else meta.toByteArray)
+      }
+      override def getStream(ctx: FlightProducer.CallContext, ticket: Ticket, listener: FlightProducer.ServerStreamListener): Unit = {
+        val t = Metadata.Ticket.parseFrom(ticket.getBytes)
+        val schema = if(t.getView == "bytes") bytesSchema else recordsSchema
+        val root = VectorSchemaRoot.create(schema, serverAllocator)
+        try {
+          root.allocateNew()
+          listener.start(root)
+          if(t.getItem == "/fail") {
+            listener.error(CallStatus.INTERNAL.withDescription("broken stream").toRuntimeException)
+          } else {
+            if(t.getView == "bytes") {
+              val v = root.getVector(0).asInstanceOf[VarBinaryVector]
+              v.setSafe(0, Array.emptyByteArray); v.setSafe(1, "ab".getBytes("UTF-8")); v.setSafe(2, "cd".getBytes("UTF-8"))
+              root.setRowCount(3)
+              listener.putNext()
+              root.clear(); root.allocateNew()
+              root.getVector(0).asInstanceOf[VarBinaryVector].setSafe(0,"ef".getBytes("UTF-8"))
+              root.setRowCount(1)
+            } else {
+              val v = root.getVector(0).asInstanceOf[IntVector]
+              v.setSafe(0,1); v.setSafe(1,2); root.setRowCount(2)
+            }
+            listener.putNext(); listener.completed()
+          }
+        } finally root.close()
+      }
+    }
+    val flightServer = FlightServer.builder(serverAllocator,Location.forGrpcInsecure("localhost",0),producer).build().start()
+    val allocator = new RootAllocator()
+    val ds = new Dataset(FlightClient.builder(allocator,flightServer.getLocation).build(),allocator,"data1",10)
+    try test(ds)
+    finally { ds.close(); assert(allocator.getAllocatedMemory == 0); flightServer.close(); serverAllocator.close() }
+  }
+
+  test("dataset metadata includes paths, formats and Arrow schema") { server { ds =>
+    val item = ds.list().head
+    assert(item.path == "/records" && item.format == "csv" && item.kind == "data")
+    assert(ds.list("/").map(_.path) == Seq("/records","/unknown"))
+    val unknown = ds.list().last
+    assert(unknown.lastModifiedTime.isEmpty && unknown.totalSizeBytes.isEmpty && unknown.recordCount.isEmpty)
+    assert(item.schema.contains(recordsSchema))
+    assert(item.totalSizeBytes.contains(0L) && item.recordCount.contains(0L))
+    assert(item.lastModifiedTime.contains(java.time.Instant.EPOCH))
+  }}
+  test("records expose schema and borrowed batches; EOF remains terminal") { server { ds =>
+    Using.resource(ds.open("/records")) { item =>
+      Using.resource(item.asRecords()) { reader =>
+        assert(reader.schema == recordsSchema)
+        assert(reader.next())
+        assert(reader.root.getRowCount == 2)
+        assert(reader.root.getVector(0).getObject(1) == Integer.valueOf(2))
+        assert(!reader.next()); assert(!reader.next())
+      }
+    }
+  }}
+  test("byte reads preserve chunks, partial reads, empty rows and EOF") { server { ds =>
+    Using.resource(ds.open("/records")) { item =>
+      Using.resource(item.asBytes()) { reader =>
+        assert(reader.read() == 'a'.toInt)
+        val bytes = new Array[Byte](3)
+        assert(reader.read(bytes,1,1) == 1 && bytes(1) == 'b'.toByte)
+        val out = new ByteArrayOutputStream()
+        reader.transferTo(out)
+        assert(out.toString("UTF-8") == "cdef")
+        assert(reader.read() == -1 && reader.read() == -1)
+        assert(reader.read(bytes,0,0) == 0)
+      }
+    }
+  }}
+  test("closing an item cancels and closes its active readers") { server { ds =>
+    val item = ds.open("/records")
+    val records = item.asRecords(); assert(records.next())
+    item.close(); item.close()
+    intercept[IllegalArgumentException](records.next())
+    intercept[IllegalArgumentException](item.asBytes())
+  }}
+  test("closing dataset closes outstanding readers and rejects reuse") { server { ds =>
+    val reader = ds.open("/records").asBytes()
+    assert(reader.read() == 'a'.toInt)
+    ds.close()
+    intercept[java.io.IOException](reader.read())
+    intercept[IllegalArgumentException](ds.list())
+  }}
+  test("failed record and byte readers are terminal") { server { ds =>
+    Using.resource(ds.open("/fail")) { item =>
+      val records = item.asRecords()
+      intercept[FlightRuntimeException](records.next())
+      intercept[IllegalArgumentException](records.next())
+      val bytes = item.asBytes()
+      intercept[FlightRuntimeException](bytes.read())
+      intercept[java.io.IOException](bytes.read())
+    }
+  }}
+  test("invalid URIs and item paths fail before network access") {
+    Seq("https://host/d", "dacp://host", "dacp://host/d/../a", "dacp://user@host/d",
+      "dacp://host/d?x=1", "dacp://host/d#x", "dacp://host/d/%2e%2e/a", "dacp://host:0/d").foreach { uri =>
+      intercept[IllegalArgumentException](Source.parse(uri))
+    }
+    server { ds => Seq("", "a", "../a", "a//b", "a/", "relative", "/a/", "/a//b", "/../a").foreach(p => intercept[IllegalArgumentException](ds.open(p))) }
+  }
+  test("direct item access requires item URI") {
+    intercept[IllegalArgumentException](Source.openItem("dacp://localhost/data1"))
+    intercept[IllegalArgumentException](Source.open("dacp://localhost/data1/rows.csv"))
+  }
+
+  test("optional real mTLS server: listing, records, bytes and direct item ownership") {
+    sys.env.get("DACP_SCALA_TEST_URI") match {
+      case None => cancel("set DACP_SCALA_TEST_URI and DACP_CA/CERT/KEY for real-server validation")
+      case Some(uri) =>
+        Using.resource(Source.open(uri)) { ds =>
+          assert(ds.list().exists(_.path == "/reports/orders"))
+          assert(ds.list("/").exists(i => i.path == "/reports" && i.kind == "folder"))
+          val listed = ds.list("/reports")
+          assert(listed.map(_.path) == Seq("/reports/orders"))
+          assert(listed.head.recordCount.contains(2L) && listed.head.totalSizeBytes.isDefined && listed.head.lastModifiedTime.isDefined)
+          Using.resource(ds.open("/reports/orders")) { item =>
+            Using.resource(item.asRecords()) { reader => assert(reader.next()); assert(reader.root.getRowCount == 2) }
+          }
+        }
+        Using.resource(Source.openItem(uri + "/image")) { item =>
+          Using.resource(item.asBytes()) { reader => assert(reader.readNBytes(8).toSeq == Seq[Byte](-119,80,78,71,13,10,26,10)) }
+        }
+    }
+  }
+}

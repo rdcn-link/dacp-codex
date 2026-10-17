@@ -11,7 +11,7 @@ sequenceDiagram
     A->>B: Execute conversion where csv_data lives
     B->>B: One format_convert container → b_converted
     B-->>A: dacp://localhost:8816/b_converted
-    A->>B: DoGet b_converted/part-0.parquet
+    A->>B: DoGet b_converted/result-1
     A->>A: One identity container → a_relay
     A->>B: Execute gather task with two resolved input URIs
     B->>A: DoGet a_relay
@@ -65,7 +65,7 @@ The manual YAML uses fixed output names; use new names for each run until the ow
 
 - A task defaults to the server in its **first resolved input URI**. For multiple inputs, this first input is the data anchor.
 - Optional `node: dacp://host:port` chooses an execution server explicitly. Use the server's advertised `public_host` and port consistently.
-- `input: upstream/relative/item` and `inputs: [upstream_a, upstream_b]` resolve to absolute URIs before dispatch. The worker never resolves DAG references or forwards tasks.
+- `input: upstream/logical/item` and `inputs: [upstream_a, upstream_b]` resolve to absolute URIs before dispatch. The worker never resolves DAG references or forwards tasks.
 - The full DAG, dependencies, URI syntax, and all target nodes are checked before dispatch. Tasks run in topological order; independent tasks are currently serialized.
 - `task_peers` lists origins the coordinator may dispatch to; its own advertised origin is always allowed. This list grants permission, rather than providing discovery or dataset lookup.
 - `task_input_prefixes` lists dataset URI prefixes a worker may pull. If omitted/empty, it defaults to `allowed_uri_prefixes`, allowing existing local-only configurations to work.
@@ -74,7 +74,7 @@ The manual YAML uses fixed output names; use new names for each run until the ow
 
 The demo uses whole-node prefixes to accommodate random output names. On separate machines, replace `localhost`, set certificates with the advertised DNS names in their SANs, narrow dataset prefixes, configure each node's permitted peers/inputs, and install the referenced operator versions/images on every execution node. A and B have distinct certificates signed by the demo CA. Each server uses its own configured certificate for outbound mTLS.
 
-`identity@1.0` preserves binary payloads and emits `part-N.<format>` Items. It accepts CSV, NDJSON, binary files, and Parquet. It enables downstream consumers to retain upstream Parquet schema footers without reparsing or recompressing the file. It shares the built-in operator image with `format_convert@1.0`; `DACP_OPERATOR` selects the installed implementation inside each isolated container.
+`identity@1.0` preserves binary payloads and writes internal `part-N.<format>` files, published as `/result-N` data Items. It accepts CSV, NDJSON, binary files, and Parquet. It enables downstream consumers to retain upstream Parquet schema footers without reparsing or recompressing the file. It shares the built-in operator image with `format_convert@1.0`; `DACP_OPERATOR` selects the installed implementation inside each isolated container.
 
 ## Failure and lifetime semantics
 

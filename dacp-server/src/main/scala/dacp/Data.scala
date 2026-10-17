@@ -10,7 +10,9 @@ import org.apache.arrow.memory.BufferAllocator
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import org.apache.commons.csv.CSVFormat
 
-case class Item(path: String, format: String, schema: Option[Schema])
+case class Item(path: String, format: String, schema: Option[Schema], kind: String = "data",
+                lastModifiedTimeMs: Option[Long] = None, totalSizeBytes: Option[Long] = None,
+                recordCount: Option[Long] = None)
 trait DataSetAdapter { def list(): Seq[Item]; def describe(item: String): Item }
 class DirectoryAdapter(base: Path, batchSize: Int, inferSample: Int, excludeMetadata: Boolean = false) extends DataSetAdapter {
   private val root = base.toRealPath()

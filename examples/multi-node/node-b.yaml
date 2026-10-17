@@ -3,7 +3,9 @@ host: 0.0.0.0
 public_host: localhost
 port: 8816
 datasets:
-  csv_data: ../examples/data/nested
+  csv_data:
+    items:
+      /orders: {file: ../examples/data/nested/orders.csv}
 # Whole-node prefixes keep this demo rerunnable with unique output names.
 allowed_uri_prefixes:
   - dacp://localhost:8816/

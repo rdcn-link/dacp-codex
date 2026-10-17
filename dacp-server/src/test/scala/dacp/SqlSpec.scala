@@ -31,6 +31,9 @@ class SqlSpec extends AnyFunSuite {
     assert(a.list().map(_.path) == Seq("EMPTY_TABLE","ORDERS","odd\"name"))
     val item = a.describe("ORDERS")
     assert(item.format == "arrow" && item.schema.get.getFields.size == 10)
+    assert(item.recordCount.isEmpty && item.totalSizeBytes.isEmpty && item.lastModifiedTimeMs.isEmpty)
+    assert(a.describe("EMPTY_TABLE").recordCount.isEmpty)
+    assert(a.count("EMPTY_TABLE") == 0L && a.count("ORDERS") == 3L)
     assert(!item.schema.get.getFields.get(0).isNullable)
     assert(new SqlAdapter(conf.copy(tables=Some(Seq("ORDERS"))),2).list().map(_.path) == Seq("ORDERS"))
     intercept[java.io.FileNotFoundException](new SqlAdapter(conf.copy(tables=Some(Seq("ORDERS"))),2).describe("EMPTY_TABLE"))
@@ -69,14 +72,29 @@ class SqlSpec extends AnyFunSuite {
   test("Flight serves SQL records and byte-view IPC alongside directory datasets") { database { conf =>
     val allocator = new RootAllocator(); val outputs = new OutputRegistry(10000)
     val dir = Files.createTempDirectory("sql-files-"); Files.writeString(dir.resolve("x.csv"),"id\n1\n")
-    val config = Config("localhost",8815,"localhost",Map("files"->dir),Seq("dacp://localhost:8815/files","dacp://localhost:8815/db"),dir,dir,dir, batchSize=2,byteChunk=32,sqlDatasets=Map("db"->conf))
+    val config = Config("localhost",8815,"localhost",Map("files" -> Seq(PublishedItem("/records", file=Some(dir.resolve("x.csv")))),
+      "db" -> Seq(PublishedItem("/orders", sql=Some("warehouse"), table=Some("ORDERS")),
+        PublishedItem("/reports/file",file=Some(dir.resolve("x.csv"))))),Seq("dacp://localhost:8815/files","dacp://localhost:8815/db"),dir,dir,dir, batchSize=2,byteChunk=32,sqlSources=Map("warehouse"->conf))
     val server = FlightServer.builder(allocator,Location.forGrpcInsecure("127.0.0.1",0),new Producer(config,allocator,outputs)).build().start()
     val client = FlightClient.builder(allocator,server.getLocation).build()
     try {
       def meta(ds: String) = Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets",ds)).getAppMetadata)
-      assert(meta("files").getItems(0).getPath == "x.csv")
-      assert(meta("db").getItemsList.asScala.exists(i => i.getPath == "ORDERS" && !i.getArrowSchema.isEmpty))
-      val info = client.getInfo(FlightDescriptor.path("datasets","db","ORDERS"))
+      assert(meta("files").getItems(0).getPath == "/records")
+      assert(meta("db").getItemsList.asScala.exists(i => i.getPath == "/orders" && !i.getArrowSchema.isEmpty))
+      val children = Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets","db","list","/reports")).getAppMetadata)
+      assert(children.getItemsList.asScala.map(_.getPath) == Seq("/reports/file"))
+      assert(TaskInputs.discover(client,"db",None).map(_._1).toSet == Set("/orders","/reports/file"))
+      assert(TaskInputs.discover(client,"db",Some("/orders")) == Seq("/orders" -> "arrow"))
+      val publicMetadata = meta("db")
+      val stats = publicMetadata.getItemsList.asScala.find(_.getPath == "/orders").get
+      assert(!stats.hasRecordCount)
+      val counted = client.getInfo(FlightDescriptor.path("datasets","db","count","/orders"))
+      assert(Metadata.Item.parseFrom(counted.getAppMetadata).getRecordCount == 3L)
+      assert(!stats.hasTotalSizeBytes && !stats.hasLastModifiedTimeMs)
+      assert(!publicMetadata.toString.contains("ORDERS") && !publicMetadata.toString.contains("warehouse"))
+      val rejected = intercept[FlightRuntimeException](client.getInfo(FlightDescriptor.path("datasets","db","/ORDERS")))
+      assert(!rejected.getMessage.contains("ORDERS"))
+      val info = client.getInfo(FlightDescriptor.path("datasets","db","/orders"))
       val records = client.getStream(info.getEndpoints.get(0).getTicket)
       try { var rows = 0; while(records.next()) rows += records.getRoot.getRowCount; assert(rows == 3) } finally records.close()
       val t = Metadata.Ticket.parseFrom(info.getEndpoints.get(0).getTicket.getBytes).toBuilder.setView("bytes").build()
@@ -91,11 +109,11 @@ class SqlSpec extends AnyFunSuite {
       intercept[FlightRuntimeException](new Producer(restricted,allocator,outputs).getFlightInfo(null,FlightDescriptor.path("datasets","db")))
     } finally { client.close(); server.close(); outputs.close(); allocator.close(); Data.deleteTree(dir) }
   }}
-  test("SQL unsupported types fail explicitly and config remains backward compatible") { database { conf =>
+  test("SQL unsupported types fail explicitly and config loads private sources and explicit aliases") { database { conf =>
     val c = DriverManager.getConnection(conf.url,"sa","")
     try { val st = c.createStatement(); try st.execute("CREATE TABLE unsupported (items INTEGER ARRAY)") finally st.close() } finally c.close()
     intercept[IllegalArgumentException](new SqlAdapter(conf,2).describe("UNSUPPORTED"))
-    val old = Config.load(Path.of("../examples/server.yaml")); assert(old.sqlDatasets.isEmpty && old.datasets.contains("data1"))
+    val old = Config.load(Path.of("../examples/server.yaml")); assert(old.sqlSources.isEmpty && old.datasets.contains("data1"))
     val p = Files.createTempFile("sql-config-",".yaml")
     try {
       Files.writeString(p,"""host: localhost
@@ -105,7 +123,7 @@ tls_key: key
 tls_ca: ca
 output_root: output
 allowed_uri_prefixes: ['dacp://localhost:8815/db']
-sql_datasets:
+sql_sources:
   db:
     url: 'jdbc:h2:mem:config'
     user: sa
@@ -114,8 +132,8 @@ sql_datasets:
     fetch_size: 17
 """)
       val loaded = Config.load(p)
-      assert(loaded.datasets.isEmpty && loaded.sqlDatasets("db").fetchSize == 17 && loaded.hasDataset("db"))
-      intercept[IllegalArgumentException](loaded.copy(datasets=Map("db"->p)))
+      assert(loaded.datasets.isEmpty && loaded.sqlSources("db").fetchSize == 17 && !loaded.hasDataset("db"))
+      intercept[IllegalArgumentException](loaded.copy(datasets=Map("bad/name"->Seq.empty)))
     } finally Files.delete(p)
   }}
 }

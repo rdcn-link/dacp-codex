@@ -3,8 +3,15 @@ host: 0.0.0.0
 public_host: localhost
 port: 8815
 datasets:
-  data1: ../examples/data
-  csv_data: ../examples/data/nested
+  data1:
+    items:
+      /events: {file: ../examples/data/events.json}
+      /reports/orders: {file: ../examples/data/nested/orders.csv}
+      /image: {file: ../examples/data/pixel.png}
+      /empty: {kind: folder}
+  csv_data:
+    items:
+      /orders: {file: ../examples/data/nested/orders.csv}
 allowed_uri_prefixes:
   - dacp://localhost:8815/data1
   - dacp://localhost:8815/csv_data

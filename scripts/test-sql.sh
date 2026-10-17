@@ -33,27 +33,27 @@ for _ in range(300):
         time.sleep(.1)
 else:
     raise RuntimeError("server did not become ready; inspect log")
-assert {i.path for i in items} == {"ORDERS", "CUSTOMERS"}
-assert all(i.format == "arrow" and i.schema is not None for i in items)
-with Source.open("dacp://localhost:8815/sales/ORDERS") as stream:
+assert {i.path for i in items} == {"/reports", "/reports/orders", "/clients"}
+assert all(i.format == "arrow" and i.schema is not None for i in items if i.kind == "data")
+with Source.open("dacp://localhost:8815/sales/reports/orders") as stream:
     records = pa.Table.from_batches(list(stream.as_records()))
 assert records.num_rows == 2
 assert sorted(records.column("AMOUNT").to_pylist()) == [Decimal("12.50"), Decimal("30.00")]
 with Source.open("dacp://localhost:8815/sales") as ds:
-    with ds.open("ORDERS").as_bytes() as stream:
+    with ds.open("/reports/orders").as_bytes() as stream:
         byte_table = pa.ipc.open_stream(stream).read_all()
     assert byte_table.equals(records)
     try:
-        ds.open("ORDERS; DROP TABLE ORDERS")
+        ds.open("/private-table-name")
     except Exception:
         pass
     else:
         raise AssertionError("invalid table accepted")
-    assert len(ds.list()) == 2
+    assert len(ds.list()) == 3
 with Source.open("dacp://localhost:8815/files") as ds:
-    assert "nested/orders.csv" in {i.path for i in ds.list()}
-    assert sum(b.num_rows for b in ds.open("nested/orders.csv").as_records()) == 2
-    with ds.open("pixel.png").as_bytes() as stream:
+    assert "/reports/orders" in {i.path for i in ds.list()}
+    assert sum(b.num_rows for b in ds.open("/reports/orders").as_records()) == 2
+    with ds.open("/image").as_bytes() as stream:
         assert stream.read(8) == b"\x89PNG\r\n\x1a\n"
 print("PASS: one mTLS DACP node serves directory files and typed SQL tables through records and bytes")
 PY

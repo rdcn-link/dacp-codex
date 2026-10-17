@@ -1,7 +1,9 @@
 """Interactive, bounded previews for a DACP dataset."""
 import argparse
 import cmd
+from datetime import timezone
 import json
+import os
 from pathlib import Path
 import shlex
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -15,8 +17,8 @@ def safe(value):
 
 
 class Browser(cmd.Cmd):
-    intro = 'DACP browser. Type help for commands; quit to exit.'
-    prompt = 'dacp> '
+    intro = 'DACP shell. Type help for commands; quit to exit.'
+    prompt = 'dacp-shell> '
 
     def __init__(self, uri, credentials=None, rows=20, byte_limit=4096, stdout=None):
         super().__init__(stdout=stdout)
@@ -69,12 +71,56 @@ class Browser(cmd.Cmd):
         u = urlsplit(self.uri)
         self.connect(urlunsplit((u.scheme, u.netloc, '/' + quote(name, safe=''), '', '')))
 
+    def table(self, headers, rows, numeric=(), folders=()):
+        """Render sanitized cells; ANSI styling is applied after width calculation."""
+        clean = lambda value: safe(value).replace('\n', r'\n')
+        headers = tuple(map(clean, headers))
+        rows = [tuple(map(clean, row)) for row in rows]
+        widths = [max(len(row[col]) for row in [headers, *rows]) for col in range(len(headers))]
+        border = '+' + '+'.join('-' * (width + 2) for width in widths) + '+'
+        color = (self.stdout.isatty() and 'NO_COLOR' not in os.environ
+                 and os.environ.get('TERM') != 'dumb')
+        def render(row, highlight=False):
+            cells = [value.rjust(width) if col in numeric else value.ljust(width)
+                     for col, (value, width) in enumerate(zip(row, widths))]
+            if highlight and color:
+                cells[0] = "\x1b[1;36m" + cells[0] + "\x1b[0m"
+            print('| ' + ' | '.join(cells) + ' |', file=self.stdout)
+        self.write(border)
+        render(headers)
+        self.write(border)
+        for index, row in enumerate(rows):
+            render(row, index in folders)
+        self.write(border)
+
     def do_ls(self, arg):
-        """ls: refresh and list item numbers, formats, and paths."""
-        self.items = self.dataset.list()
+        """ls [PATH]: list all Items recursively, or immediate children of a folder."""
+        args = shlex.split(arg)
+        if len(args) > 1:
+            raise ValueError("usage: ls [absolute-logical-path]")
+        self.items = self.dataset.list(args[0]) if args else self.dataset.list()
+        headers = ('Path', '#', 'Format', 'Bytes', 'Records', 'Modified (UTC)')
+        rows = []
         for index, item in enumerate(self.items, 1):
-            self.write(f'{index:>4}  {item.format:<10}  {item.path}')
+            size = item.total_size_bytes if item.total_size_bytes is not None else '-'
+            records = item.record_count if item.record_count is not None else '-'
+            modified = (item.last_modified_time.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+                        if item.last_modified_time is not None else '-')
+            rows.append(tuple(safe(value).replace('\n', r'\n') for value in
+                              (item.path, index, item.format or '-', size, records, modified)))
+        self.table(headers, rows, numeric=(1, 3, 4),
+                   folders={index for index, item in enumerate(self.items) if item.kind == 'folder'})
         self.write(f'{len(self.items)} items')
+
+    def do_count(self, arg):
+        """count ITEM: explicitly compute exact records by ls number or quoted path; may be slow."""
+        args = shlex.split(arg)
+        if len(args) != 1:
+            raise ValueError('usage: count ITEM')
+        path = self.item(args[0])
+        self.write(f'Counting records: {path} ...')
+        count = self.dataset.count(path)
+        self.write(f'{path}: {count if count is not None else "-"} records')
 
     def item(self, value):
         if value.isdecimal():
@@ -94,28 +140,42 @@ class Browser(cmd.Cmd):
         if len(args) not in (1, 2):
             raise ValueError('usage: show ITEM [auto|records|text|hex]')
         path = self.item(args[0])
+        listed = next((i for i in self.items if i.path == path), None)
+        if listed is not None and listed.kind == "folder":
+            raise ValueError("folder has no content; use ls " + path)
         mode = args[1] if len(args) == 2 else 'auto'
         if mode not in ('auto', 'records', 'text', 'hex'):
             raise ValueError('view must be auto, records, text, or hex')
         if mode == 'auto':
             item = next((i for i in self.items if i.path == path), None)
             fmt = item.format.lower() if item else Path(path).suffix.lstrip('.').lower()
-            mode = 'records' if fmt in ('csv', 'json', 'ndjson', 'parquet') else 'hex'
+            mode = 'records' if (item and 'records' in item.views) or fmt in ('csv', 'json', 'ndjson', 'parquet', 'arrow') else 'hex'
         with self.dataset.open(path) as stream:
             if mode == 'records':
                 records = stream.as_records()
                 remaining = self.rows
+                headers, rows = [], []
                 try:
                     for batch in records:
-                        self.write(batch.schema)
+                        headers = batch.schema.names
                         for row in batch.slice(0, remaining).to_pylist():
-                            rendered = json.dumps(row, default=str, ensure_ascii=True)
-                            self.write(rendered[:self.byte_limit] + (' ...' if len(rendered) > self.byte_limit else ''))
+                            cells, budget = [], self.byte_limit
+                            for value in row.values():
+                                rendered = (value if isinstance(value, str) else
+                                            json.dumps(value, default=str, ensure_ascii=True))
+                                rendered = safe(rendered).replace('\n', r'\n')
+                                cells.append(rendered[:budget] + (' ...' if len(rendered) > budget else ''))
+                                budget = max(0, budget - len(rendered))
+                            rows.append(cells)
                             remaining -= 1
                         if remaining == 0:
                             break
                 finally:
                     records.close()
+                if not headers:
+                    schema = getattr(records, 'schema', None)
+                    headers = schema.names if schema is not None else ['Records']
+                self.table(headers, rows)
                 self.write(f'{self.rows - remaining} rows shown (limit {self.rows})')
             else:
                 with stream.as_bytes() as reader:
@@ -150,7 +210,7 @@ def positive(value):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='Interactive DACP dataset browser (mTLS).')
+    parser = argparse.ArgumentParser(prog='dacp-shell', description='Interactive DACP dataset shell (mTLS).')
     parser.add_argument('uri', help='dacp://host[:port]/dataset')
     parser.add_argument('--ca', type=Path, help='CA certificate; defaults to DACP_CA')
     parser.add_argument('--cert', type=Path, help='client certificate; defaults to DACP_CERT')

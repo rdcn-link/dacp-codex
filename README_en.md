@@ -4,46 +4,95 @@
 
 [中文](README.md)
 
-An Arrow Flight data collaboration protocol for autonomous data nodes. It uses a Scala 2.13 server, a Python/PyArrow SDK, protobuf metadata, YAML DAGs, and one Docker container per task. Nodes require neither a cluster nor a central registry. Directories and JDBC SQL databases can both be exposed as datasets, with SQL tables represented as a single level of Items.
+An Arrow Flight data collaboration protocol for autonomous data nodes. It uses a Scala 2.13 server, Python/PyArrow and Scala SDKs, protobuf metadata, YAML DAGs, and one Docker container per task. Nodes require neither a cluster nor a central registry. Files and JDBC SQL tables are published through explicit logical aliases, organized uniformly as folder and data Items.
 
 ## Core concepts: Dataset, Item, and Stream
 
-DACP organizes data as `Dataset → Item → Stream`: a Dataset is a named collection on a node, an Item is an individually addressable resource in that collection, and a Stream is the interface for reading an Item's contents.
+A Dataset is a named logical namespace published by a node. Items have two kinds: `folder` groups child Items, and `data` provides readable content. Files and SQL tables both map to `data`, so clients do not need to depend on storage type. A Stream is the reading interface obtained by opening a data Item.
 
 | Concept | Meaning | Example |
 |---|---|---|
-| Dataset | A collection published by the server under a name. It can represent a local directory, a configured collection of SQL database tables, or a task output directory. Items in one Dataset can have different formats and schemas. | `dacp://localhost:8815/data1` |
-| Item | An independently addressable file or SQL table within a Dataset. Item metadata in a listing includes `path`, `format`, and an optional Arrow schema, rather than the full contents of the file or table. | `nested/orders.csv`, `pixel.png`; the `ORDERS` table in the SQL example |
-| Stream | An SDK object returned when opening an Item, used to pull contents through `as_records()` or `as_bytes()`. A Stream is not another persistent resource and needs no separate name. | The object returned by `ds.open("nested/orders.csv")` |
+| Dataset | A root folder on a node with a public name | `dacp://localhost:8815/data1` |
+| folder Item | A logical grouping of child Items, with no content Stream | `/reports` |
+| data Item | A readable logical resource with a format, optional Arrow schema, and supported views | `/reports/orders`, `/image` |
+| Stream | Pulls one data Item's content through records or bytes views | `ds.open("/reports/orders")` |
 
-A Dataset URI has the form `dacp://host:port/dataset`. Append an Item's relative path to address it directly, for example `dacp://localhost:8815/data1/nested/orders.csv`. Directory datasets list files recursively: subdirectories appear in Item paths, so you do not need to open nested datasets one level at a time. SQL datasets expose configured allowed tables as a single level of Items. Dataset names identify collections within their node; names need not be the same across nodes.
+All Item paths begin with `/` and are rooted in the Dataset's logical namespace. They are not server filesystem paths or SQL table names. Administrators explicitly configure public names. Folders can combine file and SQL mappings; parent folders are inferred from paths, and empty folders can be declared explicitly. `/` is the implicit root folder and is not returned as an Item in listings. Data Items within a Dataset may have different formats and schemas.
 
-`Source.open(dataset_uri)` returns a DataSet; `ds.list()` retrieves Item metadata; `ds.open(item_path)` returns a Stream. `Source.open(item_uri)` can also return a Stream directly. Listing and reading are separate: calling `list()` does not download every Item's contents to the client.
+| Call | Behavior |
+|---|---|
+| `ds.list()` | Returns all Items recursively, including folders and data |
+| `ds.list("/")` | Returns only immediate children of the root folder |
+| `ds.list("/reports")` | Returns only immediate children of `/reports`, excluding the folder itself |
+| `ds.open("/reports/orders")` | Opens a data Item and returns a Stream |
 
-Streams offer two reading views:
+Returned paths always start at the Dataset root. Empty folders return an empty list. Missing paths, `list(path)` on data Items, and `open(path)` on folders produce errors. Relative paths, `.`, `..`, repeated separators, and trailing `/` (except root `/`) are rejected. URIs join the Dataset name and logical path, for example `dacp://localhost:8815/data1/reports/orders`. Listings return metadata without downloading content.
 
-- **Records view, `as_records()`**: yields Arrow RecordBatches with a schema, supporting CSV, NDJSON, DACP-generated Parquet with Arrow schema metadata, and SQL tables. Different Items can have different schemas.
-- **Bytes view, `as_bytes()`**: returns an incrementally readable binary file interface. File Items return original file bytes, including non-tabular files such as PNG images. SQL tables return Arrow IPC stream bytes, rather than CSV text. The transport carries byte chunks in single-column binary Arrow batches, which the SDK exposes as a continuous byte reader.
+An Item's `views` metadata describes its supported Stream views:
 
-Contents are pulled through Flight as the client reads. Before running this example, configure the mTLS certificate environment variables described in the quick start below:
+- `records`: reads Arrow RecordBatches with a schema, supporting CSV, NDJSON, DACP Parquet with Arrow schema metadata, and SQL tables.
+- `bytes`: reads binary content incrementally. File mappings return original file bytes; SQL mappings return an Arrow IPC stream. Binary resources such as PNG images offer only the bytes view.
+
+After configuring the mTLS certificates from the quick start:
 
 ```python
 from dacp import Source
 
 with Source.open("dacp://localhost:8815/data1") as ds:
-    for item in ds.list():
-        print(item.path, item.format)
-
-    with ds.open("nested/orders.csv") as stream:
+    for item in ds.list("/"):
+        print(item.path, item.kind, item.views)
+    print(ds.list("/reports"))
+    with ds.open("/reports/orders") as stream:
         for batch in stream.as_records():
             print(batch.to_pydict())
-
-    with ds.open("pixel.png") as stream:
+    with ds.open("/image") as stream:
         with stream.as_bytes() as reader:
             print(reader.read(8))
 ```
 
-Streams created with `ds.open()` share the Dataset's connection and should be used before the Dataset closes. A Stream opened directly through an Item URI owns its connection and closes it when its context exits. Use a context manager for a bytes reader to release it promptly; if you stop iterating records early, close the iterator to cancel reading. After a read failure, reopen the resource and read from the beginning; the current implementation has no resumable reads.
+Streams created through a Dataset share its connection and must be used before it closes. Streams opened directly through an Item URI own a separate connection. Use a context manager for byte readers, and close record iterators when stopping early to cancel reading. After failure, reopen and read from the beginning; reads are not resumable.
+
+## Item properties
+
+Item metadata includes the following optional properties, with unknown values distinct from a known `0`:
+
+| Property (Python / Scala) | Meaning |
+|---|---|
+| `last_modified_time_ms` / `lastModifiedTimeMs` | UTC Unix epoch milliseconds. Python's `last_modified_time` returns a timezone-aware UTC datetime; Scala's `lastModifiedTime` returns `Option[Instant]`. |
+| `total_size_bytes` / `totalSizeBytes` | Total content bytes; file mappings use original file size. |
+| `record_count` / `recordCount` | Exact logical record count. CSV excludes the header and supports quoted multiline records; NDJSON skips blank lines; Parquet uses footer metadata; SQL counts are unknown during ordinary browsing; explicit `ds.count("/reports/orders")` executes `COUNT(*)`. |
+
+Unknown values are `None` in Python and Scala (known Scala values use `Some`), with absent protobuf fields. SQL mappings do not estimate modification time or byte size. Non-record data such as PNG images has an unknown record count. All three folder properties are always unknown, including for empty folders; computing folder properties never visits child Items.
+
+Properties are returned by `list()`, `list(path)`, and data Item FlightInfo, and displayed by the interactive client's `ls`. Exact CSV/NDJSON counts scan files; explicit SQL counts execute queries, so listing many data Items can be expensive. SQL counts respect the source query timeout. Folder metadata does not trigger descendant scans; data Item statistics are not cached across requests. Properties are observations rather than an atomic snapshot with subsequent reads, and can change when source data changes.
+
+```python
+with Source.open("dacp://localhost:8815/data1") as ds:
+    for item in ds.list("/"):
+        print(item.path, item.last_modified_time, item.total_size_bytes, item.record_count)
+```
+
+## Logical namespace configuration and migration
+
+`datasets` explicitly maps each Dataset's public logical paths. The `file`, `sql`, and `table` bindings are private server-side source mappings. SQL connections are defined in private `sql_sources`, which do not automatically publish table names:
+
+```yaml
+datasets:
+  public:
+    items:
+      /reports/orders: {file: ../examples/data/nested/orders.csv}
+      /clients: {sql: warehouse, table: CUSTOMERS}
+      /empty: {kind: folder}
+sql_sources:
+  warehouse:
+    url: jdbc:h2:../examples/sql/sales
+    user: sa
+    password: ""
+    schema: PUBLIC
+    tables: [CUSTOMERS]
+```
+
+Merge this fragment with the server's listener, TLS, and allowlist configuration. Database tables must already exist; see the SQL configuration for a complete initialization example. The parent folder `/reports` is inferred. Other files and tables are not automatically published. Legacy `datasets: {name: /directory}` and `sql_datasets` configurations are no longer supported: migrate to explicit mappings and update client paths. Metadata, tickets, and data-service errors do not carry underlying paths or table names; fields and values in data content still reflect the source. Task outputs receive logical aliases such as `/result-1` and `/result-2`, keeping internal operator filenames private.
 
 ## Quick start
 
@@ -58,7 +107,7 @@ cd dacp-server
 sbt run
 ```
 
-After successful startup, the server prints the configured dataset names from `datasets` and `sql_datasets`, their types (`directory` / `sql`), and complete DACP URIs, sorted by name. Use these URIs directly in the interactive client. Temporary outputs created by tasks are not part of this startup listing.
+After successful startup, the server prints the public dataset names from `datasets` and their complete DACP URIs, sorted by name. Use these URIs directly in the interactive client. Temporary outputs created by tasks are not part of this startup listing.
 
 In another terminal, run from the project root:
 
@@ -69,51 +118,75 @@ export DACP_KEY="$PWD/examples/certs/client.key"
 .venv/bin/python examples/client.py
 ```
 
-The output includes `events.json`, `nested/orders.csv`, and `pixel.png`, two CSV records, and the PNG byte count. The TLS certificates are for local examples only. The script generates CA, server, and client certificates. The server certificate also permits clientAuth so the local task executor can connect to other nodes that trust the same CA.
+The output includes logical Items such as `/events`, `/reports/orders`, and `/image`, two CSV records, and the PNG byte count. The TLS certificates are for local examples only. The script generates CA, server, and client certificates. The server certificate also permits clientAuth so the local task executor can connect to other nodes that trust the same CA.
 
 ```python
 from dacp import Source
 
 with Source.open("dacp://localhost:8815/data1") as ds:
     print(ds.list())
-    for batch in ds.open("nested/orders.csv").as_records():
+    for batch in ds.open("/reports/orders").as_records():
         print(batch.to_pydict())
-    with ds.open("pixel.png").as_bytes() as stream:
+    with ds.open("/image").as_bytes() as stream:
         header = stream.read(8)
 ```
 
-The default URI port is 8815. An Item can also be opened directly: `Source.open("dacp://localhost:8815/data1/nested/orders.csv")`. The three certificates can instead be passed to `Source.open` as bytes through `tls_root_certs`, `cert_chain`, and `private_key`. Datasets and directly opened Streams support context managers.
+The default URI port is 8815. An Item can also be opened directly: `Source.open("dacp://localhost:8815/data1/reports/orders")`. The three certificates can instead be passed to `Source.open` as bytes through `tls_root_certs`, `cert_chain`, and `private_key`. Datasets and directly opened Streams support context managers.
 
-## Interactive client
+Ordinary SQL browsing and `show` do not execute `COUNT(*)`. Request an exact count with `count /reports/orders` or `count 1` in the shell, or `ds.count("/reports/orders")` in either SDK. Explicit counting can be slow and respects the SQL query timeout; it does not update cached listing metadata. Folders reject counting, and non-record data returns unknown.
+
+Requests for nonexistent datasets return `NOT_FOUND: dataset not found; check the dataset name`. Existing datasets still enforce URI allowlist authorization.
+
+## Interactive client dacp-shell
+
+`dacp-shell` is the interactive client command; `dacp` remains a compatibility alias. `ls` displays a table with an outer border and column headers: Path, #, Format, Bytes, Records, and Modified (UTC). The Kind column is omitted. Times use the format `2026-10-16 06:22:02`; unavailable values display as `-`. Empty listings also show headers and borders. Record previews from `show` use bordered tables with field names as headers; text keeps its plain text display, and hex keeps its original offset, hexadecimal, and ASCII layout. Folder paths are highlighted in bold cyan in terminals; redirected output, `NO_COLOR`, and `TERM=dumb` disable color.
 
 After installing the Python SDK, connect to a remote dataset to list Items and preview their contents in the terminal. Use the existing `DACP_CA`, `DACP_CERT`, and `DACP_KEY` environment variables, or provide certificate paths explicitly:
 
 ```bash
 .venv/bin/pip install -e './dacp-client[test]'
-.venv/bin/dacp dacp://localhost:8815/data1 --ca examples/certs/ca.crt --cert examples/certs/client.crt --key examples/certs/client.key
+.venv/bin/dacp-shell dacp://localhost:8815/data1 --ca examples/certs/ca.crt --cert examples/certs/client.crt --key examples/certs/client.key
 ```
 
-For a remote connection, replace `localhost:8815/data1` with the actual server address, port, and dataset name. You can also replace `.venv/bin/dacp` with `.venv/bin/python -m dacp.cli`.
+For a remote connection, replace `localhost:8815/data1` with the actual server address, port, and dataset name. You can also replace `.venv/bin/dacp-shell` with `.venv/bin/python -m dacp.cli`.
 
 ```text
-ls
+ls /
+ls /reports
 show 1
-show "nested/orders.csv" records
-show "events.json" text
-show "pixel.png" hex
+show "/reports/orders" records
+show "/events" text
+show "/image" hex
 use csv_data
 connect dacp://localhost:8815/data1
 help
 quit
 ```
 
-`ls` refreshes the listing and shows item numbers, formats, and paths. `show` accepts a number or a quoted path; it defaults to records for CSV/JSON/NDJSON/Parquet and hexadecimal previews for other formats. `text` displays raw bytes as UTF-8 while escaping terminal control characters. Use `records` for SQL tables, whose bytes view is Arrow IPC. Previews default to at most 20 rows or 4096 bytes, configurable with `--rows` and `--bytes`; rendered rows also have a character limit set by `--bytes`. Stopping a record preview cancels upstream reading to avoid downloading the entire dataset. Binary files appear as hexadecimal and ASCII; images are not opened directly. After a failure, retry the command or reconnect; a failed connection switch preserves the previous connection.
+`ls` lists all Items recursively; `ls /` or `ls /reports` lists only immediate folder children, showing numbers, formats, and logical paths. Browse folders with `ls` and preview data with `show`. `show` accepts a number or a quoted path; it defaults to records for CSV/JSON/NDJSON/Parquet and hexadecimal previews for other formats. `text` displays raw bytes as UTF-8 while escaping terminal control characters. Use `records` for SQL tables, whose bytes view is Arrow IPC. Previews default to at most 20 rows or 4096 bytes, configurable with `--rows` and `--bytes`; rendered field text per row shares a character budget set by `--bytes` (excluding truncation markers and table borders). Stopping a record preview cancels upstream reading to avoid downloading the entire dataset. Binary files appear as hexadecimal and ASCII; images are not opened directly. After a failure, retry the command or reconnect; a failed connection switch preserves the previous connection.
 
 The server currently has no dataset discovery endpoint, so startup and `connect` require a known dataset URI. `use` switches to a known dataset on the same server. Exit with `quit`, `exit`, or EOF to close the connection.
 
+## Scala client SDK
+
+The standalone Scala 2.13 SDK is in [dacp-client-scala](dacp-client-scala/README.md). It requires JDK 17 and sbt 1.10.x and does not depend on the server project. It provides `Source.open(datasetUri)`, `Dataset.list()` / `Dataset.list(path)`, `Dataset.open(itemPath)`, `ItemStream.asRecords()`, and `ItemStream.asBytes()`. Use `Source.openItem(itemUri)` for direct Item URI access.
+
+```bash
+cd dacp-client-scala
+sbt test publishLocal
+```
+
+Add the locally published dependency to your Scala 2.13 application's `build.sbt`:
+
+```scala
+libraryDependencies += "io.github.rdcn-link" %% "dacp-client-scala" % "0.1.0"
+```
+
+The artifact is not yet published to Maven Central. Credentials default to `DACP_CA`, `DACP_CERT`, and `DACP_KEY`, or can be passed explicitly through `TlsConfig`. Record readers advance with `next()` and expose Arrow batches through `root`; the root is reused, so consume or copy it before advancing. Byte readers implement Java `InputStream`. Use `scala.util.Using.resource` to close connections, items, and readers. Each Flight RPC has a default deadline of 30 seconds for its full lifetime, configurable through `timeoutSeconds`. See the SDK documentation for Arrow JVM options, complete examples, and test instructions.
+
 ## Serving directories and SQL databases together
 
-The `sql_datasets` configuration adds SQL support while remaining compatible with the existing `datasets` directory configuration. SQL tables use the same `Source.open / list / open / as_records` API. Table listings include Arrow schemas, and the bytes view is an Arrow IPC stream. H2 and PostgreSQL JDBC drivers are included, with table allowlists, credentials from environment variables, and bounded fetch and batch sizes. See [SQL configuration, types, and run instructions](examples/sql/README.md).
+Configure database connections through private `sql_sources`, then explicitly map public logical paths under `datasets`. SQL and file mappings can share a folder and use the same `Source.open / list / open / as_records` API. SQL data Item listings include Arrow schemas, and their bytes view is an Arrow IPC stream. H2 and PostgreSQL JDBC drivers are included, with table allowlists, credentials from environment variables, and bounded fetch and batch sizes. See [SQL configuration, types, and run instructions](examples/sql/README.md).
 
 ```bash
 cd dacp-server
@@ -133,7 +206,7 @@ cd dacp-server
 sbt 'run ../examples/server.yaml ../examples/convert.yaml'
 ```
 
-The DAG in the YAML file runs after Flight starts. `csv_data` is a CSV dataset pointing to `examples/data/nested`; it shares local files with `data1`, the mixed dataset used to demonstrate PNG reads. Successful execution logs the URIs for `s1` and `s2`. Parquet files are stored under `examples/output/<output>-<uuid>/`. The service continues running and exposing outputs, which are automatically deleted when their TTL expires. Stopping the service also cleans up outputs.
+The DAG in the YAML file runs after Flight starts. `csv_data` explicitly publishes the logical Item `/orders`, mapped to the example CSV; it shares local files with `data1`, the mixed dataset used to demonstrate PNG reads. Successful execution logs the URIs for `s1` and `s2`. Parquet files are stored under `examples/output/<output>-<uuid>/`. The service continues running and exposing outputs, which are automatically deleted when their TTL expires. Stopping the service also cleans up outputs.
 
 From the project root, using the certificate environment variables above:
 
@@ -147,7 +220,7 @@ The operator library supports a standalone web service. When `operator_library_u
 
 ### DAG and operator contract
 
-`input` is a single URI or an upstream `output` name; `inputs` is a list of such values. Upstream references also support `s1/part-0.parquet`. Tasks validate duplicate names, unknown dependencies, cycles, and target nodes before running serially in topological order. Execution defaults to the node hosting the first input URI, or can be set explicitly with `node: dacp://host:port`. The coordinating node resolves upstream references into concrete URIs and dispatches tasks through mTLS Flight actions; no central registry is required. Each subtask gets a new container with networking disabled, a read-only `/input` mount, and a writable `/output` mount.
+`input` is a single URI or an upstream `output` name; `inputs` is a list of such values. Upstream references also support `s1/result-1`. Tasks validate duplicate names, unknown dependencies, cycles, and target nodes before running serially in topological order. Execution defaults to the node hosting the first input URI, or can be set explicitly with `node: dacp://host:port`. The coordinating node resolves upstream references into concrete URIs and dispatches tasks through mTLS Flight actions; no central registry is required. Each subtask gets a new container with networking disabled, a read-only `/input` mount, and a writable `/output` mount.
 
 `/input/manifest.json` contains `file/path/format`; `file` points to an Arrow IPC stream. The bytes view uses `data: binary`, with one raw byte chunk per row. `/input/params.json` contains the parameter object. Single inputs use a FIFO, with IPC EOS marking completion; container reads drive upstream consumption. Multiple inputs are fully materialized on disk before the container starts. Temporary input directories are removed on completion or failure, and failed output directories are also deleted. Outputs are registered only when the container exits with code 0. The maximum task timeout is 30 minutes.
 
@@ -179,8 +252,10 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 
 | Flight call | Response |
 |---|---|
-| GetFlightInfo `[datasets, dataset]` | `app_metadata` contains a protobuf `DataSet` with a recursively flattened Item listing; no DoGet endpoint |
-| GetFlightInfo `[datasets, dataset, relative/item]` | Arrow schema and a FlightEndpoint containing a protobuf `Ticket` |
+| GetFlightInfo `[datasets, dataset]` | `app_metadata` contains a protobuf `DataSet` with all logical Items (folder and data); no DoGet endpoint |
+| GetFlightInfo `[datasets, dataset, list, /path]` | Returns only immediate children of a folder |
+| GetFlightInfo `[datasets, dataset, count, /path]` | Explicit exact record count for a data Item (unknown for non-record data); no DoGet endpoint |
+| GetFlightInfo `[datasets, dataset, /logical/item]` | Arrow schema and a FlightEndpoint containing a protobuf `Ticket` |
 | DoGet `Ticket(dataset,item,view)` | `view=records` returns records; `view=bytes` returns a single binary column containing raw file bytes |
 
 The records view supports CSV, NDJSON, and dacp-generated Parquet. Any file can use the bytes view. The SDK wraps binary batches in an incrementally readable `io.BufferedReader`. Tickets describe resources and views; they are not authentication tokens. Both GetFlightInfo and DoGet validate URI allowlists, normalized paths, and symbolic-link boundaries. Links outside allowed boundaries are excluded from listings.
@@ -191,14 +266,14 @@ Configuration in `examples/server.yaml`:
 |---|---|
 | `host` / `port` | Listening address / port |
 | `public_host` | Hostname for external URIs; allowlists use this name and an explicit port |
-| `datasets` | Dataset name → local directory; MVP names occupy one URI path segment |
+| `datasets` | Dataset name → explicit `items` logical mappings; names occupy one URI path segment |
 | `allowed_uri_prefixes` | Node-level URI prefix allowlist, matched at path segment boundaries; output names also require authorization |
 | `tls_cert` / `tls_key` / `tls_ca` | PEM certificate, private key, and trusted client CA; mTLS is mandatory |
 | `batch_size` | Maximum rows per batch in CSV/JSON records views |
 | `byte_chunk` | Maximum bytes per binary row in bytes views |
 | `infer_sample` | Number of batches sampled for server-side records schema inference |
 | `output_ttl_seconds` | Output lifetime starting at successful registration |
-| `sql_datasets` | JDBC datasets: url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
+| `sql_sources` | Private JDBC sources (tables are not automatically published): url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
 | `operator_library_url` / `operator_cache` / `operator_max_bytes` | Remote operator library URL / local immutable version cache / maximum archive size in bytes (default 8 GiB) |
 | `operator_library` / `output_root` | Local operator library / temporary output root |
 | `task_peers` | Node origins permitted for task dispatch; the local node is always allowed; no central discovery service |
@@ -221,7 +296,7 @@ Service errors use Flight/gRPC statuses and explicit dacp error names: missing r
 .venv/bin/python examples/verify_job.py
 ```
 
-Validation recorded for the current environment includes 20 Scala tests, 15 Python tests (including operator library service tests), and real mTLS checks for local directory/H2 SQL tables (records and Arrow IPC bytes views), enumeration/CSV/PNG, zstd conversion in containers, materialized dual inputs/snappy, output schemas, and DoGet after TTL expiry. `sbt run` was also started and verified. The current network cannot pull Temurin base images from Docker Hub, so container integration used a temporary test image built with the local JRE and the same `sbt stage` artifacts. Downloading base images for the repository's standard multi-stage Dockerfile still requires access to Docker Hub.
+Validation for this logical namespace update includes 29 server Scala tests, 9 Scala SDK tests, and 44 Python tests (including operator library service tests), plus real mTLS checks for hierarchical listing, logical aliases, CSV/PNG, H2 SQL records/Arrow IPC bytes, and the interactive client. Both SDKs were verified against servers started on isolated ports. Docker socket access is unavailable in this session, so container DAG integration was not rerun; previous container checks covered zstd conversion, materialized dual inputs/snappy, output schemas, and DoGet after TTL expiry. Building the standard Dockerfile still requires access to Docker Hub to download base images.
 
 Unit tests cover placement across nodes, upstream URI resolution, worker permissions, capacity rejection, no retry on failure, descriptors/protobuf, recursive enumeration, path traversal boundaries, TTL cleanup, schema inference/explicit declarations/conflicts, DAG validation, Arrow binary chunk conversion to Parquet, container Arrow output contract round trips, and partial byte reads in the SDK. Security checks verify connection failure without a client certificate and rejection of unauthorized datasets even with a valid certificate.
 
@@ -236,7 +311,7 @@ Unit tests cover placement across nodes, upstream URI resolution, worker permiss
 | No chunk retry / checkpoint / resume / deduplication | Reader failure terminates reading; tasks restart from the source; these mechanisms are not implemented |
 | Connection-level mTLS and URI prefix allowlists | `useMTlsClientVerification`, authorization in both GetFlightInfo and DoGet; no login/token |
 | DataSet → Item → Stream | `DataSetAdapter`, `Item`, SDK `DataSet/Stream` |
-| Recursively flattened directories and equivalent single-level database access | `DirectoryAdapter` recursive files; `SqlAdapter` JDBC tables at one level with Arrow schemas |
+| Storage-independent hierarchical namespace | Explicit `NamespaceAdapter` mappings; folder/data kinds, absolute logical paths, and hierarchical listing |
 | Records / bytes views | Arrow schema / single binary column and SDK byte input stream |
 | YAML DAGs and a global name@version library | `Jobs` topological sorting, standalone HTTP(S) operator library, execution-node verification and caching of image archives; local directory mode retained, no hot updates |
 | Computation follows data; nodes collaborate | `JobCoordinator` places tasks by URI and dispatches through mTLS Flight actions; workers execute locally without forwarding |
@@ -247,9 +322,9 @@ Unit tests cover placement across nodes, upstream URI resolution, worker permiss
 | Inferred / explicit schema, fail on conflict | Bounded sampling, subsequent validation, explicit column mapping; no automatic widening |
 | Output schemas in metadata | Parquet footer, `_schema.json`, output Item protobuf |
 | Cross-language protobuf / YAML | `proto/dacp.proto`, YAML jobs; Python bindings require no deployed protoc |
-| No S3 / drill-down / pandas / HF | Not implemented, preserving the basic interface; SQL adaptation was added as a subsequent extension |
+| No S3 / pandas / HF | Not implemented, preserving the basic interface; SQL adaptation was added as a subsequent extension |
 
-The output registry in this version resides only in memory. Tasks must be rerun after a restart; old tasks are not restored. Parquet record reads support files generated by this converter with an Arrow schema footer; other Parquet files can still be read as bytes. Directory listing size grows with the number of files, while data content is always streamed.
+The output registry in this version resides only in memory. Tasks must be rerun after a restart; old tasks are not restored. Parquet record reads support files generated by this converter with an Arrow schema footer; other Parquet files can still be read as bytes. Logical listing size grows with the number of published Items, while data content is always streamed.
 
 Collaboration across nodes is implemented: any authorized node can accept `Job.run(node, yaml)`, coordinate the DAG through Flight `dacp.run_job`, and dispatch resolved tasks through `dacp.execute_task` to the node hosting the inputs or specified in YAML. Outputs remain on the execution node and are pulled through the existing Flight data interface. See [the two-node example and run instructions](examples/multi-node/README.md).
 

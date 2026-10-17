@@ -37,15 +37,15 @@ class CoreSpec extends AnyFunSuite {
   test("protobuf metadata and descriptor namespaces round-trip") { temp { p =>
     Files.writeString(p.resolve("x.csv"),"id\n1\n")
     val a = new RootAllocator(); val r = new OutputRegistry(10000)
-    val c = Config("localhost",8815,"localhost",Map("d"->p),Seq("dacp://localhost:8815/d"),p,p,p)
+    val c = Config("localhost",8815,"localhost",Map("d" -> Seq(PublishedItem("/records", file = Some(p.resolve("x.csv"))))),Seq("dacp://localhost:8815/d"),p,p,p)
     val producer = new Producer(c,a,r)
     try {
       val info = producer.getFlightInfo(null,FlightDescriptor.path("datasets","d"))
       val meta = Metadata.DataSet.parseFrom(info.getAppMetadata)
-      assert(meta.getItems(0).getPath == "x.csv")
-      val item = producer.getFlightInfo(null,FlightDescriptor.path("datasets","d","x.csv"))
+      assert(meta.getItems(0).getPath == "/records")
+      val item = producer.getFlightInfo(null,FlightDescriptor.path("datasets","d","/records"))
       val ticket = Metadata.Ticket.parseFrom(item.getEndpoints.get(0).getTicket.getBytes)
-      assert(ticket.getDataset == "d" && ticket.getItem == "x.csv")
+      assert(ticket.getDataset == "d" && ticket.getItem == "/records")
       intercept[FlightRuntimeException](producer.getFlightInfo(null,FlightDescriptor.path("wrong","d")))
       intercept[IllegalArgumentException](c.authorize("d2","x"))
       val o = Files.createTempDirectory("output-test"); Files.writeString(o.resolve("x.csv"),"id\n1\n")
@@ -78,6 +78,7 @@ class CoreSpec extends AnyFunSuite {
     finally boundary.close()
     assert(Files.exists(output.resolve("_schema.json")))
     assert(Parquet.schema(output.resolve("part-0.parquet")).getFields.get(0).getName == "id")
+    assert(Parquet.recordCount(output.resolve("part-0.parquet")) == 2L)
     val readAllocator=new RootAllocator(); var rows=0
     try Parquet.stream(output.resolve("part-0.parquet"),readAllocator,1)(_ => (),r => rows+=r.getRowCount,() => ()) finally readAllocator.close()
     assert(rows == 2)

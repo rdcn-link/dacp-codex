@@ -6,7 +6,7 @@ tasks:
     params: {from: auto, to: parquet, schema: infer, compression: zstd, row_group_size: 128MB}
     output: s1
   - id: convert_item
-    input: dacp://localhost:8815/data1/nested/orders.csv
+    input: dacp://localhost:8815/data1/reports/orders
     operator: format_convert@1.0
     params:
       from: csv

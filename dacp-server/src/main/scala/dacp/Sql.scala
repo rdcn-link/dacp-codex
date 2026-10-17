@@ -67,7 +67,18 @@ class SqlAdapter(config: SqlConfig, batchSize: Int) extends DataSetAdapter {
     try {
       statement.setQueryTimeout(config.queryTimeoutSeconds)
       val rs = statement.executeQuery(s"SELECT * FROM $name WHERE 1=0")
-      try Item(item,"arrow",Some(SqlAdapter.schema(rs.getMetaData))) finally rs.close()
+      val schema = try SqlAdapter.schema(rs.getMetaData) finally rs.close()
+      Item(item,"arrow",Some(schema))
+    } finally statement.close()
+  }
+  def count(item: String): Long = withConnection { c =>
+    val name = qualified(c,item)
+    val statement = c.createStatement()
+    try {
+      statement.setQueryTimeout(config.queryTimeoutSeconds)
+      val result = statement.executeQuery(s"SELECT COUNT(*) FROM $name")
+      try { require(result.next(), "record count unavailable"); result.getLong(1) }
+      finally result.close()
     } finally statement.close()
   }
   def describe(item: String): Item = withConnection(c => describe(c,item))

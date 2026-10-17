@@ -28,6 +28,11 @@ object Parquet {
     }.asJava)
     record
   }
+  def recordCount(p: Path): Long = {
+    val reader = ParquetFileReader.open(HadoopInputFile.fromPath(hp(p),conf()))
+    try reader.getFooter.getBlocks.asScala.foldLeft(0L)((sum, block) => Math.addExact(sum, block.getRowCount))
+    finally reader.close()
+  }
   def schema(p: Path): Schema = {
     val reader = ParquetFileReader.open(HadoopInputFile.fromPath(hp(p),conf()))
     try {

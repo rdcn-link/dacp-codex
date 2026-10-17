@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\ndacp.proto\x12\rdacp.protocol\":\n\x04Item\x12\x0c\n\x04path\x18\x01 \x01(\t\x12\x0e\n\x06\x66ormat\x18\x02 \x01(\t\x12\x14\n\x0c\x61rrow_schema\x18\x03 \x01(\x0c\":\n\x07\x44\x61taSet\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12\"\n\x05items\x18\x02 \x03(\x0b\x32\x13.dacp.protocol.Item\"@\n\x05\x45rror\x12&\n\x04\x63ode\x18\x01 \x01(\x0e\x32\x18.dacp.protocol.ErrorCode\x12\x0f\n\x07message\x18\x02 \x01(\t\"5\n\x06Ticket\x12\x0f\n\x07\x64\x61taset\x18\x01 \x01(\t\x12\x0c\n\x04item\x18\x02 \x01(\t\x12\x0c\n\x04view\x18\x03 \x01(\t\"g\n\x12\x45xecuteTaskRequest\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0e\n\x06inputs\x18\x02 \x03(\t\x12\x10\n\x08operator\x18\x03 \x01(\t\x12\x13\n\x0bparams_json\x18\x04 \x01(\x0c\x12\x0e\n\x06output\x18\x05 \x01(\t\"\'\n\x11\x45xecuteTaskResult\x12\x12\n\noutput_uri\x18\x01 \x01(\t\"\x1d\n\rRunJobRequest\x12\x0c\n\x04yaml\x18\x01 \x01(\t\"y\n\x0cRunJobResult\x12\x39\n\x07outputs\x18\x01 \x03(\x0b\x32(.dacp.protocol.RunJobResult.OutputsEntry\x1a.\n\x0cOutputsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*n\n\tErrorCode\x12\x0b\n\x07UNKNOWN\x10\x00\x12\r\n\tNOT_FOUND\x10\x01\x12\x0b\n\x07\x45XPIRED\x10\x02\x12\r\n\tFORBIDDEN\x10\x03\x12\x13\n\x0fSCHEMA_CONFLICT\x10\x04\x12\x14\n\x10INVALID_ARGUMENT\x10\x05\x42\nB\x08Metadatab\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\ndacp.proto\x12\rdacp.protocol\"\xf5\x01\n\x04Item\x12\x0c\n\x04path\x18\x01 \x01(\t\x12\x0e\n\x06\x66ormat\x18\x02 \x01(\t\x12\x14\n\x0c\x61rrow_schema\x18\x03 \x01(\x0c\x12\x0c\n\x04kind\x18\x04 \x01(\t\x12\r\n\x05views\x18\x05 \x03(\t\x12\"\n\x15last_modified_time_ms\x18\x06 \x01(\x03H\x00\x88\x01\x01\x12\x1d\n\x10total_size_bytes\x18\x07 \x01(\x03H\x01\x88\x01\x01\x12\x19\n\x0crecord_count\x18\x08 \x01(\x03H\x02\x88\x01\x01\x42\x18\n\x16_last_modified_time_msB\x13\n\x11_total_size_bytesB\x0f\n\r_record_count\":\n\x07\x44\x61taSet\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12\"\n\x05items\x18\x02 \x03(\x0b\x32\x13.dacp.protocol.Item\"@\n\x05\x45rror\x12&\n\x04\x63ode\x18\x01 \x01(\x0e\x32\x18.dacp.protocol.ErrorCode\x12\x0f\n\x07message\x18\x02 \x01(\t\"5\n\x06Ticket\x12\x0f\n\x07\x64\x61taset\x18\x01 \x01(\t\x12\x0c\n\x04item\x18\x02 \x01(\t\x12\x0c\n\x04view\x18\x03 \x01(\t\"g\n\x12\x45xecuteTaskRequest\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0e\n\x06inputs\x18\x02 \x03(\t\x12\x10\n\x08operator\x18\x03 \x01(\t\x12\x13\n\x0bparams_json\x18\x04 \x01(\x0c\x12\x0e\n\x06output\x18\x05 \x01(\t\"\'\n\x11\x45xecuteTaskResult\x12\x12\n\noutput_uri\x18\x01 \x01(\t\"\x1d\n\rRunJobRequest\x12\x0c\n\x04yaml\x18\x01 \x01(\t\"y\n\x0cRunJobResult\x12\x39\n\x07outputs\x18\x01 \x03(\x0b\x32(.dacp.protocol.RunJobResult.OutputsEntry\x1a.\n\x0cOutputsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*n\n\tErrorCode\x12\x0b\n\x07UNKNOWN\x10\x00\x12\r\n\tNOT_FOUND\x10\x01\x12\x0b\n\x07\x45XPIRED\x10\x02\x12\r\n\tFORBIDDEN\x10\x03\x12\x13\n\x0fSCHEMA_CONFLICT\x10\x04\x12\x14\n\x10INVALID_ARGUMENT\x10\x05\x42\nB\x08Metadatab\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'dacp_pb2', globals())
@@ -23,24 +23,24 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   DESCRIPTOR._serialized_options = b'B\010Metadata'
   _RUNJOBRESULT_OUTPUTSENTRY._options = None
   _RUNJOBRESULT_OUTPUTSENTRY._serialized_options = b'8\001'
-  _ERRORCODE._serialized_start=570
-  _ERRORCODE._serialized_end=680
-  _ITEM._serialized_start=29
-  _ITEM._serialized_end=87
-  _DATASET._serialized_start=89
-  _DATASET._serialized_end=147
-  _ERROR._serialized_start=149
-  _ERROR._serialized_end=213
-  _TICKET._serialized_start=215
-  _TICKET._serialized_end=268
-  _EXECUTETASKREQUEST._serialized_start=270
-  _EXECUTETASKREQUEST._serialized_end=373
-  _EXECUTETASKRESULT._serialized_start=375
-  _EXECUTETASKRESULT._serialized_end=414
-  _RUNJOBREQUEST._serialized_start=416
-  _RUNJOBREQUEST._serialized_end=445
-  _RUNJOBRESULT._serialized_start=447
-  _RUNJOBRESULT._serialized_end=568
-  _RUNJOBRESULT_OUTPUTSENTRY._serialized_start=522
-  _RUNJOBRESULT_OUTPUTSENTRY._serialized_end=568
+  _ERRORCODE._serialized_start=758
+  _ERRORCODE._serialized_end=868
+  _ITEM._serialized_start=30
+  _ITEM._serialized_end=275
+  _DATASET._serialized_start=277
+  _DATASET._serialized_end=335
+  _ERROR._serialized_start=337
+  _ERROR._serialized_end=401
+  _TICKET._serialized_start=403
+  _TICKET._serialized_end=456
+  _EXECUTETASKREQUEST._serialized_start=458
+  _EXECUTETASKREQUEST._serialized_end=561
+  _EXECUTETASKRESULT._serialized_start=563
+  _EXECUTETASKRESULT._serialized_end=602
+  _RUNJOBREQUEST._serialized_start=604
+  _RUNJOBREQUEST._serialized_end=633
+  _RUNJOBRESULT._serialized_start=635
+  _RUNJOBRESULT._serialized_end=756
+  _RUNJOBRESULT_OUTPUTSENTRY._serialized_start=710
+  _RUNJOBRESULT_OUTPUTSENTRY._serialized_end=756
 # @@protoc_insertion_point(module_scope)

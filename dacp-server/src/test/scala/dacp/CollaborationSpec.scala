@@ -16,7 +16,7 @@ class CollaborationSpec extends AnyFunSuite {
   val yaml = s"""job: distributed
     |tasks:
     | - {id: first, input: '$b/data', operator: format_convert@1.0, output: converted}
-    | - {id: relay, input: converted/part-0.parquet, node: '$a', operator: identity@1.0, output: result}
+    | - {id: relay, input: converted/result-1, node: '$a', operator: identity@1.0, output: result}
     | - id: joined
     |   inputs: [converted, result]
     |   node: '$b'
@@ -28,7 +28,7 @@ class CollaborationSpec extends AnyFunSuite {
     val coordinator = new JobCoordinator(config,(node,task) => {calls += node -> task;s"$node/${task.output}"})
     val result = coordinator.run(yaml)
     assert(calls.map(_._1).toSeq == Seq(b,a,b))
-    assert(calls(1)._2.inputs == Seq(b+"/converted/part-0.parquet"))
+    assert(calls(1)._2.inputs == Seq(b+"/converted/result-1"))
     assert(calls(2)._2.inputs == Seq(b+"/converted",a+"/result"))
     assert(calls.forall(_._2.node.isEmpty))
     assert(result("joined") == b+"/joined")

@@ -6,7 +6,7 @@ tasks:
     params: {from: auto, to: parquet, schema: infer, compression: zstd}
     output: b_converted
   - id: relay_to_a
-    input: b_converted/part-0.parquet
+    input: b_converted/result-1
     node: dacp://localhost:8815
     operator: identity@1.0
     output: a_relay

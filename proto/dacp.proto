@@ -1,7 +1,18 @@
 syntax = "proto3";
 package dacp.protocol;
 option java_outer_classname = "Metadata";
-message Item { string path = 1; string format = 2; bytes arrow_schema = 3; }
+message Item {
+  // Public logical address rooted at the Dataset, never a storage path.
+  string path = 1;
+  string format = 2;
+  bytes arrow_schema = 3;
+  // "folder" or "data"; source storage types remain private.
+  string kind = 4;
+  repeated string views = 5; // "records", "bytes"; empty for folders.
+  optional int64 last_modified_time_ms = 6; // UTC Unix epoch milliseconds; absent if unknown.
+  optional int64 total_size_bytes = 7; // Content bytes; absent if unknown, zero is known empty.
+  optional int64 record_count = 8; // Exact logical record count; absent if unknown/not applicable.
+}
 message DataSet { string uri = 1; repeated Item items = 2; }
 enum ErrorCode { UNKNOWN = 0; NOT_FOUND = 1; EXPIRED = 2; FORBIDDEN = 3; SCHEMA_CONFLICT = 4; INVALID_ARGUMENT = 5; }
 message Error { ErrorCode code = 1; string message = 2; }

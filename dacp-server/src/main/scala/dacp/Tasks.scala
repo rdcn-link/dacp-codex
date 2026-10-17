@@ -45,6 +45,21 @@ object Jobs {
     ordered.result()
   }
 }
+/** Task inputs use the same published namespace as SDK clients. */
+private[dacp] object TaskInputs {
+  def discover(client: FlightClient, dataset: String, path: Option[String]): Seq[(String,String)] = path match {
+    case Some(logical) =>
+      LogicalPath.validate(logical)
+      val info = client.getInfo(FlightDescriptor.path("datasets",dataset,logical))
+      val item = Metadata.Item.parseFrom(info.getAppMetadata)
+      require(item.getKind == "data", "task input must be a data item")
+      Seq(item.getPath -> item.getFormat)
+    case None =>
+      val info = client.getInfo(FlightDescriptor.path("datasets",dataset))
+      Metadata.DataSet.parseFrom(info.getAppMetadata).getItemsList.asScala
+        .filter(_.getKind == "data").map(i => i.getPath -> i.getFormat).toVector
+  }
+}
 class TaskExecutor(config: Config, allocator: BufferAllocator, registry: OutputRegistry) {
   private case class Remote(client: FlightClient, dataset: String, items: Seq[(String,String)])
   private def remote(value: String): Remote = {
@@ -54,13 +69,7 @@ class TaskExecutor(config: Config, allocator: BufferAllocator, registry: OutputR
     require(parts.nonEmpty && parts(0).nonEmpty,"missing input dataset")
     val client = NodeConnection.open(config,allocator,value)
     try {
-      val items = if (parts.length == 2) {
-        val info = client.getInfo(FlightDescriptor.path("datasets",parts(0),parts(1)))
-        val format = if (info.getAppMetadata != null && info.getAppMetadata.nonEmpty)
-          Metadata.Item.parseFrom(info.getAppMetadata).getFormat else Data.format(Path.of(parts(1)))
-        Seq(parts(1) -> format)
-      } else Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets",parts(0))).getAppMetadata)
-        .getItemsList.asScala.map(i => i.getPath -> i.getFormat).toSeq
+      val items = TaskInputs.discover(client, parts(0), parts.lift(1).map("/" + _))
       Remote(client,parts(0),items)
     } catch { case t: Throwable => client.close(); throw t }
   }
