@@ -1,5 +1,7 @@
 # dacp MVP
 
+<img src="assets/dacp-logo.png" alt="DACP logo: connected nodes forming a C for Collaborative" width="480">
+
 [中文](README.md)
 
 An Arrow Flight data collaboration protocol for autonomous data nodes. It uses a Scala 2.13 server, a Python/PyArrow SDK, protobuf metadata, YAML DAGs, and one Docker container per task. Nodes require neither a cluster nor a central registry. Directories and JDBC SQL databases can both be exposed as datasets, with SQL tables represented as a single level of Items.

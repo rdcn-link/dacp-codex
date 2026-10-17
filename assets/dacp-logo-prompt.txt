@@ -1,0 +1,5 @@
+Generated with the built-in image_gen tool.
+
+Use case: logo-brand
+Asset type: project logo for DACP, an open-source Arrow Flight data collaboration protocol with autonomous nodes.
+Primary request: Design one simple, polished, flat logo: a compact geometric D-shaped symbol constructed from three equal connected data nodes, paired with the exact word DACP in clean bold geometric sans-serif lettering. The nodes communicate peer collaboration without a central hub. Minimal shapes, consistent stroke thickness, generous spacing, crisp edges, recognizable at small sizes. Horizontal logo lockup, symbol on left and DACP on right. Deep blue with a teal accent. Transparent background, no backdrop, no gradients, no shadows, no mockup, no slogan, no extra text. Exact lettering: DACP.

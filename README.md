@@ -1,5 +1,7 @@
 # dacp MVP
 
+<img src="assets/dacp-logo.png" alt="DACP 标志：以相连节点组成的 C，代表协作" width="480">
+
 [English](README_en.md)
 
 面向自治数据节点的 Arrow Flight 数据协作协议。Scala 2.13 服务端、Python/PyArrow SDK、protobuf 元数据、YAML DAG、一任务一 Docker 容器。节点无需部署集群或中心注册服务。目录与 JDBC SQL 数据库可同时作为数据集暴露，SQL 表作为单层 Item。

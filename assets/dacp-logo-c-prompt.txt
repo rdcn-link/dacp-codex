@@ -1,0 +1,3 @@
+Generated using the built-in image_gen tool, editing the original DACP logo.
+
+Use case: logo-brand. Edit target: the supplied DACP logo. Change the left symbol from a D to a clearly recognizable capital C, representing Collaborative. Construct a simple open-right C-shaped arc with three small connected circular peer nodes integrated along the arc. Keep the right opening generously clear so the silhouette unambiguously reads C, not D or G. Remove the old D vertical stroke and interior diagonals. Preserve the exact DACP wordmark, horizontal composition, deep blue and teal palette, clean flat styling, and transparent background. Use teal for one node and deep blue for the remaining symbol and wordmark. No added words, no slogan, no shadows, no backdrop.
