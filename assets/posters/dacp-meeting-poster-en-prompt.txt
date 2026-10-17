@@ -1,0 +1,23 @@
+Generated using the built-in image_gen tool with assets/dacp-logo.png as the brand reference.
+
+Use case: ads-marketing.
+Asset type: finished portrait conference meeting poster for the DACP software project, suitable for printing and digital sharing. High resolution portrait approximately ISO A-series aspect ratio, preferably 2048 x 2896 or larger.
+Input image: supplied DACP logo is a brand reference. Reproduce the existing C-shaped connected-node symbol and exact DACP wordmark faithfully near the top. C means Collaborative. Do not turn the symbol into D.
+Art direction: polished Swiss-inspired technology conference poster, white background, deep navy-blue typography, teal accents, exceptionally clean grid, strong typography, generous margins, clear reading order. Professional and restrained, attractive at a distance. Flat crisp graphic illustration, no photography, no mockup or surrounding room. Full poster fills image.
+Layout: top brand logo; very large two-line headline; concise subheading. Middle: beautiful simple conceptual illustration of three equal autonomous data nodes connected as peers, using blue and teal. Each node contains a minimal database or file symbol; show small flowing batches between nodes, suggesting data collaboration without a central hub. Bottom half: three concise feature blocks, then a prominent GitHub address in footer.
+Use only the following text, spelled exactly, with excellent legibility:
+"DACP"
+"Collaborate across"
+"autonomous data nodes."
+"Data collaboration built on Apache Arrow Flight"
+"AUTONOMOUS BY DESIGN"
+"No central registry. Each node serves its own data."
+"STREAM DATA"
+"Read files and SQL tables through a Python SDK."
+"RUN TASKS NEAR DATA"
+"Coordinate YAML DAGs across nodes with Docker operators."
+"Scala server  /  Python SDK  /  mTLS"
+"Explore the project"
+"github.com/rdcn-link/dacp-codex"
+"MVP"
+Constraints: faithfully communicate an MVP, no invented performance statistics, no claims that data never moves, no partner logos, no QR codes, no extra slogans or body copy. Text must be readable and not clipped. Repository address must be exact. Make the main headline very large. Keep footer comfortably inside print-safe margins. No gradients, glows, 3D, shadows, stock-circuit imagery, or visual clutter. Opaque white background.
