@@ -40,7 +40,11 @@ class SourceSpec extends AnyFunSuite {
           .addItems(Metadata.Item.newBuilder().setPath("/unknown").setKind("data")).build()
         val ticket = Metadata.Ticket.newBuilder().setDataset(parts(1)).setItem(if(parts.size == 3) parts(2) else "/records").build()
         new FlightInfo(recordsSchema, desc, List(new FlightEndpoint(new Ticket(ticket.toByteArray))).asJava,
-          -1, -1, false, org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT, if(parts.size == 3) meta.getItems(0).toByteArray else meta.toByteArray)
+          -1, -1, false, org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT, if(parts.size == 3) {
+            if (parts(2) == "/archive") Metadata.Item.newBuilder().setPath("/archive").setKind("folder").setFormat("tar-gzip").addViews("bytes").build().toByteArray
+            else if (parts(2) == "/folder") Metadata.Item.newBuilder().setPath("/folder").setKind("folder").build().toByteArray
+            else meta.getItems(0).toByteArray
+          } else meta.toByteArray)
       }
       override def getStream(ctx: FlightProducer.CallContext, ticket: Ticket, listener: FlightProducer.ServerStreamListener): Unit = {
         val t = Metadata.Ticket.parseFrom(ticket.getBytes)
@@ -111,6 +115,14 @@ class SourceSpec extends AnyFunSuite {
       }
     }
   }}
+  test("container folders open bytes by advertised capabilities; ordinary folders reject open") { server { ds =>
+    Using.resource(ds.open("/archive")) { item =>
+      assert(item.views == Seq("bytes"))
+      Using.resource(item.asBytes()) { reader => assert(new String(reader.readAllBytes(),"UTF-8") == "abcdef") }
+      intercept[IllegalArgumentException](item.asRecords())
+    }
+    intercept[IllegalArgumentException](ds.open("/folder"))
+  }}
   test("closing an item cancels and closes its active readers") { server { ds =>
     val item = ds.open("/records")
     val records = item.asRecords(); assert(records.next())
@@ -163,6 +175,29 @@ class SourceSpec extends AnyFunSuite {
                 var count = 0
                 while (reader.next()) count += reader.root.getRowCount
                 assert(count == 2)
+              }
+            }
+          }
+          sys.env.get("DACP_SCALA_CONTAINER_DIR").foreach { directory =>
+            val sources = Seq("/archive" -> "reports.zip", "/images" -> "images.ZIP", "/bundle" -> "reports.tar",
+              "/bundle_gzip" -> "reports.tar.gz", "/orders.csv.gz" -> "orders.csv.gz")
+            sources.foreach { case (alias,filename) =>
+              val metadata = ds.list("/").find(_.path == alias).get
+              assert(metadata.kind == "folder" && metadata.views == Seq("bytes"))
+              assert(metadata.totalSizeBytes.isEmpty && metadata.recordCount.isEmpty && metadata.lastModifiedTimeMs.isEmpty)
+              Using.resource(ds.open(alias)) { item =>
+                Using.resource(item.asBytes()) { reader =>
+                  assert(reader.readAllBytes().sameElements(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(directory,filename))))
+                }
+              }
+            }
+            for (path <- Seq("/bundle/reports/orders.csv", "/bundle_gzip/reports/orders.csv", "/orders.csv.gz/orders.csv")) {
+              assert(ds.count(path).contains(2L))
+              Using.resource(ds.open(path)) { item =>
+                Using.resource(item.asRecords()) { reader =>
+                  var count = 0; while (reader.next()) count += reader.root.getRowCount
+                  assert(count == 2)
+                }
               }
             }
           }

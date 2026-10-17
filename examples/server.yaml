@@ -9,6 +9,11 @@ datasets:
       /reports/orders: {file: ../examples/data/nested/orders.csv}
       /image: {file: ../examples/data/pixel.png}
       /empty: {kind: folder}
+      /archive: {file: ../examples/data/reports.zip}
+      /images: {file: ../examples/data/images.ZIP}
+      /bundle: {file: ../examples/data/reports.tar}
+      /bundle_gzip: {file: ../examples/data/reports.tar.gz}
+      /orders.csv.gz: {file: ../examples/data/orders.csv.gz}
   csv_data:
     items:
       /orders: {file: ../examples/data/nested/orders.csv}

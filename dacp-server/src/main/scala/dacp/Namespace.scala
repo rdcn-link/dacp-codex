@@ -24,7 +24,7 @@ case class PublishedItem(path: String, file: Option[Path] = None, sql: Option[St
 }
 
 /** Resolves published aliases only; no automatic publication of private source names. */
-class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config) extends DataSetAdapter {
+class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDemand: () => Unit = () => ()) extends DataSetAdapter {
   private val entries = mutable.Map.empty[String, PublishedItem]
   require(bindings.map(_.path).distinct.size == bindings.size, "duplicate logical path")
   bindings.foreach(b => entries(b.path) = b)
@@ -41,23 +41,29 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config) extends Dat
     b.options.format.foreach(Formats.byId)
     b.sql.foreach(source => require(config.sqlSources.contains(source), "unknown private SQL source"))
   }
-  private case class Archived(archive: Path, entry: ZipArchive.Entry)
-  private def archives: Map[String, Path] = bindings.flatMap { b =>
-    b.file.filter(p => b.options.format.getOrElse(Formats.extensionFormat(p.getFileName.toString).id) == "zip").map(b.path -> _)
+  private case class ContainerSource(file: Path, reader: ContainerReader, publicName: String) {
+    lazy val index: Seq[ContainerEntry] = reader.index(file,publicName,metadataDemand)
+  }
+  private case class Archived(source: ContainerSource, entry: ContainerEntry)
+  private lazy val archives: Map[String, ContainerSource] = bindings.flatMap { b =>
+    b.file.flatMap { p =>
+      val id = b.options.format.getOrElse(Formats.extensionFormat(p.getFileName.toString).id)
+      if (Containers.supports(id)) Some(b.path -> ContainerSource(p,Containers.byId(id),b.path)) else None
+    }
   }.toMap
-  private def archived(roots: Map[String,Path] = archives): Map[String, Archived] = roots.toSeq.flatMap { case (alias,file) =>
-    ZipArchive.index(file).map(e => (alias + "/" + e.name) -> Archived(file,e))
+  private def archived(roots: Map[String,ContainerSource] = archives): Map[String, Archived] = roots.toSeq.flatMap { case (alias,source) =>
+    source.index.map(e => (alias + "/" + e.name) -> Archived(source,e))
   }.toMap
   private def virtual(parent: Option[String] = None): Map[String, Item] = {
     val result = mutable.Map.empty[String,Item]
     val roots = archives.filter { case (alias,_) => parent.forall(p => p == alias || p.startsWith(alias + "/")) }
     archived(roots).foreach { case (path,a) =>
-      require(!entries.contains(path), "ZIP entry conflicts with published alias")
+      require(!entries.contains(path), "archive entry conflicts with published alias")
       result(path) = if (a.entry.directory) ItemProperties.folder(path) else
-        Item(path,{ val id = Formats.extensionFormat(a.entry.name).id; if (id == "zip") "bin" else id },None,lastModifiedTimeMs=a.entry.modified,totalSizeBytes=a.entry.size)
+        Item(path,{ val id = Formats.extensionFormat(a.entry.name).id; if (Containers.supports(id)) "bin" else id },None,lastModifiedTimeMs=a.entry.modified,totalSizeBytes=a.entry.size)
       var parent = LogicalPath.parent(path)
       while (parent != "/" && !archives.contains(parent)) {
-        require(!entries.contains(parent), "ZIP folder conflicts with published alias")
+        require(!entries.contains(parent), "archive folder conflicts with published alias")
         result.getOrElseUpdate(parent,ItemProperties.folder(parent))
         parent = LogicalPath.parent(parent)
       }
@@ -68,10 +74,12 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config) extends Dat
     LogicalPath.validate(path)
     if (entries.contains(path)) { val (a,i) = resolve(path); f(a,i) }
     else {
-      val a = archived(archives.filter { case (alias,_) => path.startsWith(alias + "/") }).getOrElse(path,throw new java.io.FileNotFoundException("logical item not found"))
-      ZipArchive.withFile(a.archive,a.entry.name,demand) { p =>
-        // Nested ZIPs remain data Items until recursive archive browsing is explicitly supported.
-        val options = if (Formats.detect(p).id == "zip") FileOptions(format=Some("bin")) else FileOptions()
+      val (alias,source) = archives.find { case (alias,_) => path.startsWith(alias + "/") }
+        .getOrElse(throw new java.io.FileNotFoundException("logical item not found"))
+      val name = path.substring(alias.length + 1)
+      source.reader.withFile(source.file,source.publicName,name,demand) { p =>
+        // Nested containers remain binary data Items; no implicit recursive expansion.
+        val options = if (Containers.supports(Formats.detect(p).id)) FileOptions(format=Some("bin")) else FileOptions()
         f(new DirectoryAdapter(p.getParent,config.batchSize,config.inferSample,options=options),p.getFileName.toString)
       }
     }
@@ -107,7 +115,7 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config) extends Dat
         case d: DirectoryAdapter => ItemProperties.file(description, d.resolve(internal), d.options)
         case _ => description
       }
-      if (description.format == "zip") Item(b.path,"zip",Some(Data.bytesSchema),"folder")
+      if (Containers.supports(description.format)) Item(b.path,description.format,Some(Data.bytesSchema),"folder")
       else enriched.copy(path = b.path)
     }
   }
@@ -147,12 +155,12 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config) extends Dat
 
 object NamespaceAdapter {
   /** Task outputs receive opaque logical aliases, independent of operator filenames. */
-  def output(base: Path, config: Config): NamespaceAdapter = {
+  def output(base: Path, config: Config, metadataDemand: () => Unit = () => ()): NamespaceAdapter = {
     val privateItems = new DirectoryAdapter(base, config.batchSize, config.inferSample, excludeMetadata = true).list()
     val bindings = privateItems.zipWithIndex.map { case (item, index) =>
       PublishedItem(s"/result-${index + 1}", file = Some(base.resolve(item.path)))
     }
-    new NamespaceAdapter(bindings, config)
+    new NamespaceAdapter(bindings, config, metadataDemand)
   }
   def views(item: Item): Seq[String] = if (item.format.isEmpty) Seq.empty
     else Formats.views(item.format)

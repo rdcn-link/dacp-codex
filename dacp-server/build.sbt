@@ -2,6 +2,7 @@ scalaVersion := "2.13.16"
 Compile / PB.protoSources += baseDirectory.value / ".." / "proto"
 Compile / PB.targets := Seq(PB.gens.java -> (Compile / sourceManaged).value)
 libraryDependencies ++= Seq(
+ "org.apache.commons" % "commons-compress" % "1.28.0",
  "org.apache.poi" % "poi-ooxml" % "5.5.1",
  "com.h2database" % "h2" % "2.3.232",
  "org.postgresql" % "postgresql" % "42.7.8",

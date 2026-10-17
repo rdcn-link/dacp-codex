@@ -111,3 +111,19 @@ def test_explicit_count_preserves_zero_and_unknown():
     assert ds.count('/image') is None
     with pytest.raises(ValueError):
         ds.count('relative')
+
+
+@pytest.mark.parametrize('kind,views,readable', [('folder', ['bytes'], True), ('folder', [], False)])
+def test_open_uses_advertised_views_for_containers(kind, views, readable):
+    from dacp.source import DataSet
+    class Client:
+        def get_flight_info(self, descriptor):
+            metadata = pb.Item(path='/archive', kind=kind, format='tar-gzip', views=views)
+            return type('Info', (), {'app_metadata': metadata.SerializeToString(),
+                'endpoints': [type('Endpoint', (), {'ticket': object()})()]})()
+    ds = DataSet(Client(), 'public', 'dacp://host/public')
+    if readable:
+        assert ds.open('/archive').views == ('bytes',)
+    else:
+        with pytest.raises(ValueError, match='no readable views'):
+            ds.open('/archive')

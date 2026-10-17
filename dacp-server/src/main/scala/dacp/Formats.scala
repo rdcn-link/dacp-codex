@@ -74,10 +74,12 @@ object Formats {
       Parquet.stream(p,a,b)(start,emit,demand)
   }
   private object BinaryFormat extends FormatHandler { val id = "bin"; val extensions = Set.empty[String] }
-  private object ZipFormat extends FormatHandler { val id = "zip"; val extensions = Set("zip") }
+  private class ContainerFormat(val id: String, val extensions: Set[String]) extends FormatHandler
   private object JsonFormat extends FormatHandler { val id = "json"; val extensions = Set("json") }
   private val builtins: Seq[FormatHandler] = Seq(new Delimited("csv",Set("csv")),
-    new Delimited("ndjson",Set("jsonl","ndjson")), JsonFormat, ParquetFormat, ExcelFormat, ZipFormat, BinaryFormat)
+    new Delimited("ndjson",Set("jsonl","ndjson")), JsonFormat, ParquetFormat, ExcelFormat, new ContainerFormat("zip",Set("zip")),
+    new ContainerFormat("tar",Set("tar")), new ContainerFormat("gzip",Set("gz")),
+    new ContainerFormat("tar-gzip",Set("tgz")), BinaryFormat)
   // Additional Java/Scala providers use META-INF/services/dacp.FormatHandler; restart to load.
   private lazy val handlers: Seq[FormatHandler] = {
     val all = builtins ++ ServiceLoader.load(classOf[FormatHandler]).iterator().asScala.toVector
@@ -93,7 +95,7 @@ object Formats {
   def views(id: String): Seq[String] = if (id == "sql" || byId(id).records) Seq("records","bytes") else Seq("bytes")
   def extensionFormat(name: String): FormatHandler = {
     val ext = name.split("\\.").last.toLowerCase(java.util.Locale.ROOT)
-    handlers.find(_.extensions(ext)).getOrElse(BinaryFormat)
+    Containers.formatForName(name).map(byId).getOrElse(handlers.find(_.extensions(ext)).getOrElse(BinaryFormat))
   }
   def detect(path: Path, options: FileOptions = FileOptions()): FormatHandler = {
     val handler = options.format match {
@@ -102,7 +104,8 @@ object Formats {
         val in = Files.newInputStream(path)
         val signature = try in.readNBytes(8) finally in.close()
         val ext = path.getFileName.toString.split("\\.").last.toLowerCase(java.util.Locale.ROOT)
-        handlers.find(_.signatureMatches(signature)).orElse(handlers.find(_.matches(signature,ext))).getOrElse(BinaryFormat)
+        Containers.formatForName(path.getFileName.toString).map(byId).orElse(handlers.find(_.signatureMatches(signature)))
+          .orElse(handlers.find(_.matches(signature,ext))).getOrElse(BinaryFormat)
     }
     require(handler.id == "excel" || (options.sheet.isEmpty && options.headerRow == 1), "sheet and header_row options require Excel")
     require(handler.records || options.columns.isEmpty, "schema requires a records format")

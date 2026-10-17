@@ -89,14 +89,15 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
       case None => listener.onError(CallStatus.UNIMPLEMENTED.withDescription("task execution disabled").toRuntimeException)
     }
   }
-  private def adapter(ds: String, item: String): NamespaceAdapter = {
+  private def adapter(ds: String, item: String, ctx: FlightProducer.CallContext): NamespaceAdapter = {
+    def active(): Unit = if (ctx.isCancelled) throw new java.util.concurrent.CancellationException()
     val output = outputs.lookup(ds)
     if (output.isEmpty && !config.hasDataset(ds))
       throw CallStatus.NOT_FOUND.withDescription("NOT_FOUND: dataset not found; check the dataset name").toRuntimeException
     config.authorize(ds,item)
     output match {
-      case Some(base) => NamespaceAdapter.output(base,config)
-      case None => new NamespaceAdapter(config.datasets(ds),config)
+      case Some(base) => NamespaceAdapter.output(base,config,() => active())
+      case None => new NamespaceAdapter(config.datasets(ds),config,() => active())
     }
   }
 
@@ -133,7 +134,7 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
     require(p.head == "datasets", "unknown descriptor namespace")
     val ds = p(1); val item = if (p.size == 4) p(3) else p.lift(2).getOrElse("")
     if (item.nonEmpty) LogicalPath.validate(item)
-    val a = adapter(ds,item)
+    val a = adapter(ds,item,ctx)
     if (p.size == 4 && p(2) == "count") {
       val metadata = itemMetadata(Item(item,"",None,recordCount=a.count(item)))
       new FlightInfo(Data.bytesSchema, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,
@@ -160,7 +161,7 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
     try {
       val t = Metadata.Ticket.parseFrom(ticket.getBytes)
       require(Set("records","bytes").contains(t.getView), "invalid view")
-      val namespace = adapter(t.getDataset,t.getItem)
+      val namespace = adapter(t.getDataset,t.getItem,ctx)
       val lock = new Object
       listener.setOnReadyHandler(() => lock.synchronized(lock.notifyAll()))
       listener.setOnCancelHandler(() => lock.synchronized(lock.notifyAll()))

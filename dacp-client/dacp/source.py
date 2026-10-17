@@ -94,8 +94,8 @@ class DataSet:
         _logical_path(path)
         info = self._client.get_flight_info(flight.FlightDescriptor.for_path("datasets", self.name, path))
         metadata = pb.Item.FromString(info.app_metadata)
-        if metadata.kind != "data" or not info.endpoints:
-            raise ValueError("only data items can be opened; use list(path) for folders")
+        if not metadata.views or not info.endpoints:
+            raise ValueError("item has no readable views; use list(path) for folders")
         return Stream(self._client, info.endpoints[0].ticket, tuple(metadata.views))
     @public_errors
     def close(self): self._client.close()

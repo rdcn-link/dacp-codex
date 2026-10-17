@@ -1,6 +1,6 @@
 # Adding a format handler
 
-The server resolves file mappings through `Formats`. `SqlAdapter` handles SQL separately. Detection precedence is an explicit configuration override, provider signature matches (at most eight bytes), provider extension matches, then binary fallback. Extensions are lowercase and case-insensitive on filenames. IDs match `[a-z][a-z0-9-]*`; `sql` is reserved. Duplicate IDs or extensions fail registry initialization.
+The server resolves file mappings through `Formats`. `SqlAdapter` handles SQL separately. Detection precedence is an explicit configuration override, compound container suffixes, provider signature matches (at most eight bytes), provider extension matches, then binary fallback. Extensions are lowercase and case-insensitive on filenames. IDs match `[a-z][a-z0-9-]*`; `sql` is reserved. Duplicate IDs or extensions fail registry initialization.
 
 Implement `dacp.FormatHandler` in a JAR compiled against the server. Scala providers use its trait directly; Java implementations can implement the generated JVM interface. Scala trait defaults are easiest to reuse from Scala. Providers must have a public no-argument constructor.
 
@@ -35,6 +35,12 @@ The shared file reader sends original bytes without conversion. Opening records 
 
 Excel uses HSSF events for XLS and SAX/XSSF events for XLSX, a 16-row queue, and cancellation checks between parser events. Shared-string dictionaries and individual rows/cells still consume memory. Numeric dates remain Excel serial values. Only cached formula results are read; formulas are never recalculated. Multiple sheets require a configured selection. This is read support, without workbook editing or spreadsheet rendering.
 
-## ZIP folders
+## Container readers
 
-The built-in `zip` handler advertises bytes. `NamespaceAdapter` supplies archive browsing through `ZipArchive`: mapped ZIP files become folders, indexed entries become logical child Items, and implicit folders are inferred. Folder statistics stay unknown. Listing does not decompress entries; record readers stage one requested entry to a bounded temporary file and clean it on exit. Nested ZIP entries remain binary data. Limits are 10,000 entries, 512 MiB per decompressed entry, and 2 GiB total declared size. Names must satisfy logical-path validation; duplicate names and file/parent conflicts are rejected. Archive roots support bytes but reject records. ZIP container browsing is currently built in, rather than an extension point on `FormatHandler`.
+`ContainerReader` is the separate interface for enumerating children and staging an entry as a seekable file. `Containers` registers built-in readers for `zip`, `tar`, `gzip`, and `tar-gzip`; adding a container currently requires registering it there and adding its format ID in `Formats`. Container readers are not loaded through the format ServiceLoader.
+
+`NamespaceAdapter` publishes mapped containers as folders with a bytes view returning the original file, infers parent folders, and passes staged children to existing format readers. All folder properties stay unknown. Nested containers remain binary data. GZIP's one child is named from the public alias, ignoring private filenames. Compound `.tar.gz` and `.tgz` suffixes resolve before ordinary extension detection.
+
+ZIP listings use the archive directory without decompressing payloads. TAR and compressed TAR scan sequentially, with decompression for the latter; GZIP listings only read the header. Entry reads stage one file and clean it on success, failure, or cancellation. TAR scans validate the whole archive, including entries after the requested one, before exposing staged content. Scans and decompression must honor the supplied demand/cancellation callback.
+
+Limits are 10,000 entries, 512 MiB per decompressed entry, and 2 GiB total declared size. TAR also bounds total decompressed bytes to that size plus 16 MiB of metadata/padding. Duplicate entries, invalid paths, and file/parent conflicts are rejected. TAR links, sparse files, and special entries are unsupported. Container roots reject records; their data children advertise views through the regular format registry.

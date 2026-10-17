@@ -156,9 +156,9 @@ def test_listing_table_headers_utc_time_and_unknown_values(browser, monkeypatch)
     out.truncate()
     b.onecmd('ls')
     lines = out.getvalue().splitlines()
-    assert [cell.strip() for cell in lines[1].split('|')[1:-1]] == ['Path', '#', 'Format', 'Bytes', 'Records', 'Modified (UTC)']
-    assert [cell.strip() for cell in lines[3].split('|')[1:-1]] == ['/orders', '1', 'csv', '0', '0', '2026-10-16 06:22:02']
-    assert [cell.strip() for cell in lines[4].split('|')[1:-1]] == [r'/file\nname', '2', 'txt', '-', '-', '-']
+    assert [cell.strip() for cell in lines[1].split('|')[1:-1]] == ['Path', 'Format', 'Bytes', 'Records', 'Modified (UTC)']
+    assert [cell.strip() for cell in lines[3].split('|')[1:-1]] == ['/orders', 'csv', '0', '0', '2026-10-16 06:22:02']
+    assert [cell.strip() for cell in lines[4].split('|')[1:-1]] == [r'/file\nname', 'txt', '-', '-', '-']
     assert len(lines) == 7
 
 
@@ -210,7 +210,7 @@ def test_folder_highlighting_preserves_table_and_escapes_paths(browser, monkeypa
     rows = rendered.splitlines()
     plain = rows[4].replace('\x1b[1;36m', '').replace('\x1b[0m', '')
     assert len(plain) == len(rows[0])
-    assert [cell.strip() for cell in plain.split('|')[1:-1]][2:] == ['-', '-', '-', '-']
+    assert [cell.strip() for cell in plain.split('|')[1:-1]][1:] == ['-', '-', '-', '-']
 
 
 @pytest.mark.parametrize('command,headers', [('show 1', ['id'])])

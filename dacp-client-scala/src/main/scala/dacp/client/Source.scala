@@ -122,7 +122,7 @@ final class Dataset private[client] (
     val info = DacpErrors.protect(client.getInfo(FlightDescriptor.path("datasets", name, path), option))
     require(!info.getEndpoints.isEmpty, "item has no Flight endpoint")
     val metadata = Metadata.Item.parseFrom(info.getAppMetadata)
-    require(metadata.getKind == "data", "only data items can be opened; use list(path) for folders")
+    require(metadata.getViewsCount > 0, "item has no readable views; use list(path) for folders")
     val item = new ItemStream(this, info.getEndpoints.get(0).getTicket, metadata.getViewsList.asScala.toVector)
     items += item
     item
