@@ -1,22 +1,8 @@
 # dacp MVP
 
-面向自治数据节点的 Arrow Flight 数据协作协议。Scala 2.13 服务端、Python/PyArrow SDK、protobuf 元数据、YAML DAG、一任务一 Docker 容器。节点无需部署集群或中心注册服务。目录与 JDBC SQL 数据库可同时作为数据集暴露，SQL 表作为单层 Item。
+[English](README_en.md)
 
-```mermaid
-flowchart LR
-  SDK["Python Source.open"] -->|"GetFlightInfo: protobuf 清单"| A["自治节点 Flight / mTLS"]
-  SDK -->|"DoGet: 按需拉 RecordBatch"| A
-  A --> D["目录适配器 / 递归文件清单"]
-  YAML["YAML DAG / Python Job.run"] --> E["Scala DAG 协调器 / 本地执行器"]
-  E -->|"mTLS Flight action 分发"| B["远端自治节点执行器"]
-  B -->|"DoGet 拉取上游输出"| A
-  E -->|"Flight 拉流"| A
-  E -->|"单输入: Arrow IPC FIFO"| C["format_convert@1.0 容器"]
-  E -->|"多输入: 临时 Arrow IPC 文件"| C
-  C --> P["Parquet + Arrow schema 元数据"]
-  P --> R["本节点输出注册表 / TTL"]
-  R --> A
-```
+面向自治数据节点的 Arrow Flight 数据协作协议。Scala 2.13 服务端、Python/PyArrow SDK、protobuf 元数据、YAML DAG、一任务一 Docker 容器。节点无需部署集群或中心注册服务。目录与 JDBC SQL 数据库可同时作为数据集暴露，SQL 表作为单层 Item。
 
 ## 快速运行
 
