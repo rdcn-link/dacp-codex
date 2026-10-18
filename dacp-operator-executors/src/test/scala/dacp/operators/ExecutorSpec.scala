@@ -9,7 +9,7 @@ import dacp.{OperatorExecutor,OperatorProgram}
 class ExecutorSpec extends AnyFunSuite {
   test("all built-in executors use the external service registration contract") {
     val found = ServiceLoader.load(classOf[OperatorExecutor]).iterator.asScala.map(_.id).toSet
-    assert(found == Set("container","jvm","python"))
+    assert(found == Set("container","jvm","python","command"))
   }
   test("JAR launch selects the main class and shared dependencies without loading code") {
     val p = OperatorProgram("sum@1","example.Sum",Some(Path.of("/cache/digest")))

@@ -98,3 +98,5 @@ scripts/test-operator-repository.sh
 完整的编写与上传教程（Scala/Python 源码、wheel 打包、远程文件传输及任务执行）见 [自定义算子指南](../docs/operator-authoring.md)。
 
 定义必须包含命名 `inputs`、`outputs` 端口。`publish --ports FILE` 为必填项，文件可为包含端口声明的 YAML/JSON 或完整算子定义；`seed` 从定义中读取这些声明。详见[编写指南](../docs/operator-authoring.md)。
+
+原生命令使用 `executor: command`，插件设置位于 `executor_config`。`seed` 保留该映射；手工发布用 `--executor-config FILE` 传入单独的 YAML/JSON 映射，仓库保存为 `execution.config`，执行节点插件验证。详见[原生命令指南](../docs/native-commands.md)。

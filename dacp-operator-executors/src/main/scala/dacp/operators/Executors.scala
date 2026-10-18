@@ -5,6 +5,7 @@ import dacp.{OperatorExecutor, OperatorProgram, OperatorCommand}
 final class ContainerExecutor extends OperatorExecutor {
   val id = "container"
   def command(p: OperatorProgram, path: Option[String]): OperatorCommand = {
+    require(p.configuration.isEmpty,"executor does not accept configuration")
     require(p.artifact.isEmpty && p.entrypoint.isEmpty, "container executor uses its image entrypoint; no code artifact")
     OperatorCommand()
   }
@@ -28,6 +29,7 @@ finally loader.close()
       "-usejavacp","-e",script,path,p.entrypoint)),arguments=Vector.empty)
   }
   def command(p: OperatorProgram, path: Option[String]): OperatorCommand = {
+    require(p.configuration.isEmpty,"executor does not accept configuration")
     require(p.entrypoint.matches("[A-Za-z_$][A-Za-z0-9_.$]*"), "JVM entrypoint must be a main class")
     require(path.exists(_.endsWith(".jar")), "JVM executor requires a JAR artifact")
     OperatorCommand(Some(Vector("/opt/java/bin/java", "--add-opens=java.base/java.nio=ALL-UNNAMED",
@@ -55,6 +57,7 @@ else:
     runpy.run_path(artifact,run_name='__main__')
 """
   def command(p: OperatorProgram, path: Option[String]): OperatorCommand = {
+    require(p.configuration.isEmpty,"executor does not accept configuration")
     require(path.exists(f => f.endsWith(".whl") || f.endsWith(".py")), "Python executor requires a wheel or Python source artifact")
     require(p.entrypoint.matches("[A-Za-z_][A-Za-z0-9_.]*"), "Python entrypoint must be a module name")
     OperatorCommand(Some(Vector("/usr/local/bin/python", "-c", launcher, path.get, p.entrypoint)),

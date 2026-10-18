@@ -31,6 +31,38 @@ class OperatorLibrarySpec extends AnyFunSuite {
   private def cleanup(root: Path): Unit = { val paths = Files.walk(root)
     try paths.iterator.asScala.toVector.sortBy(_.getNameCount).reverse.foreach(Files.delete(_)) finally paths.close() }
 
+  test("remote and cached command definitions preserve executor configuration and port contracts") {
+    val root=Files.createTempDirectory("operator-command-")
+    val inspect=proxy(classOf[com.github.dockerjava.api.command.InspectImageCmd]) { _ =>
+      new com.github.dockerjava.api.command.InspectImageResponse().withId(image)
+    }
+    val docker=proxy(classOf[com.github.dockerjava.api.DockerClient]) { m =>
+      if(m.getName=="inspectImageCmd") inspect else throw new AssertionError(m.getName)
+    }
+    val node=Data.mapper.readTree(manifest("native",executor="command"))
+    val execution=node.path("execution").asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
+    execution.put("entrypoint","/operator/program")
+    execution.set[com.fasterxml.jackson.databind.JsonNode]("config",Data.mapper.readTree(
+      """{"args":["--literal","$(false)"],"stdin":"source","stdout":{"port":"result","representation":"bytes","format":"text"}}"""))
+    node.path("artifact").asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].put("filename","program")
+    val server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0)
+    server.createContext("/",exchange=>{
+      val path=exchange.getRequestURI.getPath
+      val bytes=if(path.endsWith(hash(archive)))archive else if(path.endsWith(hash(code)))code else node.toString.getBytes
+      exchange.sendResponseHeaders(200,bytes.length)
+      try exchange.getResponseBody.write(bytes) finally exchange.close()
+    });server.start()
+    val c=config(root,s"http://127.0.0.1:${server.getAddress.getPort}")
+    try {
+      val resolved=OperatorLibrary.resolve(c,"native@1",docker)
+      val payload=Data.mapper.readTree(resolved.command.entrypoint.get.last)
+      assert(payload.path("argv").get(2).asText=="$(false)")
+      assert(payload.path("artifact").asBoolean)
+      assert(resolved.inputs.keySet==Set("source") && resolved.outputs.keySet==Set("result"))
+      server.stop(0)
+      assert(OperatorLibrary.resolve(c,"native@1",docker).command==resolved.command)
+    } finally {server.stop(0);cleanup(root)}
+  }
   test("local definitions win; distinct remote operators share runtime/code downloads and work offline") {
     val root = Files.createTempDirectory("operator-shared-")
     var requests = Vector.empty[String]; var loads = 0; var installed = false

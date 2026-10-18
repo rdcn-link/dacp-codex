@@ -98,3 +98,5 @@ Unit/HTTP tests use an injected exporter without Docker. Integration requires th
 For complete source examples, wheel packaging, remote file transfer, administrator publication, and execution instructions, see [Write and upload custom operators](../docs/operator-authoring_en.md).
 
 Definitions must include named `inputs` and `outputs` ports. `publish --ports FILE` is required; use YAML/JSON port declarations or a complete operator definition. `seed` reads these declarations from definitions. See the [authoring guide](../docs/operator-authoring_en.md).
+
+Native commands use `executor: command`, with plugin-owned settings in `executor_config`. `seed` preserves this mapping; manual publication accepts a standalone YAML/JSON mapping through `--executor-config FILE`. The repository stores it as `execution.config`; the execution-node plugin validates it. See [native commands](../docs/native-commands_en.md).

@@ -371,3 +371,5 @@ DACP 优先采用插件机制扩展。新的数据集后端、文件格式和处
 协议定义位于 [proto/dacp.proto](proto/dacp.proto)，服务端位于 [dacp-server](dacp-server)，Python SDK 位于 [dacp-client](dacp-client)，Scala SDK 位于 [dacp-client-scala](dacp-client-scala)。
 
 DEBUG 模式下可通过 `run --runtime python@1.0 --input source=/orders <<END` 输入 heredoc 源码；不支持 `--source` 或 `--code`。服务端默认为 NORMAL，并在协调与执行节点拒绝源码任务。配置、Python/Scala 示例与插件契约见[源码算子](docs/operator-source.md)。
+
+原生可执行程序可通过 `command` 执行器使用 stdin/stdout，无需在程序内实现 DACP 协议。支持单 bytes 输入和输出，仍在容器内隔离执行。见[配置及发布指南](docs/native-commands.md)和 [C 示例](examples/operators/native/README.md)。

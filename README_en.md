@@ -371,3 +371,5 @@ Use `bash scripts/test-collaboration.sh` for cross-node container integration; i
 The protocol is defined in [proto/dacp.proto](proto/dacp.proto). Source code lives in [dacp-server](dacp-server), [dacp-client](dacp-client) for Python, and [dacp-client-scala](dacp-client-scala) for Scala.
 
 In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`; `--source` and `--code` are unsupported. Servers default to NORMAL and reject source tasks at both coordinator and execution nodes. See [source operators](docs/operator-source_en.md) for configuration, Python/Scala examples, and the plugin contract.
+
+Native executables can use stdin/stdout through the `command` executor without implementing the DACP protocol in the program. It supports one bytes input and output, with execution isolated inside a container. See [configuration and publication](docs/native-commands_en.md) and the [C example](examples/operators/native/README_en.md).

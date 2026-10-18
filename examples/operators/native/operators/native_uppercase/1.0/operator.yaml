@@ -1,0 +1,14 @@
+name: native_uppercase
+version: "1.0"
+image: dacp/operator-python:1.0
+executor: command
+entrypoint: /operator/uppercase
+artifact: ../../../build/uppercase
+executor_config:
+  args: []
+  stdin: source
+  stdout: {port: result, representation: bytes, format: text}
+inputs:
+  source: {representations: [bytes], formats: []}
+outputs:
+  result: {representations: [bytes], formats: [text]}

@@ -22,3 +22,7 @@ Contributed plugins compile against `io.github.rdcn-link:dacp-plugin-api_2.13:0.
 See the [plugin guide](../docs/plugins.md) and the [standalone example](../examples/plugins/README.md) for configuration, registration, lifecycle, and tests. Compile with the same Scala version as the server. Keep third-party libraries out of the core; package required dependencies alongside the plugin without copying server-provided APIs.
 
 Records query contracts include `Scan`, typed `Literal`/`Predicate` trees, schema-bound validation, and `ScanStreams` for bounded filtering/projection with early termination. Providers and file handlers can override `scan` for source optimizations while preserving the common semantics. See [records queries](../docs/records-scans.md).
+
+算子 `OperatorProgram.configuration` 接收插件自有的 `executor_config`，`inputs`、`outputs` 提供各端口支持的表示集合。插件验证配置，核心不解析具体执行器参数。参见[原生命令](../docs/native-commands.md)。
+
+`OperatorCommand.executableScratch` 可请求 `/operator-work` 上限 512 MiB 的可执行 tmpfs，用于原生制品的私有执行副本；普通 `/tmp` 保持不可执行。资源生命周期由服务器管理。

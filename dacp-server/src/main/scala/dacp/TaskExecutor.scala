@@ -53,8 +53,10 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
       Files.write(temporary.resolve("params.json"),Data.mapper.writeValueAsBytes(task.params))
       val binds=Seq(new Bind(temporary.toAbsolutePath.toString,new Volume("/input"),AccessMode.ro)) ++
         op.artifact.zip(op.artifactPath).map{case(file,path)=>new Bind(file.toAbsolutePath.toString,new Volume(path),AccessMode.ro)}
+      val scratch=Map("/tmp"->"rw,noexec,nosuid,nodev,size=512m") ++
+        (if(op.command.executableScratch) Map("/operator-work"->"rw,exec,nosuid,nodev,size=512m") else Map.empty[String,String])
       val host=HostConfig.newHostConfig().withBinds(binds.asJava).withNetworkMode("none").withMemory(1024L*1024*1024).withPidsLimit(128L)
-        .withReadonlyRootfs(true).withTmpFs(Map("/tmp"->"rw,nosuid,nodev,size=512m").asJava)
+        .withReadonlyRootfs(true).withTmpFs(scratch.asJava)
         .withLogConfig(new LogConfig(LogConfig.LoggingType.NONE))
       val create=docker.createContainerCmd(op.image).withHostConfig(host)
         .withEnv((op.command.environment+("DACP_OPERATOR"->task.operator)).map{case(k,v)=>s"$k=$v"}.toSeq.asJava)
@@ -77,7 +79,10 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
         val repr=h.path("representation").asText
         val schema=if(repr=="records") StreamProtocol.schema(h) else PluginSchemas.bytes
         val root=VectorSchemaRoot.create(schema,allocator)
-        val output=new java.io.FilterOutputStream(Channels.newOutputStream(handles(i))){override def close():Unit=flush()}
+        val output=new java.io.FilterOutputStream(Channels.newOutputStream(handles(i))){
+          override def write(bytes:Array[Byte],offset:Int,length:Int):Unit=out.write(bytes,offset,length)
+          override def close():Unit=flush()
+        }
         val writer=new ArrowStreamWriter(root,null,output)
         try {
           writer.start();var ended=false
@@ -116,6 +121,8 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
       require(docker.inspectContainerCmd(container).exec().getState.getExitCodeLong==0L,"operator failed: "+stderr.synchronized(stderr.toString))
       require(ended==op.outputs.keySet,"operator output stream incomplete")
       writers.foreach(t=>{while(t.isAlive){cancel.active();t.join(100)}});cancel.active()
+    } catch {
+      case t:Throwable => cancel.fail(t); throw t
     } finally {
       if(container!=null)try docker.removeContainerCmd(container).withForce(true).exec() catch{case _:Throwable=>()}
       if(callback!=null)try callback.close() catch{case _:Throwable=>()}

@@ -22,3 +22,7 @@ Contributed plugins compile against `io.github.rdcn-link:dacp-plugin-api_2.13:0.
 See the [plugin guide](../docs/plugins.md) and the [standalone example](../examples/plugins/README.md) for configuration, registration, lifecycle, and tests. Compile with the same Scala version as the server. Keep third-party libraries out of the core; package required dependencies alongside the plugin without copying server-provided APIs.
 
 Records query contracts include `Scan`, typed `Literal`/`Predicate` trees, schema-bound validation, and `ScanStreams` for bounded filtering/projection with early termination. Providers and file handlers can override `scan` for source optimizations while preserving the common semantics. See [records queries](../docs/records-scans.md).
+
+Operator `OperatorProgram.configuration` carries plugin-owned `executor_config`; `inputs` and `outputs` expose the supported representations per port. Plugins validate settings; core does not interpret executor-specific parameters. See [native commands](../docs/native-commands_en.md).
+
+`OperatorCommand.executableScratch` requests a bounded 512 MiB executable tmpfs at `/operator-work` for private native artifact copies; ordinary `/tmp` remains non-executable. The server manages its resource lifecycle.

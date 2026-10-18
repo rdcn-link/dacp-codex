@@ -26,6 +26,24 @@ class RepositorySpec extends AnyFunSuite {
       Files.writeString(destination, "image archive")
     }
   }
+  test("executor-owned configuration survives publication and seeding without plugin dependencies") { withRoot { root =>
+    val settings=Repository.mapper.readTree("""{"args":["a-z","A-Z"],"stdin":"source","stdout":{"port":"result","representation":"bytes","format":"text"}}""")
+    val published=Repository.mapper.readTree(Repository.publish(root,"command@1","native:1",ports,exporter,
+      executor="command",entrypoint="/usr/bin/tr",configuration=settings))
+    assert(published.path("execution").path("config")==settings)
+    val definition=root.resolve("definitions/seeded/1/operator.yaml")
+    Files.createDirectories(definition.getParent)
+    val node=Repository.mapper.createObjectNode().put("name","seeded").put("version","1").put("image","native:1")
+      .put("executor","command").put("entrypoint","/usr/bin/tr")
+    node.set[com.fasterxml.jackson.databind.JsonNode]("inputs",ports.path("inputs"))
+    node.set[com.fasterxml.jackson.databind.JsonNode]("outputs",ports.path("outputs"))
+    node.set[com.fasterxml.jackson.databind.JsonNode]("executor_config",settings)
+    Files.writeString(definition,node.toString)
+    assert(Repository.seed(root,root.resolve("definitions"),exporter)==Seq("seeded@1"))
+    assert(Repository.mapper.readTree(Files.readString(root.resolve("seeded/1/manifest.json"))).path("execution").path("config")==settings)
+    intercept[IllegalArgumentException](Repository.publish(root,"invalid@1","native:1",ports,exporter,
+      configuration=Repository.mapper.createArrayNode()))
+  }}
   test("starter operators seed a fresh catalog and preserve immutable versions on repeated setup") { withRoot { root =>
     var exports = 0
     val counting = new Repository.ImageExporter {

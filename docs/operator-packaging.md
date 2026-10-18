@@ -12,7 +12,7 @@ A bundle can contain several main classes or Python modules. Publish each operat
 
 ## Definitions and publication
 
-Definitions live at `<operators>/<name>/<version>/operator.yaml`. Required fields are `name`, `version`, `image`, `inputs`, and `outputs`; optional fields are `description`, `executor` (defaults to `container`), `entrypoint`, and `artifact`. Artifact paths are relative to the definition. Unknown fields and duplicate YAML keys fail.
+Definitions live at `<operators>/<name>/<version>/operator.yaml`. Required fields are `name`, `version`, `image`, `inputs`, and `outputs`; optional fields are `description`, `executor` (defaults to `container`), `entrypoint`, `artifact`, and plugin-owned `executor_config`. Artifact paths are relative to the definition. Unknown fields and duplicate YAML keys fail.
 
 ```yaml
 name: summary
@@ -27,7 +27,7 @@ outputs:
   result: {representations: [records], formats: []}
 ```
 
-`jvm` needs a JAR and main class. `python` needs a `.py` or `.whl` artifact and a module name (`entrypoint` selects the module for wheels; source executes the script). `container` uses its image's existing entrypoint and accepts neither an entrypoint override nor a code artifact. Every executor receives `operator /input /input/params.json` and `DACP_OPERATOR=name@version`, following the existing [Arrow IPC contract](reference_en.md#task-execution-and-operators).
+`jvm` needs a JAR and main class. `python` needs a `.py` or `.whl` artifact and a module name (`entrypoint` selects the module for wheels; source executes the script). `command` adapts native stdin/stdout programs; see [native commands](native-commands_en.md). `container` uses its image's existing entrypoint and accepts neither an entrypoint override nor a code artifact. Every executor receives `operator /input /input/params.json` and `DACP_OPERATOR=name@version`, following the existing [Arrow IPC contract](reference_en.md#task-execution-and-operators).
 
 ```bash
 # Run from the project root after staging the repository.
@@ -84,7 +84,7 @@ Docker layers are shared locally, and the JVM builder separates the runtime laye
 
 ## Executor plugins
 
-Implement `dacp.OperatorExecutor` from `dacp-plugin-api` and register the fully qualified class in `META-INF/services/dacp.OperatorExecutor`. Compile the API as `Provided`, install the plugin JAR and private dependencies in `plugin_directory`, and restart the node. No core registry or client changes are needed. Duplicate executor IDs fail explicitly. The built-in `container`, `jvm`, and `python` implementations live in `dacp-operator-executors` and use that same ServiceLoader mechanism.
+Implement `dacp.OperatorExecutor` from `dacp-plugin-api` and register the fully qualified class in `META-INF/services/dacp.OperatorExecutor`. Compile the API as `Provided`, install the plugin JAR and private dependencies in `plugin_directory`, and restart the node. No core registry or client changes are needed. Duplicate executor IDs fail explicitly. The built-in `container`, `jvm`, `python`, and `command` implementations live in `dacp-operator-executors` and use that same ServiceLoader mechanism.
 
 ```scala
 final class CustomExecutor extends dacp.OperatorExecutor {
@@ -96,7 +96,7 @@ final class CustomExecutor extends dacp.OperatorExecutor {
 }
 ```
 
-The plugin validates its entrypoint/artifact and supplies a container command and environment. `OperatorProgram.artifact` is the verified host path; `artifactPath` is its read-only path inside the container. Plugins are trusted launch code; operator artifacts are separate executable payloads. The server owns image loading, read-only mounts/root filesystem, disabled networking, temporary storage, memory/PID limits, timeout, cleanup, Flight transport, and stream delivery. Plugins do not replace the isolation/resource lifecycle. No host-process executor is provided.
+The plugin validates its entrypoint/artifact and `OperatorProgram.configuration` and supplies a container command and environment. `OperatorProgram.artifact` is the verified host path; `artifactPath` is its read-only path inside the container. Plugins are trusted launch code; operator artifacts are separate executable payloads. The server owns image loading, read-only mounts/root filesystem, disabled networking, temporary storage, memory/PID limits, timeout, cleanup, Flight transport, and stream delivery. Plugins do not replace the isolation/resource lifecycle. No host-process executor is provided.
 
 ## Validation
 
