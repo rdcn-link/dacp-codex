@@ -277,6 +277,9 @@ sbt 'run ../examples/server.yaml'
 
 算子可共享依赖环境和代码包。初始算子通过薄 JAR 使用 `dacp/operator-jvm:1.1`；也支持在共享运行时容器中执行 Python 源码和 wheel。运行时与代码按 SHA-256 存储和缓存，每个节点只下载一次相同制品。详见 [算子打包设计](../../docs/operator-packaging.md) 和 [Python 示例](../../examples/operators/python/README.md)。
 
+
+`run` 和 `submit` 在完成、失败或取消后打印 `Execution time: 1.234 s`。这是 shell 从提交开始到结果流关闭的总耗时，包括连接、运行时准备、执行、传输、结果显示及客户端清理；不包含输入 heredoc 的时间，也不是单个服务器任务的 CPU 时间。多任务作业显示整个作业的一次总耗时。
+
 ## 安全与运行边界
 
 所有连接强制 mTLS，并通过 URI 前缀白名单授权。公开元数据、ticket 和数据服务错误隐藏私有存储绑定；数据内容仍包含源数据自身的字段和值。Python 的 `DacpError` 和 Scala 的 `DacpException` 提供错误码和可读消息，shell 显示简洁提示。

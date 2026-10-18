@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import time
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from .source import Source
@@ -321,6 +322,7 @@ class Browser(cmd.Cmd):
         Optional: --params-file FILE, --timeout SECONDS, --coordinator dacp://host:port.
         Installed operator IDs work in NORMAL mode; native_uppercase requires publishing the native example.
         No preview limit applies by default. Job results are streams, with no saved Dataset.
+        Execution time is printed after completion, failure or cancellation.
         """
         tokens = shlex.split(arg)
         delimiter = None
@@ -404,6 +406,7 @@ class Browser(cmd.Cmd):
           END
 
         Results print incrementally. Preview limits cancel the whole remaining job.
+        Execution time is printed after completion, failure or cancellation.
         Ctrl-C cancels entry or execution. Use your node URI and installed operator IDs.
         """
         parser = argparse.ArgumentParser(prog='submit', exit_on_error=False)
@@ -422,6 +425,7 @@ class Browser(cmd.Cmd):
                        preview_rows=options.preview_rows, preview_bytes=options.preview_bytes)
 
     def print_job(self, node, text, timeout, *, preview_rows=None, preview_bytes=None):
+        started = time.perf_counter()
         decoders, counts, offsets = {}, {}, {}
         text_port, line_start = None, True
         emitted = False
@@ -501,6 +505,11 @@ class Browser(cmd.Cmd):
                 separate()
                 self.write('Job interrupted or failed; results above are partial.')
             raise
+        finally:
+            elapsed = time.perf_counter() - started
+            separate()
+            self.write(f'Execution time: {elapsed:.3f} s')
+            self.stdout.flush()
 
     def do_quit(self, arg):
         """quit: close the connection and exit. Aliases: exit, EOF (Ctrl-D).
