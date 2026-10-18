@@ -200,17 +200,6 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
 }
 object Main {
   def main(args: Array[String]): Unit = {
-    if (args.headOption.contains("operator")) {
-      val a = new RootAllocator(Long.MaxValue)
-      try sys.env.getOrElse("DACP_OPERATOR","format_convert@1.0") match {
-        case "format_convert@1.0" =>
-          FormatConvert.run(Path.of(args(1)),Path.of(args(2)),Path.of(args(3)))
-          OperatorOutput.encode(Path.of(args(2)),a)
-        case "identity@1.0" => Identity.run(Path.of(args(1)),Path.of(args(2)),a)
-        case op => throw new IllegalArgumentException("unknown built-in operator " + op)
-      } finally a.close()
-      return
-    }
     val config = Config.load(Path.of(args.headOption.getOrElse("../examples/server.yaml")))
     val allocator = new RootAllocator(Long.MaxValue)
     val outputs = new OutputRegistry(config.ttlSeconds * 1000)

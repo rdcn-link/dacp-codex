@@ -82,7 +82,7 @@ class TaskExecutor(config: Config, allocator: BufferAllocator, registry: OutputR
     val docker = DockerClientImpl.getInstance(dockerConfig,transport)
     try {
       require(!config.hasDataset(task.output),"output shadows configured dataset")
-      val image = OperatorLibrary.resolve(config,task.operator,docker)
+      val operator = OperatorLibrary.resolve(config,task.operator,docker)
       val temp = Files.createTempDirectory("dacp-input-")
       Files.createDirectories(config.outputRoot)
       val output = Files.createDirectory(config.outputRoot.resolve(task.output + "-" + UUID.randomUUID().toString))
@@ -122,11 +122,15 @@ class TaskExecutor(config: Config, allocator: BufferAllocator, registry: OutputR
           channels += FileChannel.open(pipe,StandardOpenOption.READ,StandardOpenOption.WRITE)
         }
         val binds = List(new Bind(temp.toAbsolutePath.toString,new Volume("/input"),AccessMode.ro),
-          new Bind(output.toAbsolutePath.toString,new Volume("/output"),AccessMode.rw))
+          new Bind(output.toAbsolutePath.toString,new Volume("/output"),AccessMode.rw)) ++
+          operator.artifact.zip(operator.artifactPath).map { case (file, path) => new Bind(file.toAbsolutePath.toString,new Volume(path),AccessMode.ro) }
         val host = HostConfig.newHostConfig().withBinds(binds.asJava).withNetworkMode("none").withMemory(1024L*1024*1024).withPidsLimit(128L)
-        container = docker.createContainerCmd(image).withHostConfig(host)
-          .withEnv(s"DACP_OPERATOR=${task.operator}")
-          .withCmd("operator","/input","/output","/input/params.json").exec().getId
+          .withReadonlyRootfs(true).withTmpFs(Map("/tmp" -> "rw,nosuid,nodev,size=512m").asJava)
+        val create = docker.createContainerCmd(operator.image).withHostConfig(host)
+          .withEnv((operator.command.environment + ("DACP_OPERATOR" -> task.operator)).map { case (k,v) => s"$k=$v" }.toSeq.asJava)
+          .withCmd(operator.command.arguments.asJava)
+        operator.command.entrypoint.foreach(e => create.withEntrypoint(e.asJava))
+        container = create.exec().getId
         docker.startContainerCmd(container).exec()
         // Pekko pulls one transfer at a time; FIFO and Flight transport readiness bound buffering.
         val pumping = if (multi) Future.successful(()) else Source(inputs.indices.toList).mapAsync(1)(i => Future(transfer(i))).runWith(Sink.ignore).map(_ => ())

@@ -17,7 +17,7 @@ while [[ $# -gt 0 ]]; do
     shift
   fi
 done
-docker build -f operators/format_convert/1.0/Dockerfile -t dacp/format-convert:1.0 .
+scripts/build-operator-image.sh
 (cd dacp-operator-repository && sbt -batch stage)
 repository_bin="$project_root/dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository"
 "$repository_bin" seed --operators "$project_root/operators" --root "$catalog"

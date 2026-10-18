@@ -4,103 +4,98 @@ import java.nio.file.{Files,Path}
 import java.net.InetSocketAddress
 import com.sun.net.httpserver.HttpServer
 import org.scalatest.funsuite.AnyFunSuite
+import scala.jdk.CollectionConverters._
 
 class OperatorLibrarySpec extends AnyFunSuite {
-  test("local images take precedence and downloaded operators are reused offline") {
-    val root = Files.createTempDirectory("operator-success-")
-    val image = "sha256:" + "a" * 64
-    val bytes = "image archive".getBytes(java.nio.charset.StandardCharsets.UTF_8)
-    val checksum = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).map(b => f"${b & 255}%02x").mkString
-    var requests = 0
-    var loads = 0
-    def proxy[T](kind: Class[T])(f: java.lang.reflect.Method => AnyRef): T =
-      java.lang.reflect.Proxy.newProxyInstance(kind.getClassLoader,Array[Class[_]](kind),
-        new java.lang.reflect.InvocationHandler {
-          def invoke(p: AnyRef, m: java.lang.reflect.Method, args: Array[AnyRef]): AnyRef = f(m)
-        }).asInstanceOf[T]
+  private val image = "sha256:" + "a" * 64
+  private val archive = "shared runtime".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+  private val code = "small operator bundle".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+  private def hash(bytes: Array[Byte]): String = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).map(b => f"${b & 255}%02x").mkString
+  private def proxy[T](kind: Class[T])(f: java.lang.reflect.Method => AnyRef): T =
+    java.lang.reflect.Proxy.newProxyInstance(kind.getClassLoader,Array[Class[_]](kind),
+      new java.lang.reflect.InvocationHandler {
+        def invoke(p: AnyRef, m: java.lang.reflect.Method, args: Array[AnyRef]): AnyRef = f(m)
+      }).asInstanceOf[T]
+  private def manifest(name: String, version: String = "1", executor: String = "jvm"): String = {
+    val node = Data.mapper.createObjectNode().put("api_version",2).put("name",name).put("version",version)
+    node.putObject("runtime").put("image",image).putObject("archive").put("size",archive.length).put("sha256",hash(archive)).put("filename","runtime.tar")
+    node.putObject("execution").put("executor",executor).put("entrypoint",if(executor == "container") "" else "example.Main")
+    if(executor != "container") node.putObject("artifact").put("size",code.length).put("sha256",hash(code)).put("filename","operators.jar")
+    node.toString
+  }
+  private def config(root: Path, base: String) = Config("localhost",8815,"localhost",Map.empty,Seq.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"),
+    localOperatorLibrary=root.resolve("local"),operatorCache=root.resolve("cache"),remoteOperatorLibraryUrls=Seq(base))
+  private def cleanup(root: Path): Unit = { val paths = Files.walk(root)
+    try paths.iterator.asScala.toVector.sortBy(_.getNameCount).reverse.foreach(Files.delete(_)) finally paths.close() }
+
+  test("local definitions win; distinct remote operators share runtime/code downloads and work offline") {
+    val root = Files.createTempDirectory("operator-shared-")
+    var requests = Vector.empty[String]; var loads = 0; var installed = false
     val inspect = proxy(classOf[com.github.dockerjava.api.command.InspectImageCmd]) { _ =>
+      if(!installed) throw new com.github.dockerjava.api.exception.NotFoundException("missing")
       new com.github.dockerjava.api.command.InspectImageResponse().withId(image)
     }
-    val load = proxy(classOf[com.github.dockerjava.api.command.LoadImageCmd]) { _ => loads += 1; null }
+    val load = proxy(classOf[com.github.dockerjava.api.command.LoadImageCmd]) { _ => loads += 1; installed = true; null }
     val docker = proxy(classOf[com.github.dockerjava.api.DockerClient]) { m =>
-      if (m.getName == "inspectImageCmd") inspect else if (m.getName == "loadImageCmd") load
-      else throw new AssertionError(m.getName)
+      if(m.getName == "inspectImageCmd") inspect else if(m.getName == "loadImageCmd") load else throw new AssertionError(m.getName)
     }
     val server = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0)
     server.createContext("/", exchange => {
-      requests += 1
-      val body = if(exchange.getRequestURI.getPath.endsWith("image.tar")) bytes else
-        s"""{"api_version":1,"name":"identity","version":"1.0","image":"$image","archive":{"size":${bytes.length},"sha256":"$checksum"}}""".getBytes(java.nio.charset.StandardCharsets.UTF_8)
-      exchange.sendResponseHeaders(200,body.length)
-      val out = exchange.getResponseBody; try out.write(body) finally out.close()
-    })
-    server.start()
-    val config = Config("localhost",8815,"localhost",Map.empty,Seq.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"),
-      localOperatorLibrary=root.resolve("local"),operatorCache=root.resolve("cache"),
-      remoteOperatorLibraryUrls=Seq(s"http://127.0.0.1:${server.getAddress.getPort}"))
+      val path = exchange.getRequestURI.getPath; requests :+= path
+      val bytes = if(path.endsWith(hash(archive))) archive else if(path.endsWith(hash(code))) code
+        else manifest(path.split("/").dropRight(1).last).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+      exchange.sendResponseHeaders(200,bytes.length)
+      try exchange.getResponseBody.write(bytes) finally exchange.close()
+    }); server.start()
+    val c = config(root,s"http://127.0.0.1:${server.getAddress.getPort}")
     try {
-      val local = config.localOperatorLibrary.resolve("identity/1.0/operator.yaml")
-      Files.createDirectories(local.getParent); Files.writeString(local,"image: local-image")
-      assert(OperatorLibrary.resolve(config,"identity@1.0",docker) == image)
-      assert(requests == 0)
-      Files.delete(local)
-      assert(OperatorLibrary.resolve(config,"identity@1.0",docker) == image)
-      assert(requests == 2 && loads == 1)
+      installed = true
+      val local = c.localOperatorLibrary.resolve("first/1/operator.yaml")
+      Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\n")
+      assert(OperatorLibrary.resolve(c,"first@1",docker).image == image && requests.isEmpty)
+      Files.delete(local); installed = false
+      val first = OperatorLibrary.resolve(c,"first@1",docker)
+      val second = OperatorLibrary.resolve(c,"second@1",docker)
+      assert(first.artifact == second.artifact)
+      assert(first.command.entrypoint.get.contains("example.Main"))
+      assert(requests.count(_.contains("/blobs/")) == 2 && loads == 1)
+      assert(requests.size == 4)
+      // A second repository URL has separate metadata but shares verified content.
+      val mirror = c.copy(remoteOperatorLibraryUrls=Seq(c.remoteOperatorLibraryUrls.head + "/mirror"))
+      assert(OperatorLibrary.resolve(mirror,"second@1",docker).artifact == first.artifact)
+      assert(requests.size == 5 && requests.count(_.contains("/blobs/")) == 2)
       server.stop(0)
-      assert(OperatorLibrary.resolve(config,"identity@1.0",docker) == image)
-      assert(requests == 2 && loads == 1)
-    } finally {
-      server.stop(0)
-      val files = Files.walk(root)
-      try files.toArray.map(_.asInstanceOf[Path]).sortBy(_.getNameCount).reverse.foreach(Files.delete(_)) finally files.close()
-    }
+      assert(OperatorLibrary.resolve(c,"second@1",docker).artifact == first.artifact)
+      assert(requests.size == 5)
+      // Completed caches remain verified, even offline.
+      Files.writeString(first.artifact.get,"corrupt")
+      assert(intercept[IllegalArgumentException](OperatorLibrary.resolve(c,"first@1",docker)).getMessage.contains("checksum"))
+    } finally { server.stop(0); cleanup(root) }
   }
-  test("remote libraries are searched in order and corrupt archives fail before touching Docker") {
-    val root = Files.createTempDirectory("operator-test-")
+  test("missing libraries are searched in order; corrupt artifacts fail before Docker and partial files are removed") {
+    val root = Files.createTempDirectory("operator-corrupt-")
+    var blobRequests = 0
     val server = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0)
-    var mode = "missing"
     server.createContext("/", exchange => {
-      val body = if (exchange.getRequestURI.getPath.endsWith("image.tar")) "corrupt" else
-        s"""{"api_version":1,"name":"identity","version":"1.0","image":"sha256:${"a" * 64}","archive":{"size":7,"sha256":"${"b" * 64}"}}"""
-      val bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-      exchange.sendResponseHeaders(if(mode == "missing") 404 else 200,bytes.length)
-      val out = exchange.getResponseBody; try out.write(bytes) finally out.close()
-    })
-    server.start()
-    val config = Config("localhost",8815,"localhost",Map.empty,Seq.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"),
-      remoteOperatorLibraryUrls=Seq(s"http://127.0.0.1:${server.getAddress.getPort}"),operatorCache=root,localOperatorLibrary=root.resolve("local"))
+      val path = exchange.getRequestURI.getPath
+      if(path.startsWith("/missing/")) { exchange.sendResponseHeaders(404,-1); exchange.close() }
+      else {
+        val bytes = if(path.contains("/blobs/")) { blobRequests += 1; "bad".getBytes } else manifest("identity").getBytes
+        exchange.sendResponseHeaders(200,bytes.length)
+        try exchange.getResponseBody.write(bytes) finally exchange.close()
+      }
+    }); server.start()
+    val base = s"http://127.0.0.1:${server.getAddress.getPort}"
+    val c = config(root,base).copy(remoteOperatorLibraryUrls=Seq(base+"/missing",base))
     try {
-      assert(intercept[IllegalArgumentException](OperatorLibrary.resolve(config,"identity@1.0",null)).getMessage.contains("operator not found"))
-      val missing = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0)
-      var misses = 0
-      missing.createContext("/", exchange => {
-        misses += 1
-        exchange.sendResponseHeaders(404,-1); exchange.close()
-      })
-      missing.start()
-      mode = "corrupt"
-      try {
-        val ordered = config.copy(remoteOperatorLibraryUrls=Seq(s"http://127.0.0.1:${missing.getAddress.getPort}") ++ config.remoteOperatorLibraryUrls)
-        assert(intercept[IllegalArgumentException](OperatorLibrary.resolve(ordered,"identity@1.0",null)).getMessage.contains("checksum"))
-        assert(misses == 1)
-      } finally missing.stop(0)
-      assert(intercept[IllegalArgumentException](OperatorLibrary.resolve(config,"identity@1.0",null)).getMessage.contains("checksum"))
-      val files = Files.walk(root)
-      try assert(!files.toArray.exists(_.toString.contains("download-"))) finally files.close()
-      intercept[IllegalArgumentException](OperatorLibrary.resolve(config,"../escape@1",null))
-      intercept[IllegalArgumentException](config.copy(remoteOperatorLibraryUrls=Seq("file:///tmp/operators")))
-      assert(intercept[IllegalArgumentException](OperatorLibrary.resolve(config.copy(remoteOperatorLibraryUrls=Seq.empty),"identity@1.0",null)).getMessage.contains("operator not found"))
-      val local = config.localOperatorLibrary.resolve("identity/1.0")
-      Files.createDirectories(local)
-      Files.writeString(local.resolve("operator.yaml"), "invalid: [")
-      intercept[org.yaml.snakeyaml.error.YAMLException](OperatorLibrary.resolve(config,"identity@1.0",null))
-      Files.delete(local.resolve("operator.yaml"))
-      val tooSmall = config.copy(operatorMaxBytes=2)
-      assert(intercept[IllegalArgumentException](OperatorLibrary.resolve(tooSmall,"identity@1.0",null)).getMessage.contains("size limit"))
-    } finally {
-      server.stop(0)
-      val files = Files.walk(root)
-      try files.toArray.map(_.asInstanceOf[Path]).sortBy(_.getNameCount).reverse.foreach(Files.delete(_)) finally files.close()
-    }
+      assert(intercept[IllegalArgumentException](OperatorLibrary.resolve(c,"identity@1",null)).getMessage.contains("checksum"))
+      assert(blobRequests == 1)
+      val paths = Files.walk(root)
+      try assert(!paths.iterator.asScala.exists(_.getFileName.toString.startsWith("download-"))) finally paths.close()
+      assert(intercept[IllegalArgumentException](OperatorLibrary.resolve(c.copy(remoteOperatorLibraryUrls=Seq(base+"/missing")),"identity@1",null)).getMessage.contains("not found"))
+      intercept[IllegalArgumentException](OperatorLibrary.resolve(c,"../escape@1",null))
+      intercept[IllegalArgumentException](c.copy(remoteOperatorLibraryUrls=Seq("file:///tmp")))
+      assert(intercept[IllegalArgumentException](OperatorLibrary.resolve(c.copy(operatorMaxBytes=2),"identity@1",null)).getMessage.contains("size"))
+    } finally { server.stop(0); cleanup(root) }
   }
 }

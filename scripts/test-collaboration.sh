@@ -77,6 +77,6 @@ kill -0 "$b_pid"
 "$python_bin" examples/multi-node/check.py
 
 if [[ "${DACP_TEST_REMOTE_REPOSITORY:-0}" == "1" ]]; then
-  test "$(find "$logs/cache-a" "$logs/cache-b" -name manifest.json | wc -l)" -ge 2
+  test "$(find "$logs/cache-a" "$logs/cache-b" -path "*/manifests/*" -name "*.json" | wc -l)" -ge 2
   echo "Remote operator download, verification, cache and local container execution passed"
 fi

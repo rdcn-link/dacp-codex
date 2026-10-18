@@ -147,6 +147,8 @@ The container entry point receives `operator /input /output /input/params.json`;
 
 Operators resolve from the local directory and installed image first, then completed cached downloads, then remote URLs in configured order. A manifest HTTP 404 tries the next library; other download or validation failures stop execution. Configure `remote_operator_library_urls: [http://library-a:8820, https://library-b:8820]`; an empty list uses only local operators.
 
+Runtime images and operator code are separate content-addressed artifacts. Built-in launch plugins support complete containers, Java/Scala JARs, Python source, and wheels, all within isolated runtime containers. See [operator packaging](operator-packaging.md) for definitions, shared caching, executor registration, and current limitations.
+
 ### format_convert parameters
 
 | Parameter | Default / supported values |
@@ -196,7 +198,7 @@ Configuration in `examples/server.yaml`:
 | `infer_sample` | Number of batches sampled for server-side records schema inference |
 | `output_ttl_seconds` | Output lifetime starting at successful registration |
 | `sql_sources` | Private JDBC sources (tables are not automatically published): url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
-| `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | Ordered remote operator library URLs / local immutable version cache / maximum archive size in bytes (default 8 GiB) |
+| `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | Ordered remote operator library URLs / local immutable version cache / maximum size per artifact in bytes (default 8 GiB) |
 | `local_operator_library` / `output_root` | Local operator library / temporary output root |
 | `task_peers` | Node origins permitted for task dispatch; the local node is always allowed; no central discovery service |
 | `task_input_prefixes` | Input URI prefixes execution nodes may pull; defaults to `allowed_uri_prefixes` when omitted |

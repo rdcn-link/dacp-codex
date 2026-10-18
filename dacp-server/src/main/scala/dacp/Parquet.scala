@@ -5,12 +5,11 @@ import org.apache.arrow.vector._
 import org.apache.arrow.vector.types.pojo.Schema
 import org.apache.arrow.memory.BufferAllocator
 import org.apache.avro.{Schema => AvroSchema}
-import org.apache.avro.generic.{GenericData, GenericRecord}
-import org.apache.parquet.avro.{AvroParquetWriter, AvroParquetReader}
+import org.apache.avro.generic.GenericRecord
+import org.apache.parquet.avro.AvroParquetReader
 import org.apache.parquet.hadoop.ParquetFileReader
 import org.apache.parquet.hadoop.util.HadoopInputFile
 import org.apache.hadoop.conf.Configuration
-import org.apache.parquet.hadoop.metadata.CompressionCodecName
 object Parquet {
   private def conf(): Configuration = { val c = new Configuration(); c.set("fs.file.impl","org.apache.hadoop.fs.RawLocalFileSystem"); c.setBoolean("fs.file.impl.disable.cache",true); c }
   private def hp(p: Path) = new org.apache.hadoop.fs.Path(p.toUri)
@@ -40,11 +39,6 @@ object Parquet {
       require(json != null, "Parquet file missing dacp Arrow schema metadata")
       Schema.fromJSON(json)
     } finally reader.close()
-  }
-  def writer(p: Path, s: Schema, compression: String, rowGroup: Long) = {
-    val codec = compression match { case "zstd" => CompressionCodecName.ZSTD; case "snappy" => CompressionCodecName.SNAPPY; case "none" => CompressionCodecName.UNCOMPRESSED; case _ => throw new IllegalArgumentException("invalid compression") }
-    AvroParquetWriter.builder[GenericRecord](hp(p)).withConf(conf()).withSchema(avro(s)).withCompressionCodec(codec)
-      .withRowGroupSize(rowGroup).withExtraMetaData(Map("dacp.arrow.schema" -> s.toJson).asJava).build()
   }
   def stream(p: Path, a: BufferAllocator, size: Int)(start: VectorSchemaRoot => Unit, emit: VectorSchemaRoot => Unit, demand: () => Unit): Unit = {
     val s = schema(p); val root = VectorSchemaRoot.create(s,a)

@@ -89,7 +89,7 @@ class CoreSpec extends AnyFunSuite {
     } finally {writer.close();root.close();a.close()}
     FormatConvert.run(input,output,input.resolve("params.json"))
     val boundary = new RootAllocator()
-    try { OperatorOutput.encode(output,boundary); assert(!Files.exists(output.resolve("part-0.parquet"))); OperatorOutput.decode(output,boundary) }
+    try { RuntimeOutput.encode(output,boundary,"parquet"); assert(!Files.exists(output.resolve("part-0.parquet"))); OperatorOutput.decode(output,boundary) }
     finally boundary.close()
     assert(Files.exists(output.resolve("_schema.json")))
     assert(Parquet.schema(output.resolve("part-0.parquet")).getFields.get(0).getName == "id")

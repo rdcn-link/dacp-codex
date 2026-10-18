@@ -5,7 +5,7 @@ import java.security.KeyStore
 import javax.net.ssl.{KeyManagerFactory, SSLContext}
 
 object Main {
-  private val usage = "publish name@version --image IMAGE --root DIR [--description TEXT] | seed --operators DIR --root DIR | serve --root DIR [--host HOST] [--port PORT] [--tls-keystore PKCS12 --tls-password-env ENV]"
+  private val usage = "publish name@version --image IMAGE --root DIR [--description TEXT] [--executor ID --entrypoint MAIN --artifact FILE] | seed --operators DIR --root DIR | serve --root DIR [--host HOST] [--port PORT] [--tls-keystore PKCS12 --tls-password-env ENV]"
   def main(args: Array[String]): Unit = {
     require(args.nonEmpty, usage)
     val publish = args(0) == "publish"
@@ -15,11 +15,11 @@ object Main {
     val options = args.drop(if (publish) 2 else 1)
     require(options.length % 2 == 0, usage)
     val pairs = options.grouped(2).map(v => v(0) -> v(1)).toSeq
-    val allowed = if (publish) Set("--root", "--image", "--description") else if (seed) Set("--root", "--operators") else Set("--root", "--host", "--port", "--tls-keystore", "--tls-password-env")
+    val allowed = if (publish) Set("--root", "--image", "--description", "--executor", "--entrypoint", "--artifact") else if (seed) Set("--root", "--operators") else Set("--root", "--host", "--port", "--tls-keystore", "--tls-password-env")
     require(pairs.map(_._1).distinct.size == pairs.size && pairs.forall(p => allowed(p._1)), "unknown or duplicate option")
     val settings = pairs.toMap
     val root = Path.of(settings.getOrElse("--root", throw new IllegalArgumentException("--root required")))
-    if (publish) println(Repository.publish(root, args(1), settings.getOrElse("--image", throw new IllegalArgumentException("--image required")), description = settings.getOrElse("--description", "")))
+    if (publish) println(Repository.publish(root, args(1), settings.getOrElse("--image", throw new IllegalArgumentException("--image required")), description = settings.getOrElse("--description", ""), executor = settings.getOrElse("--executor", "container"), entrypoint = settings.getOrElse("--entrypoint", ""), artifact = settings.get("--artifact").map(Path.of(_))))
     else if (seed) Repository.seed(root, Path.of(settings.getOrElse("--operators", throw new IllegalArgumentException("--operators required")))).foreach(ref => println(s"Available: $ref"))
     else {
       require(settings.contains("--tls-keystore") == settings.contains("--tls-password-env"), "TLS requires both keystore and password environment name")

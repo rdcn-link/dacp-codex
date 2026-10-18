@@ -35,7 +35,7 @@ object FormatConvert {
     }
     case "ndjson" => new Records.Rows {
       private val reader = new BufferedReader(new InputStreamReader(in,UTF_8))
-      private val nodes = Iterator.continually(reader.readLine()).takeWhile(_ != null).filter(_.trim.nonEmpty).map(Data.mapper.readTree).buffered
+      private val nodes = Iterator.continually(reader.readLine()).takeWhile(_ != null).filter(_.trim.nonEmpty).map(RuntimeJson.mapper.readTree).buffered
       val names = if (nodes.hasNext) nodes.head.fieldNames.asScala.toSeq else Seq.empty
       val iterator = nodes.map { n => require(n.isObject && n.fieldNames.asScala.toSet == names.toSet,"SCHEMA_CONFLICT: JSON fields"); names.map { k =>
         val v = n.get(k); if (v.isNull) null else if (v.isBoolean) v.booleanValue else if (v.isIntegralNumber) v.longValue else if (v.isFloatingPointNumber) v.doubleValue else if (v.isTextual) v.textValue else throw new IllegalArgumentException("nested JSON unsupported")
@@ -50,7 +50,7 @@ object FormatConvert {
       case _ => throw new IllegalArgumentException("invalid row_group_size") }
   }
   def run(input: Path, output: Path, paramsPath: Path): Unit = {
-    val params = Data.mapper.readTree(Files.readAllBytes(paramsPath))
+    val params = RuntimeJson.mapper.readTree(Files.readAllBytes(paramsPath))
     def option(k: String,d: String) = Option(params.get(k)).map(_.asText()).getOrElse(d)
     require(option("to", "parquet") == "parquet", "only parquet output supported")
     require(option("on_conflict","fail") == "fail", "only on_conflict=fail supported")
@@ -60,9 +60,9 @@ object FormatConvert {
     }
     require(!params.has("schema") || params.get("schema").isObject || params.get("schema").asText == "infer", "schema must be infer or name:type mapping")
     Files.createDirectories(output)
-    val manifest = Data.mapper.readTree(Files.readAllBytes(input.resolve("manifest.json")))
+    val manifest = RuntimeJson.mapper.readTree(Files.readAllBytes(input.resolve("manifest.json")))
     val allocator = new RootAllocator(Long.MaxValue)
-    val metadata = Data.mapper.createObjectNode(); val schemas = metadata.putObject("items")
+    val metadata = RuntimeJson.mapper.createObjectNode(); val schemas = metadata.putObject("items")
     try manifest.elements.asScala.zipWithIndex.foreach { case (entry,index) =>
       val format = option("from","auto") match { case "auto" => entry.get("format").asText; case f => f }
       val ipc = new ArrowStreamReader(Files.newInputStream(input.resolve(entry.get("file").asText)),allocator)
@@ -82,8 +82,8 @@ object FormatConvert {
           }
           require(schema.getFields.asScala.map(_.getName).toSeq == rows.names,"SCHEMA_CONFLICT: explicit columns")
           val target = output.resolve(s"part-$index.parquet")
-          val writer = Parquet.writer(target,schema,option("compression","zstd"),size(option("row_group_size","128MB")))
-          val root = VectorSchemaRoot.create(schema,allocator); val avroSchema = Parquet.avro(schema)
+          val writer = ParquetOutput.writer(target,schema,option("compression","zstd"),size(option("row_group_size","128MB")))
+          val root = VectorSchemaRoot.create(schema,allocator); val avroSchema = ParquetOutput.avro(schema)
           try (sampled.iterator ++ rows.iterator).grouped(batchSize).foreach { batch =>
             Records.fill(root,batch)
             (0 until root.getRowCount).foreach { i => val record = new GenericData.Record(avroSchema)
@@ -95,7 +95,7 @@ object FormatConvert {
         } finally rows.close()
       } finally ipc.close()
     } finally allocator.close()
-    Files.write(output.resolve("_schema.json"),Data.mapper.writeValueAsBytes(metadata))
+    Files.write(output.resolve("_schema.json"),RuntimeJson.mapper.writeValueAsBytes(metadata))
   }
 }
 object DataKind {

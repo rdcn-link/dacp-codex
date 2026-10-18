@@ -291,7 +291,7 @@ DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and
 Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, build the conversion operator and start the example job. Stop the quick-start server first if it is still running:
 
 ```bash
-docker build -f operators/format_convert/1.0/Dockerfile -t dacp/format-convert:1.0 .
+scripts/build-operator-image.sh
 cd dacp-server
 sbt 'run ../examples/server.yaml ../examples/convert.yaml'
 ```
@@ -302,9 +302,12 @@ Further reading:
 
 - [Two-node example](examples/multi-node/README.md): task placement, remote inputs, and consuming outputs.
 - [Scala operator repository and website](dacp-operator-repository/README_en.md): public search, version details, downloads, and immutable operator publication.
+- [Write and upload custom operators](docs/operator-authoring_en.md): complete Scala/Python source, packaging, publication, remote transfer, and execution.
 - [Task and operator reference](docs/reference_en.md#task-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
 
 Start a repository with the starter operators using `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820`, then open `http://localhost:8820/` to search, view, and download operators without signing in. See the repository guide for HTTPS deployment.
+
+Operators can share a dependency environment and a code bundle. The starter operators use thin JARs with `dacp/operator-jvm:1.1`; Python source and wheels are also supported in shared runtime containers. Runtime and code artifacts are stored and cached by SHA-256, so each distinct artifact is downloaded once per node. See [operator packaging](docs/operator-packaging.md) and the [Python example](examples/operators/python/README_en.md).
 
 ## Security and operating limits
 

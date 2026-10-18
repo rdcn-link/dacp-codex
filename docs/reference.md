@@ -147,6 +147,8 @@ Dataset provider、容器 reader、格式 handler 分别负责构建数据集、
 
 算子首先从本地目录及已安装镜像解析，然后检查已完成的下载缓存，最后按配置顺序查询远程 URL。清单返回 HTTP 404 时继续查询下一个库；其他下载或验证错误会终止执行。配置示例：`remote_operator_library_urls: [http://library-a:8820, https://library-b:8820]`；空列表仅使用本地算子。
 
+运行时镜像与算子代码分别作为按内容摘要寻址的制品。内置启动插件支持完整容器、Java/Scala JAR、Python 源码和 wheel，均在隔离的运行时容器中执行。定义、共享缓存、执行器注册与当前限制参见 [算子打包](operator-packaging.md)。
+
 ### format_convert 参数
 
 | 参数 | 默认 / 支持值 |
@@ -196,7 +198,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | `infer_sample` | 服务端记录视图推断采样 batch 数 |
 | `output_ttl_seconds` | 从成功注册开始计算输出寿命 |
 | `sql_sources` | 私有 JDBC 数据源（不自动发布表），url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
-| `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | 有序的远程算子库 URL 列表 / 本地不可变版本缓存 / 最大归档字节数（默认 8 GiB） |
+| `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | 有序的远程算子库 URL 列表 / 本地不可变版本缓存 / 单个制品最大字节数（默认 8 GiB） |
 | `local_operator_library` / `output_root` | 本地算子库 / 临时输出根目录 |
 | `task_peers` | 允许分发任务的节点 origin；自身始终允许，无中心发现服务 |
 | `task_input_prefixes` | 执行节点可拉取的输入 URI 前缀；省略时使用 `allowed_uri_prefixes` |

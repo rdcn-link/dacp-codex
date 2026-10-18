@@ -10,11 +10,11 @@ import org.apache.arrow.vector.ipc.{ArrowStreamReader,ArrowStreamWriter}
 object Identity {
   def run(input: Path, output: Path, allocator: BufferAllocator): Unit = {
     Files.createDirectories(output)
-    val manifest = Data.mapper.readTree(Files.readAllBytes(input.resolve("manifest.json")))
-    val result = Data.mapper.createArrayNode()
+    val manifest = RuntimeJson.mapper.readTree(Files.readAllBytes(input.resolve("manifest.json")))
+    val result = RuntimeJson.mapper.createArrayNode()
     manifest.elements.asScala.zipWithIndex.foreach { case (entry,index) =>
       val format = entry.get("format").asText()
-      require((format == "sql" || scala.util.Try(Formats.byId(format)).isSuccess),"unsupported input format")
+      require(format.matches("[a-z][a-z0-9_-]*"),"unsupported input format")
       val extension = format match { case "excel" => "xlsx"; case "sql" => "bin"; case other => other }
       val name = s"_stream-$index.arrow"
       val reader = new ArrowStreamReader(Files.newInputStream(input.resolve(entry.get("file").asText())),allocator)
@@ -26,6 +26,6 @@ object Identity {
       } finally reader.close()
       val item = result.addObject();item.put("file",name);item.put("path",s"part-$index.$extension");item.put("format",format)
     }
-    Files.write(output.resolve("_output.json"),Data.mapper.writeValueAsBytes(result))
+    Files.write(output.resolve("_output.json"),RuntimeJson.mapper.writeValueAsBytes(result))
   }
 }

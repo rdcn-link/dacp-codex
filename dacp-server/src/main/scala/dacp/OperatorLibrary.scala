@@ -1,12 +1,16 @@
 package dacp
 
 import java.net.URI
-import java.nio.file.{Files, Path, StandardCopyOption}
+import java.nio.file.{Files, Path, StandardCopyOption, StandardOpenOption}
 import java.security.MessageDigest
 import com.github.dockerjava.api.DockerClient
+import com.fasterxml.jackson.databind.JsonNode
 import org.yaml.snakeyaml.Yaml
+import scala.jdk.CollectionConverters._
 
-/** Resolve on the execution node; container isolation and Flight data transport are unchanged. */
+case class ResolvedOperator(image: String, artifact: Option[Path], artifactPath: Option[String], command: OperatorCommand)
+
+/** Immutable operator metadata plus globally shared, content-addressed runtime/code artifacts. */
 object OperatorLibrary {
   private def sha(bytes: Array[Byte]): String = MessageDigest.getInstance("SHA-256").digest(bytes).map(b => f"${b & 255}%02x").mkString
   private def digest(path: Path): String = {
@@ -17,11 +21,11 @@ object OperatorLibrary {
     md.digest().map(b => f"${b & 255}%02x").mkString
   }
   private class MissingOperator extends RuntimeException
-  private def fetch(url: String, file: Path, limit: Long): Unit = {
+  private def fetch(url: String, file: Path, limit: Long, manifest: Boolean = false): Unit = {
     val c = URI.create(url).toURL.openConnection().asInstanceOf[java.net.HttpURLConnection]
     c.setConnectTimeout(15000); c.setReadTimeout(60000); c.setInstanceFollowRedirects(false)
     try {
-      if (c.getResponseCode == 404 && !url.endsWith("/image.tar")) throw new MissingOperator
+      if (c.getResponseCode == 404 && manifest) throw new MissingOperator
       require(c.getResponseCode == 200, s"operator library HTTP ${c.getResponseCode}: $url")
       val in = c.getInputStream
       try { val out = Files.newOutputStream(file)
@@ -31,62 +35,99 @@ object OperatorLibrary {
       } finally in.close()
     } finally c.disconnect()
   }
-  // Immutable versions: cache hits never silently select a newly published implementation.
-  def resolve(config: Config, reference: String, docker: DockerClient): String = synchronized {
+  private def locked[T](file: Path)(f: => T): T = {
+    Files.createDirectories(file.getParent)
+    val c = java.nio.channels.FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+    val lock = c.lock()
+    try f finally { lock.release(); c.close() }
+  }
+  private def plan(reference: String, image: String, executor: String, entrypoint: String,
+                   artifact: Option[Path], filename: Option[String]): ResolvedOperator = {
+    val target = filename.map { name =>
+      require(name.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*"), "invalid artifact filename")
+      "/operator/" + name
+    }
+    val command = OperatorExecutors.command(executor, OperatorProgram(reference, entrypoint, artifact), target)
+    ResolvedOperator(image, artifact, target, command)
+  }
+  def resolve(config: Config, reference: String, docker: DockerClient): ResolvedOperator = synchronized {
     val p = reference.split("@",-1)
     require(p.length == 2 && p.forall(_.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*")),"operator must be name@version")
     val local = config.localOperatorLibrary.resolve(p(0)).resolve(p(1)).resolve("operator.yaml")
     if (Files.exists(local)) {
+      val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
       val in = Files.newInputStream(local)
-      val m = try new Yaml().load[java.util.Map[String,Object]](in) finally in.close()
-      try return docker.inspectImageCmd(m.get("image").toString).exec().getId
-      catch { case _: com.github.dockerjava.api.exception.NotFoundException => () }
-    }
-    def remote(base: String): String = {
-      val parent = config.operatorCache.resolve(sha(base.getBytes(java.nio.charset.StandardCharsets.UTF_8))).resolve(p(0))
-      Files.createDirectories(parent)
-      val channel = java.nio.channels.FileChannel.open(parent.resolve(p(1)+".lock"),java.nio.file.StandardOpenOption.CREATE,java.nio.file.StandardOpenOption.WRITE)
-      val lock = channel.lock()
+      val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala.toMap finally in.close()
+      require(m.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact")), "unknown operator setting")
+      require(m("name").toString == p(0) && m("version").toString == p(1), "operator identity mismatch")
+      val artifact = m.get("artifact").map(v => local.getParent.resolve(v.toString).toAbsolutePath.normalize)
+      artifact.foreach(f => require(Files.isRegularFile(f) && Files.size(f) > 0 && Files.size(f) <= config.operatorMaxBytes, "invalid operator artifact size"))
       try {
-        val entry = parent.resolve(p(1))
-        def validate(dir: Path): String = {
-          val m = Data.mapper.readTree(dir.resolve("manifest.json").toFile)
-          require(m.path("api_version").asInt == 1 && m.path("name").asText == p(0) && m.path("version").asText == p(1),"operator identity mismatch")
-          val image = m.path("image").asText; require(image.matches("sha256:[a-f0-9]{64}"),"operator image must be pinned by ID")
-          val a = m.path("archive"); val size = a.path("size").asLong(-1)
-          require(size > 0 && size <= config.operatorMaxBytes,"invalid operator archive size")
-          require(Files.size(dir.resolve("image.tar")) == size && digest(dir.resolve("image.tar")) == a.path("sha256").asText,"operator archive checksum/size mismatch")
-          image
+        val image = docker.inspectImageCmd(m("image").toString).exec().getId
+        return plan(reference, image, m.getOrElse("executor", "container").toString, m.getOrElse("entrypoint", "").toString,
+          artifact, artifact.map(_.getFileName.toString))
+      } catch { case _: com.github.dockerjava.api.exception.NotFoundException => () }
+    }
+    def remote(base: String): ResolvedOperator = {
+      val parent = config.operatorCache.resolve("manifests").resolve(sha(base.getBytes(java.nio.charset.StandardCharsets.UTF_8))).resolve(p(0))
+      locked(parent.resolve(p(1)+".lock")) {
+        val entry = parent.resolve(p(1)+".json")
+        def metadata(file: Path): JsonNode = {
+          val m = Data.mapper.readTree(file.toFile)
+          require(m.path("api_version").asInt == 2 && m.path("name").asText == p(0) && m.path("version").asText == p(1),"operator identity mismatch or unsupported manifest")
+          require(m.path("runtime").path("image").asText.matches("sha256:[a-f0-9]{64}"), "operator runtime must be pinned by ID")
+          m
         }
-        def load(dir: Path, image: String): Unit = {
-          val in = Files.newInputStream(dir.resolve("image.tar"))
-          try docker.loadImageCmd(in).exec() finally in.close()
-          docker.inspectImageCmd(image).exec()
-        }
-        if (!Files.exists(entry)) {
-          val stage = Files.createTempDirectory(parent,"download-")
-          try {
-            val endpoint = base.stripSuffix("/")+s"/v1/operators/${p(0)}/${p(1)}"
-            fetch(endpoint,stage.resolve("manifest.json"),65536)
-            fetch(endpoint+"/image.tar",stage.resolve("image.tar"),config.operatorMaxBytes)
-            load(stage,validate(stage))
-            Files.move(stage,entry,StandardCopyOption.ATOMIC_MOVE)
-          } finally if (Files.exists(stage)) {
-            Files.deleteIfExists(stage.resolve("manifest.json")); Files.deleteIfExists(stage.resolve("image.tar")); Files.delete(stage)
+        def blob(a: JsonNode): Path = {
+          val hash = a.path("sha256").asText; val size = a.path("size").asLong(-1)
+          require(hash.matches("[a-f0-9]{64}") && size > 0 && size <= config.operatorMaxBytes, "invalid operator artifact size/digest")
+          val path = config.operatorCache.resolve("blobs/sha256").resolve(hash)
+          locked(path.resolveSibling(hash + ".lock")) {
+            def validate(file: Path): Unit = require(Files.size(file) == size && digest(file) == hash, "operator artifact checksum/size mismatch")
+            if (!Files.exists(path)) {
+              val temporary = Files.createTempFile(path.getParent, "download-", ".tmp")
+              try {
+                fetch(base.stripSuffix("/")+"/v1/blobs/sha256/"+hash, temporary, size)
+                validate(temporary)
+                Files.move(temporary,path,StandardCopyOption.ATOMIC_MOVE)
+              } finally Files.deleteIfExists(temporary)
+            } else validate(path)
+            path
           }
         }
-        val image = validate(entry)
-        try docker.inspectImageCmd(image).exec() catch { case _: com.github.dockerjava.api.exception.NotFoundException => load(entry,image) }
-        image
-      } finally { lock.release(); channel.close() }
+        def prepare(m: JsonNode): ResolvedOperator = {
+          val runtime = m.path("runtime")
+          val archive = blob(runtime.path("archive"))
+          val artifact = Option(m.get("artifact")).map(blob)
+          val execution = m.path("execution")
+          val image = runtime.path("image").asText
+          val resolved = plan(reference, image, execution.path("executor").asText, execution.path("entrypoint").asText,
+            artifact, Option(m.get("artifact")).map(_.path("filename").asText))
+          try docker.inspectImageCmd(image).exec() catch {
+            case _: com.github.dockerjava.api.exception.NotFoundException =>
+              val in = Files.newInputStream(archive)
+              try docker.loadImageCmd(in).exec() finally in.close()
+              docker.inspectImageCmd(image).exec()
+          }
+          resolved
+        }
+        if (Files.exists(entry)) prepare(metadata(entry))
+        else {
+          val temporary = Files.createTempFile(parent,"download-", ".json")
+          try {
+            fetch(base.stripSuffix("/")+s"/v1/operators/${p(0)}/${p(1)}",temporary,65536,manifest=true)
+            val result = prepare(metadata(temporary))
+            Files.move(temporary,entry,StandardCopyOption.ATOMIC_MOVE)
+            result
+          } finally Files.deleteIfExists(temporary)
+        }
+      }
     }
-    // Prefer completed cached versions before making any network requests.
     val bases = config.remoteOperatorLibraryUrls
     val (cached, uncached) = bases.partition { base =>
-      Files.exists(config.operatorCache.resolve(sha(base.getBytes(java.nio.charset.StandardCharsets.UTF_8))).resolve(p(0)).resolve(p(1)))
+      Files.exists(config.operatorCache.resolve("manifests").resolve(sha(base.getBytes(java.nio.charset.StandardCharsets.UTF_8))).resolve(p(0)).resolve(p(1)+".json"))
     }
-    val ordered = cached ++ uncached
-    ordered.foreach { base =>
+    (cached ++ uncached).foreach { base =>
       try return remote(base) catch { case _: MissingOperator => () }
     }
     throw new IllegalArgumentException(s"operator not found locally or in configured libraries: $reference")

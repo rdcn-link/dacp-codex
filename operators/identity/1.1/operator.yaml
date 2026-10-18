@@ -1,0 +1,7 @@
+name: identity
+version: "1.1"
+image: dacp/operator-jvm:1.1
+executor: jvm
+entrypoint: dacp.OperatorMain
+artifact: ../../../dacp-operator-runtime/target/universal/stage/lib/default.dacp-operator-runtime-0.1.0-SNAPSHOT.jar
+description: Copy input data into a new dataset while preserving its bytes. Useful for transfer checks and job pipelines.

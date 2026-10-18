@@ -15,12 +15,12 @@ class CollaborationSpec extends AnyFunSuite {
     taskPeers=Seq(b),taskInputPrefixes=Seq(b+"/data",a+"/result"))
   val yaml = s"""job: distributed
     |tasks:
-    | - {id: first, inputs: ['$b/data'], operator: format_convert@1.0, output: converted}
-    | - {id: relay, inputs: [converted/result-1], node: '$a', operator: identity@1.0, output: result}
+    | - {id: first, inputs: ['$b/data'], operator: format_convert@1.1, output: converted}
+    | - {id: relay, inputs: [converted/result-1], node: '$a', operator: identity@1.1, output: result}
     | - id: joined
     |   inputs: [converted, result]
     |   node: '$b'
-    |   operator: identity@1.0
+    |   operator: identity@1.1
     |   output: joined
     |""".stripMargin
   test("URI-based placement resolves upstream outputs across nodes and supports multi-input overrides") {
@@ -67,7 +67,7 @@ class CollaborationSpec extends AnyFunSuite {
     def await(): Unit = assert(done.await(5,TimeUnit.SECONDS))
   }
   def request(input: String=b+"/data",output: String="result") =
-    new Action(TaskService.ExecuteAction,TaskWire.encode(Task("test",Seq(input),"identity@1.0",new java.util.LinkedHashMap[String,Object](),output)).toByteArray)
+    new Action(TaskService.ExecuteAction,TaskWire.encode(Task("test",Seq(input),"identity@1.1",new java.util.LinkedHashMap[String,Object](),output)).toByteArray)
   test("worker authorizes output and every input before invoking the local executor") {
     val allocator=new RootAllocator();var calls=0
     val service=new TaskService(config,allocator,t => {calls+=1;a+"/"+t.output})
@@ -93,7 +93,7 @@ class CollaborationSpec extends AnyFunSuite {
   test("task protobuf preserves ordered schema declarations and requires absolute worker inputs") {
     val params=new java.util.LinkedHashMap[String,Object]()
     params.put("schema",Map("id"->"int64").asJava)
-    val task=Task("test",Seq(b+"/data"),"format_convert@1.0",params,"result")
+    val task=Task("test",Seq(b+"/data"),"format_convert@1.1",params,"result")
     assert(TaskWire.decode(TaskWire.encode(task)) == task)
     intercept[IllegalArgumentException](TaskWire.decode(TaskWire.encode(task.copy(inputs=Seq("unresolved")))))
   }

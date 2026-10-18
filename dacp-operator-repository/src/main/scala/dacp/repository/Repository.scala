@@ -37,47 +37,65 @@ object Repository {
         relative.getName(1).toString.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*")
     }.toSeq.sortBy(_.toString) finally paths.close()
   }
-  /** Catalog reads metadata only; it never scans image archives for checksums. */
+  def blob(root: Path, sha256: String): Path = {
+    require(sha256.matches("[a-f0-9]{64}"), "invalid artifact digest")
+    root.resolve("blobs/sha256").resolve(sha256)
+  }
+  private def store(root: Path, source: Path, filename: String): com.fasterxml.jackson.databind.node.ObjectNode = {
+    require(Files.isRegularFile(source) && Files.size(source) > 0, "empty or missing artifact")
+    val hash = checksum(source)
+    val target = blob(root, hash)
+    Files.createDirectories(target.getParent)
+    if (Files.exists(target)) require(checksum(target) == hash, "stored artifact checksum mismatch")
+    else {
+      val temporary = Files.createTempFile(target.getParent, ".blob-", ".tmp")
+      try { Files.copy(source, temporary, StandardCopyOption.REPLACE_EXISTING); require(checksum(temporary) == hash, "artifact changed during publication"); Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE) }
+      finally Files.deleteIfExists(temporary)
+    }
+    mapper.createObjectNode().put("sha256", hash).put("size", Files.size(source)).put("filename", filename)
+  }
+  def validate(root: Path, manifest: com.fasterxml.jackson.databind.JsonNode): Unit = {
+    require(manifest.path("api_version").asInt == 2, "unsupported operator manifest")
+    parts(s"${manifest.path("name").asText}@${manifest.path("version").asText}")
+    require(manifest.path("runtime").path("image").asText.matches("sha256:[a-f0-9]{64}"), "runtime image must be pinned")
+    val descriptors = Seq(manifest.path("runtime").path("archive")) ++ Option(manifest.get("artifact"))
+    descriptors.foreach { a =>
+      val file = blob(root, a.path("sha256").asText)
+      require(a.path("size").asLong > 0 && Files.size(file) == a.path("size").asLong && checksum(file) == a.path("sha256").asText,
+        "artifact checksum/size mismatch")
+    }
+  }
+  /** Listing reads metadata only; full verification is performed on publication and seeding. */
   def catalog(root: Path): com.fasterxml.jackson.databind.node.ArrayNode = {
     val result = mapper.createArrayNode()
     manifests(root, "manifest.json").foreach { file =>
-      if (Files.isRegularFile(file.getParent.resolve("image.tar"), LinkOption.NOFOLLOW_LINKS)) {
-        val manifest = mapper.readTree(file.toFile)
-        require(manifest.path("name").asText == file.getParent.getParent.getFileName.toString &&
-          manifest.path("version").asText == file.getParent.getFileName.toString, "operator identity mismatch")
-        result.add(manifest)
-      }
+      val manifest = mapper.readTree(file.toFile)
+      require(manifest.path("api_version").asInt == 2, "unsupported operator manifest; rebuild the development catalog")
+      require(manifest.path("name").asText == file.getParent.getParent.getFileName.toString &&
+        manifest.path("version").asText == file.getParent.getFileName.toString, "operator identity mismatch")
+      result.add(manifest)
     }
     result
   }
-  /** Discover contributions from <directory>/<name>/<version>/operator.yaml. */
+  /** Discover definitions; artifact paths are relative to operator.yaml. */
   def seed(root: Path, directory: Path, exporter: ImageExporter = Docker): Seq[String] = {
-    val definitions = manifests(directory, "operator.yaml").map { file =>
-      val options = new org.yaml.snakeyaml.LoaderOptions()
-      options.setAllowDuplicateKeys(false)
+    val definitions = manifests(directory, "operator.yaml")
+    require(definitions.nonEmpty, "no operator definitions found")
+    definitions.map { file =>
+      val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
       val in = Files.newInputStream(file)
-      val definition = try new org.yaml.snakeyaml.Yaml(options).load[java.util.Map[String, Object]](in) finally in.close()
-      require(definition != null && Set("name", "version", "image").subsetOf(definition.keySet.asScala.toSet) && definition.keySet.asScala.toSet.subsetOf(Set("name", "version", "image", "description")), "operator definition requires name, version and image")
-      val reference = s"${definition.get("name")}@${definition.get("version")}"
+      val d = try new org.yaml.snakeyaml.Yaml(options).load[java.util.Map[String, Object]](in).asScala.toMap finally in.close()
+      require(Set("name", "version", "image").subsetOf(d.keySet) &&
+        d.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact")), "invalid operator definition")
+      val reference = s"${d("name")}@${d("version")}"
       val (name, version) = parts(reference)
       require(name == file.getParent.getParent.getFileName.toString && version == file.getParent.getFileName.toString,
         "operator definition must match its directory")
-      val image = definition.get("image").toString
-      require(image.nonEmpty, "operator image required")
-      val description = Option(definition.get("description")).map(_.toString).getOrElse("")
-      (reference, name, version, image, description)
-    }
-    require(definitions.nonEmpty, "no operator definitions found")
-    definitions.map { case (reference, name, version, image, description) =>
-      val existing = root.resolve(name).resolve(version)
-      if (Files.exists(existing)) {
-        val manifest = mapper.readTree(existing.resolve("manifest.json").toFile)
-        val archive = existing.resolve("image.tar")
-        require(manifest.path("api_version").asInt == 1 && manifest.path("name").asText == name &&
-          manifest.path("version").asText == version && manifest.path("image").asText.matches("sha256:[a-f0-9]{64}") &&
-          Files.size(archive) > 0 && Files.size(archive) == manifest.path("archive").path("size").asLong &&
-          checksum(archive) == manifest.path("archive").path("sha256").asText, "existing operator archive is invalid")
-      } else publish(root, reference, image, exporter, description)
+      val existing = root.resolve(name).resolve(version).resolve("manifest.json")
+      if (Files.exists(existing)) validate(root, mapper.readTree(existing.toFile))
+      else publish(root, reference, d("image").toString, exporter, d.getOrElse("description", "").toString,
+        d.getOrElse("executor", "container").toString, d.getOrElse("entrypoint", "").toString,
+        d.get("artifact").map(v => file.getParent.resolve(v.toString)))
       reference
     }
   }
@@ -90,26 +108,48 @@ object Repository {
     def save(imageId: String, destination: Path): Unit =
       require(Process(Seq("docker", "save", "-o", destination.toString, imageId)).! == 0, "docker save failed")
   }
-  def publish(root: Path, reference: String, image: String, exporter: ImageExporter = Docker, description: String = ""): String = {
+  def publish(root: Path, reference: String, image: String, exporter: ImageExporter = Docker, description: String = "",
+              executor: String = "container", entrypoint: String = "", artifact: Option[Path] = None): String = synchronized {
     val (name, version) = parts(reference)
-    val parent = root.toAbsolutePath.normalize.resolve(name)
-    Files.createDirectories(parent)
-    val channel = FileChannel.open(parent.resolve(s".$version.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+    require(executor.matches("[a-z][a-z0-9_-]*"), "invalid executor ID")
+    require(entrypoint.length <= 1024 && !entrypoint.contains("\u0000"), "invalid entrypoint")
+    Files.createDirectories(root)
+    // One publication lock covers shared blobs and the image-ID export index across processes.
+    val channel = FileChannel.open(root.resolve(".publish.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
     val lock = channel.lock()
     try {
+      val parent = root.resolve(name); Files.createDirectories(parent)
       val target = parent.resolve(version)
       require(!Files.exists(target), "operator version already published")
       val stage = Files.createTempDirectory(parent, ".publish-")
       try {
         val id = exporter.inspect(image)
         require(id.matches("sha256:[a-f0-9]{64}"), "invalid Docker image ID")
-        val archive = stage.resolve("image.tar")
-        exporter.save(id, archive)
-        require(Files.size(archive) > 0, "empty Docker archive")
+        val index = root.resolve("images").resolve(id.stripPrefix("sha256:") + ".json")
+        val archive = if (Files.exists(index)) {
+          val a = mapper.readTree(index.toFile)
+          val path = blob(root, a.path("sha256").asText)
+          require(Files.size(path) == a.path("size").asLong && checksum(path) == a.path("sha256").asText, "runtime archive checksum mismatch")
+          a
+        } else {
+          val exported = stage.resolve("runtime.tar"); exporter.save(id, exported)
+          val a = store(root, exported, "runtime.tar")
+          Files.delete(exported)
+          Files.createDirectories(index.getParent)
+          val temporary = Files.createTempFile(index.getParent, ".image-", ".json")
+          try { mapper.writeValue(temporary.toFile, a); Files.move(temporary, index, StandardCopyOption.ATOMIC_MOVE) }
+          finally Files.deleteIfExists(temporary)
+          a
+        }
         val manifest = mapper.createObjectNode()
-        manifest.put("api_version", 1).put("name", name).put("version", version).put("image", id)
-        manifest.put("description", description)
-        manifest.putObject("archive").put("size", Files.size(archive)).put("sha256", checksum(archive))
+        manifest.put("api_version", 2).put("name", name).put("version", version).put("description", description)
+        manifest.putObject("execution").put("executor", executor).put("entrypoint", entrypoint)
+        val runtime = manifest.putObject("runtime"); runtime.put("image", id); runtime.set[com.fasterxml.jackson.databind.JsonNode]("archive", archive)
+        artifact.foreach { source =>
+          val filename = source.getFileName.toString
+          require(filename.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*"), "invalid artifact filename")
+          manifest.set[com.fasterxml.jackson.databind.JsonNode]("artifact", store(root, source, filename))
+        }
         val json = mapper.writeValueAsString(manifest)
         Files.writeString(stage.resolve("manifest.json"), json)
         Files.move(stage, target, StandardCopyOption.ATOMIC_MOVE)

@@ -1,63 +1,49 @@
 # DACP 算子仓库
 
-独立的 Scala 模块，通过 HTTP 或 HTTPS 分发不可变的 `name@version` 算子清单和 Docker 镜像归档。需要 JDK 17、Scala 2.13 和 sbt 1.10.x。仓库独立于 DACP 数据服务器运行；提供已发布文件不需要 Docker，发布需要 Docker CLI 和引擎访问权限。
+独立的 Scala HTTP/HTTPS 仓库，提供公开搜索、版本页面和下载。每个算子由不可变的 `name@version` 清单、共享运行时镜像，以及可选的小型 JAR、Python 源码或 wheel 制品组成。运行时与代码按 SHA-256 只存储一份，可供多个算子引用。提供下载无需 Docker；发布运行时镜像需要 Docker CLI/Engine。使用 JDK 17、Scala 2.13、sbt 1.10.x 构建。
 
-Maven 构件名称和打包后的可执行程序名称均为 `dacp-operator-repository`（不带 Scala 版本后缀）。Scala 源码使用 `dacp.repository` 包。
+Maven 制品名和可执行程序均为 `dacp-operator-repository`（不带 Scala 后缀），源码包名为 `dacp.repository`。
 
-## 公共网站
+## 初始目录
 
-打开 `http://localhost:8820/` 浏览和搜索仓库。所有人无需账号即可搜索名称、版本和描述，查看版本详情，并下载清单及镜像归档。响应式页面无需 JavaScript，不加载外部资源。
-
-- `GET /` 列出全部已发布版本；`GET /?q=parquet` 执行不区分大小写的搜索，查询最长 200 个字符。
-- `GET /operators/<name>/<version>` 展示描述、可用版本、归档大小、SHA-256、镜像 ID、DACP 任务引用及手动下载命令。
-- 下载按钮流式传输归档，并提供有意义的附件文件名。加载到 Docker 前应依据已发布清单验证归档。
-- 空仓库、无匹配搜索和缺失版本均有专门页面。页面、清单和归档均支持 `HEAD`。
-
-使用 `--host 0.0.0.0` 接受本机以外的连接。互联网部署应配置公共域名，并使用下述选项启用 HTTPS，或通过反向代理终止 HTTPS。能够连接服务的任何人都可以读取全部已发布算子。发布仍由管理员通过 CLI 执行。
-
-## 初始算子目录
-
-从项目根目录准备并启动一个已包含算子的仓库：
+在项目根目录执行：
 
 ```bash
 scripts/setup-operator-repository.sh --root .operator-catalog --host 0.0.0.0 --port 8820
 curl http://localhost:8820/v1/operators
 ```
 
-该命令构建共享 Docker 镜像、打包 Scala 服务、初始化算子目录并启动服务。需要 Docker 引擎访问权限、sbt 和构建时的网络访问权限。重复执行时会校验已有发布版本并保持其不可变；损坏文件会终止初始化。默认仓库为项目根目录下的 `.operator-catalog`。其他参数传递给 `serve`，包括 HTTPS 选项。
+脚本构建共享环境 `dacp/operator-jvm:1.1` 和可选的完整镜像 `dacp/format-convert:1.1`，打包仓库，发布初始算子并启动服务。需要 Linux、带 `jlink` 的 JDK 17、sbt、Python 3、`ldd`、Docker Engine 访问权限，以及首次构建时的 Maven 网络访问。默认目录是项目根目录的 `.operator-catalog`。重复执行会验证已有版本与共享制品，不覆盖版本。其余参数传给 `serve`，包括 HTTPS 参数。
 
-| 初始算子 | 用途 | 参数 |
-|---|---|---|
-| `format_convert@1.0` | 将 CSV 或 NDJSON Item 转为 Parquet，保留独立 Item | `from: auto`、`to: parquet`、`schema: infer`；参见[转换参考](../docs/reference.md) |
-| `identity@1.0` | 将输入字节流复制到新数据集，可用于检查传输和任务串联 | 无 |
+| 算子 | 用途 |
+|---|---|
+| `format_convert@1.1` | CSV/NDJSON 转 Parquet；参见 [参数](../docs/reference.md#format_convert-参数) |
+| `identity@1.1` | 复制原始字节，用于传输检查和流水线 |
 
-两个算子均使用 `dacp/format-convert:1.0` 镜像。算子可使用 Python、Scala 或其他语言实现，其容器必须遵守 [Arrow IPC 契约](../docs/reference.md)。
+两者共享薄 Scala JAR 和运行时环境，仓库只导出一次运行时。详见 [运行时构建](../dacp-operator-runtime/README.md)、[用户自定义 Scala 示例](../examples/operators/scala/README.md)、[Python 示例](../examples/operators/python/README.md) 和 [打包契约](../docs/operator-packaging.md)。
 
-对于已构建的部署，可以仅初始化目录而不启动服务：
-
-```bash
-cd dacp-operator-repository
-target/universal/stage/bin/dacp-operator-repository seed --operators ../operators --root .operator-catalog
-```
-
-`seed` 发现 `<operators>/<name>/<version>/operator.yaml` 中包含 `name`、`version` 和 `image` 以及可选 `description` 的定义，引用的所有镜像必须已在本地安装。贡献新算子只需添加定义并构建镜像，无需修改注册表。定义目录为空或身份无效时明确报错。即使源镜像标签发生变化，已有版本也保持不变；代码更新必须发布新版本。
-
-## 手动配置
-
-从项目根目录构建并启动：
+## 发布与执行
 
 ```bash
-cd dacp-operator-repository
-sbt test stage
-# 请先构建算子镜像，参见项目 README。
-target/universal/stage/bin/dacp-operator-repository publish format_convert@1.0 --image dacp/format-convert:1.0 --root .operator-catalog
-target/universal/stage/bin/dacp-operator-repository publish identity@1.0 --image dacp/format-convert:1.0 --root .operator-catalog
-target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820
+# 在项目根目录执行；相关镜像必须已安装。
+(cd dacp-operator-repository && sbt test stage)
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository seed --operators operators --root .operator-catalog
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820
 ```
 
-`serve` 默认监听 `127.0.0.1:8820`。所有命令都必须提供 `--root`。打包后的启动器无需 sbt 即可运行。通过 SIGTERM 或 Ctrl-C 停止服务。
+`seed` 发现 `<operators>/<name>/<version>/operator.yaml`。必填 `name`、`version`、`image`；可选 `description`、`executor`（默认 `container`）、`entrypoint`、`artifact`（相对文件路径）。名称和版本匹配 `[A-Za-z0-9_-][A-Za-z0-9_.-]*`。未知字段、重复键、目录身份不符和空定义目录会失败。
 
-为每个执行节点配置：
+手动发布薄 JAR：
+
+```bash
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish summary@1 --root .operator-catalog --image example/jvm-arrow:1 --executor jvm --entrypoint example.Summary --artifact summary.jar --description "Summarize records"
+```
+
+Python 使用 `--executor python --entrypoint my_operators.summary --artifact my_operators-1.0-py3-none-any.whl`，或 `.py` 脚本。依赖应放入共享运行时。完整容器省略 `--executor`、`--entrypoint`、`--artifact`，由镜像入口实现 [Arrow IPC 契约](../docs/reference.md#任务执行与算子)。
+
+发布固定镜像 ID，每个镜像只导出一次，按摘要存储制品并原子发布元数据；文件锁协调发布者。新名称和主类可共享一个代码包，无需修改服务端。仓库可存储任何合法执行器 ID，节点须安装对应启动插件。内置 `container`、`jvm`、`python` 与外部插件使用相同 ServiceLoader 契约。
+
+配置每个执行节点：
 
 ```yaml
 local_operator_library: ../operators
@@ -68,54 +54,45 @@ operator_cache: /var/lib/dacp/operators
 operator_max_bytes: 8589934592
 ```
 
-任务使用 `operator: format_convert@1.0` 引用算子。解析首先检查本地定义及已安装的 Docker 镜像，然后检查已完成的下载缓存，最后依次查询远程库。清单缺失（HTTP 404）时继续下一个库。其他 HTTP 错误、无效清单或损坏归档会使任务失败。远程库离线时仍可使用已完成的缓存。每个执行节点在将镜像加载到其 Docker 引擎前，校验算子身份、镜像 ID、归档大小和 SHA-256。执行使用固定的镜像 ID。
+任务继续使用 `operator: format_convert@1.1`。解析顺序为本地定义与已安装镜像、完整缓存、配置的远程仓库。仅清单 HTTP 404 会继续下一个仓库。远程与缓存制品均验证大小和 SHA-256，执行使用固定镜像 ID。制品可跨算子和仓库共享，完整缓存支持离线执行。大小限制针对单个制品。参见 [缓存布局与限制](../docs/operator-packaging.md#content-addressed-storage)。
 
-## 发布与 HTTP 契约
+## 公开网站与 HTTP API
 
-按照 [Arrow IPC 容器契约](../docs/reference.md) 实现算子，构建 Docker 镜像，再运行 `publish name@version --image IMAGE --root DIR` 发布。无需修改服务器注册表或客户端。名称和版本必须匹配 `[A-Za-z0-9_-][A-Za-z0-9_.-]*`。
+打开 `http://localhost:8820/`，无需登录即可搜索名称、版本和描述，查看版本并下载代码和运行时。页面分别展示大小、校验和、执行器、入口、运行时镜像 ID 及任务引用。所有文本转义，无需 JavaScript 或外部资源。发布仅由管理员 CLI 完成，没有 HTTP 上传接口。
 
-可以使用 `publish ... --description "Convert CSV to Parquet"` 或 `operator.yaml` 中的可选 `description` 字段添加可搜索描述。描述包含在已发布清单中，并以纯文本展示。
-
-发布时检查镜像 ID，通过 `docker save` 导出该固定 ID，以有界内存计算 SHA-256，并原子发布完整目录。文件锁协调发布进程；已有版本不能覆盖。导出失败会删除临时文件。仓库目录所在文件系统必须支持原子目录移动和文件锁，且仅应允许管理员写入。
-
-| GET 端点 | 响应 |
+| GET / HEAD 端点 | 响应 |
 |---|---|
-| `/` 或 `/?q=keyword` | `200`，可搜索的公共目录 HTML |
-| `/operators/<name>/<version>` | `200`，算子详情 HTML；缺失版本返回 404 |
-| `/assets/repository.css` | `200`，本地样式表 |
-| `/v1/operators` | `200`，按名称和版本排序的已发布清单 JSON 数组，不包含未完成的临时目录 |
-| `/health` | `200`，`ok` 后跟换行符 |
-| `/v1/operators/<name>/<version>` | `200`，JSON 清单 |
-| `/v1/operators/<name>/<version>/image.tar` | `200`，以有界内存流式传输 Docker save 归档 |
+| `/` 或 `/?q=keyword` | 公开目录，忽略大小写搜索，最多 200 字符 |
+| `/operators/<name>/<version>` | 详情与分别下载制品 |
+| `/assets/repository.css` | 本地样式 |
+| `/v1/operators` | 按名称/版本排序的 JSON 清单数组 |
+| `/v1/operators/<name>/<version>` | 清单 JSON，格式为 `api_version: 2` |
+| `/v1/blobs/sha256/<64 lowercase hex digits>` | 共享运行时归档或代码内容 |
+| `/health` | `ok` 加换行 |
 
-未知路径和缺失文件返回 404。GET 和 HEAD 以外的 HTTP 方法返回 405。不提供 HTTP 上传端点。请求不能通过符号链接访问仓库外部。服务使用八个请求工作线程和有界队列。
+未知路径或缺失制品返回 404，写方法返回 405。HEAD 返回 Content-Length。HTTP 附件文件名为摘要，HTML download 属性建议使用制品文件名。路径不能沿符号链接越出目录。8 个工作线程使用有界队列。列表忽略发布暂存目录，只读元数据而不对大制品计算摘要。
 
-磁盘布局为 `<root>/<name>/<version>/{manifest.json,image.tar}`。清单契约如下：
+元数据位于 `<root>/<name>/<version>/manifest.json`，制品位于 `<root>/blobs/sha256/<digest>`，运行时导出索引位于 `<root>/images/<image-ID>.json`。参见 [清单格式](../docs/operator-packaging.md#content-addressed-storage)。项目尚未发布，直接采用新格式，不保留旧格式读取器；新格式使用新的开发目录。
 
-```json
-{"api_version":1,"name":"identity","version":"1.0","image":"sha256:<64 lowercase hex digits>","description":"Copy input data into a new dataset","archive":{"size":12345,"sha256":"<64 lowercase hex digits>"}}
-```
+## HTTPS 与运行
 
-下载超时、大小限制、缓存校验和生命周期由执行节点负责。缓存存储与任务输出 TTL 分离。损坏缓存会明确报错；删除对应版本缓存目录后可重新下载。
-
-## HTTPS
-
-使用包含服务器证书和私钥的 PKCS12 密钥库，通过环境变量提供密码：
+`serve` 默认 `127.0.0.1:8820`，外部访问使用 `--host 0.0.0.0`。必须设置 `--root`。打包程序无需 sbt 即可运行，Ctrl-C 或 SIGTERM 停止。目录文件系统须支持文件锁及原子移动，写权限仅授予管理员。
 
 ```bash
 export DACP_REPOSITORY_TLS_PASSWORD='your-keystore-password'
-target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820 --tls-keystore repository.p12 --tls-password-env DACP_REPOSITORY_TLS_PASSWORD
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820 --tls-keystore repository.p12 --tls-password-env DACP_REPOSITORY_TLS_PASSWORD
 ```
 
-两个 TLS 选项必须同时提供。执行节点应配置 HTTPS URL，并使用信任该证书的 JVM 信任库。HTTP 用于可信开发网络。SHA-256 校验归档完整性，HTTPS 确立清单来源。任务和数据通信继续使用 Flight mTLS 和 URI 授权。
+TLS 两个选项须同时提供，节点 JVM 信任库须信任证书；也可由反向代理终止 HTTPS。SHA-256 校验完整性，HTTPS 验证来源。数据集和任务继续使用 Flight mTLS。缓存与输出生命周期由执行节点负责，目前制品缓存无自动垃圾回收。
 
 ## 验证
 
 ```bash
-cd dacp-operator-repository
-sbt test
-cd ..
+(cd dacp-operator-repository && sbt test)
+(cd dacp-operator-executors && sbt test)
 scripts/test-operator-repository.sh
 ```
 
-单元和 HTTP 契约测试使用注入的镜像导出器，不需要 Docker 引擎。集成脚本需要 Python SDK、sbt、Docker 访问权限和已构建的 `dacp/format-convert:1.0` 镜像。脚本打包 Scala 仓库，发布两个算子，启动算子仓库和两个使用独立缓存的 mTLS 节点，再运行分布式转换与 identity DAG。大型归档需要数 GB 可用空间。日志、仓库和缓存保留在打印的临时目录中，退出时停止服务。
+单元及 HTTP 测试使用注入的导出器，无需 Docker。联调需要已构建运行时、Python SDK、sbt、Docker 和空闲示例端口；启动仓库与两个使用独立缓存的 mTLS 节点，执行分布式转换/identity DAG。日志和制品保留在输出的临时目录，服务在退出时停止。
+
+完整的编写与上传教程（Scala/Python 源码、wheel 打包、远程文件传输及任务执行）见 [自定义算子指南](../docs/operator-authoring.md)。

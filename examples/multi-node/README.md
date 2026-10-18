@@ -28,7 +28,7 @@ From the project root, prepare the image and SDK (Docker access is required):
 python3 -m venv .venv
 .venv/bin/pip install -e './dacp-client[test]'
 bash scripts/certs.sh
-docker build -f operators/format_convert/1.0/Dockerfile -t dacp/format-convert:1.0 .
+scripts/build-operator-image.sh
 bash scripts/test-collaboration.sh
 ```
 
@@ -74,7 +74,7 @@ The manual YAML uses fixed output names; use new names for each run until the ow
 
 The demo uses whole-node prefixes to accommodate random output names. On separate machines, replace `localhost`, set certificates with the advertised DNS names in their SANs, narrow dataset prefixes, configure each node's permitted peers/inputs, and install the referenced operator versions/images on every execution node. A and B have distinct certificates signed by the demo CA. Each server uses its own configured certificate for outbound mTLS.
 
-`identity@1.0` preserves binary payloads and writes internal `part-N.<format>` files, published as `/result-N` data Items. It accepts CSV, NDJSON, binary files, and Parquet. It enables downstream consumers to retain upstream Parquet schema footers without reparsing or recompressing the file. It shares the built-in operator image with `format_convert@1.0`; `DACP_OPERATOR` selects the installed implementation inside each isolated container.
+`identity@1.1` preserves binary payloads and writes internal `part-N.<format>` files, published as `/result-N` data Items. It accepts CSV, NDJSON, binary files, and Parquet. It enables downstream consumers to retain upstream Parquet schema footers without reparsing or recompressing the file. It shares the thin operator JAR and `dacp/operator-jvm:1.1` dependency environment with `format_convert@1.1`; `DACP_OPERATOR` selects the installed implementation inside each isolated container.
 
 ## Failure and lifetime semantics
 

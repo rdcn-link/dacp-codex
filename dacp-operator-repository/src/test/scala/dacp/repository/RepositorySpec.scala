@@ -28,15 +28,23 @@ class RepositorySpec extends AnyFunSuite {
       def inspect(tag: String): String = exporter.inspect(tag)
       def save(id: String, destination: Path): Unit = { exports += 1; exporter.save(id, destination) }
     }
-    val expected = Seq("format_convert@1.0", "identity@1.0")
-    assert(Repository.seed(root, Path.of("../operators"), counting) == expected)
-    assert(exports == 2)
+    val definitions = root.resolve("definitions")
+    val bundle = root.resolve("bundle.jar"); Files.writeString(bundle, "operator code")
+    Seq("format_convert", "identity").foreach { name =>
+      val target = definitions.resolve(s"$name/1.1/operator.yaml")
+      Files.createDirectories(target.getParent)
+      val source = Files.readString(Path.of(s"../operators/$name/1.1/operator.yaml"))
+      Files.writeString(target, source.replaceAll("(?m)^artifact:.*$", "artifact: " + bundle.toString))
+    }
+    val expected = Seq("format_convert@1.1", "identity@1.1")
+    assert(Repository.seed(root, definitions, counting) == expected)
+    assert(exports == 1)
     assert(Repository.catalog(root).size() == 2)
     assert(Repository.catalog(root).get(0).path("description").asText.contains("Parquet"))
-    assert(Repository.seed(root, Path.of("../operators"), counting) == expected)
-    assert(exports == 2)
-    Files.writeString(root.resolve("identity/1.0/image.tar"), "corrupt")
-    intercept[IllegalArgumentException](Repository.seed(root, Path.of("../operators"), counting))
+    assert(Repository.seed(root, definitions, counting) == expected)
+    assert(exports == 1)
+    Files.writeString(Repository.blob(root, Repository.catalog(root).get(0).path("runtime").path("archive").path("sha256").asText), "corrupt")
+    intercept[IllegalArgumentException](Repository.seed(root, definitions, counting))
   }}
   test("seeding discovers contributed definitions and rejects mismatched identities") { withRoot { root =>
     val definitions = root.resolve("definitions")
@@ -52,11 +60,11 @@ class RepositorySpec extends AnyFunSuite {
   }}
   test("publication pins the image, verifies bytes and refuses overwrites") { withRoot { root =>
     val json = Repository.mapper.readTree(Repository.publish(root, "identity@1.0", "mutable:tag", exporter))
-    assert(json.path("api_version").asInt == 1)
+    assert(json.path("api_version").asInt == 2)
     assert(json.path("name").asText == "identity" && json.path("version").asText == "1.0")
-    assert(json.path("image").asText == image)
-    assert(json.path("archive").path("size").asLong == 13)
-    assert(json.path("archive").path("sha256").asText == Repository.checksum(root.resolve("identity/1.0/image.tar")))
+    assert(json.path("runtime").path("image").asText == image)
+    assert(json.path("runtime").path("archive").path("size").asLong == 13)
+    assert(json.path("runtime").path("archive").path("sha256").asText == Repository.checksum(Repository.blob(root, json.path("runtime").path("archive").path("sha256").asText)))
     intercept[IllegalArgumentException](Repository.publish(root,"identity@1.0","other",exporter))
     assert(Files.readString(root.resolve("identity/1.0/manifest.json")) == Repository.mapper.writeValueAsString(json))
   }}
@@ -100,19 +108,38 @@ class RepositorySpec extends AnyFunSuite {
       val detail = request("/operators/convert/1.0")
       assert(detail.statusCode() == 200 && detail.body().contains("operator: convert@1.0"))
       assert(detail.body().contains("/operators/convert/2.0"))
-      assert(detail.body().contains("/v1/operators/convert/1.0/image.tar"))
-      assert(detail.body().contains(Repository.checksum(root.resolve("convert/1.0/image.tar"))))
+      assert(detail.body().contains("/v1/blobs/sha256/"))
+      assert(detail.body().contains(Repository.catalog(root).get(0).path("runtime").path("archive").path("sha256").asText))
       assert(request("/operators/missing/1.0").statusCode() == 404)
       assert(request("/operators/%2e%2e/1.0").statusCode() == 404)
       val css = request("/assets/repository.css")
       assert(css.statusCode() == 200 && css.headers().firstValue("Content-Type").get().startsWith("text/css"))
-      val archive = request("/v1/operators/convert/1.0/image.tar")
+      val archive = request("/v1/blobs/sha256/" + Repository.catalog(root).get(0).path("runtime").path("archive").path("sha256").asText)
       assert(archive.body() == "image archive")
-      assert(archive.headers().firstValue("Content-Disposition").get() == "attachment; filename=\"convert-1.0.tar\"")
-      val head = request("/v1/operators/convert/1.0/image.tar", "HEAD")
+      assert(archive.headers().firstValue("Content-Disposition").get().startsWith("attachment;"))
+      val head = request("/v1/blobs/sha256/" + Repository.catalog(root).get(0).path("runtime").path("archive").path("sha256").asText, "HEAD")
       assert(head.statusCode() == 200 && head.body().isEmpty && head.headers().firstValue("Content-Length").get() == "13")
       assert(request("/", "HEAD").body().isEmpty)
       assert(home.headers().firstValue("Content-Security-Policy").get().contains("default-src 'none'"))
+    } finally server.close()
+  }}
+  test("code bundles and runtimes are shared across operator identities") { withRoot { root =>
+    val code = root.resolve("operators.jar"); Files.writeString(code, "small code bundle")
+    val first = Repository.mapper.readTree(Repository.publish(root, "first@1", "runtime", exporter,
+      executor="jvm", entrypoint="example.First", artifact=Some(code)))
+    val second = Repository.mapper.readTree(Repository.publish(root, "second@1", "runtime", exporter,
+      executor="jvm", entrypoint="example.Second", artifact=Some(code)))
+    assert(first.path("artifact") == second.path("artifact"))
+    assert(first.path("runtime") == second.path("runtime"))
+    val blobs = Files.list(root.resolve("blobs/sha256"))
+    try assert(blobs.count() == 2) finally blobs.close()
+    assert(!Files.exists(root.resolve("first/1/image.tar")))
+    val server = new RepositoryServer(root, port=0); server.start()
+    try {
+      val page = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(
+        s"http://127.0.0.1:${server.boundPort}/operators/first/1")).build(), HttpResponse.BodyHandlers.ofString())
+      assert(page.body().contains("Operator code") && page.body().contains("Shared runtime"))
+      assert(page.body().contains(first.path("artifact").path("sha256").asText))
     } finally server.close()
   }}
   test("HTTP contract serves manifests and archives and rejects traversal and writes") { withRoot { root =>
@@ -130,12 +157,11 @@ class RepositorySpec extends AnyFunSuite {
       val catalog = Repository.mapper.readTree(listing.body())
       assert(catalog.size() == 1 && catalog.get(0).path("name").asText == "identity")
       Files.createDirectories(root.resolve("unfinished/1"))
-      Files.writeString(root.resolve("unfinished/1/manifest.json"), "{}")
       assert(Repository.mapper.readTree(request("/v1/operators").body()).size() == 1)
       val json = request("/v1/operators/identity/1.0")
       assert(json.statusCode() == 200 && json.body() == manifest)
       assert(json.headers().firstValue("Content-Type").get() == "application/json")
-      val archive = request("/v1/operators/identity/1.0/image.tar")
+      val archive = request("/v1/blobs/sha256/" + catalog.get(0).path("runtime").path("archive").path("sha256").asText)
       assert(archive.statusCode() == 200 && archive.body() == "image archive")
       assert(archive.headers().firstValue("Content-Length").get() == "13")
       Seq("/v1/operators/../1.0", "/v1/operators/%2e%2e/1", "/etc/passwd", "/v1/operators/missing/1", "/v1/operators/identity/1.0?x=y").foreach { path =>

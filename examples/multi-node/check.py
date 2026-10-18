@@ -41,7 +41,7 @@ with Source.open("dacp://localhost:8815/csv_data") as ds:
 bad = f"""job: failed_remote
 tasks:
  - {{id: fail, inputs: ['dacp://localhost:8816/csv_data'], operator: missing@1.0, output: failed_{suffix}}}
- - {{id: blocked, inputs: [failed_{suffix]}, node: 'dacp://localhost:8815', operator: identity@1.0, output: blocked_{suffix}}}
+ - {{id: blocked, inputs: [failed_{suffix]}, node: 'dacp://localhost:8815', operator: identity@1.1, output: blocked_{suffix}}}
 """
 try: Job.run("dacp://localhost:8815", bad, timeout=30)
 except flight.FlightError as error:

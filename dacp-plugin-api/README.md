@@ -1,6 +1,6 @@
 # DACP plugin API
 
-Shared Scala/JVM contracts for dataset providers, file handlers, structured-file browsing, and container readers. This module depends on Arrow and Scala, and has no server, SQL driver, Docker, Excel, or HTTP implementation dependencies.
+Shared Scala/JVM contracts for dataset providers, file handlers, structured-file browsing, container readers, and operator launch executors. This module depends on Arrow and Scala, and has no server, SQL driver, Docker, Excel, or HTTP implementation dependencies.
 
 From the repository root:
 
@@ -14,6 +14,7 @@ Contributed plugins compile against `io.github.rdcn-link:dacp-plugin-api_2.13:0.
 - `DatasetProvider`, `DatasetDefinition`, `DatasetContext`, `PublishedDataset`, and `DatasetAccess`: construct and access native namespaces.
 - `FormatHandler`, `FileOptions`, and `Records`: interpret files and stream Arrow batches.
 - `StructuredFileHandler`: expose file-internal logical objects directly as a namespace.
+- `OperatorExecutor`, `OperatorProgram`, and `OperatorCommand`: validate operator artifacts and select container launch commands; see [operator packaging](../docs/operator-packaging.md).
 - `ContainerReader`: enumerate archive entries and stage individual files for existing format readers.
 - `Item`, `PublishedItem`, `LogicalPath`, `PluginSchemas`, and `FormatFailure`: common public/private contracts.
 - `PluginChecks.listing`: reusable metadata checks for contributor tests, without reading or counting content.

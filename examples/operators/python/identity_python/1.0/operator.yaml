@@ -1,0 +1,7 @@
+name: identity_python
+version: "1.0"
+description: Copy Arrow byte streams with a small Python source artifact and shared PyArrow runtime.
+image: dacp/operator-python:1.0
+executor: python
+entrypoint: identity
+artifact: identity.py

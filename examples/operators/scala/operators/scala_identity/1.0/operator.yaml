@@ -1,0 +1,7 @@
+name: scala_identity
+version: "1.0"
+description: Independently built Scala operator that preserves input bytes.
+image: dacp/operator-jvm:1.1
+executor: jvm
+entrypoint: example.ScalaIdentity
+artifact: ../../../target/scala-2.13/scala-identity_2.13-1.0.jar

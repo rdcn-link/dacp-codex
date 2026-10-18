@@ -22,7 +22,8 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
     new java.util.concurrent.ArrayBlockingQueue[Runnable](64), new ThreadPoolExecutor.CallerRunsPolicy())
   server.setExecutor(executor)
   private val part = "([A-Za-z0-9_-][A-Za-z0-9_.-]*)"
-  private val artifactRoute = (s"/v1/operators/$part/$part" + "(/image[.]tar)?").r
+  private val artifactRoute = s"/v1/operators/$part/$part".r
+  private val blobRoute = "/v1/blobs/sha256/([a-f0-9]{64})".r
   private val detailRoute = s"/operators/$part/$part".r
   private val css = {
     val in = getClass.getResourceAsStream("/web/repository.css")
@@ -79,15 +80,18 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
             case Some(item) => html(exchange, 200, WebPages.detail(item, versions))
             case None => html(exchange, 404, WebPages.notFound)
           }
-        case artifactRoute(name, version, archive) =>
-          val file = catalog.resolve(name).resolve(version).resolve(if (archive == null) "manifest.json" else "image.tar")
+        case route if artifactRoute.pattern.matcher(route).matches() || blobRoute.pattern.matcher(route).matches() =>
+          val (file, archive) = route match {
+            case artifactRoute(name, version) => (catalog.resolve(name).resolve(version).resolve("manifest.json"), false)
+            case blobRoute(hash) => (Repository.blob(catalog, hash), true)
+          }
           val real = try Some(file.toRealPath()) catch { case _: java.nio.file.NoSuchFileException => None }
           real match {
             case Some(path) if path.startsWith(catalog) && Files.isRegularFile(path) =>
-              if (archive != null) exchange.getResponseHeaders.set("Content-Disposition", s"attachment; filename=\"$name-$version.tar\"")
+              if (archive) exchange.getResponseHeaders.set("Content-Disposition", s"attachment; filename=\"${file.getFileName}\"")
               val in = Files.newInputStream(path)
               try {
-                headers(exchange, 200, Files.size(path), if (archive == null) "application/json" else "application/octet-stream")
+                headers(exchange, 200, Files.size(path), if (!archive) "application/json" else "application/octet-stream")
                 if (exchange.getRequestMethod != "HEAD") in.transferTo(exchange.getResponseBody)
               } finally in.close()
             case _ => reply(exchange, 404, "not found\n")

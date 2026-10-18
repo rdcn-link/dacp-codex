@@ -2,12 +2,12 @@ job: demo
 tasks:
   - id: convert_directory
     inputs: [dacp://localhost:8815/csv_data]
-    operator: format_convert@1.0
+    operator: format_convert@1.1
     params: {from: auto, to: parquet, schema: infer, compression: zstd, row_group_size: 128MB}
     output: s1
   - id: convert_item
     inputs: [dacp://localhost:8815/data1/reports/orders]
-    operator: format_convert@1.0
+    operator: format_convert@1.1
     params:
       from: csv
       to: parquet

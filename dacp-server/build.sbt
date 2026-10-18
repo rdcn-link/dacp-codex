@@ -29,7 +29,11 @@ enablePlugins(JavaAppPackaging)
 Universal / javaOptions ++= Seq("-J--add-opens=java.base/java.nio=ALL-UNNAMED", "-J-Dio.netty.tryReflectionSetAccessible=true")
 
 lazy val pluginApi = RootProject(file("../dacp-plugin-api"))
-dependsOn(pluginApi)
+lazy val operatorRuntime = RootProject(file("../dacp-operator-runtime"))
+dependsOn(pluginApi, operatorRuntime % "test->compile")
 
 // Compile the standalone contributor example against the same API during contract tests.
 Test / unmanagedSourceDirectories += baseDirectory.value / ".." / "examples" / "plugins" / "src" / "main" / "scala"
+
+lazy val operatorExecutors = RootProject(file("../dacp-operator-executors"))
+dependsOn(operatorExecutors)

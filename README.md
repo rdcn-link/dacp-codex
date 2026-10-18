@@ -291,7 +291,7 @@ DACP 通过 YAML DAG 组织任务。协调节点解析依赖，默认将任务�
 运行任务还需要 Linux、`mkfifo` 和可访问的 Docker Engine。从项目根目录构建转换算子，再启动示例任务；若快速开始的服务仍在运行，先将其停止：
 
 ```bash
-docker build -f operators/format_convert/1.0/Dockerfile -t dacp/format-convert:1.0 .
+scripts/build-operator-image.sh
 cd dacp-server
 sbt 'run ../examples/server.yaml ../examples/convert.yaml'
 ```
@@ -302,9 +302,12 @@ sbt 'run ../examples/server.yaml ../examples/convert.yaml'
 
 - [双节点示例](examples/multi-node/README.md)：任务放置、远端输入及输出消费。
 - [Scala 算子仓库与网站](dacp-operator-repository/README.md)：公共搜索、版本详情、下载与不可变算子发布。
+- [自定义算子编写与上传](docs/operator-authoring.md)：Scala/Python 完整源码、构建、发布、远程上传和任务执行。
 - [任务与算子参考](docs/reference.md#任务执行与算子)：DAG、容器输入输出契约和转换参数。
 
 使用 `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820` 启动包含初始算子的仓库，然后打开 `http://localhost:8820/`，无需登录即可搜索、查看和下载算子。HTTPS 部署参见仓库指南。
+
+算子可共享依赖环境和代码包。初始算子通过薄 JAR 使用 `dacp/operator-jvm:1.1`；也支持在共享运行时容器中执行 Python 源码和 wheel。运行时与代码按 SHA-256 存储和缓存，每个节点只下载一次相同制品。详见 [算子打包设计](docs/operator-packaging.md) 和 [Python 示例](examples/operators/python/README.md)。
 
 ## 安全与运行边界
 
