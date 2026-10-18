@@ -44,7 +44,7 @@ class MetadataClient:
         self.descriptors.append([p.decode() for p in descriptor.path])
         item = pb.Item(path='/reports/orders', format='csv', kind='data', views=['records', 'bytes'])
         if len(descriptor.path) == 3:
-            return type('Info', (), {'app_metadata': item.SerializeToString(),
+            return type('Info', (), {'schema': pa.schema([('id', pa.int64())]), 'app_metadata': item.SerializeToString(),
                 'endpoints': [type('Endpoint', (), {'ticket': object()})()]})()
         folder = pb.Item(path='/reports', kind='folder')
         return type('Info', (), {'app_metadata': pb.DataSet(items=[folder,item]).SerializeToString()})()

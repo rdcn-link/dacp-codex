@@ -5,3 +5,12 @@ image: dacp/operator-python:1.0
 executor: python
 entrypoint: identity
 artifact: identity.py
+
+inputs:
+  source:
+    representations: [bytes, records]
+    formats: []
+outputs:
+  result:
+    representations: [bytes, records]
+    formats: []

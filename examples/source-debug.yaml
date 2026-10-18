@@ -1,0 +1,17 @@
+# Run from dacp-server: sbt 'run ../examples/source-debug.yaml'
+mode: DEBUG
+host: 127.0.0.1
+public_host: localhost
+port: 18815
+datasets:
+  data1:
+    provider: custom
+    items:
+      /orders: {file: ../examples/data/nested/orders.csv}
+allowed_uri_prefixes: [dacp://localhost:18815/data1]
+tls_cert: ../examples/certs/server.crt
+tls_key: ../examples/certs/server.key
+tls_ca: ../examples/certs/ca.crt
+source_runtimes:
+  python@1.0: {executor: python, image: 'dacp/operator-python:1.0'}
+  scala@1.0: {executor: jvm, image: 'dacp/operator-scala-debug:1.0'}

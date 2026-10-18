@@ -80,7 +80,6 @@ public_host: localhost
 tls_cert: cert.pem
 tls_key: key.pem
 tls_ca: ca.pem
-output_root: output
 allowed_uri_prefixes: [dacp://localhost:8815/office]
 datasets:
   office:
@@ -153,14 +152,13 @@ datasets:
   test("Flight exposes Excel records, original bytes, explicit counts and private sheet aliases") {
     val dir = Files.createTempDirectory("excel-flight-")
     val allocator = new RootAllocator()
-    val outputs = new OutputRegistry(10000)
     try {
       val file = dir.resolve("private-workbook.xlsx"); workbook(file,multiple=true)
       val config = Config("localhost",8815,"localhost",Map("public" -> DatasetDefinition.custom(Seq(
         PublishedItem("/orders",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Orders"))),
         PublishedItem("/other",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Other")))))),
         Seq("dacp://localhost:8815/public"),dir,dir,dir,batchSize=1,inferSample=1)
-      val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(config,allocator,outputs)).build().start()
+      val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(config,allocator)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()
       try {
         val listing = Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets","public")).getAppMetadata)
@@ -181,6 +179,6 @@ datasets:
         val counted = client.getInfo(FlightDescriptor.path("datasets","public","count","/orders"))
         assert(Metadata.Item.parseFrom(counted.getAppMetadata).getRecordCount == 2L)
       } finally { client.close(); server.close() }
-    } finally { outputs.close(); allocator.close(); Data.deleteTree(dir) }
+    } finally { allocator.close(); Data.deleteTree(dir) }
   }
 }

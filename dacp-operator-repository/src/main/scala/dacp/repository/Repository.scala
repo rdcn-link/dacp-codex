@@ -54,7 +54,20 @@ object Repository {
     }
     mapper.createObjectNode().put("sha256", hash).put("size", Files.size(source)).put("filename", filename)
   }
+  def validatePorts(ports: com.fasterxml.jackson.databind.JsonNode): Unit = {
+    Seq("inputs","outputs").foreach { key=>
+      val n=ports.path(key);require(n.isObject && n.size()>0,"named input/output port declarations required")
+      n.fields.asScala.foreach { e=>
+        require(e.getKey.matches("[A-Za-z_][A-Za-z0-9_-]{0,127}"),"invalid port name")
+        val v=e.getValue
+        require(v.isObject && v.fieldNames.asScala.toSet.subsetOf(Set("representations","formats","schema")),"invalid port settings")
+        require(v.path("representations").isArray && v.path("representations").size()>0 && v.path("formats").isArray,"invalid port representations/formats")
+        require(v.path("representations").elements.asScala.forall(x=>Set("bytes","records")(x.asText)),"unsupported representation")
+      }
+    }
+  }
   def validate(root: Path, manifest: com.fasterxml.jackson.databind.JsonNode): Unit = {
+    validatePorts(manifest)
     require(manifest.path("api_version").asInt == 2, "unsupported operator manifest")
     parts(s"${manifest.path("name").asText}@${manifest.path("version").asText}")
     require(manifest.path("runtime").path("image").asText.matches("sha256:[a-f0-9]{64}"), "runtime image must be pinned")
@@ -85,15 +98,15 @@ object Repository {
       val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
       val in = Files.newInputStream(file)
       val d = try new org.yaml.snakeyaml.Yaml(options).load[java.util.Map[String, Object]](in).asScala.toMap finally in.close()
-      require(Set("name", "version", "image").subsetOf(d.keySet) &&
-        d.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact")), "invalid operator definition")
+      require(Set("name", "version", "image", "inputs", "outputs").subsetOf(d.keySet) &&
+        d.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "outputs")), "invalid operator definition")
       val reference = s"${d("name")}@${d("version")}"
       val (name, version) = parts(reference)
       require(name == file.getParent.getParent.getFileName.toString && version == file.getParent.getFileName.toString,
         "operator definition must match its directory")
       val existing = root.resolve(name).resolve(version).resolve("manifest.json")
       if (Files.exists(existing)) validate(root, mapper.readTree(existing.toFile))
-      else publish(root, reference, d("image").toString, exporter, d.getOrElse("description", "").toString,
+      else publish(root, reference, d("image").toString, mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](d.asJava), exporter, d.getOrElse("description", "").toString,
         d.getOrElse("executor", "container").toString, d.getOrElse("entrypoint", "").toString,
         d.get("artifact").map(v => file.getParent.resolve(v.toString)))
       reference
@@ -108,8 +121,9 @@ object Repository {
     def save(imageId: String, destination: Path): Unit =
       require(Process(Seq("docker", "save", "-o", destination.toString, imageId)).! == 0, "docker save failed")
   }
-  def publish(root: Path, reference: String, image: String, exporter: ImageExporter = Docker, description: String = "",
+  def publish(root: Path, reference: String, image: String, ports: com.fasterxml.jackson.databind.JsonNode, exporter: ImageExporter = Docker, description: String = "",
               executor: String = "container", entrypoint: String = "", artifact: Option[Path] = None): String = synchronized {
+    validatePorts(ports)
     val (name, version) = parts(reference)
     require(executor.matches("[a-z][a-z0-9_-]*"), "invalid executor ID")
     require(entrypoint.length <= 1024 && !entrypoint.contains("\u0000"), "invalid entrypoint")
@@ -143,6 +157,8 @@ object Repository {
         }
         val manifest = mapper.createObjectNode()
         manifest.put("api_version", 2).put("name", name).put("version", version).put("description", description)
+        manifest.set[com.fasterxml.jackson.databind.JsonNode]("inputs",ports.path("inputs"))
+        manifest.set[com.fasterxml.jackson.databind.JsonNode]("outputs",ports.path("outputs"))
         manifest.putObject("execution").put("executor", executor).put("entrypoint", entrypoint)
         val runtime = manifest.putObject("runtime"); runtime.put("image", id); runtime.set[com.fasterxml.jackson.databind.JsonNode]("archive", archive)
         artifact.foreach { source =>

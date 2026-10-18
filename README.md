@@ -112,13 +112,45 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 Stream 必须在所属 Dataset 关闭前使用。提前停止记录读取时关闭迭代器，字节读取器使用 context manager；失败后重新打开并从头读取，不支持断点续传。Python 也支持通过完整 Item URI 直接打开 Stream。
 
+### 记录过滤、列投影与行数限制
+
+两个 SDK 都支持请求服务端执行记录查询：
+
+```python
+from dacp import Source, col
+
+with Source.open("dacp://localhost:8815/data1") as ds:
+    with ds.open("/reports/orders", predicate=col("id") > 1,
+                 columns=["amount"], limit=100) as stream:
+        records = stream.as_records()
+        try:
+            for batch in records:
+                print(batch.to_pydict())
+        finally:
+            records.close()
+```
+
+执行顺序为过滤 → 列投影 → 行数限制。谓词使用公开列名和带类型的字面量，支持比较、布尔逻辑、成员判断和空值检查；过滤条件可引用输出中未包含的列。SQL 和 Parquet 将支持的操作下推到读取器，其他处理器使用有界的服务端批次过滤。达到行数限制后停止读取；bytes 视图不接受这些选项。Item 元数据和精确计数仍描述完整数据。
+
+参见[记录查询语义与插件契约](docs/records-scans.md)，了解 Python/Scala 示例、空值和类型规则、校验以及各来源的优化范围。
+
 ### dacp-shell
 
-`ls` 以带外边框的表格显示 Path、Format、Bytes、Records 和 Modified (UTC)。未知值显示为 `-`，时间格式为 `2026-10-16 06:22:02`；终端中集合路径以加粗青色高亮。
+`ls` 以带外边框的表格显示 #、Path、Format、Bytes、Records 和 Modified (UTC)，首列为从 1 开始的条目编号。未知值显示为 `-`，时间格式为 `2026-10-16 06:22:02`；终端中集合路径以加粗青色高亮。
 
 `show` 接受路径或最近一次列表中的编号；默认优先显示记录，否则显示十六进制。记录使用带列名的表格，`text` 显示文本，`hex` 显示偏移量、十六进制及 ASCII。默认最多预览 20 行或 4096 字节，可通过 `--rows` 和 `--bytes` 调整。
 
 使用 `use DATASET` 切换同一服务器上的数据集，`connect URI` 连接其他位置，`help` 查看命令。证书也可通过 `--ca`、`--cert`、`--key` 指定。
+
+在 shell 提示符下直接输入单行 SQL 查询：
+
+```sql
+SELECT amount FROM "/reports/orders" WHERE id > 1 LIMIT 10
+SELECT amount FROM 2 WHERE id > 1 LIMIT 10
+SELECT * FROM "/reports/orders" WHERE id IN (1, 2) AND amount IS NOT NULL
+```
+
+shell 使用 SQLGlot 将支持的 SQL 子集转换为与 SDK 相同的远程扫描请求。`FROM` 可以是当前 Dataset 内用双引号包围的绝对 Item 路径，也可以是最近一次 `ls` 结果中的条目编号（例如 `FROM 2`）。编号跟随最新列表的顺序，包括 `ls PATH`；编号超出范围时会报错。支持 `SELECT *` 或公开列名列表，以及可选的 `WHERE` 和 `LIMIT`；SQL 关键字不区分大小写。结果以带外边框的表格显示。`--rows` 预览上限仍然有效：发送给服务器的行数限制取 SQL `LIMIT` 和预览上限中的较小值；省略 `LIMIT` 时使用预览上限。输入 `help select` 查看语法。不支持的连接、排序、聚合、别名和子查询会明确报错。参见 [SQL shell 说明](docs/records-scans.md#sql-in-dacp-shell)。
 
 ### Scala SDK
 
@@ -286,17 +318,17 @@ Item 可携带修改时间、字节大小和精确记录数。未知值与 `0` �
 
 ## 数据协作与任务
 
-DACP 通过 YAML DAG 组织任务。协调节点解析依赖，默认将任务放在第一个输入所在节点，也可显式指定执行节点；各节点通过 mTLS Flight action 协作。每个子任务使用独立 Docker 容器，输出在执行节点发布为临时 Dataset，由 TTL 管理。
+DACP 通过 YAML DAG 组织任务。协调节点解析依赖，默认将任务放在第一个输入所在节点，也可显式指定执行节点；各节点通过 mTLS Flight DoExchange 协作。每个子任务使用独立 Docker 容器，命名端口消费数据项流，输出直接流向客户端或下游任务，不保存输出数据集。
 
-运行任务还需要 Linux、`mkfifo` 和可访问的 Docker Engine。从项目根目录构建转换算子，再启动示例任务；若快速开始的服务仍在运行，先将其停止：
+运行任务还需要 Linux、`mkfifo` 和可访问的 Docker Engine。从项目根目录构建转换算子，再启动服务；若快速开始的服务仍在运行，先将其停止：
 
 ```bash
 scripts/build-operator-image.sh
 cd dacp-server
-sbt 'run ../examples/server.yaml ../examples/convert.yaml'
+sbt 'run ../examples/server.yaml'
 ```
 
-成功后日志会输出 `s1`、`s2` 的 URI。沿用证书环境变量，在项目根目录运行 `.venv/bin/python examples/verify_job.py` 检查结果。
+连接 shell 后运行 `submit examples/convert.yaml`（在项目根目录启动 shell），或 `run format_convert@1.1 --input source=/reports/orders`。shell 等待并逐块显示结果；Ctrl-C 取消任务。
 
 更多说明：
 
@@ -313,7 +345,7 @@ sbt 'run ../examples/server.yaml ../examples/convert.yaml'
 
 所有连接强制 mTLS，并通过 URI 前缀白名单授权。公开元数据、ticket 和数据服务错误隐藏私有存储绑定；数据内容仍包含源数据自身的字段和值。Python 的 `DacpError` 和 Scala 的 `DacpException` 提供错误码和可读消息，shell 显示简洁提示。
 
-当前白名单在节点级生效，不按证书主体划分权限。读取失败后从头重开，不支持流内重试、checkpoint 或恢复。任务输出注册表仅驻内存，输出在 TTL 到期或服务关闭时清理；重启不恢复任务。完整配置和协议说明见 [技术参考](docs/reference.md#协议与配置)。
+当前白名单在节点级生效，不按证书主体划分权限。读取失败后从头重开，不支持流内重试、checkpoint 或恢复。任务输出仅为实时流，客户端须消费或取消；不提供保存的结果 URI，重启不恢复任务。完整配置和协议说明见 [技术参考](docs/reference.md#协议与配置)。
 
 ## 开发与验证
 
@@ -337,3 +369,5 @@ DACP 优先采用插件机制扩展。新的数据集后端、文件格式和处
 跨节点容器联调使用 `bash scripts/test-collaboration.sh`，需要 Docker。测试覆盖命名空间、格式读取、归档浏览、SQL 流、schema 校验、授权、输出过期和任务协作。
 
 协议定义位于 [proto/dacp.proto](proto/dacp.proto)，服务端位于 [dacp-server](dacp-server)，Python SDK 位于 [dacp-client](dacp-client)，Scala SDK 位于 [dacp-client-scala](dacp-client-scala)。
+
+DEBUG 模式下可通过 `run --runtime python@1.0 --input source=/orders <<END` 输入 heredoc 源码；不支持 `--source` 或 `--code`。服务端默认为 NORMAL，并在协调与执行节点拒绝源码任务。配置、Python/Scala 示例与插件契约见[源码算子](docs/operator-source.md)。

@@ -16,10 +16,10 @@ class DacpError(Exception):
 def translate(error):
     """Use fixed messages; never echo remote descriptions or diagnostic context."""
     detail = str(error).lower()
+    if 'source submission requires debug' in detail:
+        return DacpError('SOURCE_DISABLED', 'Source submission requires server DEBUG mode.')
     if 'dataset not found' in detail:
         return DacpError('NOT_FOUND', 'Dataset not found. Check the dataset name.')
-    if 'expired' in detail:
-        return DacpError('EXPIRED', 'The result has expired. Run the job again.')
     if isinstance(error, (flight.FlightUnauthorizedError, flight.FlightUnauthenticatedError)) or 'forbidden' in detail:
         return DacpError('ACCESS_DENIED', 'Access denied. Check your credentials and permissions.')
     if 'not_found' in detail or 'logical resource unavailable' in detail or isinstance(error, pa.ArrowKeyError):
@@ -30,6 +30,8 @@ def translate(error):
         return DacpError('UNAVAILABLE', 'Cannot reach the DACP server. Check the address and connection.')
     if isinstance(error, flight.FlightCancelledError):
         return DacpError('CANCELLED', 'The request was cancelled.')
+    if 'scan_error' in detail:
+        return DacpError('INVALID_ARGUMENT', 'Invalid records query. Check column names, literal types, projection, and limit.')
     if 'format_error' in detail:
         return DacpError('FORMAT_ERROR', 'Cannot read this data format. Check the file, sheet selection, and format settings.')
     if 'schema_conflict' in detail:

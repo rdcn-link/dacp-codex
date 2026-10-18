@@ -14,12 +14,12 @@ import org.yaml.snakeyaml.Yaml
 
 case class Config(host: String, port: Int, publicHost: String, datasets: Map[String, DatasetDefinition], prefixes: Seq[String],
                   cert: Path, key: Path, ca: Path, batchSize: Int = 1024, byteChunk: Int = 65536,
-                  inferSample: Int = 4, ttlSeconds: Long = 3600, localOperatorLibrary: Path = Path.of("../operators"),
-                  outputRoot: Path = Path.of("../examples/output"), taskPeers: Seq[String] = Seq.empty,
+                  inferSample: Int = 4, localOperatorLibrary: Path = Path.of("../operators"),
+                  taskPeers: Seq[String] = Seq.empty,
                   taskInputPrefixes: Seq[String] = Seq.empty, maxConcurrentTasks: Int = 2,
                   remoteOperatorLibraryUrls: Seq[String] = Seq.empty, operatorCache: Path = Path.of(".operator-cache"),
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
-                  sqlSources: Map[String, SqlConfig] = Map.empty, countFileRecordsOnStartup: Boolean = false) extends DatasetContext with AutoCloseable {
+                  sqlSources: Map[String, SqlConfig] = Map.empty, countFileRecordsOnStartup: Boolean = false, debug: Boolean = false, sourceRuntimes: Map[String, SourceRuntime] = Map.empty) extends DatasetContext with AutoCloseable {
   def close(): Unit = published.values.foreach(_.close())
   def sqlSourceNames: Set[String] = sqlSources.keySet
   def publish(items: Seq[PublishedItem]): PublishedDataset = DatasetProviders.publish(items,this)
@@ -38,7 +38,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
       "invalid remote_operator_library_urls entry")
   }
   require(operatorMaxBytes > 0, "operator_max_bytes must be positive")
-  require(batchSize > 0 && byteChunk > 0 && inferSample > 0 && ttlSeconds > 0 && maxConcurrentTasks > 0)
+  require(batchSize > 0 && byteChunk > 0 && inferSample > 0 && maxConcurrentTasks > 0)
   def uri(ds: String, item: String = ""): String = new URI("dacp", null, publicHost, port, "/" + ds + item, null, null).toASCIIString
   def authorize(ds: String, item: String): Unit = {
     val candidate = uri(ds, item)
@@ -52,9 +52,9 @@ object Config {
     val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
     val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala finally in.close()
     val settings = Set("host", "port", "public_host", "datasets", "sql_sources", "allowed_uri_prefixes",
-      "tls_cert", "tls_key", "tls_ca", "batch_size", "byte_chunk", "infer_sample", "output_ttl_seconds",
-      "local_operator_library", "output_root", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
-      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory")
+      "tls_cert", "tls_key", "tls_ca", "batch_size", "byte_chunk", "infer_sample",
+      "local_operator_library", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
+      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "mode", "source_runtimes")
     require(m.keySet.subsetOf(settings), "unknown server setting")
     PluginLoader.initialize(m.get("plugin_directory").map(v => Path.of(v.toString)))
     Formats.initialize()
@@ -83,48 +83,42 @@ object Config {
       }.toMap).getOrElse(Map.empty[String,Map[String,Object]])
       name -> DatasetDefinition(provider,source,items)
     }.toMap).getOrElse(Map.empty[String,DatasetDefinition])
+    val mode=m.get("mode").map(_.toString).getOrElse("NORMAL")
+    require(Set("NORMAL","DEBUG")(mode),"mode must be NORMAL or DEBUG")
+    val runtimes=m.get("source_runtimes").map(_.asInstanceOf[java.util.Map[String,java.util.Map[String,Object]]].asScala.map {case(id,raw)=>
+      val r=raw.asScala
+      require(r.keySet==Set("image","executor"),"source runtime requires image and executor")
+      id -> SourceRuntime(r("image").toString,r("executor").toString)
+    }.toMap).getOrElse(Map.empty[String,SourceRuntime])
     val config = Config(str("host"), n("port",8815), str("public_host"), definitions,
       m("allowed_uri_prefixes").asInstanceOf[java.util.List[String]].asScala.toSeq,
       Path.of(str("tls_cert")), Path.of(str("tls_key")), Path.of(str("tls_ca")), n("batch_size",1024), n("byte_chunk",65536), n("infer_sample",4),
-      n("output_ttl_seconds",3600).toLong, Path.of(m.get("local_operator_library").map(_.toString).getOrElse("../operators")), Path.of(str("output_root")), strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), strings("remote_operator_library_urls"),
+      Path.of(m.get("local_operator_library").map(_.toString).getOrElse("../operators")), strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), strings("remote_operator_library_urls"),
       Path.of(m.get("operator_cache").map(_.toString).getOrElse(".operator-cache")),
       m.get("operator_max_bytes").map(_.toString.toLong).getOrElse(8L * 1024 * 1024 * 1024), sql,
-      m.get("count_file_records_on_startup").exists(_.toString.toBoolean))
+      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), mode=="DEBUG", runtimes)
     config.initializeDatasets()
     config
   }
 }
-class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegistry, tasks: Option[TaskService] = None) extends NoOpFlightProducer {
-  override def listActions(ctx: FlightProducer.CallContext, listener: FlightProducer.StreamListener[ActionType]): Unit = {
-    tasks.foreach { _ =>
-      listener.onNext(new ActionType(TaskService.ExecuteAction,"Execute one task on this node"))
-      listener.onNext(new ActionType(TaskService.JobAction,"Coordinate a distributed YAML DAG"))
-    }
-    listener.onCompleted()
-  }
-  override def doAction(ctx: FlightProducer.CallContext, action: Action, listener: FlightProducer.StreamListener[Result]): Unit = {
-    tasks match {
-      case Some(service) => service.handle(action,listener)
-      case None => listener.onError(CallStatus.UNIMPLEMENTED.withDescription("task execution disabled").toRuntimeException)
-    }
+class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskService] = None) extends NoOpFlightProducer {
+  override def doExchange(ctx: FlightProducer.CallContext, reader: FlightStream, writer: FlightProducer.ServerStreamListener): Unit = tasks match {
+    case Some(service) => service.exchange(ctx,reader,writer)
+    case None => writer.error(CallStatus.UNIMPLEMENTED.withDescription("task execution disabled").toRuntimeException)
   }
   private def adapter(ds: String, item: String, ctx: FlightProducer.CallContext): DatasetAccess = {
     def active(): Unit = if (ctx.isCancelled) throw new java.util.concurrent.CancellationException()
-    val output = outputs.lookup(ds)
-    if (output.isEmpty && !config.hasDataset(ds))
+    if (!config.hasDataset(ds))
       throw CallStatus.NOT_FOUND.withDescription("NOT_FOUND: dataset not found; check the dataset name").toRuntimeException
     config.authorize(ds,item)
-    output match {
-      case Some(base) => NamespaceAdapter.output(base,config,() => active())
-      case None => config.openDataset(ds,() => active())
-    }
+    config.openDataset(ds,() => active())
   }
 
   private def fail(t: Throwable): FlightRuntimeException = t match {
     case e: FlightRuntimeException => e
-    case e: Expired => CallStatus.NOT_FOUND.withDescription(e.getMessage).toRuntimeException
     case e: java.io.FileNotFoundException => CallStatus.NOT_FOUND.withDescription("NOT_FOUND: logical resource unavailable").toRuntimeException
     case e: java.nio.file.NoSuchFileException => CallStatus.NOT_FOUND.withDescription("NOT_FOUND: logical resource unavailable").toRuntimeException
+    case e: ScanFailure => CallStatus.INVALID_ARGUMENT.withDescription("SCAN_ERROR: " + e.getMessage).toRuntimeException
     case e: FormatFailure => CallStatus.INVALID_ARGUMENT.withDescription("FORMAT_ERROR: " + e.getMessage).toRuntimeException
     case e: java.sql.SQLException =>
       System.err.println(s"SQL_ERROR: state=${e.getSQLState}, code=${e.getErrorCode}")
@@ -190,10 +184,11 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
       def ready(): Unit = lock.synchronized {
         while (!listener.isReady && !listener.isCancelled) lock.wait(100)
         if (listener.isCancelled) throw new java.util.concurrent.CancellationException()
-        // Expiry invalidates active streams too, before reading the next batch.
-        outputs.lookup(t.getDataset)
       }
-      namespace.stream(t.getItem,t.getView,allocator,listener,() => ready())
+      if(t.hasScan) {
+        require(t.getView == "records","scan options require records view")
+        namespace.scan(t.getItem,ScanProtocol.decode(t.getScan),allocator,listener,() => ready())
+      } else namespace.stream(t.getItem,t.getView,allocator,listener,() => ready())
       } finally namespace.close()
     } catch { case _: java.util.concurrent.CancellationException => (); case t: Throwable => listener.error(fail(t)) }
   }
@@ -202,26 +197,20 @@ object Main {
   def main(args: Array[String]): Unit = {
     val config = Config.load(Path.of(args.headOption.getOrElse("../examples/server.yaml")))
     val allocator = new RootAllocator(Long.MaxValue)
-    val outputs = new OutputRegistry(config.ttlSeconds * 1000)
-    val executor = new TaskExecutor(config,allocator,outputs)
-    val tasks = new TaskService(config,allocator,executor.execute)
-    val producer = new Producer(config,allocator,outputs,Some(tasks))
+    val executor = new TaskExecutor(config,allocator)
+    val tasks = new TaskService(config,allocator,executor)
+    val producer = new Producer(config,allocator,Some(tasks))
     val server = FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),producer)
       .useTls(config.cert.toFile,config.key.toFile).useMTlsClientVerification(config.ca.toFile)
       .build().start()
-    Runtime.getRuntime.addShutdownHook(new Thread(() => { server.close(); tasks.close(); outputs.close(); config.close(); PluginLoader.close(); allocator.close() }))
+    Runtime.getRuntime.addShutdownHook(new Thread(() => { server.close(); tasks.close(); config.close(); PluginLoader.close(); allocator.close() }))
     println(s"dacp listening on ${config.uri("")}")
     val datasetNames = config.datasets.keySet.toSeq.sorted
     println(s"configured datasets (${datasetNames.size}):")
     datasetNames.foreach { name =>
       println(s"  $name ${config.uri(name)}")
     }
-    val jobFailure = new java.util.concurrent.atomic.AtomicReference[Throwable]()
-    if (args.length > 1) {
-      val thread = new Thread(() => try { val result = tasks.runJob(Files.readString(Path.of(args(1)))); println("job outputs: " + result) } catch { case e: Throwable => jobFailure.set(e); e.printStackTrace(); server.close() }, "dacp-job")
-      thread.start()
-    }
+    require(args.length <= 1,"submit jobs through the shell or SDK")
     server.awaitTermination()
-    Option(jobFailure.get()).foreach(e => throw new IllegalStateException("job failed",e))
   }
 }

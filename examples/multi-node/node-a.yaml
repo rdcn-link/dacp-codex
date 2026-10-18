@@ -1,9 +1,9 @@
-# Run from dacp-server. Both nodes use the demo CA; each has its own output directory.
+# Run from dacp-server. Both nodes use the demo CA; results are streams.
 host: 0.0.0.0
 public_host: localhost
 port: 8815
 datasets: {}
-# Whole-node prefixes keep this demo rerunnable with unique output names.
+# Whole-node prefixes permit this demonstration pipeline.
 allowed_uri_prefixes:
   - dacp://localhost:8815/
 task_peers:
@@ -18,6 +18,4 @@ tls_ca: ../examples/certs/ca.crt
 batch_size: 1024
 byte_chunk: 65536
 infer_sample: 4
-output_ttl_seconds: 3600
 local_operator_library: ../operators
-output_root: ../examples/output/node-a

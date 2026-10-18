@@ -112,13 +112,45 @@ Paths must start with `/`; `.`, `..`, repeated separators, and trailing `/` are 
 
 Use Streams before their owning Dataset closes. Close record iterators when stopping early and use context managers for byte readers. After failure, reopen and read from the beginning; reads cannot resume. Python also accepts a complete Item URI to open a Stream directly.
 
+### Records filtering, projection, and limits
+
+Both SDKs can request server-side records queries:
+
+```python
+from dacp import Source, col
+
+with Source.open("dacp://localhost:8815/data1") as ds:
+    with ds.open("/reports/orders", predicate=col("id") > 1,
+                 columns=["amount"], limit=100) as stream:
+        records = stream.as_records()
+        try:
+            for batch in records:
+                print(batch.to_pydict())
+        finally:
+            records.close()
+```
+
+Execution follows filter → projection → limit. Predicates use public column names and typed literals, with comparisons, boolean logic, membership, and null checks. Filters may reference columns omitted from the output. SQL and Parquet push supported operations into their readers; other handlers use bounded server-side filtering. Reaching the limit stops reading, and bytes views reject these options. Item metadata and exact counts remain unchanged.
+
+See [records query semantics and plugin contracts](docs/records-scans.md) for Python/Scala examples, null and type rules, validation, and source-specific optimizations.
+
 ### dacp-shell
 
-`ls` displays a bordered table with Path, Format, Bytes, Records, and Modified (UTC). Unknown values appear as `-`, timestamps use `2026-10-16 06:22:02`, and terminal folder paths are highlighted in bold cyan.
+`ls` displays a bordered table with #, Path, Format, Bytes, Records, and Modified (UTC). The first column numbers items starting from 1. Unknown values appear as `-`, timestamps use `2026-10-16 06:22:02`, and terminal folder paths are highlighted in bold cyan.
 
 `show` accepts a path or a number from the latest listing. It prefers records when available and otherwise shows hexadecimal bytes. Records appear in a table with column names; `text` displays text, and `hex` displays offsets, hexadecimal bytes, and ASCII. Previews default to at most 20 rows or 4096 bytes, adjustable with `--rows` and `--bytes`.
 
 Use `use DATASET` to switch datasets on the same server, `connect URI` to connect elsewhere, and `help` for commands. Certificate paths can also be passed through `--ca`, `--cert`, and `--key`.
+
+Enter a single-line SQL query directly at the shell prompt:
+
+```sql
+SELECT amount FROM "/reports/orders" WHERE id > 1 LIMIT 10
+SELECT amount FROM 2 WHERE id > 1 LIMIT 10
+SELECT * FROM "/reports/orders" WHERE id IN (1, 2) AND amount IS NOT NULL
+```
+
+The shell uses SQLGlot to translate a supported SQL subset into the same remote scan request as the SDKs. `FROM` accepts one double-quoted absolute Item path within the current Dataset, or an Item number from the latest `ls` result (for example, `FROM 2`). Numbers follow the latest listing order, including `ls PATH`; out-of-range numbers produce an error. Use `SELECT *` or a list of public columns, optional `WHERE`, and optional `LIMIT`; SQL keywords are case insensitive. Results appear in a bordered table. The `--rows` preview cap still applies: the server receives the smaller of SQL `LIMIT` and the preview cap, or the preview cap when `LIMIT` is omitted. Use `help select` for syntax. Joins, sorting, aggregation, aliases, and subqueries are rejected. See [SQL shell details](docs/records-scans.md#sql-in-dacp-shell).
 
 ### Scala SDK
 
@@ -286,17 +318,17 @@ Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Save
 
 ## Collaboration and tasks
 
-DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and places each task on the node hosting its first input unless an execution node is specified. Nodes collaborate through mTLS Flight actions. Each subtask uses a separate Docker container; outputs are published as temporary Datasets on execution nodes and managed by TTL.
+DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and places each task on the node hosting its first input unless an execution node is specified. Nodes collaborate through mTLS Flight DoExchange. Each subtask uses a separate Docker container; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
 
-Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, build the conversion operator and start the example job. Stop the quick-start server first if it is still running:
+Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, build the conversion operator and start the server. Stop the quick-start server first if it is still running:
 
 ```bash
 scripts/build-operator-image.sh
 cd dacp-server
-sbt 'run ../examples/server.yaml ../examples/convert.yaml'
+sbt 'run ../examples/server.yaml'
 ```
 
-On success, the logs print the `s1` and `s2` URIs. With the certificate environment variables still set, run `.venv/bin/python examples/verify_job.py` from the project root to check outputs.
+In a connected shell started from the project root, run `submit examples/convert.yaml`, or `run format_convert@1.1 --input source=/reports/orders`. The shell waits and prints results incrementally; Ctrl-C cancels execution.
 
 Further reading:
 
@@ -313,7 +345,7 @@ Operators can share a dependency environment and a code bundle. The starter oper
 
 All connections require mTLS and URI prefix authorization. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
 
-Allowlists currently apply at node level, without permissions grouped by certificate subject. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. The task output registry is in memory; outputs are cleaned on TTL expiry or server shutdown, and tasks are not restored after restart. See the [technical reference](docs/reference_en.md#protocol-and-configuration) for full configuration and protocol details.
+Allowlists currently apply at node level, without permissions grouped by certificate subject. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and tasks are not restored after restart. See the [technical reference](docs/reference_en.md#protocol-and-configuration) for full configuration and protocol details.
 
 ## Development and validation
 
@@ -337,3 +369,5 @@ After starting the server and setting the certificate environment variables, run
 Use `bash scripts/test-collaboration.sh` for cross-node container integration; it requires Docker. Tests cover namespaces, format readers, archive browsing, SQL streams, schema validation, authorization, output expiry, and task collaboration.
 
 The protocol is defined in [proto/dacp.proto](proto/dacp.proto). Source code lives in [dacp-server](dacp-server), [dacp-client](dacp-client) for Python, and [dacp-client-scala](dacp-client-scala) for Scala.
+
+In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`; `--source` and `--code` are unsupported. Servers default to NORMAL and reject source tasks at both coordinator and execution nodes. See [source operators](docs/operator-source_en.md) for configuration, Python/Scala examples, and the plugin contract.

@@ -5,3 +5,12 @@ executor: jvm
 entrypoint: dacp.OperatorMain
 artifact: ../../../dacp-operator-runtime/target/universal/stage/lib/default.dacp-operator-runtime-0.1.0-SNAPSHOT.jar
 description: Convert CSV and NDJSON data to Parquet with schema validation and configurable compression.
+
+inputs:
+  source:
+    representations: [bytes]
+    formats: [csv, ndjson]
+outputs:
+  result:
+    representations: [bytes]
+    formats: [parquet]

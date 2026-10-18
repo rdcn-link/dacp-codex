@@ -18,12 +18,6 @@ class CoreSpec extends AnyFunSuite {
     intercept[IllegalArgumentException](a.resolve("../secret"))
     intercept[IllegalArgumentException](a.resolve("/etc/passwd"))
   }}
-  test("expiry deletes output and retains explicit expired status") { temp { p =>
-    val dir = Files.createDirectory(p.resolve("out")); val r = new OutputRegistry(20)
-    try { r.register("s1",dir); assert(r.lookup("s1").contains(dir)); Thread.sleep(50)
-      intercept[Expired](r.lookup("s1")); assert(!Files.exists(dir))
-    } finally r.close()
-  }}
   test("schema sampling fixes types and rejects later conflicts") { temp { p =>
     val f = p.resolve("x.csv"); Files.writeString(f,"id,value\n1,2.5\n2,wrong\n")
     val s = Formats.detect(f).schema(f,FileOptions(),1,1)
@@ -36,9 +30,9 @@ class CoreSpec extends AnyFunSuite {
   }}
   test("protobuf metadata and descriptor namespaces round-trip") { temp { p =>
     Files.writeString(p.resolve("x.csv"),"id\n1\n")
-    val a = new RootAllocator(); val r = new OutputRegistry(10000)
+    val a = new RootAllocator()
     val c = Config("localhost",8815,"localhost",Map("d" -> DatasetDefinition.custom(Seq(PublishedItem("/records", file = Some(p.resolve("x.csv")))))),Seq("dacp://localhost:8815/d"),p,p,p)
-    val producer = new Producer(c,a,r)
+    val producer = new Producer(c,a)
     try {
       val info = producer.getFlightInfo(null,FlightDescriptor.path("datasets","d"))
       val meta = Metadata.DataSet.parseFrom(info.getAppMetadata)
@@ -48,26 +42,8 @@ class CoreSpec extends AnyFunSuite {
       assert(ticket.getDataset == "d" && ticket.getItem == "/records")
       intercept[FlightRuntimeException](producer.getFlightInfo(null,FlightDescriptor.path("wrong","d")))
       intercept[IllegalArgumentException](c.authorize("d2","x"))
-      val o = Files.createTempDirectory("output-test"); Files.writeString(o.resolve("x.csv"),"id\n1\n")
-      r.register("s1",o)
-      intercept[FlightRuntimeException](producer.getFlightInfo(null,FlightDescriptor.path("datasets","s1")))
-    } finally {r.close();a.close()}
+    } finally {a.close()}
   }}
-  test("DAG rejects cycles and orders dependencies") { temp { p =>
-    val f=p.resolve("job.yaml")
-    Files.writeString(f,"job: test\ntasks:\n - {id: b, inputs: [s1], operator: x@1, output: s2}\n - {id: a, inputs: ['dacp://localhost/d'], operator: x@1, output: s1}\n")
-    assert(Jobs.load(f).map(_.id) == Seq("a","b"))
-    Files.writeString(f,"job: test\ntasks:\n - {id: b, inputs: [s1], operator: x@1, output: s2}\n - {id: a, inputs: [s2], operator: x@1, output: s1}\n")
-    intercept[IllegalArgumentException](Jobs.load(f))
-  }}
-  test("jobs require inputs lists and reject singular input settings") {
-    val task = "id: convert, operator: x@1, output: result"
-    for (settings <- Seq("input: 'dacp://localhost/data'",
-                         "input: 'dacp://localhost/data', inputs: ['dacp://localhost/data']")) {
-      intercept[IllegalArgumentException](Jobs.parse(s"job: test\ntasks:\n - {$task, $settings}\n"))
-    }
-    assert(Jobs.parse(s"job: test\ntasks:\n - {$task, inputs: ['dacp://localhost/data']}\n").head.inputs == Seq("dacp://localhost/data"))
-  }
   test("converter requires ndjson rather than treating json as a records alias") {
     def input = new java.io.ByteArrayInputStream("{\"id\":1}\n".getBytes(java.nio.charset.StandardCharsets.UTF_8))
     intercept[IllegalArgumentException](FormatConvert.parsed(input,"json"))
@@ -88,9 +64,6 @@ class CoreSpec extends AnyFunSuite {
       writer.end()
     } finally {writer.close();root.close();a.close()}
     FormatConvert.run(input,output,input.resolve("params.json"))
-    val boundary = new RootAllocator()
-    try { RuntimeOutput.encode(output,boundary,"parquet"); assert(!Files.exists(output.resolve("part-0.parquet"))); OperatorOutput.decode(output,boundary) }
-    finally boundary.close()
     assert(Files.exists(output.resolve("_schema.json")))
     assert(Parquet.schema(output.resolve("part-0.parquet")).getFields.get(0).getName == "id")
     assert(Parquet.recordCount(output.resolve("part-0.parquet")) == 2L)

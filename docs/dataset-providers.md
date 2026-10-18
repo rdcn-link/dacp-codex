@@ -63,6 +63,10 @@ Use `Item.views = Some(Seq("records", "bytes"))` to advertise native capabilitie
 
 Native providers can implement streams directly, so MongoDB need not be modeled as a file or JDBC connection. MongoDB is not implemented in this change. The test [TestDatasetProvider](../dacp-server/src/test/scala/dacp/TestDatasetProvider.scala) demonstrates ServiceLoader discovery and native streaming through the unchanged Flight protocol.
 
-Dataset providers, [container readers](format-handlers.md#container-readers), and [format handlers](format-handlers.md) have separate responsibilities: constructing a namespace, browsing embedded containers, and interpreting data content. `custom` and `sqldb` reuse `NamespaceAdapter`; the directory provider constructs scoped namespaces as filesystem paths are discovered. Task outputs keep their generated logical aliases and TTL lifecycle.
+Dataset providers, [container readers](format-handlers.md#container-readers), and [format handlers](format-handlers.md) have separate responsibilities: constructing a namespace, browsing embedded containers, and interpreting data content. `custom` and `sqldb` reuse `NamespaceAdapter`; the directory provider constructs scoped namespaces as filesystem paths are discovered. Task outputs are transient item streams and do not enter the dataset namespace.
 
 `DatasetContext` supplies batch settings and optional namespace publication helpers (`publish`, `openNamespace`), without exposing server implementation classes. Native backends can implement access directly. The server closes each request access handle; implement `PublishedDataset.close` to release provider-level resources at shutdown. Use [PluginChecks](../dacp-plugin-api/src/main/scala/dacp/PluginChecks.scala) in contributor tests, and see the [standalone example](../examples/plugins/README.md).
+
+## Records scans
+
+`DatasetAccess.scan` accepts a shared `Scan` request for filtering, projection, and limits. Its default implementation streams records through the common evaluator. Providers may override it for source execution, retaining residual filtering where needed. See [records scan contracts](records-scans.md#plugin-implementation-contract).

@@ -32,4 +32,3 @@ tls_key: ../examples/certs/server.key
 tls_ca: ../examples/certs/ca.crt
 batch_size: 128
 byte_chunk: 65536
-output_root: ../examples/output

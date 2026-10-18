@@ -85,14 +85,19 @@ class SqlAdapter(config: SqlConfig, batchSize: Int) extends DataSetAdapter {
   def list(): Seq[Item] = withConnection(c => tableNames(c).map(describe(c,_)))
 
   // At most one Arrow batch plus the JDBC fetch window is buffered; no retries or materialization.
-  def stream(item: String, allocator: BufferAllocator)(start: VectorSchemaRoot => Unit,
+  def stream(item: String, allocator: BufferAllocator, scan: Option[Scan] = None)(start: VectorSchemaRoot => Unit,
              emit: VectorSchemaRoot => Unit, ready: () => Unit): Unit = withConnection { c =>
     val name = qualified(c,item)
-    val st = c.createStatement(ResultSet.TYPE_FORWARD_ONLY,ResultSet.CONCUR_READ_ONLY)
+    val quote = c.getMetaData.getIdentifierQuoteString.trim
+    def q(s: String): String = quote + s.replace(quote,quote+quote) + quote
+    val plan = scan.map(s => SqlScanPlan.build(s,describe(c,item).schema.get,q))
+    val st = c.prepareStatement(s"SELECT ${plan.map(_.columns).getOrElse("*")} FROM $name${plan.map(_.where).getOrElse("")}",
+      ResultSet.TYPE_FORWARD_ONLY,ResultSet.CONCUR_READ_ONLY)
     try {
       st.setFetchSize(config.fetchSize); st.setQueryTimeout(config.queryTimeoutSeconds)
       ready()
-      val rs = st.executeQuery(s"SELECT * FROM $name")
+      plan.foreach { p => p.bind(st); p.maxRows.foreach(st.setMaxRows) }
+      val rs = st.executeQuery()
       try {
         val root = VectorSchemaRoot.create(SqlAdapter.schema(rs.getMetaData),allocator)
         try {

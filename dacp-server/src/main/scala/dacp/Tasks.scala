@@ -1,170 +1,77 @@
 package dacp
-import java.nio.file.{Files, Path, StandardOpenOption}
-import java.nio.channels.{Channels, FileChannel}
-import java.util.UUID
+
+import java.nio.file.{Files,Path}
 import scala.jdk.CollectionConverters._
-import scala.concurrent.{Await, Future, ExecutionContext}
-import scala.concurrent.duration._
-import org.apache.arrow.memory.BufferAllocator
-import org.apache.arrow.flight._
-import org.apache.arrow.vector.ipc.ArrowStreamWriter
-import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.stream.scaladsl.{Source, Sink}
-import com.github.dockerjava.core.{DefaultDockerClientConfig, DockerClientImpl}
-import com.github.dockerjava.httpclient5.ApacheDockerHttpClient
-import com.github.dockerjava.api.model.{Bind, Volume, HostConfig, AccessMode}
-import dacp.protocol.Metadata
 import org.yaml.snakeyaml.Yaml
 
-case class Task(id: String, inputs: Seq[String], operator: String, params: java.util.Map[String,Object], output: String, node: Option[String] = None)
+case class InputBinding(uri: Option[String] = None, task: Option[String] = None, port: String = "result", view: String = "bytes")
+case class Task(id: String, inputs: Map[String,InputBinding], operator: String, params: java.util.Map[String,Object], node: Option[String] = None, source: Option[SourceOperator] = None)
+case class JobPlan(tasks: Vector[Task], outputs: Map[String,(String,String)])
+case class SourceOperator(runtime: String, source: String, entrypoint: String = "Main")
 object Jobs {
-  def load(path: Path): Seq[Task] = {
-    parse(Files.readString(path))
+  def authorizeSource(config: Config, task: Task): Unit =
+    require(task.source.isEmpty || config.debug, "FORBIDDEN: source submission requires DEBUG mode")
+  def source(value: Object): SourceOperator = {
+    val m=mapping(value,"source operator")
+    require(m.keySet.subsetOf(Set("runtime","source","entrypoint")) && Set("runtime","source").subsetOf(m.keySet),"invalid source operator")
+    val result=SourceOperator(m("runtime").toString,m("source").toString,m.getOrElse("entrypoint","Main").toString)
+    require(result.runtime.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*@[A-Za-z0-9_-][A-Za-z0-9_.-]*"),"runtime must be name@version")
+    require(result.source.trim.nonEmpty && result.source.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=512*1024,"source must contain 1 to 512 KiB")
+    result
   }
-  def parse(yaml: String): Seq[Task] = {
-    val doc = new Yaml().load[java.util.Map[String,Object]](yaml).asScala
-    require(doc.contains("job"),"job name required")
-    val tasks = doc("tasks").asInstanceOf[java.util.List[java.util.Map[String,Object]]].asScala.map { raw =>
-      val m = raw.asScala
-      require(m.keySet.subsetOf(Set("id","inputs","operator","params","output","node")), "unknown task setting")
-      require(m.contains("inputs"), "task inputs are required")
-      val inputs = m("inputs").asInstanceOf[java.util.List[String]].asScala.toSeq
-      require(inputs.nonEmpty,"empty inputs")
-      Task(m("id").toString,inputs,m("operator").toString,m.getOrElse("params",new java.util.LinkedHashMap[String,Object]()).asInstanceOf[java.util.Map[String,Object]],m("output").toString,m.get("node").map(_.toString))
-    }.toSeq
-    require(tasks.map(_.id).distinct.size == tasks.size,"duplicate task ids")
-    require(tasks.map(_.output).distinct.size == tasks.size,"duplicate outputs")
-    tasks.foreach(t => require(t.output.matches("[a-zA-Z0-9_-]+"),"invalid output name"))
-    val outputs = tasks.map(_.output).toSet
-    tasks.foreach(t => t.inputs.filterNot(_.startsWith("dacp://")).foreach(i => require(outputs(i.takeWhile(_ != '/')),"unknown upstream output")))
-    var remaining = tasks; var done = Set.empty[String]; val ordered = Vector.newBuilder[Task]
-    while (remaining.nonEmpty) {
-      val ready = remaining.filter(t => t.inputs.filterNot(_.startsWith("dacp://")).forall(i => done(i.takeWhile(_ != '/'))))
-      require(ready.nonEmpty,"cyclic task DAG")
-      ready.foreach { t => ordered += t; done += t.output }; remaining = remaining.filterNot(ready.contains)
+
+  private def name(s: String): Unit = require(s.matches("[A-Za-z_][A-Za-z0-9_-]{0,127}"),"invalid task/port name")
+  private def mapping(value: Any, label: String): Map[String,Object] = {
+    require(value.isInstanceOf[java.util.Map[_,_]],s"$label must be a mapping")
+    value.asInstanceOf[java.util.Map[String,Object]].asScala.toMap
+  }
+  def validate(t: Task): Unit = {
+    name(t.id); t.inputs.keys.foreach(name)
+    require(t.inputs.nonEmpty,"named item inputs required")
+    require(t.source.isDefined || t.operator.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*@[A-Za-z0-9_-][A-Za-z0-9_.-]*"),"operator must be name@version")
+    require(t.params != null,"params must be a mapping")
+    t.inputs.values.foreach { b =>
+      require(b.uri.isDefined != b.task.isDefined,"input requires exactly one of uri or task")
+      require(Set("bytes","records")(b.view),"unsupported input view")
+      name(b.port)
+      b.task.foreach(name)
+      b.uri.foreach { u => val parsed=DacpUri.parse(u); require(parsed.getPath.stripPrefix("/").split("/",2).length == 2,"operator input must address an item, not a dataset") }
     }
-    ordered.result()
+    t.node.foreach(DacpUri.node)
   }
-}
-/** Task inputs use the same published namespace as SDK clients. */
-private[dacp] object TaskInputs {
-  def discover(client: FlightClient, dataset: String, path: Option[String]): Seq[(String,String)] = path match {
-    case Some(logical) =>
-      LogicalPath.validate(logical)
-      val info = client.getInfo(FlightDescriptor.path("datasets",dataset,logical))
-      val item = Metadata.Item.parseFrom(info.getAppMetadata)
-      require(item.getKind == "data", "task input must be a data item")
-      Seq(item.getPath -> item.getFormat)
-    case None =>
-      val info = client.getInfo(FlightDescriptor.path("datasets",dataset))
-      Metadata.DataSet.parseFrom(info.getAppMetadata).getItemsList.asScala
-        .filter(_.getKind == "data").map(i => i.getPath -> i.getFormat).toVector
-  }
-}
-class TaskExecutor(config: Config, allocator: BufferAllocator, registry: OutputRegistry) {
-  private case class Remote(client: FlightClient, dataset: String, items: Seq[(String,String)])
-  private def remote(value: String): Remote = {
-    val uri = DacpUri.parse(value)
-    val parts = uri.getPath.stripPrefix("/").split("/",2)
-    require(parts.nonEmpty && parts(0).nonEmpty,"missing input dataset")
-    val client = NodeConnection.open(config,allocator,value)
-    try {
-      val items = TaskInputs.discover(client, parts(0), parts.lift(1).map("/" + _))
-      Remote(client,parts(0),items)
-    } catch { case t: Throwable => client.close(); throw t }
-  }
-  def execute(task: Task): String = {
-    require(registry.lookup(task.output).isEmpty,"output name already used")
-    implicit val system: ActorSystem = ActorSystem("dacp-tasks")
-    implicit val ec: ExecutionContext = system.dispatchers.lookup("pekko.actor.default-blocking-io-dispatcher")
-    val dockerConfig = DefaultDockerClientConfig.createDefaultConfigBuilder().build()
-    val transport = new ApacheDockerHttpClient.Builder().dockerHost(dockerConfig.getDockerHost).sslConfig(dockerConfig.getSSLConfig).build()
-    val docker = DockerClientImpl.getInstance(dockerConfig,transport)
-    try {
-      require(!config.hasDataset(task.output),"output shadows configured dataset")
-      val operator = OperatorLibrary.resolve(config,task.operator,docker)
-      val temp = Files.createTempDirectory("dacp-input-")
-      Files.createDirectories(config.outputRoot)
-      val output = Files.createDirectory(config.outputRoot.resolve(task.output + "-" + UUID.randomUUID().toString))
-      var container: String = null
-      var published = false
-      val sources = scala.collection.mutable.ArrayBuffer.empty[Remote]
-      val channels = scala.collection.mutable.ArrayBuffer.empty[FileChannel]
-      try {
-        task.inputs.foreach(i => sources += remote(i))
-        val inputs = sources.flatMap(r => r.items.map { case (p,f) => (r,p,f) }).toVector
-        require(inputs.nonEmpty,"empty input dataset")
-        val json = Data.mapper.createArrayNode()
-        inputs.zipWithIndex.foreach { case ((r,p,f),i) => val n = json.addObject(); n.put("file",s"$i.arrow"); n.put("path",p); n.put("format",f) }
-        Files.write(temp.resolve("manifest.json"),Data.mapper.writeValueAsBytes(json))
-        val paramsFile = temp.resolve("params.json"); Files.write(paramsFile,Data.mapper.writeValueAsBytes(task.params))
-        val multi = task.inputs.size > 1
-        def transfer(index: Int): Unit = {
-          val (r,item,_) = inputs(index)
-          val ticket = Metadata.Ticket.newBuilder().setDataset(r.dataset).setItem(item).setView("bytes").build()
-          val stream = r.client.getStream(new Ticket(ticket.toByteArray))
-          val channel = if (multi) FileChannel.open(temp.resolve(s"$index.arrow"),StandardOpenOption.WRITE,StandardOpenOption.CREATE_NEW)
-            else channels(index)
-          val sink = Channels.newOutputStream(channel)
-          // Keep FIFO descriptor alive through container startup: tiny streams may finish before its reader opens.
-          val outputStream = if (multi) sink else new java.io.FilterOutputStream(sink) { override def close(): Unit = flush() }
-          val writer = new ArrowStreamWriter(stream.getRoot,null,outputStream)
-          try { writer.start(); while (stream.next()) writer.writeBatch(); writer.end() }
-          finally { writer.close(); stream.close(); if (multi) channel.close() }
-        }
-        if (multi) {
-          // Architecture: all inputs are completely materialized before a multi-input operator starts.
-          inputs.indices.foreach(transfer)
-        } else inputs.indices.foreach { i =>
-          val pipe = temp.resolve(s"$i.arrow")
-          require(new ProcessBuilder("mkfifo",pipe.toString).start().waitFor() == 0,"mkfifo failed")
-          // RDWR avoids an uninterruptible FIFO open if the container fails before opening its reader.
-          channels += FileChannel.open(pipe,StandardOpenOption.READ,StandardOpenOption.WRITE)
-        }
-        val binds = List(new Bind(temp.toAbsolutePath.toString,new Volume("/input"),AccessMode.ro),
-          new Bind(output.toAbsolutePath.toString,new Volume("/output"),AccessMode.rw)) ++
-          operator.artifact.zip(operator.artifactPath).map { case (file, path) => new Bind(file.toAbsolutePath.toString,new Volume(path),AccessMode.ro) }
-        val host = HostConfig.newHostConfig().withBinds(binds.asJava).withNetworkMode("none").withMemory(1024L*1024*1024).withPidsLimit(128L)
-          .withReadonlyRootfs(true).withTmpFs(Map("/tmp" -> "rw,nosuid,nodev,size=512m").asJava)
-        val create = docker.createContainerCmd(operator.image).withHostConfig(host)
-          .withEnv((operator.command.environment + ("DACP_OPERATOR" -> task.operator)).map { case (k,v) => s"$k=$v" }.toSeq.asJava)
-          .withCmd(operator.command.arguments.asJava)
-        operator.command.entrypoint.foreach(e => create.withEntrypoint(e.asJava))
-        container = create.exec().getId
-        docker.startContainerCmd(container).exec()
-        // Pekko pulls one transfer at a time; FIFO and Flight transport readiness bound buffering.
-        val pumping = if (multi) Future.successful(()) else Source(inputs.indices.toList).mapAsync(1)(i => Future(transfer(i))).runWith(Sink.ignore).map(_ => ())
-        val deadline = System.nanoTime() + 30.minutes.toNanos
-        while (docker.inspectContainerCmd(container).exec().getState.getRunning && System.nanoTime() < deadline) {
-          if (pumping.isCompleted) Await.result(pumping,Duration.Zero)
-          Thread.sleep(100)
-        }
-        require(System.nanoTime() < deadline,"operator timed out")
-        if (docker.inspectContainerCmd(container).exec().getState.getExitCodeLong != 0L) {
-          val logs = new StringBuilder()
-          val callback = new com.github.dockerjava.core.command.LogContainerResultCallback() {
-            override def onNext(frame: com.github.dockerjava.api.model.Frame): Unit = {
-              if (logs.length < 65536) logs.append(new String(frame.getPayload,java.nio.charset.StandardCharsets.UTF_8))
-            }
-          }
-          docker.logContainerCmd(container).withStdOut(true).withStdErr(true).withTail(100).exec(callback).awaitCompletion()
-          throw new IllegalStateException("operator failed: " + logs.toString)
-        }
-        Await.result(pumping,30.seconds)
-        OperatorOutput.decode(output,allocator)
-        registry.register(task.output,output); published = true
-        println(s"task ${task.id}: ${config.uri(task.output)} (TTL ${config.ttlSeconds}s)")
-        config.uri(task.output)
-      } finally {
-        channels.foreach(c => if (c.isOpen) c.close())
-        try {
-          if (container != null) try docker.removeContainerCmd(container).withForce(true).exec()
-          catch { case scala.util.control.NonFatal(e) => System.err.println("container cleanup: " + e.getMessage) }
-        } finally {
-          try sources.foreach(_.client.close())
-          finally { Data.deleteTree(temp); if (!published) Data.deleteTree(output) }
-        }
+  def load(path: Path): JobPlan = parse(Files.readString(path))
+  def parse(text: String): JobPlan = {
+    require(text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 1024*1024,"job exceeds 1 MiB")
+    val options=new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
+    val doc=mapping(new Yaml(options).load[Object](text),"job")
+    require(doc.keySet.subsetOf(Set("job","tasks","outputs")) && doc.contains("job"),"invalid job settings")
+    require(doc.get("tasks").exists(_.isInstanceOf[java.util.List[_]]),"tasks must be a list")
+    val tasks=doc("tasks").asInstanceOf[java.util.List[Object]].asScala.map { raw =>
+      val m=mapping(raw,"task")
+      require(m.keySet.subsetOf(Set("id","inputs","operator","params","node")) && Set("id","inputs","operator").subsetOf(m.keySet),"invalid task settings")
+      val inputs=mapping(m("inputs"),"inputs").map { case (port,raw) =>
+        val b=mapping(raw,"input binding")
+        require(b.keySet.subsetOf(Set("uri","task","port","view")),"unknown input binding setting")
+        port -> InputBinding(b.get("uri").map(_.toString),b.get("task").map(_.toString),b.getOrElse("port","result").toString,b.getOrElse("view","bytes").toString)
       }
-    } finally { docker.close(); transport.close(); Await.result(system.terminate(),30.seconds) }
+      val params=new java.util.LinkedHashMap[String,Object](); m.get("params").foreach(v => mapping(v,"params").foreach{case(k,v)=>params.put(k,v)})
+      val inline=if(m("operator").isInstanceOf[java.util.Map[_,_]])Some(source(m("operator")))else None
+      val t=Task(m("id").toString,inputs,if(inline.isDefined)""else m("operator").toString,params,m.get("node").map(_.toString),inline);validate(t);t
+    }.toVector
+    require(tasks.nonEmpty && tasks.size <= 64 && tasks.map(_.id).distinct.size == tasks.size,"empty, oversized, or duplicate task list")
+    val ids=tasks.map(_.id).toSet
+    tasks.foreach(_.inputs.values.flatMap(_.task).foreach(id=>require(ids(id),"unknown upstream task")))
+    var left=tasks; var done=Set.empty[String]; val result=Vector.newBuilder[Task]
+    while(left.nonEmpty) {
+      val ready=left.filter(_.inputs.values.flatMap(_.task).forall(done))
+      require(ready.nonEmpty,"cyclic task DAG")
+      ready.foreach(t=>{result+=t;done+=t.id});left=left.filterNot(ready.contains)
+    }
+    val outputs=doc.get("outputs").map(v=>mapping(v,"outputs").map {case(label,raw)=>
+      name(label);val m=mapping(raw,"output binding")
+      require(m.keySet==Set("task","port"),"output requires task and port")
+      val task=m("task").toString;val port=m("port").toString;name(port);require(ids(task),"unknown output task");label -> (task,port)
+    }).getOrElse(Map.empty[String,(String,String)])
+    JobPlan(result.result(),outputs)
   }
 }

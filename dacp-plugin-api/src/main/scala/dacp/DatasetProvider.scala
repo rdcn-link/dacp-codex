@@ -8,6 +8,9 @@ trait DatasetAccess extends DataSetAdapter with AutoCloseable {
   def close(): Unit = ()
   def list(path: String): Seq[Item]
   def count(path: String): Option[Long]
+  /** Override only when the source preserves Scan semantics; otherwise use this streaming fallback. */
+  def scan(path: String, request: Scan, allocator: BufferAllocator, listener: ServerStreamListener, ready: () => Unit): Unit =
+    ScanStreams.stream(request,allocator,listener)(filtered => stream(path,"records",allocator,filtered,ready))
   def stream(path: String, view: String, allocator: BufferAllocator, listener: ServerStreamListener, ready: () => Unit): Unit
 }
 trait PublishedDataset extends AutoCloseable {

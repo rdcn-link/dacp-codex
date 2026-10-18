@@ -1,31 +1,41 @@
 package dacp
 
-import java.nio.file.{Files,Path,StandardOpenOption}
-import scala.jdk.CollectionConverters._
+import java.nio.file.{Files,Path}
 import org.apache.arrow.memory.BufferAllocator
+import org.apache.arrow.vector.VarBinaryVector
 import org.apache.arrow.vector.ipc.{ArrowStreamReader,ArrowStreamWriter}
 
-// A byte-preserving operator allows downstream tasks to consume any upstream format.
-// Reading Arrow EOS (rather than waiting for OS EOF) is essential for the single-input FIFO.
+/** A single named data item enters and leaves as an incremental stream. */
 object Identity {
-  def run(input: Path, output: Path, allocator: BufferAllocator): Unit = {
-    Files.createDirectories(output)
-    val manifest = RuntimeJson.mapper.readTree(Files.readAllBytes(input.resolve("manifest.json")))
-    val result = RuntimeJson.mapper.createArrayNode()
-    manifest.elements.asScala.zipWithIndex.foreach { case (entry,index) =>
-      val format = entry.get("format").asText()
-      require(format.matches("[a-z][a-z0-9_-]*"),"unsupported input format")
-      val extension = format match { case "excel" => "xlsx"; case "sql" => "bin"; case other => other }
-      val name = s"_stream-$index.arrow"
-      val reader = new ArrowStreamReader(Files.newInputStream(input.resolve(entry.get("file").asText())),allocator)
-      try {
-        require(reader.getVectorSchemaRoot.getSchema == PluginSchemas.bytes,"identity expects Arrow binary streams")
-        val writer = new ArrowStreamWriter(reader.getVectorSchemaRoot,null,Files.newOutputStream(output.resolve(name),StandardOpenOption.CREATE_NEW))
-        try { writer.start();while(reader.loadNextBatch()) writer.writeBatch();writer.end() }
-        finally writer.close()
-      } finally reader.close()
-      val item = result.addObject();item.put("file",name);item.put("path",s"part-$index.$extension");item.put("format",format)
-    }
-    Files.write(output.resolve("_output.json"),RuntimeJson.mapper.writeValueAsBytes(result))
+  def run(input: Path, allocator: BufferAllocator): Unit = {
+    val manifest=RuntimeJson.mapper.readTree(Files.readAllBytes(input.resolve("manifest.json")))
+    require(manifest.size()==1 && manifest.get(0).path("port").asText=="source","identity requires source")
+    val entry=manifest.get(0)
+    val reader=new ArrowStreamReader(Files.newInputStream(input.resolve(entry.path("file").asText)),allocator)
+    try {
+      val root=reader.getVectorSchemaRoot
+      val repr=entry.path("representation").asText
+      require(Set("bytes","records")(repr),"unsupported representation")
+      if(repr=="bytes")require(root.getSchema==PluginSchemas.bytes,"invalid bytes schema")
+      val header=RuntimeJson.mapper.createObjectNode().put("type","start").put("port","result")
+        .put("representation",repr).put("format",entry.path("format").asText)
+      if(repr=="records")header.put("schema",java.util.Base64.getEncoder.encodeToString(root.getSchema.serializeAsMessage()))
+      OperatorFrames.write(System.out,OperatorFrame(RuntimeJson.mapper.writeValueAsBytes(header)))
+      while(reader.loadNextBatch()) {
+        if(repr=="bytes") (0 until root.getRowCount).foreach{i=>
+          root.getVector(0).asInstanceOf[VarBinaryVector].get(i).grouped(65536).foreach(StreamOutput.data)
+        } else {
+          val out=new java.io.ByteArrayOutputStream()
+          val writer=new ArrowStreamWriter(root,null,out)
+          try {writer.start();writer.writeBatch();writer.end();StreamOutput.data(out.toByteArray)} finally writer.close()
+        }
+      }
+      StreamOutput.event("end")
+    } finally reader.close()
   }
+}
+object StreamOutput {
+  def event(kind:String, data:Array[Byte]=Array.emptyByteArray):Unit =
+    OperatorFrames.write(System.out,OperatorFrame(RuntimeJson.mapper.createObjectNode().put("type",kind).put("port","result").toString.getBytes(java.nio.charset.StandardCharsets.UTF_8),data))
+  def data(bytes:Array[Byte]):Unit=event("data",bytes)
 }

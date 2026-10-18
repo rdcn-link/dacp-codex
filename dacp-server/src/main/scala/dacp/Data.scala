@@ -2,7 +2,6 @@ package dacp
 
 import java.nio.file.{Files, Path}
 import java.nio.charset.StandardCharsets.UTF_8
-import java.util.concurrent.{ConcurrentHashMap, Executors, TimeUnit}
 import scala.jdk.CollectionConverters._
 import org.apache.arrow.vector._
 import org.apache.arrow.vector.types.pojo.{ArrowType, Field, FieldType, Schema}
@@ -31,32 +30,6 @@ class DirectoryAdapter(base: Path, batchSize: Int, inferSample: Int, excludeMeta
     finally walk.close()
   }
 }
-class OutputRegistry(ttlMillis: Long) extends AutoCloseable {
-  require(ttlMillis > 0)
-  private case class Entry(path: Path, expires: Long)
-  private val entries = new ConcurrentHashMap[String, Entry]()
-  private val expired = ConcurrentHashMap.newKeySet[String]()
-  private val timer = Executors.newSingleThreadScheduledExecutor((r: Runnable) => { val t = new Thread(r, "dacp-expiry"); t.setDaemon(true); t })
-  timer.scheduleAtFixedRate(() => cleanup(), 50, 50, TimeUnit.MILLISECONDS)
-  def register(id: String, path: Path): Unit = synchronized {
-    require(!entries.containsKey(id) && !expired.contains(id), "output name already used")
-    entries.put(id, Entry(path, System.currentTimeMillis() + ttlMillis))
-  }
-  def lookup(id: String): Option[Path] = synchronized {
-    cleanup()
-    if (expired.contains(id)) throw new Expired(id)
-    Option(entries.get(id)).map(_.path)
-  }
-  def cleanup(): Unit = synchronized {
-    val now = System.currentTimeMillis()
-    entries.asScala.foreach { case (id, e) => if (now >= e.expires) {
-      entries.remove(id); expired.add(id); Data.deleteTree(e.path)
-    }}
-  }
-  def close(): Unit = { timer.shutdownNow(); entries.values.asScala.foreach(e => Data.deleteTree(e.path)); entries.clear() }
-}
-class Expired(id: String) extends RuntimeException(s"EXPIRED: output $id has expired; rerun job from source")
-
 object Data {
   val mapper = new ObjectMapper()
   def format(p: Path): String = Formats.detect(p).id

@@ -116,14 +116,27 @@ final class Dataset private[client] (
     val metadata = Metadata.Item.parseFrom(info.getAppMetadata)
     if (metadata.hasRecordCount) Some(metadata.getRecordCount) else None
   }
-  def open(path: String): ItemStream = {
+  def open(path: String, predicate: Option[Predicate] = None, columns: Option[Seq[String]] = None,
+           limit: Option[Long] = None): ItemStream = {
+    require(limit.forall(_ >= 0), "limit must be nonnegative")
+    require(columns.forall(c => c.nonEmpty && c.forall(n => n != null && n.nonEmpty) && c.distinct.size == c.size),
+      "projection requires unique nonempty columns")
     check()
     logical(path)
     val info = DacpErrors.protect(client.getInfo(FlightDescriptor.path("datasets", name, path), option))
     require(!info.getEndpoints.isEmpty, "item has no Flight endpoint")
     val metadata = Metadata.Item.parseFrom(info.getAppMetadata)
     require(metadata.getViewsCount > 0, "item has no readable views; use list(path) for folders")
-    val item = new ItemStream(this, info.getEndpoints.get(0).getTicket, metadata.getViewsList.asScala.toVector)
+    val ticket = Metadata.Ticket.parseFrom(info.getEndpoints.get(0).getTicket.getBytes).toBuilder
+    if(predicate.isDefined || columns.isDefined || limit.isDefined) {
+      require(metadata.getViewsList.contains("records"), "scan options require records view")
+      val scan = Metadata.Scan.newBuilder()
+      predicate.foreach(p => scan.setPredicate(p.message))
+      columns.foreach(c => scan.setProjection(Metadata.Scan.Projection.newBuilder().addAllColumns(c.asJava)))
+      limit.foreach(scan.setLimit)
+      ticket.setScan(scan)
+    }
+    val item = new ItemStream(this, new Ticket(ticket.build().toByteArray), metadata.getViewsList.asScala.toVector)
     items += item
     item
   }
@@ -143,6 +156,7 @@ final class ItemStream private[client] (dataset: Dataset, ticket: Ticket, val vi
     require(!closed, "item stream is closed")
     require(views.contains(view), "item does not support requested view")
     val t = Metadata.Ticket.parseFrom(ticket.getBytes).toBuilder.setView(view).build()
+    require(!t.hasScan || view == "records", "scan options require records view")
     DacpErrors.protect(dataset.client.getStream(new Ticket(t.toByteArray), dataset.option))
   }
   def asRecords(): RecordStream = {

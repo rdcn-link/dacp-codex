@@ -1,70 +1,64 @@
-"""Run with both example nodes listening and DACP_CA/CERT/KEY set."""
+"""Stream B conversion through A; nodes configured by scripts/test-collaboration.sh."""
+import json
+import os
 from pathlib import Path
-import uuid
-from dacp import Job, Source
 import pyarrow as pa
 import pyarrow.flight as flight
+import pyarrow.parquet as pq
+from dacp import Job, Source
 from dacp import dacp_pb2 as pb
 
-suffix = uuid.uuid4().hex[:10]
-yaml = Path(__file__).with_name("job.yaml").read_text()
-for name in ("b_converted", "a_relay", "b_joined"):
-    yaml = yaml.replace(name, name + "_" + suffix)
-outputs = Job.run("dacp://localhost:8815", yaml, timeout=180)
-assert outputs["b_converted_" + suffix].startswith("dacp://localhost:8816/")
-assert outputs["a_relay_" + suffix].startswith("dacp://localhost:8815/")
-assert outputs["b_joined_" + suffix].startswith("dacp://localhost:8816/")
+A = os.environ.get('DACP_NODE_A', 'dacp://localhost:8815')
+B = os.environ.get('DACP_NODE_B', 'dacp://localhost:8816')
+text = Path(__file__).with_name('job.yaml').read_text().replace('dacp://localhost:8815', A).replace('dacp://localhost:8816', B)
 
-def read(uri):
-    with Source.open(uri) as ds:
-        items = ds.list()
-        data = []
-        for item in items:
-            assert item.schema is not None and item.format == "parquet"
-            stream = ds.open(item.path)
-            assert sum(batch.num_rows for batch in stream.as_records()) == 2
-            with stream.as_bytes() as raw:
-                data.append(raw.read())
-        return data
 
-original = read(outputs["b_converted_" + suffix])
-assert len(original) == 1
-assert read(outputs["a_relay_" + suffix]) == original
-assert read(outputs["b_joined_" + suffix]) == original * 2
-print("PASS: automatic B placement -> A pulls B -> B materializes A+B; bytes and schemas preserved")
-# Node A has no source dataset; this job could only succeed through remote placement.
-with Source.open("dacp://localhost:8815/csv_data") as ds:
-    try: ds.list()
-    except pa.ArrowKeyError: pass
-    else: raise AssertionError("source unexpectedly exists on coordinator")
+def read_job(yaml):
+    result = bytearray()
+    with Job.run(A, yaml, timeout=180) as events:
+        for event in events:
+            if event['type'] == 'data':
+                result.extend(event['data'])
+    table = pq.read_table(pa.BufferReader(result))
+    assert table.to_pydict() == {'id':[1,2], 'amount':[12.5,30.0]}
+    return bytes(result)
 
-bad = f"""job: failed_remote
-tasks:
- - {{id: fail, inputs: ['dacp://localhost:8816/csv_data'], operator: missing@1.0, output: failed_{suffix}}}
- - {{id: blocked, inputs: [failed_{suffix]}, node: 'dacp://localhost:8815', operator: identity@1.1, output: blocked_{suffix}}}
-"""
-try: Job.run("dacp://localhost:8815", bad, timeout=30)
-except flight.FlightError as error:
-    assert "missing" in str(error), error
-else: raise AssertionError("remote failure was ignored")
-with Source.open(f"dacp://localhost:8815/blocked_{suffix}") as ds:
-    try: ds.list()
-    except pa.ArrowKeyError: pass
-    else: raise AssertionError("downstream executed after upstream failure")
-# A failed job does not stop the shared node's data service.
-assert read(outputs["a_relay_" + suffix]) == original
-print("PASS: remote failure propagates, downstream is skipped, servers remain usable")
-print(outputs)
 
-# Control actions, just like DoGet, must reject a connection without a client certificate.
-client = flight.FlightClient("grpc+tls://localhost:8815",
-                             tls_root_certs=Path("examples/certs/ca.crt").read_bytes())
+original = read_job(text)
+assert read_job(text) == original
+print('PASS: B converts its item, A consumes B output incrementally; repeated runs preserve Parquet bytes/schema')
+# Node A has no source dataset: successful execution requires remote placement/read.
+try:
+    with Source.open(A+'/csv_data') as ds:
+        ds.list()
+except Exception as error:
+    assert getattr(error,'code',None) == 'NOT_FOUND', error
+else:
+    raise AssertionError('source unexpectedly exists on coordinator')
+bad = json.dumps(dict(job='failed_remote', tasks=[
+    dict(id='fail', inputs=dict(source=dict(uri=B+'/csv_data/orders')), operator='missing@1.0'),
+    dict(id='blocked', inputs=dict(source=dict(task='fail',port='result')), node=A, operator='identity@1.1')]))
+try:
+    with Job.run(A,bad,timeout=30) as events:
+        list(events)
+except flight.FlightError:
+    pass
+else:
+    raise AssertionError('remote failure was ignored')
+assert read_job(text) == original
+print('PASS: upstream failure cancels the pipeline; both nodes remain usable')
+# The exchange endpoint must require a client certificate.
+client = flight.FlightClient(A.replace('dacp://','grpc+tls://'), tls_root_certs=Path(os.environ['DACP_CA']).read_bytes())
 try:
     try:
-        list(client.do_action(flight.Action("dacp.run_job", pb.RunJobRequest(yaml="job: unauthenticated").SerializeToString()),
-                              options=flight.FlightCallOptions(timeout=3)))
-    except flight.FlightError: pass
-    else: raise AssertionError("control action accepted a client without a certificate")
+        writer,reader = client.do_exchange(flight.FlightDescriptor.for_command(pb.OperatorRequest(job_yaml=text).SerializeToString()),
+                                          options=flight.FlightCallOptions(timeout=3))
+        writer.begin(pa.schema([('data',pa.binary())]));writer.done_writing()
+        list(reader)
+    except flight.FlightError:
+        pass
+    else:
+        raise AssertionError('job accepted a connection without a certificate')
 finally:
     client.close()
-print("PASS: mTLS is mandatory for job submission")
+print('PASS: job submission requires mTLS')

@@ -17,24 +17,34 @@ class OperatorPackageSpec extends AnyFunSuite {
     val allocator = new RootAllocator(64L * 1024 * 1024)
     val payload = "id,value\n1,example\n".getBytes(java.nio.charset.StandardCharsets.UTF_8)
     try {
-      val input = Files.createDirectory(base.resolve("input")); val output = Files.createDirectory(base.resolve("output"))
+      val input = Files.createDirectory(base.resolve("input"))
       val root = VectorSchemaRoot.create(PluginSchemas.bytes,allocator)
       try {
         val v = root.getVector(0).asInstanceOf[VarBinaryVector]; v.allocateNew(); v.setSafe(0,payload); v.setValueCount(1); root.setRowCount(1)
         val writer = new ArrowStreamWriter(root,null,Files.newOutputStream(input.resolve("0.arrow")))
         try { writer.start(); writer.writeBatch(); writer.end() } finally writer.close()
       } finally root.close()
-      Files.writeString(input.resolve("manifest.json"),"""[{"file":"0.arrow","path":"/example","format":"csv"}]""")
+      Files.writeString(input.resolve("manifest.json"),"""[{"file":"0.arrow","port":"source","representation":"bytes","format":"csv"}]""")
       Files.writeString(input.resolve("params.json"),"{}")
       val target = "/operator/"+file.getFileName.toString
       val launch = OperatorExecutors.command(executor,OperatorProgram("example@1",entrypoint,Some(file)),Some(target))
       val command = Seq("docker","run","--rm","--network","none","--read-only","--tmpfs","/tmp:rw,size=512m",
-        "-v",s"$input:/input:ro","-v",s"$output:/output","-v",s"${file.toAbsolutePath}:$target:ro") ++
+        "-v",s"$input:/input:ro","-v",s"${file.toAbsolutePath}:$target:ro") ++
         launch.environment.toSeq.flatMap { case (k,v) => Seq("-e",s"$k=$v") } ++
         Seq("--entrypoint",launch.entrypoint.get.head,image) ++ launch.entrypoint.get.tail ++ launch.arguments
-      assert(Process(command).! == 0)
-      OperatorOutput.decode(output,allocator)
-      assert(Files.readAllBytes(output.resolve("part-0.csv")).sameElements(payload))
+      val output=new java.io.ByteArrayOutputStream()
+      val process=Process(command).run(new ProcessIO(in=>in.close(),out=>{try out.transferTo(output) finally out.close()},err=>{try err.transferTo(System.err) finally err.close()}))
+      assert(process.exitValue()==0)
+      val stream=new java.io.ByteArrayInputStream(output.toByteArray)
+      val result=new java.io.ByteArrayOutputStream()
+      var frame=OperatorFrames.read(stream);var ended=false
+      while(frame.nonEmpty) {
+        val header=Data.mapper.readTree(frame.get.metadata)
+        if(header.path("type").asText=="data")result.write(frame.get.data)
+        if(header.path("type").asText=="end")ended=true
+        frame=OperatorFrames.read(stream)
+      }
+      assert(ended && result.toByteArray.sameElements(payload))
     } finally { allocator.close(); Data.deleteTree(base) }
   }
   test("independently compiled thin Scala JAR runs with shared dependencies") {

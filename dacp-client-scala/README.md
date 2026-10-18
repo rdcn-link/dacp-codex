@@ -91,7 +91,7 @@ DACP_SCALA_TEST_URI=dacp://localhost:8815/data1 \
 sbt test
 ```
 
-Transport failures surface as `DacpException`, with a stable `code` and readable message, without underlying transport descriptions or causes. Handle `NOT_FOUND`, `ACCESS_DENIED`, `UNAVAILABLE`, `TIMEOUT`, `EXPIRED`, or other DACP codes rather than transport exceptions. Streaming failures are terminal; reopen the item to retry.
+Transport failures surface as `DacpException`, with a stable `code` and readable message, without underlying transport descriptions or causes. Handle `NOT_FOUND`, `ACCESS_DENIED`, `UNAVAILABLE`, `TIMEOUT`, or other DACP codes rather than transport exceptions. Streaming failures are terminal; reopen the item to retry.
 
 Formats describe source data: SQL reports `sql`, `.jsonl`/`.ndjson` report `ndjson`, `.xls`/`.xlsx` report `excel`. Ordinary `.json` has bytes only unless configured as `ndjson` on the server. Choose reading methods from each Item’s advertised `views`; new format handlers require no SDK changes.
 
@@ -100,3 +100,39 @@ ZIP archives appear as `kind=folder`, `format=zip`, with a `bytes` view. Browse 
 TAR (`tar`), GZIP (`gzip`), and compressed TAR (`tar-gzip`, `.tar.gz` / `.tgz`) use the same folder model as ZIP. In the default example, browse `/bundle` or `/bundle_gzip`, and open `/orders.csv.gz/orders.csv` for decompressed CSV records. Open `/orders.csv.gz` itself with `asBytes()` for the original compressed file. GZIP child names come from the public alias; aliases without a `.gz` suffix expose `content`. TAR scans are sequential and compressed TAR scans require decompression, so large archives can delay listing or opening. Nested containers remain binary Items.
 
 Dataset construction is server-side: `directory`, `sqldb`, and `custom` providers all expose the same SDK API. The default server's `documents` Dataset discovers `examples/data`; connect to `dacp://localhost:8815/documents` and use `list("/")` or `open("/nested/orders.csv")`. Directory changes appear on subsequent requests. Public table aliases and private source bindings remain server-side.
+
+## Filter, projection, and limit
+
+```scala
+import dacp.client.Expressions.col
+
+Using.resource(ds.open("/reports/orders",
+  predicate = Some((col("id") > 1) && col("amount").isNotNull),
+  columns = Some(Seq("amount")), limit = Some(100L))) { item =>
+  Using.resource(item.asRecords()) { records =>
+    while (records.next()) println(records.root.contentToTSVString())
+  }
+}
+```
+
+Use an open `ds` inside the Dataset resource scope above. Equality uses `===`, inequality `=!=`, membership `.isin(Seq(...))`, and null checks `.isNull`/`.isNotNull`. The server applies filtering before projection and the global limit; bytes reject query options. See [shared semantics and examples](../docs/records-scans.md).
+
+## Streaming jobs
+
+```scala
+import dacp.client.Job
+import java.nio.file.{Files, Path}
+import scala.util.Using
+
+Using.resource(Job.run("dacp://localhost:8815",
+  Files.readString(Path.of("examples/multi-node/job.yaml")), tls,
+  timeoutSeconds = 180)) { events =>
+  events.foreach { event =>
+    if (event.kind == "data") println(s"${event.port}: ${event.data.length} bytes")
+  }
+}
+```
+
+`JobStream` is an `AutoCloseable` iterator. Use a resource scope even when stopping early: closing cancels the remaining job. Exhaustion or failure releases resources automatically. Errors after data delivery indicate partial results. Output port metadata includes representation, format, and records schema. Event payload arrays remain valid after advancing or closing the stream.
+
+For a records data event, call `event.records(allocator)` with your own Arrow allocator and close the returned reader in a resource scope. Its single record batch is borrowed from that reader and remains valid until the reader advances or closes. Source datasets remain browsable; job results are streams and cannot be reopened.

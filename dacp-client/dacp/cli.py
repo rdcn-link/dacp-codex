@@ -1,5 +1,7 @@
 """Interactive, bounded previews for a DACP dataset."""
 import argparse
+import codecs
+import re
 import cmd
 from datetime import timezone
 import json
@@ -9,7 +11,9 @@ import shlex
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from .source import Source
+from .jobs import Job
 from .errors import user_message
+from .sql import parse_query
 
 
 def safe(value):
@@ -18,7 +22,7 @@ def safe(value):
 
 
 class Browser(cmd.Cmd):
-    intro = 'DACP shell. Type help for commands; quit to exit.'
+    intro = 'DACP shell. Type help for commands, help select for SQL; quit to exit.'
     prompt = 'dacp-shell> '
 
     def __init__(self, uri, credentials=None, rows=20, byte_limit=4096, stdout=None):
@@ -72,7 +76,7 @@ class Browser(cmd.Cmd):
         u = urlsplit(self.uri)
         self.connect(urlunsplit((u.scheme, u.netloc, '/' + quote(name, safe=''), '', '')))
 
-    def table(self, headers, rows, numeric=(), folders=()):
+    def table(self, headers, rows, numeric=(), folders=(), path_column=0):
         """Render sanitized cells; ANSI styling is applied after width calculation."""
         clean = lambda value: safe(value).replace('\n', r'\n')
         headers = tuple(map(clean, headers))
@@ -85,7 +89,7 @@ class Browser(cmd.Cmd):
             cells = [value.rjust(width) if col in numeric else value.ljust(width)
                      for col, (value, width) in enumerate(zip(row, widths))]
             if highlight and color:
-                cells[0] = "\x1b[1;36m" + cells[0] + "\x1b[0m"
+                cells[path_column] = "\x1b[1;36m" + cells[path_column] + "\x1b[0m"
             print('| ' + ' | '.join(cells) + ' |', file=self.stdout)
         self.write(border)
         render(headers)
@@ -100,16 +104,16 @@ class Browser(cmd.Cmd):
         if len(args) > 1:
             raise ValueError("usage: ls [absolute-logical-path]")
         self.items = self.dataset.list(args[0]) if args else self.dataset.list()
-        headers = ('Path', 'Format', 'Bytes', 'Records', 'Modified (UTC)')
+        headers = ('#', 'Path', 'Format', 'Bytes', 'Records', 'Modified (UTC)')
         rows = []
-        for item in self.items:
+        for number, item in enumerate(self.items, start=1):
             size = item.total_size_bytes if item.total_size_bytes is not None else '-'
             records = item.record_count if item.record_count is not None else '-'
             modified = (item.last_modified_time.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
                         if item.last_modified_time is not None else '-')
             rows.append(tuple(safe(value).replace('\n', r'\n') for value in
-                              (item.path, item.format or '-', size, records, modified)))
-        self.table(headers, rows, numeric=(2, 3),
+                              (number, item.path, item.format or '-', size, records, modified)))
+        self.table(headers, rows, numeric=(0, 3, 4), path_column=1,
                    folders={index for index, item in enumerate(self.items) if item.kind == 'folder'})
         self.write(f'{len(self.items)} items')
 
@@ -151,31 +155,7 @@ class Browser(cmd.Cmd):
             if mode == 'auto':
                 mode = 'records' if 'records' in stream.views else 'hex'
             if mode == 'records':
-                records = stream.as_records()
-                remaining = self.rows
-                headers, rows = [], []
-                try:
-                    for batch in records:
-                        headers = batch.schema.names
-                        for row in batch.slice(0, remaining).to_pylist():
-                            cells, budget = [], self.byte_limit
-                            for value in row.values():
-                                rendered = (value if isinstance(value, str) else
-                                            json.dumps(value, default=str, ensure_ascii=True))
-                                rendered = safe(rendered).replace('\n', r'\n')
-                                cells.append(rendered[:budget] + (' ...' if len(rendered) > budget else ''))
-                                budget = max(0, budget - len(rendered))
-                            rows.append(cells)
-                            remaining -= 1
-                        if remaining == 0:
-                            break
-                finally:
-                    records.close()
-                if not headers:
-                    schema = getattr(records, 'schema', None)
-                    headers = schema.names if schema is not None else ['Records']
-                self.table(headers, rows)
-                self.write(f'{self.rows - remaining} rows shown (limit {self.rows})')
+                self.show_records(stream, self.rows)
             else:
                 with stream.as_bytes() as reader:
                     data = reader.read(self.byte_limit)
@@ -187,6 +167,252 @@ class Browser(cmd.Cmd):
                         text = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
                         self.write(f'{offset:08x}  {chunk.hex(" "):<47}  {text}')
                 self.write(f'{len(data)} bytes shown (limit {self.byte_limit})')
+
+    def show_records(self, stream, limit, headers=None):
+        records = stream.as_records()
+        remaining = limit
+        headers = list(headers or getattr(getattr(stream, "item_schema", None), "names", ()))
+        rows = []
+        try:
+            for batch in records:
+                headers = batch.schema.names
+                for row in batch.slice(0, remaining).to_pylist():
+                    cells, budget = [], self.byte_limit
+                    for value in row.values():
+                        rendered = (value if isinstance(value, str) else
+                                    json.dumps(value, default=str, ensure_ascii=True))
+                        rendered = safe(rendered).replace('\n', r'\n')
+                        cells.append(rendered[:budget] + (' ...' if len(rendered) > budget else ''))
+                        budget = max(0, budget - len(rendered))
+                    rows.append(cells)
+                    remaining -= 1
+                if remaining == 0:
+                    break
+        finally:
+            records.close()
+        if not headers:
+            schema = getattr(records, 'schema', None)
+            headers = schema.names if schema is not None else ['Records']
+        self.table(headers, rows)
+        self.write(f'{limit - remaining} rows shown (limit {limit})')
+
+    def parseline(self, line):
+        command, arg, original = super().parseline(line)
+        if command and command.lower() == 'select':
+            command = 'select'
+        return command, arg, original
+
+    def do_select(self, arg):
+        """SELECT columns FROM "/item" or FROM number [WHERE condition] [LIMIT n]: query remote records.
+
+        FROM number uses the latest ls listing.
+        Supports *, column lists, comparisons, AND/OR/NOT, IN, and null checks.
+        Results are limited to --rows for display, even if SQL LIMIT is larger.
+        """
+        query = parse_query('SELECT ' + arg, resolve_item=self.item)
+        with self.dataset.open(query.path) as metadata:
+            if 'records' not in metadata.views:
+                raise ValueError('SELECT requires an Item with a records view')
+            schema = metadata.item_schema
+            predicate = query.predicate(schema)
+            if schema is not None and query.columns is not None:
+                for name in query.columns:
+                    if schema.get_field_index(name) < 0:
+                        raise ValueError(f'unknown or ambiguous column: {name}')
+        limit = min(self.rows, query.limit) if query.limit is not None else self.rows
+        with self.dataset.open(query.path, predicate=predicate, columns=query.columns, limit=limit) as stream:
+            self.show_records(stream, limit, headers=query.columns)
+
+    def heredoc(self, delimiter):
+        lines = []
+        size = 0
+        while True:
+            if self.use_rawinput:
+                line = input('... ')
+            else:
+                line = self.stdin.readline()
+                if line == '':
+                    raise ValueError('heredoc ended before delimiter; nothing submitted')
+                line = line.removesuffix('\n').removesuffix('\r')
+            if line == delimiter:
+                break
+            size += len(line.encode('utf-8')) + 1
+            if size > 512*1024:
+                raise ValueError('source exceeds 512 KiB; nothing submitted')
+            lines.append(line)
+        code = '\n'.join(lines) + '\n'
+        if not code.strip():
+            raise ValueError('source is empty; nothing submitted')
+        return code
+
+    def do_run(self, arg):
+        """run OP --input PORT=ITEM [--params JSON]
+        run --runtime NAME@VERSION [--entrypoint CLASS] --input PORT=ITEM <<END
+        Source follows until END on its own line. Source requires server DEBUG mode.
+        Results print incrementally; Ctrl-C cancels entry or execution.
+        --preview-rows N or --preview-bytes N cancels the entire job at the first per-port limit.
+        """
+        tokens = shlex.split(arg)
+        delimiter = None
+        if tokens:
+            last = tokens[-1]
+            if last.startswith('<<'):
+                delimiter = last[2:]
+                tokens.pop()
+            elif len(tokens) >= 2 and tokens[-2] == '<<':
+                delimiter = tokens.pop()
+                tokens.pop()
+        if delimiter is not None and not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', delimiter):
+            raise ValueError('heredoc delimiter must be an identifier')
+        parser = argparse.ArgumentParser(prog='run', exit_on_error=False)
+        parser.add_argument('operator', nargs='?')
+        parser.add_argument('--runtime')
+        parser.add_argument('--entrypoint')
+        parser.add_argument('--input', action='append', required=True)
+        parser.add_argument('--view', choices=('bytes','records'), default='bytes')
+        parser.add_argument('--params', default='{}')
+        parser.add_argument('--params-file')
+        parser.add_argument('--coordinator')
+        parser.add_argument('--timeout', type=positive, default=3600)
+        parser.add_argument('--preview-rows', type=positive)
+        parser.add_argument('--preview-bytes', type=positive)
+        # argparse's missing/unknown arguments otherwise exit the interactive shell.
+        parser.error = lambda message: (_ for _ in ()).throw(ValueError(message))
+        options = parser.parse_args(tokens)
+        if delimiter is None:
+            if not options.operator or options.runtime or options.entrypoint:
+                raise ValueError('use an operator ID, or --runtime with a heredoc')
+            operator = options.operator
+        else:
+            if options.operator or not options.runtime:
+                raise ValueError('source requires --runtime and a heredoc, without an operator ID')
+            operator = {'runtime': options.runtime}
+            if options.entrypoint:
+                operator['entrypoint'] = options.entrypoint
+        params = json.loads(Path(options.params_file).read_text() if options.params_file else options.params)
+        if not isinstance(params, dict):
+            raise ValueError('params must be a JSON object')
+        inputs = {}
+        for binding in options.input:
+            port, sep, item = binding.partition('=')
+            if not sep or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]{0,127}', port) or port in inputs or not item:
+                raise ValueError('each input requires a unique PORT=ITEM')
+            if item.startswith('dacp://'):
+                uri = item
+            else:
+                path = self.item(item)
+                if not path.startswith('/') or path == '/':
+                    raise ValueError('input must name an item path or ls number')
+                uri = self.uri.rstrip('/') + quote(path, safe='/')
+            inputs[port] = {'uri': uri, 'view': options.view}
+        if delimiter is not None:
+            try:
+                operator['source'] = self.heredoc(delimiter)
+            except (KeyboardInterrupt, EOFError):
+                self.write('Source entry cancelled; nothing submitted.')
+                return
+        job = {'job':'shell', 'tasks':[{'id':'run','operator':operator,'inputs':inputs,'params':params}]}
+        u = urlsplit(self.uri)
+        coordinator = options.coordinator or urlunsplit((u.scheme,u.netloc,'','',''))
+        self.print_job(coordinator, json.dumps(job), options.timeout, **({"preview_rows":options.preview_rows,"preview_bytes":options.preview_bytes} if options.preview_rows or options.preview_bytes else {}))
+
+    def do_submit(self, arg):
+        """submit [FILE] [--preview-rows N] [--preview-bytes N]: job YAML; no file reads through END."""
+        parser = argparse.ArgumentParser(prog='submit', exit_on_error=False)
+        parser.add_argument('file', nargs='?')
+        parser.add_argument('--preview-rows', type=positive)
+        parser.add_argument('--preview-bytes', type=positive)
+        parser.error = lambda message: (_ for _ in ()).throw(ValueError(message))
+        options = parser.parse_args(shlex.split(arg))
+        try:
+            text = Path(options.file).read_text() if options.file else self.heredoc('END')
+        except (KeyboardInterrupt, EOFError):
+            self.write('Job entry cancelled; nothing submitted.')
+            return
+        u = urlsplit(self.uri)
+        self.print_job(urlunsplit((u.scheme,u.netloc,'','','')), text, 3600,
+                       preview_rows=options.preview_rows, preview_bytes=options.preview_bytes)
+
+    def print_job(self, node, text, timeout, *, preview_rows=None, preview_bytes=None):
+        decoders, counts, offsets = {}, {}, {}
+        text_port, line_start = None, True
+        emitted = False
+        def text_chunk(port, value):
+            nonlocal text_port, line_start
+            if not value:
+                return
+            if text_port != port and not line_start:
+                print(file=self.stdout)
+                line_start = True
+            text_port = port
+            for piece in value.splitlines(keepends=True):
+                if line_start:
+                    print(f'[{safe(port)}] ', end='', file=self.stdout)
+                print(safe(piece), end='', file=self.stdout, flush=True)
+                line_start = piece.endswith('\n')
+        def separate():
+            nonlocal line_start
+            if not line_start:
+                print(file=self.stdout)
+                line_start = True
+        try:
+            with Job.run(node, text, timeout=timeout, **self.credentials) as stream:
+                for event in stream:
+                    kind, port = event['type'], event.get('port')
+                    if kind == 'start':
+                        separate()
+                        counts[port] = 0
+                        offsets[port] = 0
+                        self.write(f"[{port}] {event['representation']} ({event.get('format', '')})")
+                        if event['representation'] == 'records':
+                            # Schema is available before the first batch, including empty results.
+                            import base64
+                            import pyarrow as pa
+                            schema = pa.ipc.read_schema(pa.BufferReader(base64.b64decode(event['schema'])))
+                            self.write(f"[{port}] " + '\t'.join(schema.names))
+                        elif event.get('format') in ('txt','text','csv','ndjson','json','jsonl'):
+                            decoders[port] = codecs.getincrementaldecoder('utf-8')(errors='replace')
+                    elif kind == 'data':
+                        emitted = True
+                        limit = preview_rows if 'batch' in event else preview_bytes
+                        remaining = None if limit is None else max(0, limit-counts[port])
+                        if 'batch' in event:
+                            separate()
+                            batch = event['batch']
+                            if remaining is not None:
+                                batch = batch.slice(0, remaining)
+                            for row in batch.to_pylist():
+                                cells = [safe(row[name]).replace('\n', r'\n').replace('\t', r'\t') for name in batch.schema.names]
+                                self.write(f"[{port}] " + '\t'.join(cells))
+                            counts[port] += batch.num_rows
+                        else:
+                            data = event['data'] if remaining is None else event['data'][:remaining]
+                            counts[port] += len(data)
+                            if port in decoders:
+                                text_chunk(port, decoders[port].decode(data))
+                            else:
+                                separate()
+                                for index in range(0,len(data),16):
+                                    chunk = data[index:index+16]
+                                    self.write(f"[{port}] {offsets[port]:08x}  {chunk.hex(' ')}")
+                                    offsets[port] += len(chunk)
+                        if limit is not None and counts[port] >= limit:
+                            if port in decoders:
+                                text_chunk(port, decoders[port].decode(b'',final=True))
+                            separate()
+                            self.write(f'Preview limit reached on {port}; remaining job cancelled.')
+                            return
+                    elif kind == 'end' and port in decoders:
+                        text_chunk(port, decoders[port].decode(b'', final=True))
+                    elif kind == 'complete':
+                        separate()
+                        self.write('Job complete.')
+                    self.stdout.flush()
+        except BaseException:
+            if emitted:
+                separate()
+                self.write('Job interrupted or failed; results above are partial.')
+            raise
 
     def do_quit(self, arg):
         """quit: close the connection and exit."""

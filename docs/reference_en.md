@@ -137,13 +137,11 @@ Dataset providers construct datasets, container readers browse archives, and for
 
 ## Task execution and operators
 
-### DAG and operator contract
+Tasks use named input bindings to specific data items or upstream task ports. Outputs are named streams, never saved datasets. The shell supports `run OP --input source=/item` and `submit job.yaml`, and prints results incrementally. Jobs use mTLS Flight DoExchange; pipeline tasks run concurrently with bounded queues. Each output port has at most one downstream consumer; consume multiple inputs in lexical port order.
 
-`inputs` is a nonempty list of URIs or upstream `output` names, including for single-input tasks. Upstream references also support `s1/result-1`. Tasks validate duplicate names, unknown dependencies, cycles, and target nodes before running serially in topological order. Execution defaults to the node hosting the first input URI, or can be set explicitly with `node: dacp://host:port`. The coordinating node resolves upstream references into concrete URIs and dispatches tasks through mTLS Flight actions; no central registry is required. Each subtask gets a new container with networking disabled, a read-only `/input` mount, and a writable `/output` mount.
+Operator launch arguments are `operator /input /input/params.json`. Inputs are Arrow IPC FIFOs described by `/input/manifest.json`. Stdout carries framed start/data/end events; diagnostics go to stderr. No output directory, output registration, TTL, or result-dataset URI is used. Parquet conversion uses private ephemeral scratch to complete the footer, then streams bytes.
 
-`/input/manifest.json` contains `file/path/format`; `file` points to an Arrow IPC stream. The bytes view uses `data: binary`, with one raw byte chunk per row. `/input/params.json` contains the parameter object. Single inputs use a FIFO, with IPC EOS marking completion; container reads drive upstream consumption. Multiple inputs are fully materialized on disk before the container starts. Temporary input directories are removed on completion or failure, and failed output directories are also deleted. Outputs are registered only when the container exits with code 0. The maximum task timeout is 30 minutes.
-
-The container entry point receives `operator /input /output /input/params.json`; the `DACP_OPERATOR` environment variable specifies the versioned operator name. Custom operators follow the same Arrow input contract. They produce an `/output/_output.json` manifest (`file/path/format`), where each `file` is a single-column binary Arrow IPC stream and `path` is the final filename. After successful exit, the executor decodes these streams, removes temporary IPC files, and registers the final directory. Once the Parquet footer is complete, built-in operators wrap files in this Arrow output contract with bounded memory. The built-in converter processes CSV/JSON Items individually into `part-N.parquet`, does not merge Items with different schemas, and rejects PNG and other formats.
+See the [authoring contract](operator-authoring_en.md), [stream contracts](operator-streams.md), and [DEBUG-only heredoc source](operator-source_en.md) for source examples, ports, framing, runtime allowlists, cancellation, and limits.
 
 Operators resolve from the local directory and installed image first, then completed cached downloads, then remote URLs in configured order. A manifest HTTP 404 tries the next library; other download or validation failures stop execution. Configure `remote_operator_library_urls: [http://library-a:8820, https://library-b:8820]`; an empty list uses only local operators.
 
@@ -153,7 +151,7 @@ Runtime images and operator code are separate content-addressed artifacts. Built
 
 | Parameter | Default / supported values |
 |---|---|
-| `from` | `auto`; `csv` / `json` |
+| `from` | `auto`; `csv` / `ndjson` |
 | `to` | `parquet` |
 | `schema` | `infer` or an ordered column declaration, such as `{id: int64, amount: float64}` |
 | `infer_sample` | 4; each chunk contains 1024 parsed records; the schema is fixed after sampling |
@@ -163,7 +161,7 @@ Runtime images and operator code are separate content-addressed artifacts. Built
 
 Explicit schemas support `int64`, `float64`, `bool`, and `utf8` (or `string`); column names and order must match. Empty CSV fields and JSON null values become null. JSON uses NDJSON, with one flat object per line. Conflicting types during sampling immediately produce `SCHEMA_CONFLICT`, and subsequent batches are checked against the fixed types. Explicit float64 permits valid integer representations, while explicit utf8 preserves text. There is no automatic type widening. Memory usage depends on sampled chunks, the current Arrow batch, parser buffers, and the Parquet row group, rather than total file size. An exceptionally large individual record must still fit in memory.
 
-The converter uses Arrow Java to decode IPC and build vectors, and the native Apache Parquet Java writer with an Avro row bridge to produce Parquet; Arrow Java has no native Parquet writer. The output Arrow schema is written to both `dacp.arrow.schema` in the Parquet footer and the reserved dataset file `_schema.json`. Reserved files are not exposed as Items.
+The converter uses Arrow Java to decode IPC and build vectors, and the native Apache Parquet Java writer with an Avro row bridge to produce Parquet; Arrow Java has no native Parquet writer. The output Arrow schema is written to both `dacp.arrow.schema` in the Parquet footer only; no result dataset or metadata sidecar is published.
 
 ## Protocol and configuration
 
@@ -190,20 +188,21 @@ Configuration in `examples/server.yaml`:
 | `host` / `port` | Listening address / port |
 | `public_host` | Hostname for external URIs; allowlists use this name and an explicit port |
 | `datasets` | Dataset name → provider, source, and items; names occupy one URI path segment |
-| `allowed_uri_prefixes` | Node-level URI prefix allowlist, matched at path segment boundaries; output names also require authorization |
+| `allowed_uri_prefixes` | Node-level URI prefix allowlist, matched at path segment boundaries |
 | `tls_cert` / `tls_key` / `tls_ca` | PEM certificate, private key, and trusted client CA; mTLS is mandatory |
 | `count_file_records_on_startup` | Populate directly published record file counts at startup; defaults to false and adds startup scanning cost |
 | `batch_size` | Maximum rows per batch in file records views |
 | `byte_chunk` | Maximum bytes per binary row in bytes views |
 | `infer_sample` | Number of batches sampled for server-side records schema inference |
-| `output_ttl_seconds` | Output lifetime starting at successful registration |
 | `sql_sources` | Private JDBC sources (tables are not automatically published): url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
 | `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | Ordered remote operator library URLs / local immutable version cache / maximum size per artifact in bytes (default 8 GiB) |
-| `local_operator_library` / `output_root` | Local operator library / temporary output root |
+| `local_operator_library` | Local operator library |
 | `task_peers` | Node origins permitted for task dispatch; the local node is always allowed; no central discovery service |
 | `task_input_prefixes` | Input URI prefixes execution nodes may pull; defaults to `allowed_uri_prefixes` when omitted |
 | `max_concurrent_tasks` | Concurrency limit for local tasks and control requests (default 2); returns UNAVAILABLE immediately when full |
 
 The prefix `dacp://localhost:8815/data1` does not match `data10`. In this version, allowlists apply to all connections verified by the node's CA; there are no permission groups based on certificate subjects. Task executors initiate mTLS using the node's configured certificates. Multiple nodes must trust the corresponding CAs.
 
-Service errors use Flight/gRPC statuses and explicit dacp error names: missing resources return `NOT_FOUND`; expired outputs return `NOT_FOUND` with `EXPIRED` in the message; denied access returns `UNAUTHORIZED` with `FORBIDDEN`; schema conflicts return `INVALID_ARGUMENT` with `SCHEMA_CONFLICT`. Protobuf also defines error codes for protocol extensions. Any transport failure invalidates the current reader, and callers must reopen from the beginning; there are no retries within a stream. Existing DoGet tickets also fail after output expiry, and active streams check TTL at the next batch boundary.
+Service errors use Flight/gRPC statuses and explicit dacp error names: missing resources return `NOT_FOUND`; denied access returns `UNAUTHORIZED` with `FORBIDDEN`; schema conflicts return `INVALID_ARGUMENT` with `SCHEMA_CONFLICT`. Protobuf also defines error codes for protocol extensions. Any transport failure invalidates the current reader, and callers must reopen from the beginning; there are no retries within a stream.
+
+Server `mode` defaults to `NORMAL`. Inline source requires `DEBUG` at both coordinator and worker; `source_runtimes` maps runtime references to administrator-selected `image` and `executor` settings.

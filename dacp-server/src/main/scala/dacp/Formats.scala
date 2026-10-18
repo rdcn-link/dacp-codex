@@ -23,6 +23,13 @@ object Formats {
       require(o.columns.forall(_ == schema), "SCHEMA_CONFLICT: configured schema differs from Parquet metadata")
       schema
     }
+    override def scan(p: Path, o: FileOptions, request: Scan, a: BufferAllocator, b: Int, s: Int,
+                      listener: org.apache.arrow.flight.FlightProducer.ServerStreamListener, demand: () => Unit): Unit = {
+      schema(p,o,b,s)
+      ScanStreams.stream(request,a,listener) { filtered =>
+        Parquet.stream(p,a,b,Some(request))(root => filtered.start(root),_ => filtered.putNext(),demand)
+      }
+    }
     override def count(p: Path, o: FileOptions) = cheapCount(p,o)
     override def stream(p: Path, o: FileOptions, a: BufferAllocator, b: Int, s: Int)(
         start: VectorSchemaRoot => Unit, emit: VectorSchemaRoot => Unit, demand: () => Unit): Unit =

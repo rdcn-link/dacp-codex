@@ -11,7 +11,7 @@ import scala.jdk.CollectionConverters._
 class PluginSpec extends AnyFunSuite {
   test("independent example plugins and registered containers work through the Flight namespace") {
     val dir = Files.createTempDirectory("plugin-contract-")
-    val allocator = new RootAllocator(); val outputs = new OutputRegistry(10000)
+    val allocator = new RootAllocator()
     Files.writeString(dir.resolve("private.message"),"native child")
     Files.writeString(dir.resolve("private.testpack"),"id\n1\n2\n")
     val c = Config("localhost",8815,"localhost",Map(
@@ -21,7 +21,7 @@ class PluginSpec extends AnyFunSuite {
         PublishedItem("/archive",file=Some(dir.resolve("private.testpack"))))),
       "directory" -> DatasetDefinition("directory",Map("root" -> dir.toString))),
       Seq("dacp://localhost:8815/"),dir,dir,dir)
-    val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator,outputs)).build().start()
+    val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator)).build().start()
     val client = FlightClient.builder(allocator,server.getLocation).build()
     def read(ds: String, path: String): String = {
       val info = client.getInfo(FlightDescriptor.path("datasets",ds,path))
@@ -43,7 +43,13 @@ class PluginSpec extends AnyFunSuite {
       assert(read("directory","/private.message/message") == "native child")
       assert(read("files","/archive/nested/entry.csv") == "id\n1\n2\n")
       val summaryInfo = client.getInfo(FlightDescriptor.path("datasets","files","/science/summary"))
-      val summaryStream = client.getStream(summaryInfo.getEndpoints.get(0).getTicket)
+      val summaryQuery = Metadata.Scan.newBuilder().setLimit(1)
+        .setProjection(Metadata.Scan.Projection.newBuilder().addColumns("characters"))
+        .setPredicate(Metadata.Predicate.newBuilder().setOp("gt").setColumn("characters")
+          .addValues(Metadata.Literal.newBuilder().setType("integer").setValue("1")))
+      val summaryTicket = Metadata.Ticket.parseFrom(summaryInfo.getEndpoints.get(0).getTicket.getBytes).toBuilder
+        .setView("records").setScan(summaryQuery).build()
+      val summaryStream = client.getStream(new Ticket(summaryTicket.toByteArray))
       try {
         assert(summaryStream.next())
         assert(summaryStream.getRoot.getVector("characters").asInstanceOf[org.apache.arrow.vector.BigIntVector].get(0) == "hello native child".length.toLong)
@@ -62,7 +68,7 @@ class PluginSpec extends AnyFunSuite {
       } finally ds.close()
       val listing = Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets","files")).getAppMetadata)
       assert(!listing.toString.contains("private.message") && !listing.toString.contains("hello "))
-    } finally { client.close(); server.close(); c.close(); outputs.close(); allocator.close(); Data.deleteTree(dir) }
+    } finally { client.close(); server.close(); c.close(); allocator.close(); Data.deleteTree(dir) }
   }
   test("native child access closes on success, failure, and cancellation") {
     val dir = Files.createTempDirectory("plugin-lifecycle-")

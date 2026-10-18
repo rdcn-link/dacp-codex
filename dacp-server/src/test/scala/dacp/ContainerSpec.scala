@@ -114,12 +114,12 @@ class ContainerSpec extends AnyFunSuite {
     } finally Data.deleteTree(dir)
   }
   test("Flight serves original container bytes, entry records, and rejects folder records") {
-    val dir = Files.createTempDirectory("container-flight-"); val allocator = new RootAllocator(); val outputs = new OutputRegistry(10000)
+    val dir = Files.createTempDirectory("container-flight-"); val allocator = new RootAllocator()
     try {
       val file = dir.resolve("private.tar.gz"); gzip(file,tar(Seq("reports/orders.csv" -> csv)))
       val gz = dir.resolve("private.csv.gz"); gzip(gz,csv)
       val c = config(dir,file).copy(datasets=Map("public" -> DatasetDefinition.custom(Seq(PublishedItem("/archive",file=Some(file)),PublishedItem("/orders.csv.gz",file=Some(gz))))))
-      val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator,outputs)).build().start()
+      val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()
       try {
         for ((alias,physical) <- Seq("/archive" -> file,"/orders.csv.gz" -> gz)) {
@@ -142,6 +142,6 @@ class ContainerSpec extends AnyFunSuite {
           try { var n=0; while(stream.next()) n += stream.getRoot.getRowCount; assert(n==2) } finally stream.close()
         }
       } finally { client.close(); server.close() }
-    } finally { outputs.close(); allocator.close(); Data.deleteTree(dir) }
+    } finally { allocator.close(); Data.deleteTree(dir) }
   }
 }

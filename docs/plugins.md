@@ -46,6 +46,12 @@ Current public views remain `records` and `bytes`. New array/image views still r
 
 New extension points should follow the same principle: define a focused shared contract, discover implementations through registration, and keep implementation-specific branches out of core dispatch. Do not introduce an extension abstraction without a concrete contribution or use case. During unreleased development, improve contracts directly and update their users together rather than accumulating compatibility layers.
 
+## Records scan optimization
+
+Dataset providers and file handlers can optimize filter, projection, and limit through the shared `Scan` contract. Every records implementation has a bounded server-side fallback; an optimized implementation must preserve the same null/type semantics and global limit. See [records scan semantics and plugin contracts](records-scans.md).
+
 ## Write and publish an operator
 
 See [the operator authoring guide](operator-authoring_en.md) for complete Scala and Python implementations, thin-JAR and wheel builds, administrator publication, remote file transfer, and task submission. The public repository currently supports downloads; publication uses its administrator CLI.
+
+Operator launch plugins can additionally implement `OperatorExecutor.sourceCommand` for DEBUG-only inline source. The default rejects source execution. Administrators map runtime references to installed images and executor IDs in `source_runtimes`; both coordinator and worker require `mode: DEBUG`. Compilation runs inside the isolated execution container. See [source operators](operator-source_en.md) for registration, configuration, and examples.

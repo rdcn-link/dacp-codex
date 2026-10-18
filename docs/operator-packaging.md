@@ -12,7 +12,7 @@ A bundle can contain several main classes or Python modules. Publish each operat
 
 ## Definitions and publication
 
-Definitions live at `<operators>/<name>/<version>/operator.yaml`. Required fields are `name`, `version`, `image`; optional fields are `description`, `executor` (defaults to `container`), `entrypoint`, and `artifact`. Artifact paths are relative to the definition. Unknown fields and duplicate YAML keys fail.
+Definitions live at `<operators>/<name>/<version>/operator.yaml`. Required fields are `name`, `version`, `image`, `inputs`, and `outputs`; optional fields are `description`, `executor` (defaults to `container`), `entrypoint`, and `artifact`. Artifact paths are relative to the definition. Unknown fields and duplicate YAML keys fail.
 
 ```yaml
 name: summary
@@ -21,13 +21,17 @@ image: example/jvm-arrow:1
 executor: jvm
 entrypoint: example.Summary
 artifact: summary.jar
+inputs:
+  source: {representations: [records], formats: []}
+outputs:
+  result: {representations: [records], formats: []}
 ```
 
-`jvm` needs a JAR and main class. `python` needs a `.py` or `.whl` artifact and a module name (`entrypoint` selects the module for wheels; source executes the script). `container` uses its image's existing entrypoint and accepts neither an entrypoint override nor a code artifact. Every executor receives `operator /input /output /input/params.json` and `DACP_OPERATOR=name@version`, following the existing [Arrow IPC contract](reference_en.md#task-execution-and-operators).
+`jvm` needs a JAR and main class. `python` needs a `.py` or `.whl` artifact and a module name (`entrypoint` selects the module for wheels; source executes the script). `container` uses its image's existing entrypoint and accepts neither an entrypoint override nor a code artifact. Every executor receives `operator /input /input/params.json` and `DACP_OPERATOR=name@version`, following the existing [Arrow IPC contract](reference_en.md#task-execution-and-operators).
 
 ```bash
 # Run from the project root after staging the repository.
-dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish summary@1 --root .operator-catalog --image example/jvm-arrow:1 --executor jvm --entrypoint example.Summary --artifact summary.jar
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish summary@1 --root .operator-catalog --image example/jvm-arrow:1 --executor jvm --entrypoint example.Summary --artifact summary.jar --ports ports.yaml
 ```
 
 The repository does not need executor plugins to store or serve manifests. Execution nodes must have a matching plugin. Publisher validation is generic; executor-specific artifact and entrypoint validation happens on the execution node.
@@ -42,6 +46,8 @@ Manifest schema `api_version: 2` separates execution, runtime, and code:
   "name": "summary",
   "version": "1",
   "description": "Summarize records",
+  "inputs": {"source": {"representations": ["records"], "formats": []}},
+  "outputs": {"result": {"representations": ["records"], "formats": []}},
   "execution": {"executor": "jvm", "entrypoint": "example.Summary"},
   "runtime": {
     "image": "sha256:<image ID>",
@@ -70,7 +76,7 @@ Execution node layout:
 <operator_cache>/blobs/sha256/<digest>
 ```
 
-Metadata stays scoped to the repository URL; verified blobs are shared across names, versions, and repositories. Locks protect concurrent publishers/downloaders and atomic moves prevent partial cache entries. Every remote/cached artifact is checked before execution; a corrupt blob fails explicitly. Remove that blob to download it again. `operator_max_bytes` applies to each artifact, not the sum or extracted container size. Caches are independent of output TTLs and currently have no automatic garbage collection.
+Metadata stays scoped to the repository URL; verified blobs are shared across names, versions, and repositories. Locks protect concurrent publishers/downloaders and atomic moves prevent partial cache entries. Every remote/cached artifact is checked before execution; a corrupt blob fails explicitly. Remove that blob to download it again. `operator_max_bytes` applies to each artifact, not the sum or extracted container size. Caches currently have no automatic garbage collection.
 
 Local definitions and installed images take precedence. Completed cached manifests are tried before network requests, then configured remote URLs in order. Only a manifest 404 tries the next repository; checksum, HTTP, and validation errors fail the task. Cached manifests and blobs allow offline execution. The runtime image is loaded only when its pinned ID is absent from Docker.
 
@@ -90,7 +96,7 @@ final class CustomExecutor extends dacp.OperatorExecutor {
 }
 ```
 
-The plugin validates its entrypoint/artifact and supplies a container command and environment. `OperatorProgram.artifact` is the verified host path; `artifactPath` is its read-only path inside the container. Plugins are trusted launch code; operator artifacts are separate executable payloads. The server owns image loading, read-only mounts/root filesystem, disabled networking, temporary storage, memory/PID limits, timeout, cleanup, Flight transport, and output publication. Plugins do not replace the isolation/resource lifecycle. No host-process executor is provided.
+The plugin validates its entrypoint/artifact and supplies a container command and environment. `OperatorProgram.artifact` is the verified host path; `artifactPath` is its read-only path inside the container. Plugins are trusted launch code; operator artifacts are separate executable payloads. The server owns image loading, read-only mounts/root filesystem, disabled networking, temporary storage, memory/PID limits, timeout, cleanup, Flight transport, and stream delivery. Plugins do not replace the isolation/resource lifecycle. No host-process executor is provided.
 
 ## Validation
 
@@ -104,3 +110,7 @@ scripts/test-operator-repository.sh
 Contract tests cover service registration, launch validation, shared exports/bundles/downloads, immutable publication, public downloads, checksum failures, cleanup, library ordering, and offline caches. The repository integration exercises real JAR execution through the distributed Arrow/FIFO pipeline. A complete [Scala example](../examples/operators/scala/README_en.md) compiles independently against runtime-provided libraries. See the [Python example](../examples/operators/python/README_en.md) for source and wheel execution.
 
 For a step-by-step workflow with full source examples and remote upload instructions, see [Write and publish user-defined operators](operator-authoring_en.md).
+
+## Execution contract
+
+The implemented [item-based, stream-only contract](operator-streams.md) binds named item inputs and returns named item streams. The `ports.yaml` passed to publication contains the same `inputs` and `outputs` maps as the local definition. Dataset mapping and general pipeline scheduling remain future work.

@@ -213,6 +213,21 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDem
       virtual(Some(path)).values.filter(b => LogicalPath.parent(b.path) == path)).sortBy(_.path)
   }
 
+  override def scan(path: String, request: Scan, allocator: org.apache.arrow.memory.BufferAllocator,
+                    listener: org.apache.arrow.flight.FlightProducer.ServerStreamListener, ready: () => Unit): Unit = {
+    LogicalPath.validate(path)
+    withStructure(path,ready)((access,child) => access.scan(child,request,allocator,listener,ready)).getOrElse {
+      withResolved(path,ready) { (source,internal) => source match {
+        case sql: SqlAdapter => ScanStreams.stream(request,allocator,listener) { filtered =>
+          sql.stream(internal,allocator,Some(request))(root => filtered.start(root),_ => filtered.putNext(),ready)
+        }
+        case file: DirectoryAdapter =>
+          val physical = file.resolve(internal)
+          Formats.detect(physical,file.options).scan(physical,file.options,request,allocator,config.batchSize,config.inferSample,listener,ready)
+      }}
+    }
+  }
+
   def stream(path: String, view: String, allocator: org.apache.arrow.memory.BufferAllocator,
              listener: org.apache.arrow.flight.FlightProducer.ServerStreamListener, ready: () => Unit): Unit =
     {
@@ -224,14 +239,6 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDem
 }
 
 object NamespaceAdapter {
-  /** Task outputs receive opaque logical aliases, independent of operator filenames. */
-  def output(base: Path, config: Config, metadataDemand: () => Unit = () => ()): NamespaceAdapter = {
-    val privateItems = new DirectoryAdapter(base, config.batchSize, config.inferSample, excludeMetadata = true).list()
-    val bindings = privateItems.zipWithIndex.map { case (item, index) =>
-      PublishedItem(s"/result-${index + 1}", file = Some(base.resolve(item.path)))
-    }
-    new NamespaceAdapter(bindings, config, metadataDemand)
-  }
   def views(item: Item): Seq[String] = item.views.getOrElse {
     if (item.format.isEmpty) Seq.empty else Formats.views(item.format)
   }

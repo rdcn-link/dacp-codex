@@ -151,6 +151,10 @@ class DirectoryDatasetProvider extends DatasetProvider {
         }
         def describe(path: String): Item = selected(path).describe(path)
         def count(path: String): Option[Long] = selected(path).count(path)
+        override def scan(path: String, request: Scan, allocator: BufferAllocator, listener: ServerStreamListener, ready: () => Unit): Unit = {
+          val access = selected(path)
+          try access.scan(path,request,allocator,listener,ready) finally access.close()
+        }
         def stream(path: String, view: String, allocator: BufferAllocator, listener: ServerStreamListener, ready: () => Unit): Unit =
           selected(path).stream(path,view,allocator,listener,ready)
       }

@@ -9,6 +9,7 @@ from dacp import cli
 
 class FakeStream:
     views = ("records", "bytes")
+    item_schema = pa.schema([("id", pa.int64())])
     def __init__(self):
         self.cancelled = False
         self.reader = io.BytesIO(b'hello\x1b[31m world\n')
@@ -43,8 +44,8 @@ class FakeDataset:
         return [SimpleNamespace(path='/orders', format='csv', kind='data', views=('records', 'bytes'), total_size_bytes=0, record_count=0, last_modified_time=None),
                 SimpleNamespace(path='/file name', format='txt', kind='data', views=('bytes',), total_size_bytes=None, record_count=None, last_modified_time=None)]
 
-    def open(self, path):
-        self.opened = path
+    def open(self, path, **options):
+        self.opened, self.options = path, options
         return self.stream
 
     def close(self):
@@ -156,9 +157,9 @@ def test_listing_table_headers_utc_time_and_unknown_values(browser, monkeypatch)
     out.truncate()
     b.onecmd('ls')
     lines = out.getvalue().splitlines()
-    assert [cell.strip() for cell in lines[1].split('|')[1:-1]] == ['Path', 'Format', 'Bytes', 'Records', 'Modified (UTC)']
-    assert [cell.strip() for cell in lines[3].split('|')[1:-1]] == ['/orders', 'csv', '0', '0', '2026-10-16 06:22:02']
-    assert [cell.strip() for cell in lines[4].split('|')[1:-1]] == [r'/file\nname', 'txt', '-', '-', '-']
+    assert [cell.strip() for cell in lines[1].split('|')[1:-1]] == ['#', 'Path', 'Format', 'Bytes', 'Records', 'Modified (UTC)']
+    assert [cell.strip() for cell in lines[3].split('|')[1:-1]] == ['1', '/orders', 'csv', '0', '0', '2026-10-16 06:22:02']
+    assert [cell.strip() for cell in lines[4].split('|')[1:-1]] == ['2', r'/file\nname', 'txt', '-', '-', '-']
     assert len(lines) == 7
 
 
@@ -210,7 +211,7 @@ def test_folder_highlighting_preserves_table_and_escapes_paths(browser, monkeypa
     rows = rendered.splitlines()
     plain = rows[4].replace('\x1b[1;36m', '').replace('\x1b[0m', '')
     assert len(plain) == len(rows[0])
-    assert [cell.strip() for cell in plain.split('|')[1:-1]][1:] == ['-', '-', '-', '-']
+    assert [cell.strip() for cell in plain.split('|')[1:-1]][2:] == ['-', '-', '-', '-']
 
 
 @pytest.mark.parametrize('command,headers', [('show 1', ['id'])])
@@ -264,3 +265,181 @@ def test_zip_folder_supports_bytes_preview(browser):
     assert 'folder has no content' not in out.getvalue()
     assert ds.opened == '/archive'
     assert 'Error:' not in out.getvalue()
+
+
+def test_select_transports_scan_and_caps_preview(browser):
+    b, ds, out = browser
+    b.onecmd('SELECT id FROM "/orders" WHERE id > 1 LIMIT 2;')
+    assert ds.opened == '/orders'
+    assert ds.options['columns'] == ['id'] and ds.options['limit'] == 2
+    assert ds.options['predicate']._message.op == 'gt'
+    assert '| id |' in out.getvalue() and '2 rows shown (limit 2)' in out.getvalue()
+    assert ds.stream.cancelled
+
+
+def test_select_default_and_large_limit_remain_bounded(browser):
+    b, ds, out = browser
+    b.onecmd('SeLeCt * FROM "/orders" LIMIT 10000')
+    assert ds.options['limit'] == 3
+    assert '3 rows shown (limit 3)' in out.getvalue()
+
+
+def test_empty_select_preserves_headers(browser, monkeypatch):
+    b, ds, out = browser
+    # Real SDK record iterators always support close, including empty streams.
+    def empty():
+        yield from ()
+    monkeypatch.setattr(ds.stream, 'as_records', empty)
+    b.onecmd('select id FROM "/orders" WHERE id > 100 LIMIT 0')
+    assert ds.options['limit'] == 0
+    assert '| id |' in out.getvalue() and '0 rows shown (limit 0)' in out.getvalue()
+    assert 'Error:' not in out.getvalue()
+
+
+def test_select_errors_keep_shell_alive(browser):
+    b, ds, out = browser
+    b.onecmd('SELECT * FROM "/orders" ORDER BY id')
+    b.onecmd('SELECT missing FROM "/orders"')
+    ds.stream.views = ('bytes',)
+    b.onecmd('SELECT * FROM "/file name"')
+    assert 'unsupported SQL syntax' in out.getvalue()
+    assert 'unknown or ambiguous column' in out.getvalue()
+    assert 'requires an Item with a records view' in out.getvalue()
+    assert not ds.closed
+
+
+def test_select_number_uses_latest_ls_order(browser, monkeypatch):
+    b, ds, out = browser
+    items = ds.list()
+    # The number follows the latest listing, even after its order changes.
+    monkeypatch.setattr(ds, 'list', lambda path=None: list(reversed(items)))
+    b.onecmd('ls /reports')
+    b.onecmd('SELECT id FROM 2 WHERE id > 1 LIMIT 1')
+    assert ds.opened == '/orders'
+    assert ds.options['columns'] == ['id'] and ds.options['limit'] == 1
+    assert ds.options['predicate']._message.values[0].value == '1'
+    assert '1 rows shown (limit 1)' in out.getvalue()
+
+
+@pytest.mark.parametrize('number', ['0', '3'])
+def test_select_number_out_of_range_does_not_open(browser, number):
+    b, ds, out = browser
+    b.onecmd('SELECT * FROM ' + number)
+    assert 'item number out of range; use ls' in out.getvalue()
+    assert not hasattr(ds, 'opened') and not ds.closed
+
+
+def test_run_heredoc_source_preserves_indentation(browser, monkeypatch):
+    b, ds, out = browser
+    b.use_rawinput = False
+    b.stdin = io.StringIO("def process(inputs, params):\n    yield b'hi'\nSTOP\n")
+    calls = []
+    monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
+    b.onecmd('run --runtime python@1.0 --input source=1 <<STOP')
+    import json
+    task = json.loads(calls[0][1])['tasks'][0]
+    assert task['operator'] == {'runtime':'python@1.0', 'source':"def process(inputs, params):\n    yield b'hi'\n"}
+    assert task['inputs']['source']['uri'] == 'dacp://localhost/data1/orders'
+
+
+@pytest.mark.parametrize('command', [
+    'run --source code.py --input source=1',
+    'run --code hello --runtime python@1.0 --input source=1',
+    'run identity@1.1 --runtime python@1.0 --input source=1 <<END',
+    'run --runtime python@1.0 --input source=1',
+])
+def test_run_rejects_invalid_source_forms(browser, monkeypatch, command):
+    b, ds, out = browser
+    monkeypatch.setattr(b, 'print_job', lambda *args: pytest.fail('must not submit'))
+    b.onecmd(command)
+    assert 'Error:' in out.getvalue()
+
+
+def test_run_eof_aborts_without_submission(browser, monkeypatch):
+    b, ds, out = browser
+    b.use_rawinput = False
+    b.stdin = io.StringIO('unfinished\n')
+    monkeypatch.setattr(b, 'print_job', lambda *args: pytest.fail('must not submit'))
+    b.onecmd('run --runtime python@1.0 --input source=1 <<END')
+    assert 'nothing submitted' in out.getvalue()
+
+
+def test_run_ctrl_c_aborts_entry(browser, monkeypatch):
+    b, ds, out = browser
+    def interrupted(*args): raise KeyboardInterrupt
+    monkeypatch.setattr('builtins.input', interrupted)
+    monkeypatch.setattr(b, 'print_job', lambda *args: pytest.fail('must not submit'))
+    b.onecmd('run --runtime python@1.0 --input source=1 <<END')
+    assert 'nothing submitted' in out.getvalue()
+
+
+def test_run_repository_id(browser, monkeypatch):
+    b, ds, out = browser
+    calls = []
+    monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
+    b.onecmd('run identity@1.1 --input source=1')
+    import json
+    assert json.loads(calls[0][1])['tasks'][0]['operator'] == 'identity@1.1'
+
+
+class JobEvents:
+    def __init__(self, events):
+        self.events = iter(events)
+        self.closed = False
+        self.consumed = 0
+    def __enter__(self): return self
+    def __exit__(self, *args): self.closed = True
+    def __iter__(self): return self
+    def __next__(self):
+        self.consumed += 1
+        return next(self.events)
+
+
+def record_start(port='result'):
+    import base64
+    schema = pa.schema([('id', pa.int64())])
+    return dict(type='start',port=port,representation='records',format='arrow',
+                schema=base64.b64encode(schema.serialize().to_pybytes()).decode())
+
+
+def test_job_records_header_once_and_no_implicit_limit(browser, monkeypatch):
+    b,ds,out = browser
+    stream = JobEvents([record_start(),dict(type='data',port='result',batch=pa.record_batch([[1,2]],names=['id'])),
+                        dict(type='data',port='result',batch=pa.record_batch([[3,4]],names=['id'])),
+                        dict(type='end',port='result'),dict(type='complete')])
+    monkeypatch.setattr(cli.Job,'run',lambda *a,**kw:stream)
+    b.print_job('dacp://localhost','job: test',30)
+    assert out.getvalue().count('[result] id')==1
+    assert '[result] 4' in out.getvalue() and 'Job complete.' in out.getvalue()
+    assert stream.closed
+
+
+def test_record_preview_stops_and_closes_without_reading_rest(browser, monkeypatch):
+    b,ds,out = browser
+    stream = JobEvents([record_start(),dict(type='data',port='result',batch=pa.record_batch([[1,2,3]],names=['id']))])
+    monkeypatch.setattr(cli.Job,'run',lambda *a,**kw:stream)
+    b.print_job('dacp://localhost','job: test',30,preview_rows=2)
+    assert '[result] 2' in out.getvalue() and '[result] 3' not in out.getvalue()
+    assert 'remaining job cancelled' in out.getvalue() and 'Job complete.' not in out.getvalue()
+    assert stream.closed and stream.consumed==2
+
+
+def test_text_ports_and_utf8_across_chunks(browser, monkeypatch):
+    b,ds,out = browser
+    start = lambda port:dict(type='start',port=port,representation='bytes',format='text')
+    stream=JobEvents([start('a'),start('b'),dict(type='data',port='a',data=b'\xe4'),
+                      dict(type='data',port='b',data=b'hello'),dict(type='data',port='a',data=b'\xb8\xad\n'),
+                      dict(type='end',port='a'),dict(type='end',port='b'),dict(type='complete')])
+    monkeypatch.setattr(cli.Job,'run',lambda *a,**kw:stream)
+    b.print_job('dacp://localhost','job: test',30)
+    assert '[b] hello\n[a] 中\n' in out.getvalue()
+
+
+def test_binary_preview_counts_bytes_and_has_offsets(browser, monkeypatch):
+    b,ds,out = browser
+    stream=JobEvents([dict(type='start',port='x',representation='bytes',format='binary'),
+                      dict(type='data',port='x',data=bytes(range(32)))])
+    monkeypatch.setattr(cli.Job,'run',lambda *a,**kw:stream)
+    b.print_job('dacp://localhost','job: test',30,preview_bytes=18)
+    assert '[x] 00000010  10 11' in out.getvalue()
+    assert '12 13' not in out.getvalue() and stream.closed

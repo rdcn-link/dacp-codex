@@ -70,12 +70,12 @@ class SqlSpec extends AnyFunSuite {
     } finally allocator.close()
   }}
   test("Flight serves SQL records and byte-view IPC alongside directory datasets") { database { conf =>
-    val allocator = new RootAllocator(); val outputs = new OutputRegistry(10000)
+    val allocator = new RootAllocator()
     val dir = Files.createTempDirectory("sql-files-"); Files.writeString(dir.resolve("x.csv"),"id\n1\n")
     val config = Config("localhost",8815,"localhost",Map("files" -> DatasetDefinition.custom(Seq(PublishedItem("/records", file=Some(dir.resolve("x.csv"))))),
       "db" -> DatasetDefinition.custom(Seq(PublishedItem("/orders", sql=Some("warehouse"), table=Some("ORDERS")),
         PublishedItem("/reports/file",file=Some(dir.resolve("x.csv")))))),Seq("dacp://localhost:8815/files","dacp://localhost:8815/db"),dir,dir,dir, batchSize=2,byteChunk=32,sqlSources=Map("warehouse"->conf))
-    val server = FlightServer.builder(allocator,Location.forGrpcInsecure("127.0.0.1",0),new Producer(config,allocator,outputs)).build().start()
+    val server = FlightServer.builder(allocator,Location.forGrpcInsecure("127.0.0.1",0),new Producer(config,allocator)).build().start()
     val client = FlightClient.builder(allocator,server.getLocation).build()
     try {
       def meta(ds: String) = Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets",ds)).getAppMetadata)
@@ -83,8 +83,8 @@ class SqlSpec extends AnyFunSuite {
       assert(meta("db").getItemsList.asScala.exists(i => i.getPath == "/orders" && !i.getArrowSchema.isEmpty))
       val children = Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets","db","list","/reports")).getAppMetadata)
       assert(children.getItemsList.asScala.map(_.getPath) == Seq("/reports/file"))
-      assert(TaskInputs.discover(client,"db",None).map(_._1).toSet == Set("/orders","/reports/file"))
-      assert(TaskInputs.discover(client,"db",Some("/orders")) == Seq("/orders" -> "sql"))
+      assert(meta("db").getItemsList.asScala.filter(_.getKind=="data").map(_.getPath).toSet == Set("/orders","/reports/file"))
+      assert(Metadata.Item.parseFrom(client.getInfo(FlightDescriptor.path("datasets","db","/orders")).getAppMetadata).getFormat=="sql")
       val publicMetadata = meta("db")
       val stats = publicMetadata.getItemsList.asScala.find(_.getPath == "/orders").get
       assert(!stats.hasRecordCount)
@@ -97,6 +97,26 @@ class SqlSpec extends AnyFunSuite {
       val info = client.getInfo(FlightDescriptor.path("datasets","db","/orders"))
       val records = client.getStream(info.getEndpoints.get(0).getTicket)
       try { var rows = 0; while(records.next()) rows += records.getRoot.getRowCount; assert(rows == 3) } finally records.close()
+      def filtered(predicate: Metadata.Predicate, expected: Seq[String]): Unit = {
+        val scan = Metadata.Scan.newBuilder().setPredicate(predicate).setLimit(1)
+          .setProjection(Metadata.Scan.Projection.newBuilder().addColumns("NAME"))
+        val ticket = Metadata.Ticket.parseFrom(info.getEndpoints.get(0).getTicket.getBytes).toBuilder.setView("records").setScan(scan).build()
+        val stream = client.getStream(new Ticket(ticket.toByteArray))
+        try {
+          var names = Vector.empty[String]
+          assert(stream.getSchema.getFields.asScala.map(_.getName) == Seq("NAME"))
+          while(stream.next()) (0 until stream.getRoot.getRowCount).foreach(i => names :+= Option(stream.getRoot.getVector(0).getObject(i)).map(_.toString).orNull)
+          assert(names == expected)
+        } finally stream.close()
+      }
+      def predicate(column: String,kind: String,value: String,op: String = "eq") =
+        Metadata.Predicate.newBuilder().setOp(op).setColumn(column)
+          .addValues(Metadata.Literal.newBuilder().setType(kind).setValue(value)).build()
+      filtered(predicate("ID","integer","2","gt"),Seq("three"))
+      filtered(predicate("AMOUNT","decimal","12.500"),Seq("one"))
+      filtered(predicate("EVENT_DAY","date","2026-01-02"),Seq("one"))
+      filtered(predicate("STAMP","datetime","2026-01-02T12:34:56.123456"),Seq("one"))
+      filtered(predicate("ZONED","timestamp","2026-01-02T10:34:56.123456Z"),Seq("one"))
       val t = Metadata.Ticket.parseFrom(info.getEndpoints.get(0).getTicket.getBytes).toBuilder.setView("bytes").build()
       val bytes = client.getStream(new Ticket(t.toByteArray)); val out = new java.io.ByteArrayOutputStream()
       try while(bytes.next()) {
@@ -106,8 +126,8 @@ class SqlSpec extends AnyFunSuite {
       val reader = new org.apache.arrow.vector.ipc.ArrowStreamReader(new java.io.ByteArrayInputStream(out.toByteArray),allocator)
       try { var rows = 0; while(reader.loadNextBatch()) rows += reader.getVectorSchemaRoot.getRowCount; assert(rows == 3) } finally reader.close()
       val restricted = config.copy(prefixes=Seq("dacp://localhost:8815/files"))
-      intercept[FlightRuntimeException](new Producer(restricted,allocator,outputs).getFlightInfo(null,FlightDescriptor.path("datasets","db")))
-    } finally { client.close(); server.close(); outputs.close(); allocator.close(); Data.deleteTree(dir) }
+      intercept[FlightRuntimeException](new Producer(restricted,allocator).getFlightInfo(null,FlightDescriptor.path("datasets","db")))
+    } finally { client.close(); server.close(); allocator.close(); Data.deleteTree(dir) }
   }}
   test("SQL unsupported types fail explicitly and config loads private sources and explicit aliases") { database { conf =>
     val c = DriverManager.getConnection(conf.url,"sa","")
@@ -121,7 +141,6 @@ public_host: localhost
 tls_cert: cert
 tls_key: key
 tls_ca: ca
-output_root: output
 allowed_uri_prefixes: ['dacp://localhost:8815/db']
 sql_sources:
   db:

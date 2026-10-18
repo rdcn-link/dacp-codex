@@ -29,41 +29,19 @@ remote_operator_library_urls:
   - http://localhost:8820
 ```
 
-Then use your operator in a job (replace the input URI with an authorized dataset):
-
-```yaml
-job: scala-example
-tasks:
-  - id: copy
-    inputs: [dacp://localhost:8815/demo/events]
-    operator: scala_identity@1.0
-    params: {}
-    output: scala_result
-```
-
-The operator also works locally without publication: set `local_operator_library: ../examples/operators/scala/operators` when launching from `dacp-server`. Build the JAR and install the runtime image first.
-
-## Entry point and data contract
-
-[ScalaIdentity.scala](src/main/scala/example/ScalaIdentity.scala) provides `def main(args: Array[String]): Unit`. The executor invokes:
+Run in the connected shell:
 
 ```text
-/opt/java/bin/java -cp /operator/scala-identity_2.13-1.0.jar:/opt/lib/* example.ScalaIdentity operator /input /output /input/params.json
+run scala_identity@1.0 --input source=/events
 ```
 
-The real JVM command also includes the Arrow memory-access options. `DACP_OPERATOR` contains `scala_identity@1.0`. Read:
+The operator also works locally: set `local_operator_library: ../examples/operators/scala/operators` when launching from `dacp-server`. Build the JAR and install the runtime image first.
 
-- `/input/params.json`: task parameters; validate their types and reject unknown parameters.
-- `/input/manifest.json`: an array containing each input's `file`, public `path`, and `format`.
-- Each `file`: an Arrow IPC stream containing one binary column named `data`. Its batches carry chunks of the original file bytes, not automatically parsed table records. Parse those bytes according to your operator's supported formats. Input files can be FIFOs: stop at Arrow EOS rather than waiting for OS EOF.
+## Entry point and stream contract
 
-Write an Arrow IPC binary stream for each output and return `/output/_output.json`:
+The JVM launcher passes `operator /input /input/params.json` to `example.ScalaIdentity.main`. Read named input metadata (`port`, `file`, `representation`, `format`) from `/input/manifest.json`. The example accepts one bytes port named `source`, represented by an Arrow IPC stream containing one binary `data` column. Stop at IPC EOS, including for FIFO inputs.
 
-```json
-[{"file":"_stream-0.arrow","path":"part-0.csv","format":"csv"}]
-```
-
-`file` names the Arrow stream; `path` names the final decoded file; `format` describes its bytes. Final paths must be single filenames and cannot start with `_`. Close readers, writers, and allocators, and propagate failures with a nonzero process exit. The server only publishes outputs after successful execution and decoding.
+Write start/data/end frames to stdout for the `result` port; diagnostics belong on stderr. The shell consumes output incrementally, without publishing a saved dataset. The complete source demonstrates framing and resource cleanup. See the [execution contract](../../../docs/operator-authoring_en.md).
 
 ## Keep the artifact small
 

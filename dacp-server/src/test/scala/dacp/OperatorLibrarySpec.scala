@@ -21,6 +21,9 @@ class OperatorLibrarySpec extends AnyFunSuite {
     node.putObject("runtime").put("image",image).putObject("archive").put("size",archive.length).put("sha256",hash(archive)).put("filename","runtime.tar")
     node.putObject("execution").put("executor",executor).put("entrypoint",if(executor == "container") "" else "example.Main")
     if(executor != "container") node.putObject("artifact").put("size",code.length).put("sha256",hash(code)).put("filename","operators.jar")
+    Seq("inputs"->"source","outputs"->"result").foreach {case(key,port)=>
+      val p=node.putObject(key).putObject(port);p.putArray("representations").add("bytes");p.putArray("formats")
+    }
     node.toString
   }
   private def config(root: Path, base: String) = Config("localhost",8815,"localhost",Map.empty,Seq.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"),
@@ -51,7 +54,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
     try {
       installed = true
       val local = c.localOperatorLibrary.resolve("first/1/operator.yaml")
-      Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\n")
+      Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\ninputs: {source: {representations: [bytes], formats: []}}\noutputs: {result: {representations: [bytes], formats: []}}\n")
       assert(OperatorLibrary.resolve(c,"first@1",docker).image == image && requests.isEmpty)
       Files.delete(local); installed = false
       val first = OperatorLibrary.resolve(c,"first@1",docker)

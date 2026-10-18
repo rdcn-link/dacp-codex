@@ -11,6 +11,7 @@ import scala.jdk.CollectionConverters._
 import scala.util.Using
 
 class SourceSpec extends AnyFunSuite {
+  @volatile private var scanTicket: Option[Metadata.Ticket] = None
   test("transport diagnostics become public DACP errors without causes") {
     val cases = Seq(
       (CallStatus.NOT_FOUND.withDescription("dataset not found; private JDBC detail"), "NOT_FOUND", "Dataset not found."),
@@ -24,6 +25,23 @@ class SourceSpec extends AnyFunSuite {
       assert(!error.toString.contains("private") && error.getCause == null)
     }
   }
+
+  test("records query travels in tickets and queried streams reject bytes") { server { ds =>
+    import Expressions.col
+    val predicate = (col("id") > 0) && !col("id").isNull
+    Using.resource(ds.open("/records",predicate=Some(predicate),columns=Some(Seq("id")),limit=Some(1))) { item =>
+      Using.resource(item.asRecords()) { records => assert(records.next()) }
+      val query = scanTicket.get.getScan
+      assert(query.getPredicate.getOp == "and")
+      assert(query.getPredicate.getChildren(0).getValues(0).getType == "integer")
+      assert(query.getProjection.getColumnsList.asScala == Seq("id"))
+      assert(query.hasLimit && query.getLimit == 1)
+      intercept[IllegalArgumentException](item.asBytes())
+    }
+    intercept[IllegalArgumentException](ds.open("/records",limit=Some(-1)))
+    intercept[IllegalArgumentException](ds.open("/records",columns=Some(Seq.empty)))
+    intercept[IllegalArgumentException](col("id") === null)
+  }}
 
   val recordsSchema = new Schema(List(new Field("id", FieldType.nullable(new ArrowType.Int(32, true)), null)).asJava)
   val bytesSchema = new Schema(List(new Field("data", FieldType.nullable(new ArrowType.Binary()), null)).asJava)
@@ -48,6 +66,7 @@ class SourceSpec extends AnyFunSuite {
       }
       override def getStream(ctx: FlightProducer.CallContext, ticket: Ticket, listener: FlightProducer.ServerStreamListener): Unit = {
         val t = Metadata.Ticket.parseFrom(ticket.getBytes)
+        scanTicket = Some(t)
         val schema = if(t.getView == "bytes") bytesSchema else recordsSchema
         val root = VectorSchemaRoot.create(schema, serverAllocator)
         try {
@@ -199,6 +218,16 @@ class SourceSpec extends AnyFunSuite {
                   assert(count == 2)
                 }
               }
+            }
+          }
+          import Expressions.col
+          Using.resource(ds.open("/reports/orders",predicate=Some(col("id") > 1),
+            columns=Some(Seq("amount")),limit=Some(1L))) { item =>
+            Using.resource(item.asRecords()) { reader =>
+              assert(reader.schema.getFields.asScala.map(_.getName) == Seq("amount"))
+              assert(reader.next() && reader.root.getRowCount == 1)
+              assert(reader.root.getVector(0).getObject(0).asInstanceOf[Number].doubleValue() == 30.0)
+              assert(!reader.next())
             }
           }
           val listed = ds.list("/reports")

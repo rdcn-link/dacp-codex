@@ -70,7 +70,6 @@ public_host: localhost
 tls_cert: cert.pem
 tls_key: key.pem
 tls_ca: ca.pem
-output_root: output
 allowed_uri_prefixes: [dacp://localhost:8815/]
 """
       val definitions = s"""sql_sources:
@@ -127,7 +126,7 @@ datasets:
     } finally Data.deleteTree(dir)
   }
   test("directory, sqldb, custom mixed sources, and external providers share the Flight interface") {
-    val dir = Files.createTempDirectory("dataset-flight-"); val allocator = new RootAllocator(); val outputs = new OutputRegistry(10000)
+    val dir = Files.createTempDirectory("dataset-flight-"); val allocator = new RootAllocator()
     val url = "jdbc:h2:mem:dataset_provider_"+System.nanoTime()+";DB_CLOSE_DELAY=-1"
     val db = DriverManager.getConnection(url,"sa","")
     try {
@@ -143,7 +142,7 @@ datasets:
         "plugin" -> DatasetDefinition("test-dataset",Map("message" -> "external provider")))
       val c = config(dir,defs).copy(sqlSources=Map("warehouse" -> SqlConfig(url,Some("sa"),Some(""),Some("PUBLIC"))))
       assert(!defs("sales").toString.contains("warehouse"))
-      val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator,outputs)).build().start()
+      val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()
       try {
         for ((dataset,path) <- Seq("files" -> "/orders.csv","files" -> "/archive.zip/orders.csv","sales" -> "/customers","custom" -> "/orders","custom" -> "/customers")) {
@@ -160,6 +159,6 @@ datasets:
         val stream = client.getStream(info.getEndpoints.get(0).getTicket)
         try { assert(stream.next()); assert(new String(stream.getRoot.getVector(0).asInstanceOf[VarBinaryVector].get(0),"UTF-8") == "external provider") } finally stream.close()
       } finally { client.close(); server.close() }
-    } finally { db.close(); outputs.close(); allocator.close(); Data.deleteTree(dir) }
+    } finally { db.close(); allocator.close(); Data.deleteTree(dir) }
   }
 }

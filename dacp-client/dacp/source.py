@@ -7,6 +7,7 @@ from urllib.parse import urlsplit, unquote
 import pyarrow as pa
 import pyarrow.flight as flight
 from . import dacp_pb2 as pb
+from .expressions import scan_options
 from .errors import public_errors, translate, TRANSPORT_ERRORS
 
 @public_errors
@@ -90,22 +91,30 @@ class DataSet:
         metadata = pb.Item.FromString(info.app_metadata)
         return metadata.record_count if metadata.HasField("record_count") else None
     @public_errors
-    def open(self, path):
+    def open(self, path, *, predicate=None, columns=None, limit=None):
+        scan = scan_options(predicate, columns, limit)
         _logical_path(path)
         info = self._client.get_flight_info(flight.FlightDescriptor.for_path("datasets", self.name, path))
         metadata = pb.Item.FromString(info.app_metadata)
         if not metadata.views or not info.endpoints:
             raise ValueError("item has no readable views; use list(path) for folders")
-        return Stream(self._client, info.endpoints[0].ticket, tuple(metadata.views))
+        ticket = info.endpoints[0].ticket
+        if scan is not None:
+            if "records" not in metadata.views: raise ValueError("scan options require records view")
+            message = pb.Ticket.FromString(ticket.ticket)
+            message.scan.CopyFrom(scan)
+            ticket = flight.Ticket(message.SerializeToString())
+        return Stream(self._client, ticket, tuple(metadata.views),
+                      item_schema=info.schema if metadata.views[0] == "records" else None)
     @public_errors
     def close(self): self._client.close()
     def __enter__(self): return self
     def __exit__(self, *args): self.close()
 
 class Stream:
-    def __init__(self, client, ticket, views=("records", "bytes")):
+    def __init__(self, client, ticket, views=("records", "bytes"), item_schema=None):
         self._client, self._ticket, self._owns_client = client, ticket, False
-        self.views = views
+        self.views, self.item_schema = views, item_schema
     @public_errors
     def close(self):
         if self._owns_client: self._client.close()
@@ -116,6 +125,8 @@ class Stream:
         if view not in self.views:
             raise ValueError(f"item does not support {view} view")
         t = pb.Ticket.FromString(self._ticket.ticket)
+        if t.HasField("scan") and view != "records":
+            raise ValueError("scan options require records view")
         t.view = view
         return self._client.do_get(flight.Ticket(t.SerializeToString()))
     def as_records(self):

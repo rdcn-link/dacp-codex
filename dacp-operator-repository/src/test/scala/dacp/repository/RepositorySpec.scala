@@ -14,6 +14,10 @@ class RepositorySpec extends AnyFunSuite {
       try paths.iterator.asScala.toSeq.sortBy(_.getNameCount).reverse.foreach(Files.delete(_)) finally paths.close()
     }
   }
+  private val ports=Repository.mapper.readTree("""{"inputs":{"source":{"representations":["bytes"],"formats":[]}},"outputs":{"result":{"representations":["bytes"],"formats":[]}}}""")
+  private def publish(root:Path, reference:String, image:String, exporter:Repository.ImageExporter, description:String="",
+    executor:String="container",entrypoint:String="",artifact:Option[Path]=None):String =
+    Repository.publish(root,reference,image,ports,exporter,description,executor,entrypoint,artifact)
   private val image = "sha256:" + "a" * 64
   private val exporter = new Repository.ImageExporter {
     def inspect(tag: String): String = image
@@ -50,22 +54,23 @@ class RepositorySpec extends AnyFunSuite {
     val definitions = root.resolve("definitions")
     val definition = definitions.resolve("custom/2.0/operator.yaml")
     Files.createDirectories(definition.getParent)
-    Files.writeString(definition, "name: custom\nversion: '2.0'\nimage: custom:2\n")
+    Files.writeString(definition, "name: custom\nversion: '2.0'\nimage: custom:2\ninputs: {source: {representations: [bytes], formats: []}}\noutputs: {result: {representations: [bytes], formats: []}}\n")
     val catalog = root.resolve("catalog")
     assert(Repository.seed(catalog, definitions, exporter) == Seq("custom@2.0"))
-    Files.writeString(definition, "name: other\nversion: '2.0'\nimage: custom:2\n")
+    Files.writeString(definition, "name: other\nversion: '2.0'\nimage: custom:2\ninputs: {source: {representations: [bytes], formats: []}}\noutputs: {result: {representations: [bytes], formats: []}}\n")
     intercept[IllegalArgumentException](Repository.seed(catalog, definitions, exporter))
     Files.writeString(definition, "name: custom\nversion: '2.0'\nimage: custom:2\nimage: replaced\n")
     intercept[org.yaml.snakeyaml.error.YAMLException](Repository.seed(catalog, definitions, exporter))
   }}
   test("publication pins the image, verifies bytes and refuses overwrites") { withRoot { root =>
-    val json = Repository.mapper.readTree(Repository.publish(root, "identity@1.0", "mutable:tag", exporter))
+    val json = Repository.mapper.readTree(publish(root, "identity@1.0", "mutable:tag", exporter))
+    assert(json.path("inputs")==ports.path("inputs"))
     assert(json.path("api_version").asInt == 2)
     assert(json.path("name").asText == "identity" && json.path("version").asText == "1.0")
     assert(json.path("runtime").path("image").asText == image)
     assert(json.path("runtime").path("archive").path("size").asLong == 13)
     assert(json.path("runtime").path("archive").path("sha256").asText == Repository.checksum(Repository.blob(root, json.path("runtime").path("archive").path("sha256").asText)))
-    intercept[IllegalArgumentException](Repository.publish(root,"identity@1.0","other",exporter))
+    intercept[IllegalArgumentException](publish(root,"identity@1.0","other",exporter))
     assert(Files.readString(root.resolve("identity/1.0/manifest.json")) == Repository.mapper.writeValueAsString(json))
   }}
   test("invalid references and failed exports leave no published or partial artifacts") { withRoot { root =>
@@ -76,16 +81,16 @@ class RepositorySpec extends AnyFunSuite {
       def inspect(tag: String): String = image
       def save(id: String, destination: Path): Unit = { Files.writeString(destination, "partial"); throw new RuntimeException("failed") }
     }
-    intercept[RuntimeException](Repository.publish(root,"identity@1.0","tag",broken))
+    intercept[RuntimeException](publish(root,"identity@1.0","tag",broken))
     assert(!Files.exists(root.resolve("identity/1.0")))
     val files = Files.list(root.resolve("identity"))
     try assert(!files.iterator.asScala.exists(_.getFileName.toString.startsWith(".publish-"))) finally files.close()
-    Repository.publish(root,"identity@1.0","tag",exporter)
+    publish(root,"identity@1.0","tag",exporter)
   }}
   test("public web search, operator details and downloads work without authentication") { withRoot { root =>
-    Repository.publish(root, "convert@1.0", "tag", exporter, "Convert CSV to Parquet")
-    Repository.publish(root, "convert@2.0", "tag", exporter, "Convert tables")
-    Repository.publish(root, "identity@1.0", "tag", exporter, "Copy <script>alert(1)</script> & preserve bytes")
+    publish(root, "convert@1.0", "tag", exporter, "Convert CSV to Parquet")
+    publish(root, "convert@2.0", "tag", exporter, "Convert tables")
+    publish(root, "identity@1.0", "tag", exporter, "Copy <script>alert(1)</script> & preserve bytes")
     val server = new RepositoryServer(root, port=0)
     server.start()
     val client = HttpClient.newHttpClient()
@@ -125,9 +130,9 @@ class RepositorySpec extends AnyFunSuite {
   }}
   test("code bundles and runtimes are shared across operator identities") { withRoot { root =>
     val code = root.resolve("operators.jar"); Files.writeString(code, "small code bundle")
-    val first = Repository.mapper.readTree(Repository.publish(root, "first@1", "runtime", exporter,
+    val first = Repository.mapper.readTree(publish(root, "first@1", "runtime", exporter,
       executor="jvm", entrypoint="example.First", artifact=Some(code)))
-    val second = Repository.mapper.readTree(Repository.publish(root, "second@1", "runtime", exporter,
+    val second = Repository.mapper.readTree(publish(root, "second@1", "runtime", exporter,
       executor="jvm", entrypoint="example.Second", artifact=Some(code)))
     assert(first.path("artifact") == second.path("artifact"))
     assert(first.path("runtime") == second.path("runtime"))
@@ -143,7 +148,7 @@ class RepositorySpec extends AnyFunSuite {
     } finally server.close()
   }}
   test("HTTP contract serves manifests and archives and rejects traversal and writes") { withRoot { root =>
-    val manifest = Repository.publish(root,"identity@1.0","tag",exporter)
+    val manifest = publish(root,"identity@1.0","tag",exporter)
     val server = new RepositoryServer(root,port=0)
     server.start()
     val client = HttpClient.newHttpClient()
@@ -177,4 +182,15 @@ class RepositorySpec extends AnyFunSuite {
       } finally { Files.delete(outside.resolve("manifest.json")); Files.delete(outside) }
     } finally server.close()
   }}
+  test("port declarations are mandatory before exporting any runtime") { withRoot { root=>
+    val rejecting=new Repository.ImageExporter {
+      def inspect(tag:String):String=fail("must validate ports before Docker")
+      def save(id:String,destination:Path):Unit=fail("must not export")
+    }
+    intercept[IllegalArgumentException](Repository.publish(root,"bad@1","image",Repository.mapper.createObjectNode(),rejecting))
+    val invalid=ports.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
+    invalid.path("inputs").path("source").asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].putArray("representations").add("unknown")
+    intercept[IllegalArgumentException](Repository.publish(root,"bad@1","image",invalid,rejecting))
+  }}
+
 }

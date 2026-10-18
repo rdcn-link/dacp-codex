@@ -31,12 +31,12 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository see
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820
 ```
 
-`seed` 发现 `<operators>/<name>/<version>/operator.yaml`。必填 `name`、`version`、`image`；可选 `description`、`executor`（默认 `container`）、`entrypoint`、`artifact`（相对文件路径）。名称和版本匹配 `[A-Za-z0-9_-][A-Za-z0-9_.-]*`。未知字段、重复键、目录身份不符和空定义目录会失败。
+`seed` 发现 `<operators>/<name>/<version>/operator.yaml`。必填 `name`、`version`、`image`、`inputs`、`outputs`；可选 `description`、`executor`（默认 `container`）、`entrypoint`、`artifact`（相对文件路径）。名称和版本匹配 `[A-Za-z0-9_-][A-Za-z0-9_.-]*`。未知字段、重复键、目录身份不符和空定义目录会失败。
 
 手动发布薄 JAR：
 
 ```bash
-dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish summary@1 --root .operator-catalog --image example/jvm-arrow:1 --executor jvm --entrypoint example.Summary --artifact summary.jar --description "Summarize records"
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish summary@1 --root .operator-catalog --image example/jvm-arrow:1 --executor jvm --entrypoint example.Summary --artifact summary.jar --ports summary-ports.yaml --description "Summarize records"
 ```
 
 Python 使用 `--executor python --entrypoint my_operators.summary --artifact my_operators-1.0-py3-none-any.whl`，或 `.py` 脚本。依赖应放入共享运行时。完整容器省略 `--executor`、`--entrypoint`、`--artifact`，由镜像入口实现 [Arrow IPC 契约](../docs/reference.md#任务执行与算子)。
@@ -83,7 +83,7 @@ export DACP_REPOSITORY_TLS_PASSWORD='your-keystore-password'
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820 --tls-keystore repository.p12 --tls-password-env DACP_REPOSITORY_TLS_PASSWORD
 ```
 
-TLS 两个选项须同时提供，节点 JVM 信任库须信任证书；也可由反向代理终止 HTTPS。SHA-256 校验完整性，HTTPS 验证来源。数据集和任务继续使用 Flight mTLS。缓存与输出生命周期由执行节点负责，目前制品缓存无自动垃圾回收。
+TLS 两个选项须同时提供，节点 JVM 信任库须信任证书；也可由反向代理终止 HTTPS。SHA-256 校验完整性，HTTPS 验证来源。数据集和任务继续使用 Flight mTLS。缓存与流资源生命周期由执行节点负责，目前制品缓存无自动垃圾回收。
 
 ## 验证
 
@@ -96,3 +96,5 @@ scripts/test-operator-repository.sh
 单元及 HTTP 测试使用注入的导出器，无需 Docker。联调需要已构建运行时、Python SDK、sbt、Docker 和空闲示例端口；启动仓库与两个使用独立缓存的 mTLS 节点，执行分布式转换/identity DAG。日志和制品保留在输出的临时目录，服务在退出时停止。
 
 完整的编写与上传教程（Scala/Python 源码、wheel 打包、远程文件传输及任务执行）见 [自定义算子指南](../docs/operator-authoring.md)。
+
+定义必须包含命名 `inputs`、`outputs` 端口。`publish --ports FILE` 为必填项，文件可为包含端口声明的 YAML/JSON 或完整算子定义；`seed` 从定义中读取这些声明。详见[编写指南](../docs/operator-authoring.md)。

@@ -58,3 +58,7 @@ Implement `StructuredFileHandler` (a `FormatHandler`) and register it in the for
 The file root is a folder with original-file bytes and unknown properties. Folder metadata does not open its structure or compute descendants. Nested logical folders also have unknown properties. Native child bytes have handler-defined semantics that must be documented; the root bytes always preserve the physical file. Ordinary listing must not compute expensive counts. Startup counting skips structured roots.
 
 Use `PluginChecks.listing(access)` for metadata contract tests. Streaming, cancellation, private errors, and cleanup tests are demonstrated by [PluginSpec](../dacp-server/src/test/scala/dacp/PluginSpec.scala). NetCDF and FITS plugins can expose groups, variables, or HDUs through this interface; actual parsers and array/image views are not included. Specify any record projection explicitly rather than silently flattening arrays.
+
+## Records scans
+
+`FormatHandler.scan` supplies bounded batch filtering, projection, and early limit termination for every records handler. Override it to optimize the source reader; directory-backed and custom datasets invoke the same contract, including for archive children. Native structured children use `DatasetAccess.scan`. See [records scan contracts](records-scans.md#plugin-implementation-contract).

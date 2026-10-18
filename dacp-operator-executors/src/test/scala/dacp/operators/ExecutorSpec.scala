@@ -15,7 +15,7 @@ class ExecutorSpec extends AnyFunSuite {
     val p = OperatorProgram("sum@1","example.Sum",Some(Path.of("/cache/digest")))
     val c = new JvmExecutor().command(p,Some("/operator/ops.jar"))
     assert(c.entrypoint.get.takeRight(3) == Vector("-cp","/operator/ops.jar:/opt/lib/*","example.Sum"))
-    assert(c.arguments == Vector("operator","/input","/output","/input/params.json"))
+    assert(c.arguments == Vector("operator","/input","/input/params.json"))
     intercept[IllegalArgumentException](new JvmExecutor().command(p.copy(entrypoint="bad main"),Some("/operator/ops.jar")))
     intercept[IllegalArgumentException](new JvmExecutor().command(p,Some("/operator/ops.py")))
   }
@@ -33,4 +33,14 @@ class ExecutorSpec extends AnyFunSuite {
     assert(new ContainerExecutor().command(p,None).entrypoint.isEmpty)
     intercept[IllegalArgumentException](new ContainerExecutor().command(p.copy(entrypoint="main"),None))
   }
+  test("source plugins compile/launch inside the configured runtime without a shell") {
+    val p=OperatorProgram("scala@1.0","example.Main",Some(Path.of("source")))
+    val c=new JvmExecutor().sourceCommand(p,"/operator/operator.source")
+    assert(c.entrypoint.get.head=="/opt/java/bin/java")
+    assert(c.entrypoint.get.contains("scala.tools.nsc.MainGenericRunner"))
+    assert(c.entrypoint.get.exists(_.contains("scala.tools.nsc.Main.process")))
+    assert(c.arguments.isEmpty)
+    intercept[IllegalArgumentException](new ContainerExecutor().sourceCommand(p,"/operator/operator.source"))
+  }
+
 }

@@ -137,13 +137,11 @@ Dataset provider、容器 reader、格式 handler 分别负责构建数据集、
 
 ## 任务执行与算子
 
-### DAG 与算子契约
+任务使用命名输入绑定，指向具体数据项或上游任务端口。输出为命名流，不保存数据集。shell 支持 `run OP --input source=/item` 和 `submit job.yaml`，并逐块打印结果。任务通过 mTLS Flight DoExchange 协作；流水线任务使用有界队列并发执行。每个输出端口最多有一个下游消费者；多个输入按端口名称字典序消费。
 
-`inputs` 是 URI 或上游 `output` 名组成的非空列表，单个输入也使用列表。上游引用也支持 `s1/result-1`。任务先校验重复名称、未知依赖、环和目标节点，再按拓扑顺序串行执行。默认在第一个输入 URI 所在节点执行，也可用 `node: dacp://host:port` 显式指定。协调节点把上游引用解析为具体 URI，再通过 mTLS Flight action 分发；无中心注册服务。每个子任务新建容器，禁用容器网络，挂载只读 `/input` 和可写 `/output`。
+算子启动参数为 `operator /input /input/params.json`。输入为 Arrow IPC FIFO，由 `/input/manifest.json` 描述。stdout 写 start/data/end 协议帧，stderr 写诊断。无输出目录、输出注册、TTL 或结果数据集 URI。Parquet 转换使用私有临时空间完成 footer 后流式发送字节。
 
-`/input/manifest.json` 包含 `file/path/format`；`file` 指向 Arrow IPC stream，bytes 视图为 `data: binary`，每行一个原始字节块。`/input/params.json` 是参数对象。单输入使用 FIFO，IPC 的 EOS 表示结束，容器读取消费驱动上游；多输入在启动容器前全部落盘。结束或失败均删除输入临时目录；失败的输出目录也删除。仅容器退出码为 0 才注册输出。任务超时上限为 30 分钟。
-
-容器入口接收 `operator /input /output /input/params.json`，环境变量 `DACP_OPERATOR` 指定版本化算子名称。自定义算子遵守相同 Arrow 输入契约；输出 `/output/_output.json` 清单（`file/path/format`），每个 `file` 为单列 binary Arrow IPC stream，`path` 为落地文件名。执行器在成功退出后解码这些流、清除 IPC 临时文件，注册最终目录。内置算子在 Parquet footer 完成后将文件包装为该 Arrow 输出契约，内存有界。内置转换器逐个消费 CSV/JSON Item，生成 `part-N.parquet`，不将不同 schema 的 Item 强行合并；不接受 PNG 等其他格式。
+源码示例、端口、帧格式、运行时白名单、取消与限制见[编写契约](operator-authoring.md)、[流契约](operator-streams.md)与 [DEBUG heredoc 源码](operator-source.md)。
 
 算子首先从本地目录及已安装镜像解析，然后检查已完成的下载缓存，最后按配置顺序查询远程 URL。清单返回 HTTP 404 时继续查询下一个库；其他下载或验证错误会终止执行。配置示例：`remote_operator_library_urls: [http://library-a:8820, https://library-b:8820]`；空列表仅使用本地算子。
 
@@ -153,7 +151,7 @@ Dataset provider、容器 reader、格式 handler 分别负责构建数据集、
 
 | 参数 | 默认 / 支持值 |
 |---|---|
-| `from` | `auto`；`csv` / `json` |
+| `from` | `auto`；`csv` / `ndjson` |
 | `to` | `parquet` |
 | `schema` | `infer` 或有序列声明，例如 `{id: int64, amount: float64}` |
 | `infer_sample` | 4；每块为 1024 条解析记录，采样后 schema 固定 |
@@ -163,7 +161,7 @@ Dataset provider、容器 reader、格式 handler 分别负责构建数据集、
 
 显式 schema 支持 `int64`、`float64`、`bool`、`utf8`（或 `string`），列名及顺序必须匹配。CSV 空字段、JSON null 为 null；JSON 使用 NDJSON，一行一个平坦对象。采样发现不同类型直接 `SCHEMA_CONFLICT`，后续批次也校验固定类型；显式 float64 允许合法整数表示，显式 utf8 保留文本。没有自动类型拓宽。内存由采样块、当前 Arrow batch、解析器缓冲和 Parquet row group 决定，不随完整文件大小增长；超大单条记录仍需要容纳该记录。
 
-转换器用 Arrow Java 解码 IPC/构建向量，Apache Parquet Java 原生写入器通过 Avro 行桥接生成 Parquet（Arrow Java 没有原生 Parquet writer）。输出 Arrow schema 同时写入 Parquet footer 的 `dacp.arrow.schema` 和数据集保留文件 `_schema.json`；保留文件不作为 Item 暴露。
+转换器用 Arrow Java 解码 IPC/构建向量，Apache Parquet Java 原生写入器通过 Avro 行桥接生成 Parquet（Arrow Java 没有原生 Parquet writer）。输出 Arrow schema 同时写入 Parquet footer 的 `dacp.arrow.schema` ，不发布结果数据集或元数据旁文件。
 
 ## 协议与配置
 
@@ -196,14 +194,15 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | `batch_size` | 文件记录视图每个 batch 的最大行数 |
 | `byte_chunk` | 字节视图每个 binary 行的最大字节数 |
 | `infer_sample` | 服务端记录视图推断采样 batch 数 |
-| `output_ttl_seconds` | 从成功注册开始计算输出寿命 |
 | `sql_sources` | 私有 JDBC 数据源（不自动发布表），url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
 | `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | 有序的远程算子库 URL 列表 / 本地不可变版本缓存 / 单个制品最大字节数（默认 8 GiB） |
-| `local_operator_library` / `output_root` | 本地算子库 / 临时输出根目录 |
+| `local_operator_library` | 本地算子库 |
 | `task_peers` | 允许分发任务的节点 origin；自身始终允许，无中心发现服务 |
 | `task_input_prefixes` | 执行节点可拉取的输入 URI 前缀；省略时使用 `allowed_uri_prefixes` |
 | `max_concurrent_tasks` | 本地任务及控制请求并发上限（默认 2）；满载立即返回 UNAVAILABLE |
 
 前缀 `dacp://localhost:8815/data1` 不匹配 `data10`。本版白名单适用于所有通过该节点 CA 验证的连接，不提供按证书主体划分的权限组。任务执行器使用节点配置的证书发起 mTLS；多节点须互相信任相应 CA。
 
-服务错误使用 Flight/gRPC 状态和明确的 dacp 错误名称：资源不存在为 `NOT_FOUND`；过期输出为 `NOT_FOUND` 且消息含 `EXPIRED`；禁止访问为 `UNAUTHORIZED` 且消息含 `FORBIDDEN`；schema 冲突为 `INVALID_ARGUMENT` 且消息含 `SCHEMA_CONFLICT`。protobuf 同时定义错误码供协议扩展。任何传输失败使当前 reader 作废，调用方从头 open；没有流内重试。已有 DoGet ticket 在输出过期后同样失败，活跃流在下一个批次边界检查 TTL。
+服务错误使用 Flight/gRPC 状态和明确的 dacp 错误名称：资源不存在为 `NOT_FOUND`；禁止访问为 `UNAUTHORIZED` 且消息含 `FORBIDDEN`；schema 冲突为 `INVALID_ARGUMENT` 且消息含 `SCHEMA_CONFLICT`。protobuf 同时定义错误码供协议扩展。任何传输失败使当前 reader 作废，调用方从头 open；没有流内重试。算子结果只通过流返回，不注册输出数据集或使用输出 TTL。
+
+服务端 `mode` 默认为 `NORMAL`。内嵌源码要求协调与执行节点均为 `DEBUG`；`source_runtimes` 将运行时引用映射为管理员选择的 `image` 与 `executor` 配置。

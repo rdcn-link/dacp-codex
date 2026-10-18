@@ -8,7 +8,8 @@ import com.fasterxml.jackson.databind.JsonNode
 import org.yaml.snakeyaml.Yaml
 import scala.jdk.CollectionConverters._
 
-case class ResolvedOperator(image: String, artifact: Option[Path], artifactPath: Option[String], command: OperatorCommand)
+case class SourceRuntime(image: String, executor: String)
+case class ResolvedOperator(image: String, artifact: Option[Path], artifactPath: Option[String], command: OperatorCommand, inputs: Map[String,PortContract], outputs: Map[String,PortContract])
 
 /** Immutable operator metadata plus globally shared, content-addressed runtime/code artifacts. */
 object OperatorLibrary {
@@ -42,13 +43,13 @@ object OperatorLibrary {
     try f finally { lock.release(); c.close() }
   }
   private def plan(reference: String, image: String, executor: String, entrypoint: String,
-                   artifact: Option[Path], filename: Option[String]): ResolvedOperator = {
+                   artifact: Option[Path], filename: Option[String], ports: JsonNode): ResolvedOperator = {
     val target = filename.map { name =>
       require(name.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*"), "invalid artifact filename")
       "/operator/" + name
     }
     val command = OperatorExecutors.command(executor, OperatorProgram(reference, entrypoint, artifact), target)
-    ResolvedOperator(image, artifact, target, command)
+    ResolvedOperator(image, artifact, target, command, OperatorPorts.read(ports.path("inputs")), OperatorPorts.read(ports.path("outputs")))
   }
   def resolve(config: Config, reference: String, docker: DockerClient): ResolvedOperator = synchronized {
     val p = reference.split("@",-1)
@@ -58,14 +59,14 @@ object OperatorLibrary {
       val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
       val in = Files.newInputStream(local)
       val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala.toMap finally in.close()
-      require(m.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact")), "unknown operator setting")
+      require(m.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "outputs")), "unknown operator setting")
       require(m("name").toString == p(0) && m("version").toString == p(1), "operator identity mismatch")
       val artifact = m.get("artifact").map(v => local.getParent.resolve(v.toString).toAbsolutePath.normalize)
       artifact.foreach(f => require(Files.isRegularFile(f) && Files.size(f) > 0 && Files.size(f) <= config.operatorMaxBytes, "invalid operator artifact size"))
       try {
         val image = docker.inspectImageCmd(m("image").toString).exec().getId
         return plan(reference, image, m.getOrElse("executor", "container").toString, m.getOrElse("entrypoint", "").toString,
-          artifact, artifact.map(_.getFileName.toString))
+          artifact, artifact.map(_.getFileName.toString), Data.mapper.valueToTree[JsonNode](m.asJava))
       } catch { case _: com.github.dockerjava.api.exception.NotFoundException => () }
     }
     def remote(base: String): ResolvedOperator = {
@@ -102,7 +103,7 @@ object OperatorLibrary {
           val execution = m.path("execution")
           val image = runtime.path("image").asText
           val resolved = plan(reference, image, execution.path("executor").asText, execution.path("entrypoint").asText,
-            artifact, Option(m.get("artifact")).map(_.path("filename").asText))
+            artifact, Option(m.get("artifact")).map(_.path("filename").asText), m)
           try docker.inspectImageCmd(image).exec() catch {
             case _: com.github.dockerjava.api.exception.NotFoundException =>
               val in = Files.newInputStream(archive)

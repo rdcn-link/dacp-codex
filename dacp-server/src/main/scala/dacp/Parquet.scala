@@ -40,9 +40,21 @@ object Parquet {
       Schema.fromJSON(json)
     } finally reader.close()
   }
-  def stream(p: Path, a: BufferAllocator, size: Int)(start: VectorSchemaRoot => Unit, emit: VectorSchemaRoot => Unit, demand: () => Unit): Unit = {
-    val s = schema(p); val root = VectorSchemaRoot.create(s,a)
-    val reader = AvroParquetReader.builder[GenericRecord](hp(p)).withConf(conf()).build()
+  def stream(p: Path, a: BufferAllocator, size: Int, scan: Option[Scan] = None)(start: VectorSchemaRoot => Unit, emit: VectorSchemaRoot => Unit, demand: () => Unit): Unit = {
+    val full = schema(p)
+    scan.foreach(_.bind(full))
+    def references(p: Predicate): Seq[String] = (if(p.column.nonEmpty) Seq(p.column) else Seq.empty) ++ p.children.flatMap(references)
+    val required = scan.flatMap(_.columns).map(c => (c ++ scan.toSeq.flatMap(_.predicate.toSeq.flatMap(references))).distinct)
+    val s = required.map(c => new Schema(c.map(n => full.findField(n)).asJava,full.getCustomMetadata)).getOrElse(full)
+    val configuration = conf()
+    if(required.isDefined) {
+      org.apache.parquet.avro.AvroReadSupport.setRequestedProjection(configuration,avro(s))
+      org.apache.parquet.avro.AvroReadSupport.setAvroReadSchema(configuration,avro(s))
+    }
+    val builder = AvroParquetReader.builder[GenericRecord](hp(p)).withConf(configuration)
+    scan.flatMap(ParquetScanPlan.filter(_,full)).foreach(f => builder.withFilter(org.apache.parquet.filter2.compat.FilterCompat.get(f)))
+    val root = VectorSchemaRoot.create(s,a)
+    val reader = try builder.build() catch { case t: Throwable => root.close(); throw t }
     try { start(root); var done = false
       while (!done) { demand(); val b = Vector.newBuilder[Seq[Any]]; var count = 0
         while (count < size && !done) { val r = reader.read(); if (r == null) done = true else {
@@ -50,6 +62,6 @@ object Parquet {
         }}
         val batch = b.result(); if (batch.nonEmpty) { Records.fill(root,batch); emit(root) }
       }
-    } finally { reader.close(); root.close() }
+    } finally { try reader.close() finally root.close() }
   }
 }

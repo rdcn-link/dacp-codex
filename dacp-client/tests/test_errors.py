@@ -18,7 +18,6 @@ from dacp import cli, dacp_pb2 as pb
     (flight.FlightUnavailableError('grpc+tls://private-host'), 'UNAVAILABLE', 'Cannot reach'),
     (flight.FlightTimedOutError('debug_error_string private'), 'TIMEOUT', 'timed out'),
     (pa.ArrowKeyError('NOT_FOUND: logical resource unavailable'), 'NOT_FOUND', 'Item or dataset not found.'),
-    (flight.FlightServerError('EXPIRED: private output'), 'EXPIRED', 'expired'),
     (flight.FlightServerError('SQL_ERROR: driver private table'), 'REQUEST_FAILED', 'request failed'),
     (flight.FlightError('private unrecognized failure'), 'REQUEST_FAILED', 'request failed'),
 ])
@@ -73,3 +72,9 @@ def test_shell_hides_transport_and_unknown_errors(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert output.startswith('Error: Cannot reach the DACP server.')
     assert 'grpc' not in output and 'private' not in output
+
+
+def test_source_disabled_reports_server_debug_requirement():
+    error = flight.FlightUnauthorizedError('FORBIDDEN: source submission requires DEBUG mode')
+    from dacp.errors import user_message
+    assert user_message(error) == 'Source submission requires server DEBUG mode.'

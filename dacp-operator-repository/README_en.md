@@ -36,7 +36,7 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository ser
 Manual thin-JAR publication:
 
 ```bash
-dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish summary@1 --root .operator-catalog --image example/jvm-arrow:1 --executor jvm --entrypoint example.Summary --artifact summary.jar --description "Summarize records"
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish summary@1 --root .operator-catalog --image example/jvm-arrow:1 --executor jvm --entrypoint example.Summary --artifact summary.jar --ports summary-ports.yaml --description "Summarize records"
 ```
 
 For Python, use `--executor python --entrypoint my_operators.summary --artifact my_operators-1.0-py3-none-any.whl`, or a `.py` script. Dependencies belong in the shared runtime. For a complete container, omit `--executor`, `--entrypoint`, and `--artifact`; its image entrypoint implements the [Arrow IPC contract](../docs/reference_en.md#task-execution-and-operators).
@@ -83,7 +83,7 @@ export DACP_REPOSITORY_TLS_PASSWORD='your-keystore-password'
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820 --tls-keystore repository.p12 --tls-password-env DACP_REPOSITORY_TLS_PASSWORD
 ```
 
-Both TLS options are required together. Nodes need a JVM trust store trusting the certificate. Alternatively terminate HTTPS at a reverse proxy. SHA-256 checks integrity; HTTPS authenticates the source. Dataset/task traffic remains Flight mTLS. Cache/output lifecycle belongs to the execution node; artifact caches currently have no automatic garbage collection.
+Both TLS options are required together. Nodes need a JVM trust store trusting the certificate. Alternatively terminate HTTPS at a reverse proxy. SHA-256 checks integrity; HTTPS authenticates the source. Dataset/task traffic remains Flight mTLS. Cache and stream resource lifecycle belongs to the execution node; artifact caches currently have no automatic garbage collection.
 
 ## Validation
 
@@ -96,3 +96,5 @@ scripts/test-operator-repository.sh
 Unit/HTTP tests use an injected exporter without Docker. Integration requires the built runtime, Python SDK, sbt, Docker, and free example ports; it starts a repository and two mTLS nodes with independent caches and executes the distributed conversion/identity DAG. Logs and artifacts remain in the printed temporary directory; services stop on exit.
 
 For complete source examples, wheel packaging, remote file transfer, administrator publication, and execution instructions, see [Write and upload custom operators](../docs/operator-authoring_en.md).
+
+Definitions must include named `inputs` and `outputs` ports. `publish --ports FILE` is required; use YAML/JSON port declarations or a complete operator definition. `seed` reads these declarations from definitions. See the [authoring guide](../docs/operator-authoring_en.md).

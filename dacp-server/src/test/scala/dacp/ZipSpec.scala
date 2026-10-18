@@ -13,7 +13,7 @@ class ZipSpec extends AnyFunSuite {
     try entries.foreach { case (n,v) => out.putNextEntry(new ZipEntry(n)); out.write(v.getBytes("UTF-8")); out.closeEntry() } finally out.close()
   }
   test("ZIP Flight hierarchy, records and original bytes with unknown folder properties") {
-    val dir = Files.createTempDirectory("zip-test-"); val allocator = new RootAllocator(); val outputs = new OutputRegistry(10000)
+    val dir = Files.createTempDirectory("zip-test-"); val allocator = new RootAllocator()
     try {
       val file = dir.resolve("private.ZIP")
       write(file,Seq("reports/orders.csv" -> "id\n1\n2\n","empty/" -> "","nested.zip" -> "opaque"))
@@ -25,7 +25,7 @@ class ZipSpec extends AnyFunSuite {
       assert(ns.count("/archive/reports/orders.csv").contains(2L))
       assert(ns.describe("/archive/nested.zip").format == "bin")
       assert(ns.count("/archive").isEmpty && ns.list("/archive/empty").isEmpty)
-      val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(config,allocator,outputs)).build().start()
+      val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(config,allocator)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()
       try {
         val info = client.getInfo(FlightDescriptor.path("datasets","public","/archive"))
@@ -38,7 +38,7 @@ class ZipSpec extends AnyFunSuite {
         try { var n = 0; while(rows.next()) n += rows.getRoot.getRowCount; assert(n == 2) } finally rows.close()
         intercept[FlightRuntimeException](client.getInfo(FlightDescriptor.path("datasets","public","/archive/empty")))
       } finally { client.close(); server.close() }
-    } finally { outputs.close(); allocator.close(); Data.deleteTree(dir) }
+    } finally { allocator.close(); Data.deleteTree(dir) }
   }
   test("unsafe ZIP names, file parents and alias collisions are rejected; staged files are cleaned") {
     val dir = Files.createTempDirectory("zip-invalid-")

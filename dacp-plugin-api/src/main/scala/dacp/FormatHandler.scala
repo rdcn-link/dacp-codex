@@ -34,6 +34,14 @@ trait FormatHandler {
     val reader = rows(path,options)
     try Some(reader.iterator.foldLeft(0L)((n,_) => Math.addExact(n,1L))) finally reader.close()
   }
+  /** Optional source optimization; default preserves semantics with bounded batch filtering. */
+  def scan(path: Path, options: FileOptions, request: Scan, allocator: BufferAllocator, batch: Int, sample: Int,
+           listener: org.apache.arrow.flight.FlightProducer.ServerStreamListener, demand: () => Unit): Unit = {
+    require(records,"scan options require records view")
+    ScanStreams.stream(request,allocator,listener) { filtered =>
+      stream(path,options,allocator,batch,sample)(root => filtered.start(root),_ => filtered.putNext(),demand)
+    }
+  }
   def stream(path: Path, options: FileOptions, allocator: BufferAllocator, batch: Int, sample: Int)(
       start: VectorSchemaRoot => Unit, emit: VectorSchemaRoot => Unit, demand: () => Unit): Unit = {
     val root = VectorSchemaRoot.create(schema(path,options,batch,sample),allocator)

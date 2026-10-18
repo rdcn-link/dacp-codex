@@ -7,9 +7,12 @@ import java.nio.file.Path
   */
 case class OperatorProgram(reference: String, entrypoint: String, artifact: Option[Path])
 case class OperatorCommand(entrypoint: Option[Vector[String]] = None,
-                           arguments: Vector[String] = Vector("operator", "/input", "/output", "/input/params.json"),
+                           arguments: Vector[String] = Vector("operator", "/input", "/input/params.json"),
                            environment: Map[String, String] = Map.empty)
 trait OperatorExecutor {
+  /** Source compilers/launchers execute exclusively inside the isolated runtime container. */
+  def sourceCommand(program: OperatorProgram, artifactPath: String): OperatorCommand =
+    throw new IllegalArgumentException(s"executor $id does not support source")
   def id: String
   def command(program: OperatorProgram, artifactPath: Option[String]): OperatorCommand
 }
