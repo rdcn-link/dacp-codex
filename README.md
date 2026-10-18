@@ -301,7 +301,7 @@ sbt 'run ../examples/server.yaml ../examples/convert.yaml'
 更多说明：
 
 - [双节点示例](examples/multi-node/README.md)：任务放置、远端输入及输出消费。
-- [算子库服务](dacp-operator-library/README.md)：发布不可变算子版本，下载、校验和缓存镜像。
+- [Scala 算子库 HTTP 服务](dacp-operator-library/README.md)：发布不可变算子版本，下载、校验和缓存镜像。
 - [任务与算子参考](docs/reference.md#任务执行与算子)：DAG、容器输入输出契约和转换参数。
 
 ## 安全与运行边界

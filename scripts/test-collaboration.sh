@@ -20,14 +20,17 @@ trap cleanup EXIT
 node_a="$project_root/examples/multi-node/node-a.yaml"
 node_b="$project_root/examples/multi-node/node-b.yaml"
 if [[ "${DACP_TEST_REMOTE_LIBRARY:-0}" == "1" ]]; then
-  "$python_bin" -m dacp_operator_library publish format_convert@1.0 --image dacp/format-convert:1.0 --root "$logs/catalog"
-  "$python_bin" -m dacp_operator_library publish identity@1.0 --image dacp/format-convert:1.0 --root "$logs/catalog"
-  "$python_bin" -m dacp_operator_library serve --root "$logs/catalog" --port 8820 > "$logs/library.log" 2>&1 &
+  (cd "$project_root/dacp-operator-library" && sbt -batch stage)
+  library_bin="$project_root/dacp-operator-library/target/universal/stage/bin/dacp-operator-library"
+  "$library_bin" seed --operators "$project_root/operators" --root "$logs/catalog"
+  "$library_bin" serve --root "$logs/catalog" --port 8820 > "$logs/library.log" 2>&1 &
   library_pid=$!
   for node in a b; do
     cp "$project_root/examples/multi-node/node-$node.yaml" "$logs/node-$node.yaml"
+    sed -i '/^local_operator_library:/d' "$logs/node-$node.yaml"
     cat >> "$logs/node-$node.yaml" <<EOF
-operator_library_url: http://127.0.0.1:8820
+remote_operator_library_urls: [http://127.0.0.1:8820]
+local_operator_library: /nonexistent/dacp-operators
 operator_cache: $logs/cache-$node
 EOF
   done

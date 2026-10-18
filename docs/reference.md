@@ -145,6 +145,8 @@ Dataset provider、容器 reader、格式 handler 分别负责构建数据集、
 
 容器入口接收 `operator /input /output /input/params.json`，环境变量 `DACP_OPERATOR` 指定版本化算子名称。自定义算子遵守相同 Arrow 输入契约；输出 `/output/_output.json` 清单（`file/path/format`），每个 `file` 为单列 binary Arrow IPC stream，`path` 为落地文件名。执行器在成功退出后解码这些流、清除 IPC 临时文件，注册最终目录。内置算子在 Parquet footer 完成后将文件包装为该 Arrow 输出契约，内存有界。内置转换器逐个消费 CSV/JSON Item，生成 `part-N.parquet`，不将不同 schema 的 Item 强行合并；不接受 PNG 等其他格式。
 
+算子首先从本地目录及已安装镜像解析，然后检查已完成的下载缓存，最后按配置顺序查询远程 URL。清单返回 HTTP 404 时继续查询下一个库；其他下载或验证错误会终止执行。配置示例：`remote_operator_library_urls: [http://library-a:8820, https://library-b:8820]`；空列表仅使用本地算子。
+
 ### format_convert 参数
 
 | 参数 | 默认 / 支持值 |
@@ -194,8 +196,8 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | `infer_sample` | 服务端记录视图推断采样 batch 数 |
 | `output_ttl_seconds` | 从成功注册开始计算输出寿命 |
 | `sql_sources` | 私有 JDBC 数据源（不自动发布表），url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
-| `operator_library_url` / `operator_cache` / `operator_max_bytes` | 远程算子库 URL / 本地不可变版本缓存 / 最大归档字节数（默认 8 GiB） |
-| `operator_library` / `output_root` | 本地算子库 / 临时输出根目录 |
+| `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | 有序的远程算子库 URL 列表 / 本地不可变版本缓存 / 最大归档字节数（默认 8 GiB） |
+| `local_operator_library` / `output_root` | 本地算子库 / 临时输出根目录 |
 | `task_peers` | 允许分发任务的节点 origin；自身始终允许，无中心发现服务 |
 | `task_input_prefixes` | 执行节点可拉取的输入 URI 前缀；省略时使用 `allowed_uri_prefixes` |
 | `max_concurrent_tasks` | 本地任务及控制请求并发上限（默认 2）；满载立即返回 UNAVAILABLE |

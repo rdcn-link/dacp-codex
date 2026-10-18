@@ -19,5 +19,5 @@ batch_size: 1024
 byte_chunk: 65536
 infer_sample: 4
 output_ttl_seconds: 3600
-operator_library: ../operators
+local_operator_library: ../operators
 output_root: ../examples/output/node-a

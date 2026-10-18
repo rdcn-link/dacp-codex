@@ -145,6 +145,8 @@ Dataset providers construct datasets, container readers browse archives, and for
 
 The container entry point receives `operator /input /output /input/params.json`; the `DACP_OPERATOR` environment variable specifies the versioned operator name. Custom operators follow the same Arrow input contract. They produce an `/output/_output.json` manifest (`file/path/format`), where each `file` is a single-column binary Arrow IPC stream and `path` is the final filename. After successful exit, the executor decodes these streams, removes temporary IPC files, and registers the final directory. Once the Parquet footer is complete, built-in operators wrap files in this Arrow output contract with bounded memory. The built-in converter processes CSV/JSON Items individually into `part-N.parquet`, does not merge Items with different schemas, and rejects PNG and other formats.
 
+Operators resolve from the local directory and installed image first, then completed cached downloads, then remote URLs in configured order. A manifest HTTP 404 tries the next library; other download or validation failures stop execution. Configure `remote_operator_library_urls: [http://library-a:8820, https://library-b:8820]`; an empty list uses only local operators.
+
 ### format_convert parameters
 
 | Parameter | Default / supported values |
@@ -194,8 +196,8 @@ Configuration in `examples/server.yaml`:
 | `infer_sample` | Number of batches sampled for server-side records schema inference |
 | `output_ttl_seconds` | Output lifetime starting at successful registration |
 | `sql_sources` | Private JDBC sources (tables are not automatically published): url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
-| `operator_library_url` / `operator_cache` / `operator_max_bytes` | Remote operator library URL / local immutable version cache / maximum archive size in bytes (default 8 GiB) |
-| `operator_library` / `output_root` | Local operator library / temporary output root |
+| `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | Ordered remote operator library URLs / local immutable version cache / maximum archive size in bytes (default 8 GiB) |
+| `local_operator_library` / `output_root` | Local operator library / temporary output root |
 | `task_peers` | Node origins permitted for task dispatch; the local node is always allowed; no central discovery service |
 | `task_input_prefixes` | Input URI prefixes execution nodes may pull; defaults to `allowed_uri_prefixes` when omitted |
 | `max_concurrent_tasks` | Concurrency limit for local tasks and control requests (default 2); returns UNAVAILABLE immediately when full |

@@ -14,10 +14,10 @@ import org.yaml.snakeyaml.Yaml
 
 case class Config(host: String, port: Int, publicHost: String, datasets: Map[String, DatasetDefinition], prefixes: Seq[String],
                   cert: Path, key: Path, ca: Path, batchSize: Int = 1024, byteChunk: Int = 65536,
-                  inferSample: Int = 4, ttlSeconds: Long = 3600, operatorLibrary: Path = Path.of("../operators"),
+                  inferSample: Int = 4, ttlSeconds: Long = 3600, localOperatorLibrary: Path = Path.of("../operators"),
                   outputRoot: Path = Path.of("../examples/output"), taskPeers: Seq[String] = Seq.empty,
                   taskInputPrefixes: Seq[String] = Seq.empty, maxConcurrentTasks: Int = 2,
-                  operatorLibraryUrl: Option[String] = None, operatorCache: Path = Path.of(".operator-cache"),
+                  remoteOperatorLibraryUrls: Seq[String] = Seq.empty, operatorCache: Path = Path.of(".operator-cache"),
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
                   sqlSources: Map[String, SqlConfig] = Map.empty, countFileRecordsOnStartup: Boolean = false) extends DatasetContext with AutoCloseable {
   def close(): Unit = published.values.foreach(_.close())
@@ -31,6 +31,12 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
   def initializeDatasets(): Unit = { published; () }
   def openDataset(name: String, check: () => Unit = () => ()): DatasetAccess = published(name).open(check)
   def hasDataset(name: String): Boolean = datasets.contains(name)
+  remoteOperatorLibraryUrls.foreach { base =>
+    val uri = URI.create(base)
+    require(Set("http", "https").contains(uri.getScheme) && uri.getHost != null &&
+      uri.getQuery == null && uri.getFragment == null && uri.getUserInfo == null,
+      "invalid remote_operator_library_urls entry")
+  }
   require(operatorMaxBytes > 0, "operator_max_bytes must be positive")
   require(batchSize > 0 && byteChunk > 0 && inferSample > 0 && ttlSeconds > 0 && maxConcurrentTasks > 0)
   def uri(ds: String, item: String = ""): String = new URI("dacp", null, publicHost, port, "/" + ds + item, null, null).toASCIIString
@@ -47,8 +53,8 @@ object Config {
     val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala finally in.close()
     val settings = Set("host", "port", "public_host", "datasets", "sql_sources", "allowed_uri_prefixes",
       "tls_cert", "tls_key", "tls_ca", "batch_size", "byte_chunk", "infer_sample", "output_ttl_seconds",
-      "operator_library", "output_root", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
-      "operator_library_url", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory")
+      "local_operator_library", "output_root", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
+      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory")
     require(m.keySet.subsetOf(settings), "unknown server setting")
     PluginLoader.initialize(m.get("plugin_directory").map(v => Path.of(v.toString)))
     Formats.initialize()
@@ -80,7 +86,7 @@ object Config {
     val config = Config(str("host"), n("port",8815), str("public_host"), definitions,
       m("allowed_uri_prefixes").asInstanceOf[java.util.List[String]].asScala.toSeq,
       Path.of(str("tls_cert")), Path.of(str("tls_key")), Path.of(str("tls_ca")), n("batch_size",1024), n("byte_chunk",65536), n("infer_sample",4),
-      n("output_ttl_seconds",3600).toLong, Path.of(m.get("operator_library").map(_.toString).getOrElse("../operators")), Path.of(str("output_root")), strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), m.get("operator_library_url").map(_.toString),
+      n("output_ttl_seconds",3600).toLong, Path.of(m.get("local_operator_library").map(_.toString).getOrElse("../operators")), Path.of(str("output_root")), strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), strings("remote_operator_library_urls"),
       Path.of(m.get("operator_cache").map(_.toString).getOrElse(".operator-cache")),
       m.get("operator_max_bytes").map(_.toString.toLong).getOrElse(8L * 1024 * 1024 * 1024), sql,
       m.get("count_file_records_on_startup").exists(_.toString.toBoolean))

@@ -301,7 +301,7 @@ On success, the logs print the `s1` and `s2` URIs. With the certificate environm
 Further reading:
 
 - [Two-node example](examples/multi-node/README.md): task placement, remote inputs, and consuming outputs.
-- [Operator library service](dacp-operator-library/README.md): publishing immutable operator versions and downloading, verifying, and caching images.
+- [Scala operator library HTTP service](dacp-operator-library/README_en.md): publishing immutable operator versions and downloading, verifying, and caching images.
 - [Task and operator reference](docs/reference_en.md#task-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
 
 ## Security and operating limits
