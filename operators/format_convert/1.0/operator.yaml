@@ -1,3 +1,4 @@
 name: format_convert
 version: "1.0"
 image: dacp/format-convert:1.0
+description: Convert CSV and NDJSON data to Parquet with schema validation and configurable compression.

@@ -1,4 +1,4 @@
-package dacp.library
+package dacp.repository
 
 import java.nio.file.{Files, Path}
 import java.net.URI
@@ -32,6 +32,7 @@ class RepositorySpec extends AnyFunSuite {
     assert(Repository.seed(root, Path.of("../operators"), counting) == expected)
     assert(exports == 2)
     assert(Repository.catalog(root).size() == 2)
+    assert(Repository.catalog(root).get(0).path("description").asText.contains("Parquet"))
     assert(Repository.seed(root, Path.of("../operators"), counting) == expected)
     assert(exports == 2)
     Files.writeString(root.resolve("identity/1.0/image.tar"), "corrupt")
@@ -73,9 +74,50 @@ class RepositorySpec extends AnyFunSuite {
     try assert(!files.iterator.asScala.exists(_.getFileName.toString.startsWith(".publish-"))) finally files.close()
     Repository.publish(root,"identity@1.0","tag",exporter)
   }}
+  test("public web search, operator details and downloads work without authentication") { withRoot { root =>
+    Repository.publish(root, "convert@1.0", "tag", exporter, "Convert CSV to Parquet")
+    Repository.publish(root, "convert@2.0", "tag", exporter, "Convert tables")
+    Repository.publish(root, "identity@1.0", "tag", exporter, "Copy <script>alert(1)</script> & preserve bytes")
+    val server = new RepositoryServer(root, port=0)
+    server.start()
+    val client = HttpClient.newHttpClient()
+    def request(path: String, method: String = "GET") = client.send(
+      HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:${server.boundPort}$path"))
+        .method(method, HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString())
+    try {
+      val home = request("/")
+      assert(home.statusCode() == 200 && home.headers().firstValue("Content-Type").get().startsWith("text/html"))
+      assert(home.body().contains("/operators/convert/1.0") && home.body().contains("/operators/identity/1.0"))
+      assert(home.body().contains("&lt;script&gt;") && !home.body().contains("<script>"))
+      val filtered = request("/?q=PARQUET")
+      assert(filtered.statusCode() == 200 && filtered.body().contains("/operators/convert/1.0"))
+      assert(!filtered.body().contains("/operators/identity/1.0") && !filtered.body().contains("/operators/convert/2.0"))
+      assert(request("/?q=nonexistent").body().contains("No matching operators"))
+      assert(request("/?q=%3Cscript%3E").body().contains("&lt;script&gt;"))
+      assert(!request("/?q=%22%3E%3Cscript%3E").body().contains("<script>"))
+      assert(request("/?q=" + "a" * 201).statusCode() == 400)
+      assert(request("/?q=a&q=b").statusCode() == 400)
+      val detail = request("/operators/convert/1.0")
+      assert(detail.statusCode() == 200 && detail.body().contains("operator: convert@1.0"))
+      assert(detail.body().contains("/operators/convert/2.0"))
+      assert(detail.body().contains("/v1/operators/convert/1.0/image.tar"))
+      assert(detail.body().contains(Repository.checksum(root.resolve("convert/1.0/image.tar"))))
+      assert(request("/operators/missing/1.0").statusCode() == 404)
+      assert(request("/operators/%2e%2e/1.0").statusCode() == 404)
+      val css = request("/assets/repository.css")
+      assert(css.statusCode() == 200 && css.headers().firstValue("Content-Type").get().startsWith("text/css"))
+      val archive = request("/v1/operators/convert/1.0/image.tar")
+      assert(archive.body() == "image archive")
+      assert(archive.headers().firstValue("Content-Disposition").get() == "attachment; filename=\"convert-1.0.tar\"")
+      val head = request("/v1/operators/convert/1.0/image.tar", "HEAD")
+      assert(head.statusCode() == 200 && head.body().isEmpty && head.headers().firstValue("Content-Length").get() == "13")
+      assert(request("/", "HEAD").body().isEmpty)
+      assert(home.headers().firstValue("Content-Security-Policy").get().contains("default-src 'none'"))
+    } finally server.close()
+  }}
   test("HTTP contract serves manifests and archives and rejects traversal and writes") { withRoot { root =>
     val manifest = Repository.publish(root,"identity@1.0","tag",exporter)
-    val server = new LibraryServer(root,port=0)
+    val server = new RepositoryServer(root,port=0)
     server.start()
     val client = HttpClient.newHttpClient()
     def request(path: String, method: String = "GET") = client.send(

@@ -301,8 +301,10 @@ sbt 'run ../examples/server.yaml ../examples/convert.yaml'
 更多说明：
 
 - [双节点示例](examples/multi-node/README.md)：任务放置、远端输入及输出消费。
-- [Scala 算子库 HTTP 服务](dacp-operator-library/README.md)：发布不可变算子版本，下载、校验和缓存镜像。
+- [Scala 算子仓库与网站](dacp-operator-repository/README.md)：公共搜索、版本详情、下载与不可变算子发布。
 - [任务与算子参考](docs/reference.md#任务执行与算子)：DAG、容器输入输出契约和转换参数。
+
+使用 `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820` 启动包含初始算子的仓库，然后打开 `http://localhost:8820/`，无需登录即可搜索、查看和下载算子。HTTPS 部署参见仓库指南。
 
 ## 安全与运行边界
 

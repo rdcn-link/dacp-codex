@@ -301,8 +301,10 @@ On success, the logs print the `s1` and `s2` URIs. With the certificate environm
 Further reading:
 
 - [Two-node example](examples/multi-node/README.md): task placement, remote inputs, and consuming outputs.
-- [Scala operator library HTTP service](dacp-operator-library/README_en.md): publishing immutable operator versions and downloading, verifying, and caching images.
+- [Scala operator repository and website](dacp-operator-repository/README_en.md): public search, version details, downloads, and immutable operator publication.
 - [Task and operator reference](docs/reference_en.md#task-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
+
+Start a repository with the starter operators using `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820`, then open `http://localhost:8820/` to search, view, and download operators without signing in. See the repository guide for HTTPS deployment.
 
 ## Security and operating limits
 

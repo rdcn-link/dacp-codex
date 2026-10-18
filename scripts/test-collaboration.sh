@@ -9,9 +9,9 @@ bash scripts/certs.sh
 logs=$(mktemp -d "${TMPDIR:-/tmp}/dacp-collaboration-XXXXXX")
 a_pid=""
 b_pid=""
-library_pid=""
+repository_pid=""
 cleanup() {
-  if [[ -n "$library_pid" ]]; then kill "$library_pid" 2>/dev/null || true; wait "$library_pid" 2>/dev/null || true; fi
+  if [[ -n "$repository_pid" ]]; then kill "$repository_pid" 2>/dev/null || true; wait "$repository_pid" 2>/dev/null || true; fi
   if [[ -n "$a_pid" ]]; then kill "$a_pid" 2>/dev/null || true; wait "$a_pid" 2>/dev/null || true; fi
   if [[ -n "$b_pid" ]]; then kill "$b_pid" 2>/dev/null || true; wait "$b_pid" 2>/dev/null || true; fi
   echo "Node logs: $logs"
@@ -19,12 +19,12 @@ cleanup() {
 trap cleanup EXIT
 node_a="$project_root/examples/multi-node/node-a.yaml"
 node_b="$project_root/examples/multi-node/node-b.yaml"
-if [[ "${DACP_TEST_REMOTE_LIBRARY:-0}" == "1" ]]; then
-  (cd "$project_root/dacp-operator-library" && sbt -batch stage)
-  library_bin="$project_root/dacp-operator-library/target/universal/stage/bin/dacp-operator-library"
-  "$library_bin" seed --operators "$project_root/operators" --root "$logs/catalog"
-  "$library_bin" serve --root "$logs/catalog" --port 8820 > "$logs/library.log" 2>&1 &
-  library_pid=$!
+if [[ "${DACP_TEST_REMOTE_REPOSITORY:-0}" == "1" ]]; then
+  (cd "$project_root/dacp-operator-repository" && sbt -batch stage)
+  repository_bin="$project_root/dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository"
+  "$repository_bin" seed --operators "$project_root/operators" --root "$logs/catalog"
+  "$repository_bin" serve --root "$logs/catalog" --port 8820 > "$logs/repository.log" 2>&1 &
+  repository_pid=$!
   for node in a b; do
     cp "$project_root/examples/multi-node/node-$node.yaml" "$logs/node-$node.yaml"
     sed -i '/^local_operator_library:/d' "$logs/node-$node.yaml"
@@ -36,7 +36,7 @@ EOF
   done
   node_a="$logs/node-a.yaml"
   node_b="$logs/node-b.yaml"
-  "$python_bin" - <<'WAIT_LIBRARY'
+  "$python_bin" - <<'WAIT_REPOSITORY'
 import time, urllib.request
 for _ in range(100):
     try:
@@ -45,8 +45,8 @@ for _ in range(100):
     except OSError:
         time.sleep(.1)
 else:
-    raise RuntimeError("operator library did not start")
-WAIT_LIBRARY
+    raise RuntimeError("operator repository did not start")
+WAIT_REPOSITORY
 fi
 cd dacp-server
 target/universal/stage/bin/dacp-server "$node_a" > "$logs/node-a.log" 2>&1 &
@@ -76,7 +76,7 @@ kill -0 "$a_pid"
 kill -0 "$b_pid"
 "$python_bin" examples/multi-node/check.py
 
-if [[ "${DACP_TEST_REMOTE_LIBRARY:-0}" == "1" ]]; then
+if [[ "${DACP_TEST_REMOTE_REPOSITORY:-0}" == "1" ]]; then
   test "$(find "$logs/cache-a" "$logs/cache-b" -name manifest.json | wc -l)" -ge 2
   echo "Remote operator download, verification, cache and local container execution passed"
 fi

@@ -1,3 +1,4 @@
 name: identity
 version: "1.0"
 image: dacp/format-convert:1.0
+description: Copy input data into a new dataset while preserving its bytes. Useful for transfer checks and job pipelines.

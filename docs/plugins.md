@@ -11,7 +11,7 @@ The core owns the common contracts, plugin discovery and lifecycle, Flight trans
 | Dataset provider | Implement `DatasetProvider`; register through Java `ServiceLoader` | [Dataset providers](dataset-providers.md) |
 | File format handler | Implement `FormatHandler` or `StructuredFileHandler`; register through Java `ServiceLoader` | [Format handlers](format-handlers.md) |
 | Archive reader | Implement `ContainerReader`; register through Java `ServiceLoader` | [Container readers](format-handlers.md#container-readers) |
-| Processing operator | Supply a container image and its input/output contract; publish in the operator library | [Scala operator library](../dacp-operator-library/README_en.md) |
+| Processing operator | Supply a container image and its input/output contract; publish in the operator library | [Scala operator repository](../dacp-operator-repository/README_en.md) |
 
 Dataset providers and format handlers currently run inside the JVM server. They must be installed by the server administrator in `plugin_directory` with their private dependency JARs, and loaded on restart. They are not sandboxed or uploaded by clients. Operators execute separately in containers.
 

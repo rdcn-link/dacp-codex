@@ -1,4 +1,4 @@
-package dacp.library
+package dacp.repository
 
 import java.nio.file.{Files, Path, StandardCopyOption, StandardOpenOption, LinkOption}
 import java.nio.channels.FileChannel
@@ -57,17 +57,18 @@ object Repository {
       options.setAllowDuplicateKeys(false)
       val in = Files.newInputStream(file)
       val definition = try new org.yaml.snakeyaml.Yaml(options).load[java.util.Map[String, Object]](in) finally in.close()
-      require(definition != null && definition.keySet.asScala.toSet == Set("name", "version", "image"), "operator definition requires name, version and image")
+      require(definition != null && Set("name", "version", "image").subsetOf(definition.keySet.asScala.toSet) && definition.keySet.asScala.toSet.subsetOf(Set("name", "version", "image", "description")), "operator definition requires name, version and image")
       val reference = s"${definition.get("name")}@${definition.get("version")}"
       val (name, version) = parts(reference)
       require(name == file.getParent.getParent.getFileName.toString && version == file.getParent.getFileName.toString,
         "operator definition must match its directory")
       val image = definition.get("image").toString
       require(image.nonEmpty, "operator image required")
-      (reference, name, version, image)
+      val description = Option(definition.get("description")).map(_.toString).getOrElse("")
+      (reference, name, version, image, description)
     }
     require(definitions.nonEmpty, "no operator definitions found")
-    definitions.map { case (reference, name, version, image) =>
+    definitions.map { case (reference, name, version, image, description) =>
       val existing = root.resolve(name).resolve(version)
       if (Files.exists(existing)) {
         val manifest = mapper.readTree(existing.resolve("manifest.json").toFile)
@@ -76,7 +77,7 @@ object Repository {
           manifest.path("version").asText == version && manifest.path("image").asText.matches("sha256:[a-f0-9]{64}") &&
           Files.size(archive) > 0 && Files.size(archive) == manifest.path("archive").path("size").asLong &&
           checksum(archive) == manifest.path("archive").path("sha256").asText, "existing operator archive is invalid")
-      } else publish(root, reference, image, exporter)
+      } else publish(root, reference, image, exporter, description)
       reference
     }
   }
@@ -89,7 +90,7 @@ object Repository {
     def save(imageId: String, destination: Path): Unit =
       require(Process(Seq("docker", "save", "-o", destination.toString, imageId)).! == 0, "docker save failed")
   }
-  def publish(root: Path, reference: String, image: String, exporter: ImageExporter = Docker): String = {
+  def publish(root: Path, reference: String, image: String, exporter: ImageExporter = Docker, description: String = ""): String = {
     val (name, version) = parts(reference)
     val parent = root.toAbsolutePath.normalize.resolve(name)
     Files.createDirectories(parent)
@@ -107,6 +108,7 @@ object Repository {
         require(Files.size(archive) > 0, "empty Docker archive")
         val manifest = mapper.createObjectNode()
         manifest.put("api_version", 1).put("name", name).put("version", version).put("image", id)
+        manifest.put("description", description)
         manifest.putObject("archive").put("size", Files.size(archive)).put("sha256", checksum(archive))
         val json = mapper.writeValueAsString(manifest)
         Files.writeString(stage.resolve("manifest.json"), json)
