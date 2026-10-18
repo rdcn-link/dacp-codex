@@ -1,0 +1,309 @@
+# User guide
+
+[中文](README.md) · [Documentation](../README_en.md) · [Developer guide](../developers/README_en.md)
+
+For people browsing data, using SDKs, running operators, and configuring DACP nodes with existing plugins. Commands below run from the project root unless stated otherwise. To implement a new backend, format, or operator, use the developer guide.
+
+## Data model
+
+DACP describes data access through Datasets, Items, and Streams:
+
+| Concept | Meaning | Example |
+|---|---|---|
+| Dataset | A named logical namespace published by a node, combining data from different sources | `dacp://localhost:8815/data1` |
+| Item | A resource with an absolute logical path within a Dataset | `/reports/orders` |
+| `folder` Item | A grouping of child Items; archive and compression folders also offer original file bytes | `/reports`, `/archive` |
+| `data` Item | Readable data with a format and supported views | CSV file, SQL table, image |
+| Stream | The reading interface obtained by opening an Item | Arrow record batches or a byte stream |
+
+A Dataset is a logical namespace and may contain both files and SQL tables. Administrators choose public paths, keeping server file paths and database table names private. Every Item path starts with `/`; the root folder `/` is implicit and does not appear in listings.
+
+**kind** describes whether an Item can contain children, **format** identifies its representation, and **views** describes how to read it. Clients should check views rather than infer record-reading capabilities from filenames.
+
+## Quick start
+
+The data service requires JDK 17, sbt 1.10.x, and Python 3.10+. Browsing data does not require Docker; configure Docker when you want to run container tasks.
+
+From the project directory, install the Python SDK, generate local example certificates, and start the server:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e './dacp-client[test]'
+bash scripts/certs.sh
+cd dacp-server
+sbt run
+```
+
+The default server listens on `localhost:8815`; its configuration is [examples/server.yaml](../../examples/server.yaml). Startup logs list the published Dataset names and URIs. There is currently no dataset discovery endpoint, so connections require a known URI.
+
+In another terminal, connect from the project root:
+
+```bash
+export DACP_CA="$PWD/examples/certs/ca.crt"
+export DACP_CERT="$PWD/examples/certs/client.crt"
+export DACP_KEY="$PWD/examples/certs/client.key"
+.venv/bin/dacp-shell dacp://localhost:8815/data1
+```
+
+Inside the shell:
+
+```text
+ls /
+ls /reports
+ls /archive
+show /archive/reports/orders.csv records
+ls /images
+show /images/images/pixel.png hex
+ls /bundle_gzip
+show /bundle_gzip/reports/orders.csv records
+ls /orders.csv.gz
+show /orders.csv.gz/orders.csv records
+show /orders.csv.gz hex
+show /reports/orders records
+show /events text
+show /image hex
+count /reports/orders
+quit
+```
+
+The example Dataset contains `/events`, `/reports/orders`, `/image`, and the empty folder `/empty`, plus ZIP folders `/archive` and `/images`, TAR folder `/bundle`, compressed TAR folder `/bundle_gzip`, and GZIP folder `/orders.csv.gz`. `/archive` contains CSV, NDJSON, and an empty folder; `/images` contains a PNG and demonstrates the uppercase `.ZIP` extension. Run `.venv/bin/python examples/client.py` to check SDK reads as well. Generated certificates are for local examples; replace the URI and certificates for remote connections.
+
+## Browsing and reading
+
+### Python SDK
+
+Using the certificate environment variables from the quick start:
+
+```python
+from dacp import Source
+
+with Source.open("dacp://localhost:8815/data1") as ds:
+    for item in ds.list("/"):
+        print(item.path, item.kind, item.format, item.views)
+
+    with ds.open("/reports/orders") as stream:
+        records = stream.as_records()
+        try:
+            for batch in records:
+                print(batch.to_pydict())
+        finally:
+            records.close()
+
+    with ds.open("/image") as stream:
+        with stream.as_bytes() as reader:
+            print(reader.read(8))
+
+    print(ds.count("/reports/orders"))
+```
+
+| Operation | Behavior |
+|---|---|
+| `ds.list()` | Lists all Items recursively |
+| `ds.list("/")` | Lists immediate children of the root folder |
+| `ds.list("/reports")` | Lists immediate children of a particular folder |
+| `ds.open(path)` | Opens a readable Item and returns a Stream |
+| `ds.count(path)` | Explicitly requests an exact record count; non-record data and folders return unknown |
+
+Paths must start with `/`; `.`, `..`, repeated separators, and trailing `/` are rejected except for the root path. The `records` view returns Arrow RecordBatches, while `bytes` provides incremental byte reads. File bytes are the original content; SQL bytes are Arrow IPC.
+
+Use Streams before their owning Dataset closes. Close record iterators when stopping early and use context managers for byte readers. After failure, reopen and read from the beginning; reads cannot resume. Python also accepts a complete Item URI to open a Stream directly.
+
+### Records filtering, projection, and limits
+
+Both SDKs can request server-side records queries:
+
+```python
+from dacp import Source, col
+
+with Source.open("dacp://localhost:8815/data1") as ds:
+    with ds.open("/reports/orders", predicate=col("id") > 1,
+                 columns=["amount"], limit=100) as stream:
+        records = stream.as_records()
+        try:
+            for batch in records:
+                print(batch.to_pydict())
+        finally:
+            records.close()
+```
+
+Execution follows filter → projection → limit. Predicates use public column names and typed literals, with comparisons, boolean logic, membership, and null checks. Filters may reference columns omitted from the output. SQL and Parquet push supported operations into their readers; other handlers use bounded server-side filtering. Reaching the limit stops reading, and bytes views reject these options. Item metadata and exact counts remain unchanged.
+
+See [records query semantics and plugin contracts](../../docs/records-scans.md) for Python/Scala examples, null and type rules, validation, and source-specific optimizations.
+
+### dacp-shell
+
+`ls` displays a bordered table with #, Path, Format, Bytes, Records, and Modified (UTC). The first column numbers items starting from 1. Unknown values appear as `-`, timestamps use `2026-10-16 06:22:02`, and terminal folder paths are highlighted in bold cyan.
+
+`show` accepts a path or a number from the latest listing. It prefers records when available and otherwise shows hexadecimal bytes. Records appear in a table with column names; `text` displays text, and `hex` displays offsets, hexadecimal bytes, and ASCII. Previews default to at most 20 rows or 4096 bytes, adjustable with `--rows` and `--bytes`.
+
+Use `use DATASET` to switch datasets on the same server, `connect URI` to connect elsewhere, and `help` for commands. Certificate paths can also be passed through `--ca`, `--cert`, and `--key`.
+
+Enter a single-line SQL query directly at the shell prompt:
+
+```sql
+SELECT amount FROM "/reports/orders" WHERE id > 1 LIMIT 10
+SELECT amount FROM 2 WHERE id > 1 LIMIT 10
+SELECT * FROM "/reports/orders" WHERE id IN (1, 2) AND amount IS NOT NULL
+```
+
+The shell uses SQLGlot to translate a supported SQL subset into the same remote scan request as the SDKs. `FROM` accepts one double-quoted absolute Item path within the current Dataset, or an Item number from the latest `ls` result (for example, `FROM 2`). Numbers follow the latest listing order, including `ls PATH`; out-of-range numbers produce an error. Use `SELECT *` or a list of public columns, optional `WHERE`, and optional `LIMIT`; SQL keywords are case insensitive. Results appear in a bordered table. The `--rows` preview cap still applies: the server receives the smaller of SQL `LIMIT` and the preview cap, or the preview cap when `LIMIT` is omitted. Use `help select` for syntax. Joins, sorting, aggregation, aliases, and subqueries are rejected. See [SQL shell details](../../docs/records-scans.md#sql-in-dacp-shell).
+
+
+### Help and command examples
+
+Run `help` for the command list and a short example session. Run `help show`, `help select`, `help run`, or `help submit` for command-specific syntax and examples. Paths shown in help are examples; use paths advertised by your Dataset. Item numbers refer to the latest `ls` result.
+
+### Scala SDK
+
+The standalone [Scala 2.13 SDK](../../dacp-client-scala/README.md) provides the same data access model without depending on the server project. Publish it to the local Ivy repository first:
+
+```bash
+cd dacp-client-scala
+sbt test publishLocal
+```
+
+Add this dependency to your Scala application's `build.sbt`:
+
+```scala
+libraryDependencies += "io.github.rdcn-link" %% "dacp-client-scala" % "0.1.0"
+```
+
+Use `Source.open`, `Dataset.list`, `Dataset.open`, `asRecords()`, and `asBytes()`, managing resources with `scala.util.Using`. The SDK guide covers complete examples, TLS, timeouts, and Arrow JVM options. The artifact is not yet published to Maven Central.
+
+## Constructing and publishing Datasets
+
+Datasets are constructed by extensible providers. Three providers are built in, exposing the same `list`, `open`, and `count` APIs to clients:
+
+| provider | Construction | Private source |
+|---|---|---|
+| `directory` | Discovers files, subdirectories, and archives beneath a root | `source.root` |
+| `sqldb` | Publishes tables from one SQL connection under public aliases | `source.connection` |
+| `custom` | Defines each Item explicitly, combining files, SQL tables, and logical folders | Item `file`, `sql`, and `table` bindings |
+
+```yaml
+datasets:
+  documents:
+    provider: directory
+    source:
+      root: /home/test/dataset1
+    reader_overrides:
+      /events.json: {format: ndjson}
+
+  sales:
+    provider: sqldb
+    source:
+      connection: warehouse
+    tables:
+      /customers: {table: CUSTOMERS}
+
+  research:
+    provider: custom
+    items:
+      /measurements: {file: /private/results.csv}
+      /customers: {sql: warehouse, table: CUSTOMERS}
+      /empty: {kind: folder}
+
+sql_sources:
+  warehouse:
+    url: jdbc:h2:../examples/sql/sales
+    user: sa
+    password: ""
+    schema: PUBLIC
+    tables: [CUSTOMERS]
+```
+
+This is a configuration fragment; merge it with listener, TLS, and URI allowlist settings, and replace example paths and database connections. Relative paths resolve against the server process working directory.
+
+Directory Datasets expose paths relative to their root, such as `/reports/orders.csv`. Empty directories are folders, and supported archives can be browsed further. Subsequent listings reflect additions, deletions, and changes. The root stays private, all symbolic links are ignored, and access remains confined to the root. Optional directory `reader_overrides` override reader format, sheet, header row, and schema; they do not rename paths or add other sources.
+
+SQL Dataset `tables` bind public paths to private tables in the selected connection; tables are not automatically exposed. `custom` retains explicit mappings and mixed-source flexibility. Every Dataset must explicitly specify `provider`.
+
+The default example provides `data1` and `csv_data` (custom), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](../../examples/sql/README.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](../../docs/dataset-providers.md).
+
+### Formats and views
+
+| Source | format | kind | views |
+|---|---|---|---|
+| CSV | `csv` | `data` | `records`, `bytes` |
+| NDJSON (`.jsonl`, `.ndjson`) | `ndjson` | `data` | `records`, `bytes` |
+| Ordinary JSON | `json` | `data` | `bytes` |
+| Excel (`.xls`, `.xlsx`) | `excel` | `data` | `records`, `bytes` |
+| Parquet with DACP Arrow schema metadata | `parquet` | `data` | `records`, `bytes` |
+| SQL table | `sql` | `data` | `records`, `bytes` |
+| ZIP | `zip` | `folder` | `bytes` |
+| TAR | `tar` | `folder` | `bytes` |
+| GZIP (`.gz`) | `gzip` | `folder` | `bytes` |
+| Compressed TAR (`.tar.gz`, `.tgz`) | `tar-gzip` | `folder` | `bytes` |
+| Other files | `bin` | `data` | `bytes` |
+
+Detection supports explicit `format` settings, signatures, and case-insensitive extensions, recognizing compound suffixes such as `.tar.gz` first and falling back to binary for unknown formats. Set `format: ndjson` for `.json` files containing one object per line to enable records. Excel supports sheet selection, header rows, and explicit schemas.
+
+Browse ZIP, TAR, and compressed TAR entries through paths such as `/archive/reports/orders.csv`; opening the folder's bytes view reads the original archive. Plain GZIP exposes one decompressed child, such as `/orders.csv.gz/orders.csv`. Its name comes from the public alias, never a private filename; aliases without a `.gz` suffix use the child name `content`.
+
+ZIP listings read the directory index. TAR requires a sequential scan, and `.tar.gz` / `.tgz` also requires decompression, so initial listings and reads can be slow for large archives. Reading stages only the requested entry into a temporary file. Nested containers are not expanded; `.bz2`, `.xz`, and `.zst` currently remain ordinary binary data.
+
+See the [technical reference](../../docs/reference_en.md) for format details, Excel behavior, archive limits, and schema rules, and [format extensions](../../docs/format-handlers.md) for third-party handler development.
+
+### Metadata and counting
+
+Items may carry modification time, byte size, and an exact record count. Unknown values differ from `0`. All three properties remain unknown for every folder; computing them never traverses children.
+
+The example server enables `count_file_records_on_startup: true`: custom file mappings and initially discovered directory record files such as CSV, NDJSON, and Excel are counted once when published, so `/events` and `/reports/orders` show `2` in Records. This option defaults to off; enabling it increases startup time, and counting failures fail startup. SQL, archive children, and all folders are excluded from startup counting. Newly discovered directory files do not trigger counting during browsing; query explicitly or restart to populate them.
+
+Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Saved file counts become unknown when size or modification time changes. Restart to repopulate them, or use `count` to request the latest value explicitly; explicit requests do not update saved listing counts. Parquet can still obtain counts from its footer. Metadata is not an atomic snapshot with subsequent reads.
+
+## Collaboration and tasks
+
+DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and places each task on the node hosting its first input unless an execution node is specified. Nodes collaborate through mTLS Flight DoExchange. Each subtask uses a separate Docker container; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
+
+Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, build the conversion operator and start the server. Stop the quick-start server first if it is still running:
+
+```bash
+scripts/build-operator-image.sh
+cd dacp-server
+sbt 'run ../examples/server.yaml'
+```
+
+In a connected shell started from the project root, run `submit examples/convert.yaml`, or `run format_convert@1.1 --input source=/reports/orders`. The shell waits and prints results incrementally; Ctrl-C cancels execution.
+
+Further reading:
+
+- [Two-node example](../../examples/multi-node/README.md): task placement, remote inputs, and consuming outputs.
+- [Scala operator repository and website](../../dacp-operator-repository/README_en.md): public search, version details, downloads, and immutable operator publication.
+- [Write and upload custom operators](../../docs/operator-authoring_en.md): complete Scala/Python source, packaging, publication, remote transfer, and execution.
+- [Task and operator reference](../../docs/reference_en.md#task-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
+
+Start a repository with the starter operators using `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820`, then open `http://localhost:8820/` to search, view, and download operators without signing in. See the repository guide for HTTPS deployment.
+
+Operators can share a dependency environment and a code bundle. The starter operators use thin JARs with `dacp/operator-jvm:1.1`; Python source and wheels are also supported in shared runtime containers. Runtime and code artifacts are stored and cached by SHA-256, so each distinct artifact is downloaded once per node. See [operator packaging](../../docs/operator-packaging.md) and the [Python example](../../examples/operators/python/README_en.md).
+
+## Security and operating limits
+
+All connections require mTLS and URI prefix authorization. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
+
+Allowlists currently apply at node level, without permissions grouped by certificate subject. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and tasks are not restored after restart. See the [technical reference](../../docs/reference_en.md#protocol-and-configuration) for full configuration and protocol details.
+
+In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`; `--source` and `--code` are unsupported. Servers default to NORMAL and reject source tasks at both coordinator and execution nodes. See [source operators](../../docs/operator-source_en.md) for configuration, Python/Scala examples, and the plugin contract.
+
+Native executables can use stdin/stdout through the `command` executor without implementing the DACP protocol in the program. It supports one bytes input and output, with execution isolated inside a container. See [configuration and publication](../../docs/native-commands_en.md) and the [C example](../../examples/operators/native/README_en.md).
+
+## Startup DEBUG logs
+
+At startup, DEBUG logs from `dacp.Main` print the count of `remote_operator_library_urls` and each URL in configured order. An empty list reports count 0. Ordinary INFO logging does not print these URLs. After staging the server, run from the project root:
+
+```bash
+(cd dacp-server && target/universal/stage/bin/dacp-server \
+  -J-Dorg.slf4j.simpleLogger.log.dacp.Main=debug ../examples/server.yaml)
+```
+
+This logging level is independent of the `mode: DEBUG` source-submission setting. Enabling DEBUG logs does not enable source execution.
+
+## Inspect local runtimes
+
+The shell currently has no `runtimes` command, and the server has no runtime discovery endpoint. On the server host, list installed Docker images with:
+
+```bash
+docker image ls
+```
+
+IDs accepted by `run --runtime` come from `source_runtimes` in the server configuration, such as `python@1.0` and `scala@1.0` in `examples/source-debug.yaml`. Installed Docker images are not the same list as configured source runtimes. Ordinary repository operators select their runtime through their definitions or manifests.

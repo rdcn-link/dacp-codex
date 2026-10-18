@@ -64,12 +64,38 @@ class Browser(cmd.Cmd):
     def emptyline(self):
         pass
 
+    def do_help(self, arg):
+        """help [COMMAND]: show commands and usage examples.
+
+        Examples:
+          help
+          help show
+          help run
+        """
+        super().do_help(arg)
+        if not arg.strip():
+            self.write("Examples (replace paths with items in your Dataset):")
+            self.write("  ls /\n  show /reports/orders records")
+            self.write('  SELECT id, amount FROM "/reports/orders" WHERE amount > 10 LIMIT 5')
+            self.write("  run identity@1.1 --input source=/reports/orders")
+            self.write("  submit examples/convert.yaml")
+            self.write("Use help COMMAND for more examples, e.g. help run or help submit.")
+
     def do_connect(self, arg):
-        """connect URI: switch to another server/dataset; preserve connection on failure."""
+        """connect URI: switch to another server/dataset; preserve connection on failure.
+
+        Example:
+          connect dacp://localhost:8815/data1
+        """
         self.connect(arg.strip())
 
     def do_use(self, arg):
-        """use DATASET: select a dataset on the current server."""
+        """use DATASET: select a dataset on the current server.
+
+        Example:
+          use documents
+        Dataset names are supplied by the server administrator; there is no discovery command.
+        """
         name = arg.strip()
         if not name or '/' in name or name in ('.', '..'):
             raise ValueError('expected one dataset name')
@@ -99,7 +125,14 @@ class Browser(cmd.Cmd):
         self.write(border)
 
     def do_ls(self, arg):
-        """ls [PATH]: list all Items recursively, or immediate children of a folder."""
+        """ls [PATH]: list all Items recursively, or immediate children of a folder.
+
+        Examples:
+          ls
+          ls /
+          ls /reports
+        Item numbers in show, count, SELECT and run refer to the latest listing.
+        """
         args = shlex.split(arg)
         if len(args) > 1:
             raise ValueError("usage: ls [absolute-logical-path]")
@@ -118,7 +151,13 @@ class Browser(cmd.Cmd):
         self.write(f'{len(self.items)} items')
 
     def do_count(self, arg):
-        """count ITEM: explicitly compute exact records by ls number or quoted path; may be slow."""
+        """count ITEM: explicitly compute exact records by ls number or quoted path; may be slow.
+
+        Examples:
+          count /reports/orders
+          count 1
+        A number refers to the latest ls result. Unsupported counts display '-'.
+        """
         args = shlex.split(arg)
         if len(args) != 1:
             raise ValueError('usage: count ITEM')
@@ -140,6 +179,13 @@ class Browser(cmd.Cmd):
 
         auto uses the advertised records view when available, otherwise hex.
         records prints at most --rows rows; text/hex reads at most --bytes bytes.
+
+        Examples:
+          show /reports/orders records
+          show 1
+          show "/file name" text
+          show /image hex
+        A number refers to the latest ls result. Ordinary folders use ls instead.
         """
         args = shlex.split(arg)
         if len(args) not in (1, 2):
@@ -208,6 +254,12 @@ class Browser(cmd.Cmd):
         FROM number uses the latest ls listing.
         Supports *, column lists, comparisons, AND/OR/NOT, IN, and null checks.
         Results are limited to --rows for display, even if SQL LIMIT is larger.
+
+        Examples:
+          SELECT * FROM "/reports/orders" LIMIT 5
+          SELECT id, amount FROM "/reports/orders" WHERE amount > 10 LIMIT 5
+          SELECT * FROM 1 WHERE id IN (1, 2) AND amount IS NOT NULL
+        Paths are double-quoted; string literals use single quotes. Only records views support SELECT.
         """
         query = parse_query('SELECT ' + arg, resolve_item=self.item)
         with self.dataset.open(query.path) as metadata:
@@ -251,6 +303,24 @@ class Browser(cmd.Cmd):
         Source follows until END on its own line. Source requires server DEBUG mode.
         Results print incrementally; Ctrl-C cancels entry or execution.
         --preview-rows N or --preview-bytes N cancels the entire job at the first per-port limit.
+
+        Examples:
+          run identity@1.1 --input source=/reports/orders
+          run identity@1.1 --input source=1 --view records --preview-rows 5
+          run format_convert@1.1 --input source=/reports/orders --params '{"from":"csv","to":"parquet"}'
+          run native_uppercase@1.0 --input source=/reports/orders --preview-bytes 128
+
+        DEBUG source example (requires a configured python@1.0 runtime):
+          run --runtime python@1.0 --input source=/reports/orders <<END
+          def process(inputs, params):
+              for chunk in inputs['source']:
+                  yield chunk.upper()
+          END
+
+        Use --input for each named port. ITEM is a path, latest ls number, or full Item URI.
+        Optional: --params-file FILE, --timeout SECONDS, --coordinator dacp://host:port.
+        Installed operator IDs work in NORMAL mode; native_uppercase requires publishing the native example.
+        No preview limit applies by default. Job results are streams, with no saved Dataset.
         """
         tokens = shlex.split(arg)
         delimiter = None
@@ -317,7 +387,25 @@ class Browser(cmd.Cmd):
         self.print_job(coordinator, json.dumps(job), options.timeout, **({"preview_rows":options.preview_rows,"preview_bytes":options.preview_bytes} if options.preview_rows or options.preview_bytes else {}))
 
     def do_submit(self, arg):
-        """submit [FILE] [--preview-rows N] [--preview-bytes N]: job YAML; no file reads through END."""
+        """submit [FILE] [--preview-rows N] [--preview-bytes N]: submit job YAML.
+
+        Examples (file paths are relative to the shell working directory):
+          submit examples/convert.yaml
+          submit examples/convert.yaml --preview-bytes 128
+
+        Without FILE, enter YAML and finish with END alone on a line:
+          submit
+          job: demo
+          tasks:
+            - id: copy
+              operator: identity@1.1
+              inputs:
+                source: {uri: 'dacp://localhost:8815/data1/reports/orders', view: bytes}
+          END
+
+        Results print incrementally. Preview limits cancel the whole remaining job.
+        Ctrl-C cancels entry or execution. Use your node URI and installed operator IDs.
+        """
         parser = argparse.ArgumentParser(prog='submit', exit_on_error=False)
         parser.add_argument('file', nargs='?')
         parser.add_argument('--preview-rows', type=positive)
@@ -415,7 +503,12 @@ class Browser(cmd.Cmd):
             raise
 
     def do_quit(self, arg):
-        """quit: close the connection and exit."""
+        """quit: close the connection and exit. Aliases: exit, EOF (Ctrl-D).
+
+        Examples:
+          quit
+          exit
+        """
         return True
 
     do_exit = do_quit

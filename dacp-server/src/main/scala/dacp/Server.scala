@@ -204,6 +204,11 @@ object Main {
       .useTls(config.cert.toFile,config.key.toFile).useMTlsClientVerification(config.ca.toFile)
       .build().start()
     Runtime.getRuntime.addShutdownHook(new Thread(() => { server.close(); tasks.close(); config.close(); PluginLoader.close(); allocator.close() }))
+    val log = org.slf4j.LoggerFactory.getLogger("dacp.Main")
+    log.debug(s"remote_operator_library_urls (${config.remoteOperatorLibraryUrls.size}):")
+    config.remoteOperatorLibraryUrls.zipWithIndex.foreach { case (url,index) =>
+      log.debug(s"  [$index] $url")
+    }
     println(s"dacp listening on ${config.uri("")}")
     val datasetNames = config.datasets.keySet.toSeq.sorted
     println(s"configured datasets (${datasetNames.size}):")
