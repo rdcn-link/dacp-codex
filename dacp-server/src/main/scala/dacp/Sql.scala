@@ -159,7 +159,7 @@ object SqlAdapter {
   /** Tables have no original file bytes. Their byte view is an Arrow IPC stream, chunked as binary batches. */
   def bytes(sql: SqlAdapter, item: String, allocator: BufferAllocator, chunkSize: Int,
             listener: ServerStreamListener, ready: () => Unit): Unit = {
-    val root = VectorSchemaRoot.create(Data.bytesSchema,allocator)
+    val root = VectorSchemaRoot.create(PluginSchemas.bytes,allocator)
     val out = new java.io.OutputStream {
       val buffer = new Array[Byte](chunkSize); var used = 0
       override def write(b: Int): Unit = { buffer(used) = b.toByte; used += 1; if(used == buffer.length) flush() }

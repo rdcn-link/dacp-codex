@@ -7,54 +7,33 @@ import scala.jdk.CollectionConverters._
 import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.flight.FlightProducer.ServerStreamListener
 
-/** Public capabilities shared by all providers; storage details stay inside the provider. */
-trait DatasetAccess extends DataSetAdapter {
-  def list(path: String): Seq[Item]
-  def count(path: String): Option[Long]
-  def stream(path: String, view: String, allocator: BufferAllocator, listener: ServerStreamListener, ready: () => Unit): Unit
-}
-trait PublishedDataset {
-  def open(check: () => Unit): DatasetAccess
-}
-case class DatasetDefinition(provider: String, source: Map[String,Object] = Map.empty,
-                             items: Map[String,Map[String,Object]] = Map.empty,
-                             bindings: Option[Seq[PublishedItem]] = None) {
-  override def toString: String = s"DatasetDefinition($provider,<private settings>)"
-}
-object DatasetDefinition {
-  def custom(items: Seq[PublishedItem]): DatasetDefinition = DatasetDefinition("custom",bindings=Some(items))
-}
-/** ServiceLoader extension point; each provider owns parsing and construction of its settings. */
-trait DatasetProvider {
-  def id: String
-  def create(definition: DatasetDefinition, config: Config): PublishedDataset
-}
 object DatasetProviders {
   private lazy val providers: Seq[DatasetProvider] = {
     val all = Seq(new CustomDatasetProvider,new DirectoryDatasetProvider,new SqlDatasetProvider) ++
-      ServiceLoader.load(classOf[DatasetProvider]).iterator().asScala.toVector
+      ServiceLoader.load(classOf[DatasetProvider],PluginLoader.classLoader).iterator().asScala.toVector
     require(all.forall(_.id.matches("[a-z][a-z0-9-]*")),"invalid dataset provider id")
+    require(all.forall(p => p.itemSettingsKey.matches("[a-z][a-z0-9_]*") &&
+      !Set("provider","source").contains(p.itemSettingsKey)),"invalid dataset settings key")
     require(all.map(_.id).distinct.size == all.size,"duplicate dataset provider id")
     all
   }
   def byId(id: String): DatasetProvider = providers.find(_.id == id)
     .getOrElse(throw new IllegalArgumentException("unsupported dataset provider"))
   def fileOptions(v: Map[String,Object]): FileOptions = FileOptions(v.get("format").map(_.toString),
-    v.get("sheet").map(_.toString),v.get("header_row").map(_.toString.toInt).getOrElse(1),
     v.get("schema").map { raw =>
       val fields = raw.asInstanceOf[java.util.List[java.util.Map[String,String]]].asScala
-      new org.apache.arrow.vector.types.pojo.Schema(fields.map(c => Data.field(c.get("name"),c.get("type"))).asJava)
-    })
+      new org.apache.arrow.vector.types.pojo.Schema(fields.map(c => Records.field(c.get("name"),c.get("type"))).asJava)
+    }, v.get("options").map(_.asInstanceOf[java.util.Map[String,Object]].asScala.toMap).getOrElse(Map.empty))
   def customBindings(d: DatasetDefinition): Seq[PublishedItem] = d.bindings.getOrElse {
     d.items.toVector.map { case (logical,v) =>
-      require(v.keySet.subsetOf(Set("file","sql","table","kind","format","sheet","header_row","schema")),"unknown custom item option")
+      require(v.keySet.subsetOf(Set("file","sql","table","kind","format","options","schema")),"unknown custom item option")
       PublishedItem(logical,v.get("file").map(x => Path.of(x.toString)),v.get("sql").map(_.toString),
         v.get("table").map(_.toString),v.get("kind").map(_.toString).getOrElse("data"),fileOptions(v))
     }
   }
   def publish(bindings: Seq[PublishedItem], config: Config): PublishedDataset = {
     val items = if (!config.countFileRecordsOnStartup) bindings else bindings.map { b =>
-      b.file.map(p => b.copy(recordCount=FileRecordCount.capture(p,b.options))).getOrElse(b)
+      b.file.map(p => b.copy(recordCount=FileRecordCounts.capture(p,b.options))).getOrElse(b)
     }
     new NamespaceAdapter(items,config) // Validate aliases and source references once at construction.
     new PublishedDataset {
@@ -64,34 +43,36 @@ object DatasetProviders {
 }
 class CustomDatasetProvider extends DatasetProvider {
   val id = "custom"
-  def create(d: DatasetDefinition, config: Config): PublishedDataset = {
+  def create(d: DatasetDefinition, config: DatasetContext): PublishedDataset = {
     require(d.source.isEmpty,"custom datasets do not accept source settings")
-    DatasetProviders.publish(DatasetProviders.customBindings(d),config)
+    config.publish(DatasetProviders.customBindings(d))
   }
 }
 class SqlDatasetProvider extends DatasetProvider {
   val id = "sqldb"
-  def create(d: DatasetDefinition, config: Config): PublishedDataset = {
+  override val itemSettingsKey = "tables"
+  def create(d: DatasetDefinition, config: DatasetContext): PublishedDataset = {
     require(d.bindings.isEmpty && d.source.keySet == Set("connection"),"sqldb requires source.connection")
     val connection = d.source("connection").toString
-    require(config.sqlSources.contains(connection),"unknown private SQL source")
+    require(config.sqlSourceNames.contains(connection),"unknown private SQL source")
     val items = d.items.toVector.map { case (alias,v) =>
       require(v.keySet == Set("table"),"sqldb items require only a private table mapping")
       PublishedItem(alias,sql=Some(connection),table=Some(v("table").toString))
     }
-    DatasetProviders.publish(items,config)
+    config.publish(items)
   }
 }
 class DirectoryDatasetProvider extends DatasetProvider {
   val id = "directory"
-  def create(d: DatasetDefinition, config: Config): PublishedDataset = {
+  override val itemSettingsKey = "reader_overrides"
+  def create(d: DatasetDefinition, config: DatasetContext): PublishedDataset = {
     require(d.bindings.isEmpty && d.source.keySet == Set("root"),"directory requires source.root")
     val root = Path.of(d.source("root").toString).toRealPath()
     require(Files.isDirectory(root),"dataset root must be a directory")
     val overrides = d.items.map { case (path,v) =>
       LogicalPath.validate(path); require(path != "/","root cannot have reader options")
-      require(v.nonEmpty && v.keySet.subsetOf(Set("format","sheet","header_row","schema")),"directory items accept reader options only")
-      val options = DatasetProviders.fileOptions(v); options.format.foreach(Formats.byId)
+      require(v.nonEmpty && v.keySet.subsetOf(Set("format","options","schema")),"directory items accept reader options only")
+      val options = DatasetProviders.fileOptions(v); options.format.foreach(id => Formats.byId(id).validateOptions(options))
       path -> options
     }
     new PublishedDataset {
@@ -133,13 +114,13 @@ class DirectoryDatasetProvider extends DatasetProvider {
         result.result()
       }
       private val initialCounts = if (!config.countFileRecordsOnStartup) Map.empty[String,FileRecordCount] else
-        discover(() => ()).flatMap(b => b.file.flatMap(p => FileRecordCount.capture(p,b.options)).map(b.path -> _)).toMap
+        discover(() => ()).flatMap(b => b.file.flatMap(p => FileRecordCounts.capture(p,b.options)).map(b.path -> _)).toMap
       private def counted(b: PublishedItem): PublishedItem = b.copy(recordCount=initialCounts.get(b.path))
 
       def open(check: () => Unit): DatasetAccess = new DatasetAccess {
-        private def namespace(items: Seq[PublishedItem]): NamespaceAdapter = new NamespaceAdapter(items.map(counted),config,check)
+        private def namespace(items: Seq[PublishedItem]): DatasetAccess = config.openNamespace(items.map(counted),check)
         // Resolve a physical file/folder or the first container encountered on the logical path.
-        private def selected(path: String): NamespaceAdapter = {
+        private def selected(path: String): DatasetAccess = {
           check(); LogicalPath.validate(path)
           if (path == "/") namespace(Seq.empty) else {
             var logical = ""

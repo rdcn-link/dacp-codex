@@ -1,12 +1,12 @@
 job: collaborative_demo
 tasks:
   - id: convert_at_data
-    input: dacp://localhost:8816/csv_data
+    inputs: [dacp://localhost:8816/csv_data]
     operator: format_convert@1.0
     params: {from: auto, to: parquet, schema: infer, compression: zstd}
     output: b_converted
   - id: relay_to_a
-    input: b_converted/result-1
+    inputs: [b_converted/result-1]
     node: dacp://localhost:8815
     operator: identity@1.0
     output: a_relay

@@ -31,6 +31,7 @@ format 标识源数据表示方式，view 标识读取方式。客户端使用�
 ```yaml
 datasets:
   public:
+    provider: custom
     items:
       /archive: {file: /private/reports.ZIP}
 ```
@@ -76,12 +77,12 @@ TAR 列举顺序扫描归档；压缩 TAR 需要解压扫描。为验证整个�
 ```yaml
 datasets:
   office:
+    provider: custom
     items:
       /orders:
         file: /private/sales.xlsx
         format: excel
-        sheet: Orders
-        header_row: 2
+        options: {sheet: Orders, header_row: 2}
         schema:
           - {name: id, type: int64}
           - {name: amount, type: float64}
@@ -90,7 +91,7 @@ datasets:
         format: ndjson
 ```
 
-`sheet` 和 `header_row` 仅用于 Excel；表头行号从 1 开始，默认值为 1。单工作表文件自动选择唯一工作表；多工作表文件必须显式指定。可用多个逻辑别名分别发布工作表。每个别名的 bytes 返回原始完整工作簿，records 和 count 仅对应所选工作表。工作表绑定及底层文件名不会出现在元数据或 ticket 中。
+`options.sheet` 和 `options.header_row` 仅用于 Excel；表头行号从 1 开始，默认值为 1。单工作表文件自动选择唯一工作表；多工作表文件必须显式指定。可用多个逻辑别名分别发布工作表。每个别名的 bytes 返回原始完整工作簿，records 和 count 仅对应所选工作表。工作表绑定及底层文件名不会出现在元数据或 ticket 中。
 
 Excel 使用 Apache POI 5.5.1 的 XLS/XLSX 事件读取接口。空表头生成 `column_N`，重复名称依次添加 `_2`、`_3`，缺失单元格返回 null。空数据行跳过，超出表头宽度的数据报错。公式只读取缓存结果，不重新计算；可识别的缺失缓存返回 null。错误单元格、加密或无效工作簿返回 DACP 格式错误。整数且未越界的数字单元格使用 int64，其余数字使用 float64，布尔值及字符串保留其值。Excel 数字日期保留序列值，不自动推断地区或时区。可选 `schema` 通过有序的 `name`/`type` 配置列，支持 `int64`、`float64`、`bool` 和 `utf8`/`string`。未配置时采样不超过 `batch_size * infer_sample`，后续类型冲突报错，不修改既定 schema。
 
@@ -122,9 +123,13 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 配置 `count_file_records_on_startup: true` 后，服务器在加载配置时对 custom 文件映射和目录初次发现的记录文件执行一次精确计数并保存结果，普通浏览复用该结果。默认关闭。计数与文件大小和修改时间绑定；计数期间或之后检测到文件变化时，结果为未知。重启会重新计数，显式 `count` 仍按当前内容计算且不修改保存的元数据。该选项不计数 SQL、归档子项或 folder；启用时无效记录文件会导致启动失败。
 
+`plugin_directory` 可选指定插件及依赖 JAR 所在目录，在注册表初始化前加载，修改后需要重启。读取器专用参数放入 `options`，由处理器自行校验。独立 API 与结构化文件契约见 [插件指南](plugins.md)。
+
 ## Dataset 构建
 
-内置 `directory`、`sqldb` 和 `custom` provider。每个 Dataset 选择一个 provider，由它解释私有 `source` 和 `items`，并提供统一的数据访问接口。目录 provider 动态发现相对路径，SQLDB provider 使用显式公开表别名，custom provider 可混合来源。省略 provider 时兼容 custom 配置；不支持旧版 `datasets: {name: /directory}` 简写。
+目录使用可选 `reader_overrides`，SQLDB 使用公开路径到私有表的 `tables` 映射，custom 使用 `items`。目录和 SQLDB 不接受 `items`。插件默认使用 `items`，可通过 `DatasetProvider.itemSettingsKey` 自定义映射键。
+
+内置 `directory`、`sqldb` 和 `custom` provider。每个 Dataset 选择一个 provider，由它解释私有 `source` 和各 provider 的映射配置，并提供统一的数据访问接口。目录 provider 动态发现相对路径，SQLDB provider 使用显式公开表别名，custom provider 可混合来源。每个 Dataset 必须显式指定 `provider`。
 
 目录 Dataset 不跟随符号链接。集合属性和直接子项列举不递归扫描普通子目录；只有 `list()` 才递归发现所有文件和归档条目。配置加载时启用启动计数会扫描初始文件，后续新文件只被发现、不自动计数。读取选项覆盖按公开路径匹配，不改变文件命名。目录中的新增 SQL 绑定或绝对路径映射被拒绝；这类组合应使用 custom。
 
@@ -134,7 +139,7 @@ Dataset provider、容器 reader、格式 handler 分别负责构建数据集、
 
 ### DAG 与算子契约
 
-`input` 是单个 URI 或上游 `output` 名；`inputs` 是多个此类值组成的列表。上游引用也支持 `s1/result-1`。任务先校验重复名称、未知依赖、环和目标节点，再按拓扑顺序串行执行。默认在第一个输入 URI 所在节点执行，也可用 `node: dacp://host:port` 显式指定。协调节点把上游引用解析为具体 URI，再通过 mTLS Flight action 分发；无中心注册服务。每个子任务新建容器，禁用容器网络，挂载只读 `/input` 和可写 `/output`。
+`inputs` 是 URI 或上游 `output` 名组成的非空列表，单个输入也使用列表。上游引用也支持 `s1/result-1`。任务先校验重复名称、未知依赖、环和目标节点，再按拓扑顺序串行执行。默认在第一个输入 URI 所在节点执行，也可用 `node: dacp://host:port` 显式指定。协调节点把上游引用解析为具体 URI，再通过 mTLS Flight action 分发；无中心注册服务。每个子任务新建容器，禁用容器网络，挂载只读 `/input` 和可写 `/output`。
 
 `/input/manifest.json` 包含 `file/path/format`；`file` 指向 Arrow IPC stream，bytes 视图为 `data: binary`，每行一个原始字节块。`/input/params.json` 是参数对象。单输入使用 FIFO，IPC 的 EOS 表示结束，容器读取消费驱动上游；多输入在启动容器前全部落盘。结束或失败均删除输入临时目录；失败的输出目录也删除。仅容器退出码为 0 才注册输出。任务超时上限为 30 分钟。
 

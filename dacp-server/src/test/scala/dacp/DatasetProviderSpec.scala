@@ -60,7 +60,7 @@ class DatasetProviderSpec extends AnyFunSuite {
       intercept[FormatFailure](ds.list("/folder/bad.zip"))
     } finally { Data.deleteTree(dir); Data.deleteTree(outside) }
   }
-  test("provider configuration supports new definitions and legacy custom items and rejects mixed modes") {
+  test("provider configuration uses provider-specific keys and rejects obsolete names and mixed modes") {
     val dir = Files.createTempDirectory("dataset-config-")
     try {
       Files.writeString(dir.resolve("orders.csv"),"id\n1\n")
@@ -73,13 +73,25 @@ tls_ca: ca.pem
 output_root: output
 allowed_uri_prefixes: [dacp://localhost:8815/]
 """
-      val definitions = s"""datasets:
+      val definitions = s"""sql_sources:
+  warehouse:
+    url: jdbc:h2:mem:config_provider
+datasets:
   directory:
     provider: directory
     source: {root: $dir}
-  legacy:
-    items:
-      /orders: {file: $dir/orders.csv}
+    reader_overrides:
+      /orders.csv: {options: {}}
+  sales:
+    provider: sqldb
+    source: {connection: warehouse}
+    tables:
+      /orders: {table: PRIVATE_ORDERS}
+  plugin:
+    provider: test-dataset
+    source: {message: configured payload}
+    entries:
+      /message: {label: configured item}
   custom:
     provider: custom
     items:
@@ -87,11 +99,25 @@ allowed_uri_prefixes: [dacp://localhost:8815/]
 """
       Files.writeString(file,base+definitions)
       val c = Config.load(file)
-      assert(c.datasets("legacy").provider == "custom")
+      assert(c.datasets("sales").items("/orders")("table") == "PRIVATE_ORDERS")
+      assert(c.datasets("plugin").source("message") == "configured payload")
+      assert(c.datasets("plugin").items("/message")("label") == "configured item")
+      assert(c.openDataset("plugin").describe("/message").views.contains(Seq("bytes")))
       assert(c.openDataset("directory").list("/").exists(_.path == "/orders.csv"))
       assert(c.openDataset("custom").list().map(_.path) == Seq("/orders"))
       for (bad <- Seq(
         "datasets: {bad: {provider: unknown}}",
+        "datasets: {bad: {items: {}}}",
+        "sql_datasets: {}",
+        "datasets: {bad: /private/directory}",
+        s"datasets: {bad: {provider: directory, source: {root: $dir}, items: {}}}",
+        "datasets: {bad: {provider: sqldb, source: {connection: warehouse}, items: {}}}",
+        "datasets: {bad: {provider: test-dataset, items: {}}}",
+        s"datasets: {bad: {provider: directory, source: {root: $dir}, reader_overrides: {}, items: {}}}",
+        "datasets: {bad: {provider: sqldb, tables: {}, items: {}}}",
+        s"datasets: {bad: {provider: directory, source: {root: $dir}, tables: {}}}",
+        "datasets: {bad: {provider: custom, reader_overrides: {}}}",
+        s"datasets: {bad: {provider: directory, source: {root: $dir}, reader_overrides: {/x: {file: /private}}}}",
         s"datasets: {bad: {provider: custom, source: {root: $dir}}}",
         s"datasets: {bad: {provider: directory, source: {root: $dir}, items: {/x: {file: /private}}}}",
         "datasets: {bad: {provider: sqldb, source: {connection: missing}}}",

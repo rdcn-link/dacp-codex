@@ -3,16 +3,9 @@ package dacp
 import java.io.{FilterInputStream, InputStream, IOException}
 import java.nio.file.{Files, Path}
 import java.util.zip.GZIPInputStream
+import java.util.ServiceLoader
+import scala.jdk.CollectionConverters._
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-
-case class ContainerEntry(name: String, directory: Boolean, size: Option[Long], modified: Option[Long])
-
-/** Container readers enumerate logical children; format readers interpret each child's content. */
-trait ContainerReader {
-  def id: String
-  def index(path: Path, publicName: String, demand: () => Unit): Seq[ContainerEntry]
-  def withFile[A](path: Path, publicName: String, name: String, demand: () => Unit)(f: Path => A): A
-}
 
 object Containers {
   val MaxEntries = ZipArchive.MaxEntries
@@ -81,6 +74,7 @@ object Containers {
   }
   private object ZipReader extends ContainerReader {
     val id = "zip"
+    val extensions = Set("zip")
     def index(path: Path, publicName: String, demand: () => Unit): Seq[ContainerEntry] = checked {
       demand(); ZipArchive.index(path).map(e => ContainerEntry(e.name,e.directory,e.size,e.modified))
     }
@@ -89,6 +83,7 @@ object Containers {
   }
   private object GzipReader extends ContainerReader {
     val id = "gzip"
+    val extensions = Set("gz")
     private def child(publicName: String): String = {
       val leaf = publicName.split("/").last
       val name = if (leaf.toLowerCase(java.util.Locale.ROOT).endsWith(".gz")) leaf.dropRight(3) else "content"
@@ -113,6 +108,11 @@ object Containers {
     }
   }
   private class TarReader(val id: String, gzip: Boolean) extends ContainerReader {
+    val extensions = if (gzip) Set("tgz") else Set("tar")
+    override def matchesName(name: String): Boolean = if (gzip) {
+      val lower = name.toLowerCase(java.util.Locale.ROOT)
+      lower.endsWith(".tar.gz") || lower.endsWith(".tgz")
+    } else super.matchesName(name)
     private def open(path: Path, demand: () => Unit): Limited =
       new Limited(if (gzip) compressed(path) else Files.newInputStream(path),demand)
 
@@ -160,11 +160,23 @@ object Containers {
     def withFile[A](path: Path, publicName: String, name: String, demand: () => Unit)(f: Path => A): A =
       stage(name) { file => scan(path,Some(name -> file),demand)(_ => ()); f(file) }
   }
-  private val readers = Seq(ZipReader,GzipReader,new TarReader("tar",false),new TarReader("tar-gzip",true)).map(r => r.id -> r).toMap
-  def supports(id: String): Boolean = readers.contains(id)
-  def byId(id: String): ContainerReader = readers.getOrElse(id,throw new IllegalArgumentException("unsupported container format"))
-  def formatForName(name: String): Option[String] = {
-    val lower = name.toLowerCase(java.util.Locale.ROOT)
-    if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz")) Some("tar-gzip") else None
+  private lazy val readers: Seq[ContainerReader] = {
+    val all = Seq(ZipReader,GzipReader,new TarReader("tar",false),new TarReader("tar-gzip",true)) ++
+      ServiceLoader.load(classOf[ContainerReader],PluginLoader.classLoader).iterator().asScala.toVector
+    require(all.forall(_.id.matches("[a-z][a-z0-9-]*")), "invalid container reader id")
+    require(all.map(_.id).distinct.size == all.size,"duplicate container reader id")
+    all
+  }
+  def registered: Seq[ContainerReader] = readers
+  def supports(id: String): Boolean = readers.exists(_.id == id)
+  def byId(id: String): ContainerReader = readers.find(_.id == id)
+    .getOrElse(throw new IllegalArgumentException("unsupported container format"))
+  def formatForName(name: String, compoundOnly: Boolean = false): Option[String] = {
+    val found = readers.filter(_.matchesName(name))
+    // Compound names take precedence over ordinary suffixes (tar.gz versus gz).
+    val compound = found.filterNot(r => r.extensions(name.split("\\.").last.toLowerCase(java.util.Locale.ROOT)))
+    val selected = if (compound.nonEmpty || compoundOnly) compound else found
+    require(selected.size <= 1,"ambiguous container filename")
+    selected.headOption.map(_.id)
   }
 }

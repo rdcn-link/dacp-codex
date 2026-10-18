@@ -118,7 +118,7 @@ Stream 必须在所属 Dataset 关闭前使用。提前停止记录读取时关�
 
 `show` 接受路径或最近一次列表中的编号；默认优先显示记录，否则显示十六进制。记录使用带列名的表格，`text` 显示文本，`hex` 显示偏移量、十六进制及 ASCII。默认最多预览 20 行或 4096 字节，可通过 `--rows` 和 `--bytes` 调整。
 
-使用 `use DATASET` 切换同一服务器上的数据集，`connect URI` 连接其他位置，`help` 查看命令。证书也可通过 `--ca`、`--cert`、`--key` 指定；`dacp` 是兼容命令别名。
+使用 `use DATASET` 切换同一服务器上的数据集，`connect URI` 连接其他位置，`help` 查看命令。证书也可通过 `--ca`、`--cert`、`--key` 指定。
 
 ### Scala SDK
 
@@ -153,14 +153,14 @@ datasets:
     provider: directory
     source:
       root: /home/test/dataset1
-    items:
+    reader_overrides:
       /events.json: {format: ndjson}
 
   sales:
     provider: sqldb
     source:
       connection: warehouse
-    items:
+    tables:
       /customers: {table: CUSTOMERS}
 
   research:
@@ -181,11 +181,76 @@ sql_sources:
 
 这是配置片段，需与监听地址、TLS 和 URI 白名单合并，并替换示例路径及数据库连接。相对路径以服务进程工作目录为基准。
 
-目录 Dataset 将根目录内的相对路径作为公开逻辑路径，例如 `/reports/orders.csv`；空目录也是 folder，受支持的归档可继续浏览。后续列举会反映文件新增、删除和修改。根目录保持私有，所有符号链接均忽略；不会访问根目录之外的数据。目录的 `items` 是可选读取选项覆盖，支持格式、工作表、表头行和 schema，不用于重命名或额外添加来源。
+目录 Dataset 将根目录内的相对路径作为公开逻辑路径，例如 `/reports/orders.csv`；空目录也是 folder，受支持的归档可继续浏览。后续列举会反映文件新增、删除和修改。根目录保持私有，所有符号链接均忽略；不会访问根目录之外的数据。目录的 `reader_overrides` 是可选读取选项覆盖，支持格式、工作表、表头行和 schema，不用于重命名或额外添加来源。
 
-SQL Dataset 的 `items` 将公开路径绑定到选定连接的私有表名，不自动暴露所有表。`custom` 保留逐项映射和混合来源的灵活性；省略 `provider` 的原有 `items` 配置仍按 `custom` 解析。
+SQL Dataset 的 `tables` 将公开路径绑定到选定连接的私有表名，不自动暴露所有表。`custom` 保留逐项映射和混合来源的灵活性。每个 Dataset 必须显式指定 `provider`。
 
 默认示例同时提供 `data1`、`csv_data`（custom）和 `documents`（directory）。在 shell 中执行 `use documents`、`ls /`，或读取 `/nested/orders.csv`。SQLDB 的完整初始化示例见 [SQL 示例](examples/sql/README.md)。添加 MongoDB 等新来源时，可通过 provider JAR 扩展，无需修改客户端；开发接口见 [Dataset provider 指南](docs/dataset-providers.md)。
+
+### 自定义 Dataset provider
+
+用户定义的 provider 是服务端 Scala/JVM 插件。`provider` 选择插件，`source` 传入该 Dataset 实例的私有参数；同一个 provider 可用不同参数构建多个 Dataset。插件负责校验参数，客户端只看到公开路径和数据。
+
+下面是一个可发布单个 CSV 文件的完整 provider 示例，固定公开路径为 `/records`：
+
+```scala
+package example
+
+import dacp._
+import java.nio.file.Path
+
+class CsvFileProvider extends DatasetProvider {
+  val id = "csv-file"
+
+  def create(d: DatasetDefinition, context: DatasetContext): PublishedDataset = {
+    require(d.source.keySet.subsetOf(Set("file")),
+      "unknown csv-file parameter")
+    require(d.source.contains("file"), "csv-file requires source.file")
+    require(d.items.isEmpty && d.bindings.isEmpty,
+      "csv-file does not accept item mappings")
+    val file = Path.of(d.source("file").toString)
+    context.publish(Seq(PublishedItem(
+      "/records", file = Some(file),
+      options = FileOptions(format = Some("csv"))
+    )))
+  }
+}
+```
+
+将代码编译为 JAR，仅依赖独立的 `dacp-plugin-api`（使用与服务器匹配的版本和 Scala 版本，以 `Provided` 方式依赖）。在 JAR 内创建以下服务注册文件：
+
+```text
+META-INF/services/dacp.DatasetProvider
+```
+
+文件内容为实现类全名：
+
+```text
+example.CsvFileProvider
+```
+
+将插件及其所需依赖 JAR 放入 `plugin_directory`（不要复制服务器已提供的 API 和依赖），重启时使用以下配置片段，并合并监听地址、TLS 和 URI 白名单：
+
+```yaml
+plugin_directory: /opt/dacp/plugins
+datasets:
+  measurements:
+    provider: csv-file
+    source:
+      file: /private/measurements.csv
+```
+
+客户端读取 `/records`，不会获得 `source.file`。需要逐项映射的插件默认通过 `items` 接收参数，也可覆盖 `DatasetProvider.itemSettingsKey` 声明自己的配置键；解析后的映射统一由 `definition.items` 提供。`source` 可包含插件自定义的嵌套参数，插件必须自行校验类型、必填项和未知参数。
+
+目录 provider 使用 `reader_overrides`，SQLDB 使用 `tables`，custom 使用 `items`。目录和 SQLDB 不接受 `items`。原生后端（例如未来的 MongoDB provider）可直接实现 `PublishedDataset` 和 `DatasetAccess`，提供列举、元数据、计数与流式读取，无需映射成文件或 SQL。完整接口和取消、资源释放要求见 [provider 开发指南](docs/dataset-providers.md)。MongoDB 尚未实现。
+
+### 文件与结构化内容插件
+
+文件插件实现 `FormatHandler`，在 `META-INF/services/dacp.FormatHandler` 注册。处理器自行校验私有 `options` 参数；例如 Excel 的设置为 `options: {sheet: Orders, header_row: 2}`。通用 `format` 和 `schema` 保持在读取配置顶层。
+
+需要浏览文件内部逻辑对象时，实现 `StructuredFileHandler`，通过同一个格式服务文件注册。其 `openStructure` 返回 `DatasetAccess`，可直接流式读取内部对象，不要求提取为临时文件。文件根表现为带原始 bytes 视图的 folder，子对象显式声明 `records` 或 `bytes`。归档读取器可实现 `ContainerReader` 并在 `META-INF/services/dacp.ContainerReader` 注册，无需再修改核心格式注册表。
+
+独立插件 API 位于 [dacp-plugin-api](dacp-plugin-api)，可运行的贡献示例和构建、安装步骤位于 [examples/plugins](examples/plugins/README.md)。`PluginChecks.listing` 提供可复用的元数据契约检查。服务端会关闭每次请求的访问句柄，并在关闭服务时释放 provider 资源。NetCDF、FITS 的具体解析插件及数组、图像新视图尚未实现；现有接口允许贡献者定义文件内部对象，不能静默把数组展开为记录。
 
 ### 格式与视图
 
@@ -246,6 +311,8 @@ sbt 'run ../examples/server.yaml ../examples/convert.yaml'
 当前白名单在节点级生效，不按证书主体划分权限。读取失败后从头重开，不支持流内重试、checkpoint 或恢复。任务输出注册表仅驻内存，输出在 TTL 到期或服务关闭时清理；重启不恢复任务。完整配置和协议说明见 [技术参考](docs/reference.md#协议与配置)。
 
 ## 开发与验证
+
+DACP 优先采用插件机制扩展。新的数据集后端、文件格式和处理算子应通过实现公开扩展契约并安装插件加入，避免修改核心分发逻辑。内置实现与社区实现应使用相同契约，插件负责自己的参数校验与第三方依赖，客户端通过统一路径和能力访问数据。贡献方式、现有机制与科学数据扩展边界见 [插件贡献指南](docs/plugins.md)。
 
 从项目根目录运行：
 

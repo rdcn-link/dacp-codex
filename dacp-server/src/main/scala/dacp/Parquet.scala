@@ -54,7 +54,7 @@ object Parquet {
         while (count < size && !done) { val r = reader.read(); if (r == null) done = true else {
           b += s.getFields.asScala.map(f => Option(r.get(f.getName)).map { case u: org.apache.avro.util.Utf8 => u.toString; case n: java.lang.Long => n.longValue; case n: java.lang.Double => n.doubleValue; case n: java.lang.Boolean => n.booleanValue; case x => x }.orNull).toSeq; count += 1
         }}
-        val batch = b.result(); if (batch.nonEmpty) { Data.fill(root,batch); emit(root) }
+        val batch = b.result(); if (batch.nonEmpty) { Records.fill(root,batch); emit(root) }
       }
     } finally { reader.close(); root.close() }
   }

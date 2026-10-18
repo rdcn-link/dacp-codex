@@ -10,4 +10,3 @@ dependencies = ["pyarrow>=18,<24", "protobuf>=4.25,<7"]
 test = ["pytest>=8"]
 [project.scripts]
 dacp-shell = "dacp.cli:main"
-dacp = "dacp.cli:main"

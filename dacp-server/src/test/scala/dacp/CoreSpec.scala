@@ -26,13 +26,13 @@ class CoreSpec extends AnyFunSuite {
   }}
   test("schema sampling fixes types and rejects later conflicts") { temp { p =>
     val f = p.resolve("x.csv"); Files.writeString(f,"id,value\n1,2.5\n2,wrong\n")
-    val s = Data.schema(f,1,1)
+    val s = Formats.detect(f).schema(f,FileOptions(),1,1)
     val a = new RootAllocator(); val root = VectorSchemaRoot.create(s,a)
-    try { Data.fill(root,Seq(Seq("1","2.5"))); intercept[IllegalArgumentException](Data.fill(root,Seq(Seq("2","wrong")))) }
+    try { Records.fill(root,Seq(Seq("1","2.5"))); intercept[IllegalArgumentException](Records.fill(root,Seq(Seq("2","wrong")))) }
     finally {root.close(); a.close()}
-    intercept[IllegalArgumentException](Data.schema(f,2,1))
-    val explicit = new org.apache.arrow.vector.types.pojo.Schema(List(Data.field("id","int64"),Data.field("value","utf8")).asJava)
-    assert(Data.schema(f,2,1,Some(explicit)) == explicit)
+    intercept[IllegalArgumentException](Formats.detect(f).schema(f,FileOptions(),2,1))
+    val explicit = new org.apache.arrow.vector.types.pojo.Schema(List(Records.field("id","int64"),Records.field("value","utf8")).asJava)
+    assert(Formats.detect(f).schema(f,FileOptions(columns=Some(explicit)),2,1) == explicit)
   }}
   test("protobuf metadata and descriptor namespaces round-trip") { temp { p =>
     Files.writeString(p.resolve("x.csv"),"id\n1\n")
@@ -55,16 +55,31 @@ class CoreSpec extends AnyFunSuite {
   }}
   test("DAG rejects cycles and orders dependencies") { temp { p =>
     val f=p.resolve("job.yaml")
-    Files.writeString(f,"job: test\ntasks:\n - {id: b, input: s1, operator: x@1, output: s2}\n - {id: a, input: 'dacp://localhost/d', operator: x@1, output: s1}\n")
+    Files.writeString(f,"job: test\ntasks:\n - {id: b, inputs: [s1], operator: x@1, output: s2}\n - {id: a, inputs: ['dacp://localhost/d'], operator: x@1, output: s1}\n")
     assert(Jobs.load(f).map(_.id) == Seq("a","b"))
-    Files.writeString(f,"job: test\ntasks:\n - {id: b, input: s1, operator: x@1, output: s2}\n - {id: a, input: s2, operator: x@1, output: s1}\n")
+    Files.writeString(f,"job: test\ntasks:\n - {id: b, inputs: [s1], operator: x@1, output: s2}\n - {id: a, inputs: [s2], operator: x@1, output: s1}\n")
     intercept[IllegalArgumentException](Jobs.load(f))
   }}
+  test("jobs require inputs lists and reject singular input settings") {
+    val task = "id: convert, operator: x@1, output: result"
+    for (settings <- Seq("input: 'dacp://localhost/data'",
+                         "input: 'dacp://localhost/data', inputs: ['dacp://localhost/data']")) {
+      intercept[IllegalArgumentException](Jobs.parse(s"job: test\ntasks:\n - {$task, $settings}\n"))
+    }
+    assert(Jobs.parse(s"job: test\ntasks:\n - {$task, inputs: ['dacp://localhost/data']}\n").head.inputs == Seq("dacp://localhost/data"))
+  }
+  test("converter requires ndjson rather than treating json as a records alias") {
+    def input = new java.io.ByteArrayInputStream("{\"id\":1}\n".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    intercept[IllegalArgumentException](FormatConvert.parsed(input,"json"))
+    val rows = FormatConvert.parsed(input,"ndjson")
+    try { assert(rows.names == Seq("id")); assert(rows.iterator.toVector == Vector(Seq(1L))) }
+    finally rows.close()
+  }
   test("converter streams binary Arrow input to parquet with schema metadata") { temp { p =>
     val input=Files.createDirectory(p.resolve("in")); val output=p.resolve("out")
     Files.writeString(input.resolve("manifest.json"),"""[{"file":"0.arrow","format":"csv"}]""")
     Files.writeString(input.resolve("params.json"),"""{"to":"parquet","compression":"none","schema":"infer","row_group_size":"1MB"}""")
-    val a=new RootAllocator(); val root=VectorSchemaRoot.create(Data.bytesSchema,a)
+    val a=new RootAllocator(); val root=VectorSchemaRoot.create(PluginSchemas.bytes,a)
     val writer=new org.apache.arrow.vector.ipc.ArrowStreamWriter(root,null,Files.newOutputStream(input.resolve("0.arrow")))
     try {
       writer.start()
@@ -87,7 +102,7 @@ class CoreSpec extends AnyFunSuite {
   }}
 
   test("Arrow byte adapter keeps EOF terminal without reading beyond IPC EOS") {
-    val a = new RootAllocator(); val root = VectorSchemaRoot.create(Data.bytesSchema,a)
+    val a = new RootAllocator(); val root = VectorSchemaRoot.create(PluginSchemas.bytes,a)
     val bytes = new java.io.ByteArrayOutputStream()
     val writer = new org.apache.arrow.vector.ipc.ArrowStreamWriter(root,null,bytes)
     try {

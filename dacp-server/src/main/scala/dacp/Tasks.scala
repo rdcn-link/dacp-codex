@@ -1,7 +1,6 @@
 package dacp
 import java.nio.file.{Files, Path, StandardOpenOption}
 import java.nio.channels.{Channels, FileChannel}
-import java.net.URI
 import java.util.UUID
 import scala.jdk.CollectionConverters._
 import scala.concurrent.{Await, Future, ExecutionContext}
@@ -27,7 +26,9 @@ object Jobs {
     require(doc.contains("job"),"job name required")
     val tasks = doc("tasks").asInstanceOf[java.util.List[java.util.Map[String,Object]]].asScala.map { raw =>
       val m = raw.asScala
-      val inputs = m.get("inputs").map(_.asInstanceOf[java.util.List[String]].asScala.toSeq).getOrElse(Seq(m("input").toString))
+      require(m.keySet.subsetOf(Set("id","inputs","operator","params","output","node")), "unknown task setting")
+      require(m.contains("inputs"), "task inputs are required")
+      val inputs = m("inputs").asInstanceOf[java.util.List[String]].asScala.toSeq
       require(inputs.nonEmpty,"empty inputs")
       Task(m("id").toString,inputs,m("operator").toString,m.getOrElse("params",new java.util.LinkedHashMap[String,Object]()).asInstanceOf[java.util.Map[String,Object]],m("output").toString,m.get("node").map(_.toString))
     }.toSeq
@@ -63,8 +64,7 @@ private[dacp] object TaskInputs {
 class TaskExecutor(config: Config, allocator: BufferAllocator, registry: OutputRegistry) {
   private case class Remote(client: FlightClient, dataset: String, items: Seq[(String,String)])
   private def remote(value: String): Remote = {
-    val uri = new URI(if (value.startsWith("dacp://")) value else config.uri(value))
-    require(uri.getScheme == "dacp" && uri.getHost != null && uri.getQuery == null && uri.getFragment == null,"invalid input URI")
+    val uri = DacpUri.parse(value)
     val parts = uri.getPath.stripPrefix("/").split("/",2)
     require(parts.nonEmpty && parts(0).nonEmpty,"missing input dataset")
     val client = NodeConnection.open(config,allocator,value)

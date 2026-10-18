@@ -14,15 +14,25 @@ import org.apache.poi.hssf.record._
 import org.xml.sax.Attributes
 import org.xml.sax.helpers.DefaultHandler
 
-class FormatFailure(message: String) extends RuntimeException(message)
-
 /** Event readers buffer 16 rows; POI shared-string dictionaries may consume additional memory. */
 object ExcelFormat extends FormatHandler {
   val id = "excel"; val extensions = Set("xls", "xlsx")
   override val records = true
-  override def rows(path: Path, options: FileOptions): Data.Rows = new ExcelRows(path,options)
+  override def validateOptions(options: FileOptions): Unit = {
+    require(options.parameters.keySet.subsetOf(Set("sheet","header_row")), "unknown Excel reader parameter")
+    require(options.parameters.get("sheet").forall(_.isInstanceOf[String]), "sheet must be a string")
+    headerRow(options)
+  }
+  private def sheet(options: FileOptions): Option[String] = options.parameters.get("sheet").map(_.toString)
+  private def headerRow(options: FileOptions): Int = {
+    val raw = options.parameters.getOrElse("header_row",Int.box(1))
+    require(raw.isInstanceOf[java.lang.Number] && raw.toString.matches("[0-9]+"), "header_row must be a positive integer")
+    val value = raw.toString.toInt
+    require(value > 0,"header_row must be positive"); value
+  }
+  override def rows(path: Path, options: FileOptions): Records.Rows = { validateOptions(options); new ExcelRows(path,options) }
 
-  private class ExcelRows(path: Path, options: FileOptions) extends Data.Rows {
+  private class ExcelRows(path: Path, options: FileOptions) extends Records.Rows {
     private val queue = new ArrayBlockingQueue[Either[Throwable,Option[Vector[Any]]]](16)
     @volatile private var stopped = false
     private def send(value: Either[Throwable,Option[Vector[Any]]]): Unit = {
@@ -35,7 +45,7 @@ object ExcelFormat extends FormatHandler {
       var header = false; var width = 0
       def row(index: Int, cells: Map[Int,Any]): Unit = {
         if (stopped || Thread.currentThread().isInterrupted) throw new InterruptedException()
-        if (index + 1 == options.headerRow) {
+        if (index + 1 == headerRow(options)) {
           if (cells.isEmpty) throw new FormatFailure("Excel header row is empty.")
           width = cells.keys.max + 1
           val used = mutable.Set.empty[String]
@@ -46,7 +56,7 @@ object ExcelFormat extends FormatHandler {
             used += name; name
           }.toVector
           header = true; send(Right(Some(names)))
-        } else if (index + 1 > options.headerRow && cells.values.exists(_ != null)) {
+        } else if (index + 1 > headerRow(options) && cells.values.exists(_ != null)) {
           if (!header) throw new FormatFailure("Excel header row was not found.")
           if (cells.exists { case (col,value) => col >= width && value != null })
             throw new FormatFailure("Excel data extends beyond the header columns.")
@@ -84,7 +94,7 @@ object ExcelFormat extends FormatHandler {
     }
     def close(): Unit = { stopped = true; worker.interrupt(); if (Thread.currentThread() != worker) worker.join(1000) }
   }
-  private def select(names: Seq[String], options: FileOptions): String = options.sheet match {
+  private def select(names: Seq[String], options: FileOptions): String = sheet(options) match {
     case Some(name) if names.contains(name) => name
     case Some(_) => throw new FormatFailure("Configured Excel sheet was not found.")
     case None if names.size == 1 => names.head

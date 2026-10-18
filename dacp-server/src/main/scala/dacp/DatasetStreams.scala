@@ -21,7 +21,7 @@ object DatasetStreams {
           val handler = Formats.detect(path,file.options)
           require(view == "bytes" || handler.records,"unsupported stream view")
           if (view == "bytes") {
-            val root = VectorSchemaRoot.create(Data.bytesSchema,allocator)
+            val root = VectorSchemaRoot.create(PluginSchemas.bytes,allocator)
             try {
               val in = Files.newInputStream(path)
               try {

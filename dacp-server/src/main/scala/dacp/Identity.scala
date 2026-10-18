@@ -19,7 +19,7 @@ object Identity {
       val name = s"_stream-$index.arrow"
       val reader = new ArrowStreamReader(Files.newInputStream(input.resolve(entry.get("file").asText())),allocator)
       try {
-        require(reader.getVectorSchemaRoot.getSchema == Data.bytesSchema,"identity expects Arrow binary streams")
+        require(reader.getVectorSchemaRoot.getSchema == PluginSchemas.bytes,"identity expects Arrow binary streams")
         val writer = new ArrowStreamWriter(reader.getVectorSchemaRoot,null,Files.newOutputStream(output.resolve(name),StandardOpenOption.CREATE_NEW))
         try { writer.start();while(reader.loadNextBatch()) writer.writeBatch();writer.end() }
         finally writer.close()

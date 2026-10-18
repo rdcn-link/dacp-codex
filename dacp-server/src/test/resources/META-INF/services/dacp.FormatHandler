@@ -1,1 +1,3 @@
 dacp.TestFormatHandler
+example.MessageFileHandler
+dacp.TestTrackedHandler

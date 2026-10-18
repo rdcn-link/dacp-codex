@@ -26,14 +26,14 @@ object FormatConvert {
       val n = math.min(len,bytes.length-offset); System.arraycopy(bytes,offset,b,off,n); offset += n; n
     }
   }
-  def parsed(in: InputStream, format: String): Data.Rows = format match {
-    case "csv" => new Data.Rows {
+  def parsed(in: InputStream, format: String): Records.Rows = format match {
+    case "csv" => new Records.Rows {
       private val parser = CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).get().parse(new InputStreamReader(in,UTF_8))
       val names = parser.getHeaderNames.asScala.toSeq
       val iterator = parser.iterator.asScala.map(r => { require(r.size == names.size,"SCHEMA_CONFLICT: CSV width"); names.map(n => { val s = r.get(n); if (s.isEmpty) null else s }) })
       def close(): Unit = parser.close()
     }
-    case "json" | "ndjson" => new Data.Rows {
+    case "ndjson" => new Records.Rows {
       private val reader = new BufferedReader(new InputStreamReader(in,UTF_8))
       private val nodes = Iterator.continually(reader.readLine()).takeWhile(_ != null).filter(_.trim.nonEmpty).map(Data.mapper.readTree).buffered
       val names = if (nodes.hasNext) nodes.head.fieldNames.asScala.toSeq else Seq.empty
@@ -56,7 +56,7 @@ object FormatConvert {
     require(option("on_conflict","fail") == "fail", "only on_conflict=fail supported")
     val batchSize = 1024; val sample = option("infer_sample","4").toInt; require(sample > 0)
     val explicit = Option(params.get("schema")).filter(_.isObject).map { node =>
-      new Schema(node.fields.asScala.map(e => Data.field(e.getKey,e.getValue.asText)).toList.asJava)
+      new Schema(node.fields.asScala.map(e => Records.field(e.getKey,e.getValue.asText)).toList.asJava)
     }
     require(!params.has("schema") || params.get("schema").isObject || params.get("schema").asText == "infer", "schema must be infer or name:type mapping")
     Files.createDirectories(output)
@@ -76,7 +76,7 @@ object FormatConvert {
               // Reuse strict inference with an in-memory sample only; no full-file materialization.
               val ts = values.map(DataKind.kind).distinct
               require(ts.size <= 1,s"SCHEMA_CONFLICT: ${rows.names(i)}; specify explicit schema")
-              Data.field(rows.names(i),ts.headOption.getOrElse("utf8"))
+              Records.field(rows.names(i),ts.headOption.getOrElse("utf8"))
             }
             new Schema(types.asJava)
           }
@@ -85,7 +85,7 @@ object FormatConvert {
           val writer = Parquet.writer(target,schema,option("compression","zstd"),size(option("row_group_size","128MB")))
           val root = VectorSchemaRoot.create(schema,allocator); val avroSchema = Parquet.avro(schema)
           try (sampled.iterator ++ rows.iterator).grouped(batchSize).foreach { batch =>
-            Data.fill(root,batch)
+            Records.fill(root,batch)
             (0 until root.getRowCount).foreach { i => val record = new GenericData.Record(avroSchema)
               root.getFieldVectors.asScala.foreach { v => val raw = v.getObject(i); record.put(v.getName,raw match { case t: org.apache.arrow.vector.util.Text => t.toString; case x => x }) }
               writer.write(record)

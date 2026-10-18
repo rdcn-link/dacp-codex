@@ -32,7 +32,7 @@ with Source.open("dacp://localhost:8815/sales") as ds:
         print(batch.to_pydict())
 ```
 
-`list()` returns all Items recursively; `list(path)` returns immediate children of a folder. All paths start with `/`. Files and SQL tables both become `data` Items; parent groups are `folder` Items. Empty folders can be declared with `kind: folder`. The `sales` Dataset uses `provider: sqldb` with `source.connection: warehouse`; table mappings need only `table`. The `files` Dataset uses `custom`. A custom Dataset may combine file and SQL mappings.
+`list()` returns all Items recursively; `list(path)` returns immediate children of a folder. All paths start with `/`. Files and SQL tables both become `data` Items; parent groups are `folder` Items. Empty folders can be declared with `kind: folder`. The `sales` Dataset uses `provider: sqldb` with `source.connection: warehouse`; its `tables` mappings need only `table`. The `files` Dataset uses `custom`. A custom Dataset may combine file and SQL mappings.
 
 ## PostgreSQL
 
@@ -44,7 +44,7 @@ datasets:
     provider: sqldb
     source:
       connection: warehouse
-    items:
+    tables:
       /reports/orders: {table: orders}
       /clients: {table: customers}
 sql_sources:
@@ -60,7 +60,7 @@ sql_sources:
 
 Set those environment variables before starting the node, and configure the PostgreSQL driver's trusted server CA for `verify-full`. Use a database account with SELECT privileges on exposed tables and schema USAGE. Credentials remain on the server and are never sent to DACP clients. Plain `user` / `password` fields are also accepted; environment fields take precedence and missing referenced variables fail configuration loading. Each private SQL source describes one database schema. Use `provider: custom` with Item-level `sql` bindings to combine multiple sources if desired.
 
-Legacy directory auto-publication (`datasets: {name: /directory}`) and `sql_datasets` are no longer supported. Use `provider: directory` with `source.root` for automatic file discovery, or configure `sqldb` / `custom` public Item mappings and private `sql_sources` explicitly. Private sources and tables are not published unless mapped. File mappings use `{file: /private/path.csv}`; SQL mappings use `{sql: warehouse, table: private_table}`. Names and paths visible to the client are independently chosen aliases. Each private SQL source supports:
+Use `provider: directory` with `source.root` for automatic file discovery, or configure `sqldb` / `custom` public Item mappings and private `sql_sources` explicitly. Private sources and tables are not published unless mapped. File mappings use `{file: /private/path.csv}`; SQL mappings use `{sql: warehouse, table: private_table}`. Names and paths visible to the client are independently chosen aliases. Each private SQL source supports:
 
 | Field | Meaning |
 |---|---|
@@ -95,7 +95,7 @@ Supported SQL types map to Arrow as follows:
 
 Nulls and JDBC column nullability are preserved. Sub-microsecond temporal precision is truncated. Arrays, LOBs, arbitrary vendor-specific types, unconstrained decimals, and time-with-time-zone are currently rejected explicitly; no silent type coercion is performed. Other JDBC engines need their driver added to `build.sbt` and validation of schema metadata, type mapping and cursor behavior before use.
 
-`as_records()` streams table records directly. A table has no original file representation, so `as_bytes()` streams an **Arrow IPC serialization** in the standard single-binary-column Flight view. It can be consumed with `pyarrow.ipc.open_stream(ds.open("/reports/orders").as_bytes())`; it is not CSV, SQL text or a database backup. `format_convert@1.0` still accepts CSV/JSON only; SQL table conversion is outside this adapter change.
+`as_records()` streams table records directly. A table has no original file representation, so `as_bytes()` streams an **Arrow IPC serialization** in the standard single-binary-column Flight view. It can be consumed with `pyarrow.ipc.open_stream(ds.open("/reports/orders").as_bytes())`; it is not CSV, SQL text or a database backup. `format_convert@1.0` still accepts CSV/NDJSON only; SQL table conversion is outside this adapter change.
 
 Each request owns its JDBC connection, statement and result set. Reads request a read-only transaction with forward-only cursors. PostgreSQL uses autocommit=false and a positive fetch size to avoid buffering the entire result ([driver documentation](https://jdbc.postgresql.org/documentation/query/)). Arrow allocation is bounded by batch size; JDBC buffering depends on the driver, and individual large values still occupy memory. SQL results have no implicit row order. Listing/FlightInfo and DoGet use separate connections, so metadata and data are not a shared snapshot. Each reopened stream starts a new read, without retries, checkpoints or deduplication. Cancellation is checked between fetches/batches; an in-flight database operation may run until the driver/query timeout.
 

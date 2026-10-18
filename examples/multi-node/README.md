@@ -65,7 +65,7 @@ The manual YAML uses fixed output names; use new names for each run until the ow
 
 - A task defaults to the server in its **first resolved input URI**. For multiple inputs, this first input is the data anchor.
 - Optional `node: dacp://host:port` chooses an execution server explicitly. Use the server's advertised `public_host` and port consistently.
-- `input: upstream/logical/item` and `inputs: [upstream_a, upstream_b]` resolve to absolute URIs before dispatch. The worker never resolves DAG references or forwards tasks.
+- `inputs: [upstream/logical/item]` and `inputs: [upstream_a, upstream_b]` resolve to absolute URIs before dispatch. The worker never resolves DAG references or forwards tasks.
 - The full DAG, dependencies, URI syntax, and all target nodes are checked before dispatch. Tasks run in topological order; independent tasks are currently serialized.
 - `task_peers` lists origins the coordinator may dispatch to; its own advertised origin is always allowed. This list grants permission, rather than providing discovery or dataset lookup.
 - `task_input_prefixes` lists dataset URI prefixes a worker may pull. If omitted/empty, it defaults to `allowed_uri_prefixes`, allowing existing local-only configurations to work.

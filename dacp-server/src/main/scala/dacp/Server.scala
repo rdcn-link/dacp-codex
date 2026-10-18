@@ -19,7 +19,11 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
                   taskInputPrefixes: Seq[String] = Seq.empty, maxConcurrentTasks: Int = 2,
                   operatorLibraryUrl: Option[String] = None, operatorCache: Path = Path.of(".operator-cache"),
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
-                  sqlSources: Map[String, SqlConfig] = Map.empty, countFileRecordsOnStartup: Boolean = false) {
+                  sqlSources: Map[String, SqlConfig] = Map.empty, countFileRecordsOnStartup: Boolean = false) extends DatasetContext with AutoCloseable {
+  def close(): Unit = published.values.foreach(_.close())
+  def sqlSourceNames: Set[String] = sqlSources.keySet
+  def publish(items: Seq[PublishedItem]): PublishedDataset = DatasetProviders.publish(items,this)
+  def openNamespace(items: Seq[PublishedItem], check: () => Unit): DatasetAccess = new NamespaceAdapter(items,this,check)
   require(datasets.keySet.forall(n => n.nonEmpty && !n.contains("/") && n != "." && n != ".." && !n.contains("\\") && !n.exists(_.isControl)), "invalid dataset name")
   private lazy val published = datasets.map { case (name,definition) =>
     name -> DatasetProviders.byId(definition.provider).create(definition,this)
@@ -38,10 +42,16 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
 }
 object Config {
   def load(path: Path): Config = {
-    Formats.initialize()
     val in = Files.newInputStream(path)
     val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
     val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala finally in.close()
+    val settings = Set("host", "port", "public_host", "datasets", "sql_sources", "allowed_uri_prefixes",
+      "tls_cert", "tls_key", "tls_ca", "batch_size", "byte_chunk", "infer_sample", "output_ttl_seconds",
+      "operator_library", "output_root", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
+      "operator_library_url", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory")
+    require(m.keySet.subsetOf(settings), "unknown server setting")
+    PluginLoader.initialize(m.get("plugin_directory").map(v => Path.of(v.toString)))
+    Formats.initialize()
     def str(k: String) = m(k).toString
     def n(k: String, d: Int) = m.get(k).map(_.toString.toInt).getOrElse(d)
     def strings(k: String): Seq[String] = m.get(k).map(_.asInstanceOf[java.util.List[String]].asScala.toSeq).getOrElse(Seq.empty)
@@ -54,18 +64,19 @@ object Config {
         opt("fetch_size").map(_.toInt).getOrElse(n("batch_size",1024)),opt("query_timeout_seconds").map(_.toInt).getOrElse(60))
     }.toMap).getOrElse(Map.empty[String,SqlConfig])
     val definitions = m.get("datasets").map(_.asInstanceOf[java.util.Map[String,Object]].asScala.map { case (name,raw) =>
-      require(raw.isInstanceOf[java.util.Map[_,_]],"datasets require provider settings or explicit items")
+      require(raw.isInstanceOf[java.util.Map[_,_]],"datasets require provider settings")
       val v = raw.asInstanceOf[java.util.Map[String,Object]].asScala.toMap
-      require(v.keySet.subsetOf(Set("provider","source","items")),"unknown dataset setting")
-      val provider = v.get("provider").map(_.toString).getOrElse("custom")
-      DatasetProviders.byId(provider)
+      require(v.contains("provider"), "dataset provider is required")
+      val provider = v("provider").toString
+      val factory = DatasetProviders.byId(provider)
+      val settingsKey = factory.itemSettingsKey
+      require(v.keySet.subsetOf(Set("provider","source",settingsKey)),"unknown dataset setting")
       val source = v.get("source").map(_.asInstanceOf[java.util.Map[String,Object]].asScala.toMap).getOrElse(Map.empty[String,Object])
-      val items = v.get("items").map(_.asInstanceOf[java.util.Map[String,java.util.Map[String,Object]]].asScala.map {
+      val items = v.get(settingsKey).map(_.asInstanceOf[java.util.Map[String,java.util.Map[String,Object]]].asScala.map {
         case (path,settings) => path -> settings.asScala.toMap
       }.toMap).getOrElse(Map.empty[String,Map[String,Object]])
       name -> DatasetDefinition(provider,source,items)
     }.toMap).getOrElse(Map.empty[String,DatasetDefinition])
-    require(!m.contains("sql_datasets"), "use private sql_sources and explicit datasets item mappings")
     val config = Config(str("host"), n("port",8815), str("public_host"), definitions,
       m("allowed_uri_prefixes").asInstanceOf[java.util.List[String]].asScala.toSeq,
       Path.of(str("tls_cert")), Path.of(str("tls_key")), Path.of(str("tls_ca")), n("batch_size",1024), n("byte_chunk",65536), n("infer_sample",4),
@@ -137,9 +148,10 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
     val ds = p(1); val item = if (p.size == 4) p(3) else p.lift(2).getOrElse("")
     if (item.nonEmpty) LogicalPath.validate(item)
     val a = adapter(ds,item,ctx)
+    try {
     if (p.size == 4 && p(2) == "count") {
       val metadata = itemMetadata(Item(item,"",None,recordCount=a.count(item)))
-      new FlightInfo(Data.bytesSchema, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,
+      new FlightInfo(PluginSchemas.bytes, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,
         org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,metadata.toByteArray)
     } else if (p.size == 2 || p.size == 4) {
       val meta = Metadata.DataSet.newBuilder().setUri(config.uri(ds))
@@ -148,7 +160,7 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
         scala.util.Try(config.authorize(ds,i.path)).isSuccess).foreach { i =>
         meta.addItems(itemMetadata(i))
       }
-      new FlightInfo(Data.bytesSchema, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,meta.build.toByteArray)
+      new FlightInfo(PluginSchemas.bytes, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,meta.build.toByteArray)
     } else {
       val description = a.describe(item)
       require(NamespaceAdapter.views(description).nonEmpty, "folder has no content stream")
@@ -158,12 +170,14 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
         org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,
         itemMetadata(description).toByteArray)
     }
+    } finally a.close()
   } catch { case t: Throwable => throw fail(t) }
   override def getStream(ctx: FlightProducer.CallContext, ticket: Ticket, listener: FlightProducer.ServerStreamListener): Unit = {
     try {
       val t = Metadata.Ticket.parseFrom(ticket.getBytes)
       require(Set("records","bytes").contains(t.getView), "invalid view")
       val namespace = adapter(t.getDataset,t.getItem,ctx)
+      try {
       val lock = new Object
       listener.setOnReadyHandler(() => lock.synchronized(lock.notifyAll()))
       listener.setOnCancelHandler(() => lock.synchronized(lock.notifyAll()))
@@ -174,6 +188,7 @@ class Producer(config: Config, allocator: BufferAllocator, outputs: OutputRegist
         outputs.lookup(t.getDataset)
       }
       namespace.stream(t.getItem,t.getView,allocator,listener,() => ready())
+      } finally namespace.close()
     } catch { case _: java.util.concurrent.CancellationException => (); case t: Throwable => listener.error(fail(t)) }
   }
 }
@@ -199,7 +214,7 @@ object Main {
     val server = FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),producer)
       .useTls(config.cert.toFile,config.key.toFile).useMTlsClientVerification(config.ca.toFile)
       .build().start()
-    Runtime.getRuntime.addShutdownHook(new Thread(() => { server.close(); tasks.close(); outputs.close(); allocator.close() }))
+    Runtime.getRuntime.addShutdownHook(new Thread(() => { server.close(); tasks.close(); outputs.close(); config.close(); PluginLoader.close(); allocator.close() }))
     println(s"dacp listening on ${config.uri("")}")
     val datasetNames = config.datasets.keySet.toSeq.sorted
     println(s"configured datasets (${datasetNames.size}):")

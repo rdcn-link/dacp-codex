@@ -10,12 +10,6 @@ import org.apache.arrow.memory.BufferAllocator
 import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
 import org.apache.commons.csv.CSVFormat
 
-case class Item(path: String, format: String, schema: Option[Schema], kind: String = "data",
-                lastModifiedTimeMs: Option[Long] = None, totalSizeBytes: Option[Long] = None,
-                recordCount: Option[Long] = None, views: Option[Seq[String]] = None) {
-  require(views.forall(v => v.distinct.size == v.size && v.forall(Set("records","bytes"))), "invalid item views")
-}
-trait DataSetAdapter { def list(): Seq[Item]; def describe(item: String): Item }
 class DirectoryAdapter(base: Path, batchSize: Int, inferSample: Int, excludeMetadata: Boolean = false, val options: FileOptions = FileOptions()) extends DataSetAdapter {
   private val root = base.toRealPath()
   def resolve(item: String): Path = {
@@ -26,7 +20,7 @@ class DirectoryAdapter(base: Path, batchSize: Int, inferSample: Int, excludeMeta
   }
   def describe(item: String): Item = {
     val p = resolve(item); val handler = Formats.detect(p,options)
-    Item(item,handler.id,Some(handler.schema(p,options,batchSize,inferSample)))
+    Item(item,handler.id,Some(if (handler.isInstanceOf[StructuredFileHandler]) PluginSchemas.bytes else handler.schema(p,options,batchSize,inferSample)))
   }
   // Architecture: recurse and flatten files, never return directories or follow escaping symlinks.
   def list(): Seq[Item] = {
@@ -65,13 +59,10 @@ class Expired(id: String) extends RuntimeException(s"EXPIRED: output $id has exp
 
 object Data {
   val mapper = new ObjectMapper()
-  val bytesSchema = new Schema(List(new Field("data", FieldType.nullable(new ArrowType.Binary()), null)).asJava)
   def format(p: Path): String = Formats.detect(p).id
   def deleteTree(p: Path): Unit = if (Files.exists(p)) { val s = Files.walk(p); try s.iterator.asScala.toSeq.reverse.foreach(Files.deleteIfExists) finally s.close() }
-  trait Rows extends AutoCloseable { def names: Seq[String]; def iterator: Iterator[Seq[Any]] }
-  def rows(p: Path): Rows = Formats.detect(p).rows(p,FileOptions())
-  def delimitedRows(p: Path, format: String): Rows = format match {
-    case "csv" => new Rows {
+  def delimitedRows(p: Path, format: String): Records.Rows = format match {
+    case "csv" => new Records.Rows {
       private val reader = Files.newBufferedReader(p, UTF_8)
       private val parser = CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).get().parse(reader)
       val names = parser.getHeaderNames.asScala.toSeq
@@ -81,7 +72,7 @@ object Data {
       }
       def close(): Unit = parser.close()
     }
-    case "ndjson" => new Rows {
+    case "ndjson" => new Records.Rows {
       private val reader = Files.newBufferedReader(p, UTF_8)
       private val lines = Iterator.continually(reader.readLine()).takeWhile(_ != null).filter(_.trim.nonEmpty).buffered
       private def parse(s: String): JsonNode = { val n = mapper.readTree(s); require(n.isObject, "JSON must be newline-delimited objects"); n }
@@ -92,55 +83,6 @@ object Data {
       }
       def close(): Unit = reader.close()
     }
-    case _ => throw new IllegalArgumentException("records supported for csv/json/parquet")
-  }
-  private def kind(v: Any): String = v match {
-    case null => "null"
-    case _: Boolean => "bool"
-    case _: Long => "int64"
-    case _: Double => "float64"
-    case s: String => if (s == "true" || s == "false") "bool" else if (s.matches("[-+]?\\d+")) { try { s.toLong; "int64" } catch { case _: NumberFormatException => "utf8" } } else if (s.matches("[-+]?(?:\\d+\\.\\d*|\\d*\\.\\d+)(?:[eE][-+]?\\d+)?|[-+]?\\d+[eE][-+]?\\d+")) "float64" else "utf8"
-  }
-  def field(name: String, kind: String): Field = new Field(name, FieldType.nullable(kind match {
-    case "int64" => new ArrowType.Int(64, true)
-    case "float64" => new ArrowType.FloatingPoint(org.apache.arrow.vector.types.FloatingPointPrecision.DOUBLE)
-    case "bool" => new ArrowType.Bool()
-    case "utf8" | "string" => new ArrowType.Utf8()
-    case x => throw new IllegalArgumentException(s"unsupported schema type $x")
-  }), null)
-  def schema(p: Path, batchSize: Int, sample: Int, explicit: Option[Schema] = None): Schema = {
-    inferSchema(rows(p),batchSize,sample,explicit)
-  }
-  def inferSchema(r: Rows, batchSize: Int, sample: Int, explicit: Option[Schema] = None): Schema = {
-    require(batchSize > 0 && sample > 0)
-    try {
-      explicit match {
-        case Some(s) => require(s.getFields.asScala.map(_.getName).toSeq == r.names, "SCHEMA_CONFLICT: explicit columns do not match"); s
-        case None =>
-          val types = Array.fill(r.names.size)("null")
-          r.iterator.take(Math.multiplyExact(batchSize, sample)).foreach(row => row.zipWithIndex.foreach { case (v, i) =>
-            val t = kind(v)
-            if (types(i) == "null") types(i) = t
-            else require(t == "null" || t == types(i), s"SCHEMA_CONFLICT: ${r.names(i)}; specify explicit schema")
-          })
-          new Schema(r.names.zip(types).map { case (n,t) => field(n, if (t == "null") "utf8" else t) }.asJava)
-      }
-    } finally r.close()
-  }
-  // Fixed schema after sampling: fail on conflicts, never silently widen or restart a stream.
-  def set(v: FieldVector, i: Int, value: Any): Unit = {
-    if (value == null) v.setNull(i)
-    else try v match {
-      case x: BigIntVector => require(kind(value) == "int64"); x.setSafe(i, value.toString.toLong)
-      case x: Float8Vector => require(Set("int64", "float64").contains(kind(value))); x.setSafe(i, value.toString.toDouble)
-      case x: BitVector => require(kind(value) == "bool"); x.setSafe(i, if (value.toString == "true") 1 else 0)
-      case x: VarCharVector => x.setSafe(i, value.toString.getBytes(UTF_8))
-      case _ => throw new IllegalArgumentException("unsupported Arrow type")
-    } catch { case e: Exception => throw new IllegalArgumentException(s"SCHEMA_CONFLICT: ${v.getName}; specify explicit schema", e) }
-  }
-  def fill(root: VectorSchemaRoot, rows: Seq[Seq[Any]]): Unit = {
-    root.clear(); root.allocateNew()
-    rows.zipWithIndex.foreach { case (row,i) => root.getFieldVectors.asScala.zip(row).foreach { case (v,x) => set(v,i,x) } }
-    root.setRowCount(rows.size)
+    case _ => throw new IllegalArgumentException("delimited records require csv or ndjson")
   }
 }

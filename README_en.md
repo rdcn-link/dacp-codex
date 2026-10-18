@@ -118,7 +118,7 @@ Use Streams before their owning Dataset closes. Close record iterators when stop
 
 `show` accepts a path or a number from the latest listing. It prefers records when available and otherwise shows hexadecimal bytes. Records appear in a table with column names; `text` displays text, and `hex` displays offsets, hexadecimal bytes, and ASCII. Previews default to at most 20 rows or 4096 bytes, adjustable with `--rows` and `--bytes`.
 
-Use `use DATASET` to switch datasets on the same server, `connect URI` to connect elsewhere, and `help` for commands. Certificate paths can also be passed through `--ca`, `--cert`, and `--key`; `dacp` remains a compatibility command alias.
+Use `use DATASET` to switch datasets on the same server, `connect URI` to connect elsewhere, and `help` for commands. Certificate paths can also be passed through `--ca`, `--cert`, and `--key`.
 
 ### Scala SDK
 
@@ -153,14 +153,14 @@ datasets:
     provider: directory
     source:
       root: /home/test/dataset1
-    items:
+    reader_overrides:
       /events.json: {format: ndjson}
 
   sales:
     provider: sqldb
     source:
       connection: warehouse
-    items:
+    tables:
       /customers: {table: CUSTOMERS}
 
   research:
@@ -181,11 +181,76 @@ sql_sources:
 
 This is a configuration fragment; merge it with listener, TLS, and URI allowlist settings, and replace example paths and database connections. Relative paths resolve against the server process working directory.
 
-Directory Datasets expose paths relative to their root, such as `/reports/orders.csv`. Empty directories are folders, and supported archives can be browsed further. Subsequent listings reflect additions, deletions, and changes. The root stays private, all symbolic links are ignored, and access remains confined to the root. Optional directory `items` override reader format, sheet, header row, and schema; they do not rename paths or add other sources.
+Directory Datasets expose paths relative to their root, such as `/reports/orders.csv`. Empty directories are folders, and supported archives can be browsed further. Subsequent listings reflect additions, deletions, and changes. The root stays private, all symbolic links are ignored, and access remains confined to the root. Optional directory `reader_overrides` override reader format, sheet, header row, and schema; they do not rename paths or add other sources.
 
-SQL Dataset `items` bind public paths to private tables in the selected connection; tables are not automatically exposed. `custom` retains explicit mappings and mixed-source flexibility. Existing `items` configurations without `provider` continue to use `custom`.
+SQL Dataset `tables` bind public paths to private tables in the selected connection; tables are not automatically exposed. `custom` retains explicit mappings and mixed-source flexibility. Every Dataset must explicitly specify `provider`.
 
 The default example provides `data1` and `csv_data` (custom), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](examples/sql/README.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](docs/dataset-providers.md).
+
+### User-defined Dataset providers
+
+A user-defined provider is a server-side Scala/JVM plugin. `provider` selects the plugin; `source` supplies private parameters for this Dataset instance. Multiple Datasets can use the same provider with different parameters. The plugin validates its settings; clients see public paths and data.
+
+This complete provider example publishes one CSV file at the fixed public path `/records`:
+
+```scala
+package example
+
+import dacp._
+import java.nio.file.Path
+
+class CsvFileProvider extends DatasetProvider {
+  val id = "csv-file"
+
+  def create(d: DatasetDefinition, context: DatasetContext): PublishedDataset = {
+    require(d.source.keySet.subsetOf(Set("file")),
+      "unknown csv-file parameter")
+    require(d.source.contains("file"), "csv-file requires source.file")
+    require(d.items.isEmpty && d.bindings.isEmpty,
+      "csv-file does not accept item mappings")
+    val file = Path.of(d.source("file").toString)
+    context.publish(Seq(PublishedItem(
+      "/records", file = Some(file),
+      options = FileOptions(format = Some("csv"))
+    )))
+  }
+}
+```
+
+Compile the code into a JAR against the standalone `dacp-plugin-api`, using the matching API and Scala versions and a `Provided` dependency. Include this service registration file inside the JAR:
+
+```text
+META-INF/services/dacp.DatasetProvider
+```
+
+Its contents are the implementation class name:
+
+```text
+example.CsvFileProvider
+```
+
+Place the plugin and its required dependency JARs in `plugin_directory` (without duplicating the API or dependencies supplied by the server), then restart with this configuration fragment merged with listener, TLS, and URI allowlist settings:
+
+```yaml
+plugin_directory: /opt/dacp/plugins
+datasets:
+  measurements:
+    provider: csv-file
+    source:
+      file: /private/measurements.csv
+```
+
+Clients read `/records` without receiving `source.file`. Plugins needing per-item mappings receive them through `items` by default, or can override `DatasetProvider.itemSettingsKey` to declare their own configuration key; parsed mappings are always available as `definition.items`. `source` can contain nested plugin-specific parameters; the plugin must validate types, required values, and unknown parameters.
+
+Directory providers use `reader_overrides`, SQLDB uses `tables`, and custom uses `items`. Directory and SQLDB reject `items`. Native backends such as a future MongoDB provider can implement `PublishedDataset` and `DatasetAccess` directly for listing, metadata, counting, and streaming without mapping to files or SQL. See the [provider development guide](docs/dataset-providers.md) for interfaces, cancellation, and resource cleanup requirements. MongoDB is not implemented yet.
+
+### File and structured-content plugins
+
+File plugins implement `FormatHandler` and register in `META-INF/services/dacp.FormatHandler`. Each handler validates its private `options` parameters; for example, Excel uses `options: {sheet: Orders, header_row: 2}`. Common `format` and `schema` remain at the top level of reader settings.
+
+To browse logical objects inside a file, implement `StructuredFileHandler` and register through the same format service file. Its `openStructure` returns `DatasetAccess` and can stream internal objects directly without extracting temporary files. The file root is a folder with original bytes; children explicitly advertise `records` or `bytes`. Archive readers can implement `ContainerReader` and register in `META-INF/services/dacp.ContainerReader`, without modifying core format registries.
+
+The standalone API lives in [dacp-plugin-api](dacp-plugin-api). Runnable contributions and build/install instructions are in [examples/plugins](examples/plugins/README.md). `PluginChecks.listing` provides reusable metadata contract checks. The server closes request-scoped access handles and releases provider resources on shutdown. Concrete NetCDF/FITS parsers and new array/image views are not implemented yet; contributors can represent internal file objects through the current interfaces, without silently flattening arrays into records.
 
 ### Formats and views
 
@@ -246,6 +311,8 @@ All connections require mTLS and URI prefix authorization. Public metadata, tick
 Allowlists currently apply at node level, without permissions grouped by certificate subject. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. The task output registry is in memory; outputs are cleaned on TTL expiry or server shutdown, and tasks are not restored after restart. See the [technical reference](docs/reference_en.md#protocol-and-configuration) for full configuration and protocol details.
 
 ## Development and validation
+
+DACP prefers plugins for extension. New dataset backends, file formats, and processing operators should implement public extension contracts and be installed as plugins, without changes to core dispatch. Built-in and community implementations should use the same contracts; plugins own their parameter validation and third-party dependencies, while clients access data through common paths and capabilities. See the [plugin contribution guide](docs/plugins.md) for contribution guidance, available mechanisms, and scientific-data extension boundaries.
 
 Run from the project root:
 

@@ -12,7 +12,7 @@ datasets:
     provider: sqldb
     source:
       connection: warehouse
-    items:
+    tables:
       /reports/orders: {table: ORDERS}
       /clients: {table: CUSTOMERS}
 sql_sources:

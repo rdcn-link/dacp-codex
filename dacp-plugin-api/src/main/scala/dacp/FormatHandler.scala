@@ -1,0 +1,60 @@
+package dacp
+
+import java.nio.file.Path
+import scala.jdk.CollectionConverters._
+import org.apache.arrow.memory.BufferAllocator
+import org.apache.arrow.vector.VectorSchemaRoot
+import org.apache.arrow.vector.types.pojo.Schema
+
+/** Private source options never travel in public metadata or tickets. */
+case class FileOptions(format: Option[String] = None, columns: Option[Schema] = None,
+                       parameters: Map[String,Object] = Map.empty) {
+  columns.foreach { schema =>
+    val names = schema.getFields.asScala.map(_.getName)
+    require(names.nonEmpty && names.forall(_.nonEmpty) && names.distinct.size == names.size, "schema requires unique nonempty column names")
+  }
+  override def toString: String = "FileOptions(<private settings>)"
+}
+
+/** Implementations must release resources on close and honor demand before each batch. */
+trait FormatHandler {
+  def id: String
+  def extensions: Set[String]
+  def records: Boolean = false
+  def validateOptions(options: FileOptions): Unit =
+    require(options.parameters.isEmpty, "this format does not accept reader parameters")
+  def signatureMatches(header: Array[Byte]): Boolean = false
+  def matches(header: Array[Byte], extension: String): Boolean = extensions(extension)
+  def rows(path: Path, options: FileOptions): Records.Rows = throw new IllegalArgumentException("unsupported stream view")
+  def cheapSchema(path: Path, options: FileOptions): Option[Schema] = None
+  def cheapCount(path: Path, options: FileOptions): Option[Long] = None
+  def schema(path: Path, options: FileOptions, batch: Int, sample: Int): Schema =
+    if (!records) PluginSchemas.bytes else Records.inferSchema(rows(path,options),batch,sample,options.columns)
+  def count(path: Path, options: FileOptions): Option[Long] = if (!records) None else {
+    val reader = rows(path,options)
+    try Some(reader.iterator.foldLeft(0L)((n,_) => Math.addExact(n,1L))) finally reader.close()
+  }
+  def stream(path: Path, options: FileOptions, allocator: BufferAllocator, batch: Int, sample: Int)(
+      start: VectorSchemaRoot => Unit, emit: VectorSchemaRoot => Unit, demand: () => Unit): Unit = {
+    val root = VectorSchemaRoot.create(schema(path,options,batch,sample),allocator)
+    try {
+      val reader = rows(path,options)
+      try {
+        start(root)
+        val iterator = reader.iterator
+        var done = false
+        while (!done) {
+          demand()
+          val values = iterator.take(batch).toVector
+          if (values.isEmpty) done = true else { Records.fill(root,values); emit(root) }
+        }
+      } finally reader.close()
+    } finally root.close()
+  }
+}
+
+/** Native logical objects inside a file; children need not be extracted as files. */
+trait StructuredFileHandler extends FormatHandler {
+  def openStructure(path: Path, options: FileOptions, context: DatasetContext,
+                    check: () => Unit): DatasetAccess
+}

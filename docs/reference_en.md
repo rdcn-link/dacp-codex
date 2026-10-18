@@ -31,6 +31,7 @@ Map a ZIP file using an ordinary file alias. The server publishes it as `kind=fo
 ```yaml
 datasets:
   public:
+    provider: custom
     items:
       /archive: {file: /private/reports.ZIP}
 ```
@@ -76,12 +77,12 @@ File mappings accept these private reader options:
 ```yaml
 datasets:
   office:
+    provider: custom
     items:
       /orders:
         file: /private/sales.xlsx
         format: excel
-        sheet: Orders
-        header_row: 2
+        options: {sheet: Orders, header_row: 2}
         schema:
           - {name: id, type: int64}
           - {name: amount, type: float64}
@@ -90,7 +91,7 @@ datasets:
         format: ndjson
 ```
 
-`sheet` and `header_row` apply to Excel; the header row is one-based and defaults to 1. A single-sheet workbook selects its only sheet automatically; multiple sheets require an explicit selection. Publish multiple logical aliases to expose separate sheets. The original workbook is returned through bytes for each alias; records and counts refer only to its selected sheet. Sheet bindings and private filenames never appear in metadata or tickets.
+`options.sheet` and `options.header_row` are validated by the Excel handler; the header row is one-based and defaults to 1. A single-sheet workbook selects its only sheet automatically; multiple sheets require an explicit selection. Publish multiple logical aliases to expose separate sheets. The original workbook is returned through bytes for each alias; records and counts refer only to its selected sheet. Sheet bindings and private filenames never appear in metadata or tickets.
 
 Excel uses Apache POI 5.5.1 event readers for both XLS and XLSX. Empty headers become `column_N`, duplicate names receive deterministic `_2`, `_3` suffixes, and missing cells become null. Empty data rows are skipped; data beyond the header width fails. Cached formula values are read without recalculation; missing cached values become null when identifiable. Cell errors and encrypted or invalid workbooks fail with a DACP format error. Numeric cells are int64 when integral and in range, otherwise float64; booleans and strings retain their values. Excel numeric dates remain serial numbers, with no implicit locale or timezone conversion. Optional `schema` supports ordered `name`/`type` entries using `int64`, `float64`, `bool`, and `utf8`/`string`. Without it, sampling is bounded by `batch_size * infer_sample`; later incompatible values fail instead of changing the schema.
 
@@ -122,9 +123,13 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 Set `count_file_records_on_startup: true` to count custom file mappings and initially discovered directory record files once while loading configuration and reuse those counts in ordinary browsing. It defaults to false. Counts are tied to file size and modification time; changes detected during or after counting leave the result unknown. Restarting recounts files. Explicit `count` still reads current content without changing saved metadata. SQL, archive children, and folders are excluded. Invalid record files fail startup when this option is enabled.
 
+`plugin_directory` optionally selects a directory containing plugin and dependency JARs. It is loaded before registry initialization and requires a restart after changes. Reader-specific parameters go under `options`; handlers validate them. See [plugins](plugins.md) for the standalone API and structured-file contracts.
+
 ## Dataset construction
 
-Built-in providers are `directory`, `sqldb`, and `custom`. Each Dataset selects one provider to interpret private `source` and `items` settings and expose a common data access interface. Directory providers discover relative paths dynamically, SQLDB providers use explicit public table aliases, and custom providers may combine sources. Omitting provider preserves existing custom configurations; legacy `datasets: {name: /directory}` shorthand is unsupported.
+Directory uses optional `reader_overrides`, SQLDB uses `tables` mappings from public paths to private tables, and custom uses `items`. Directory and SQLDB reject `items`. Plugins default to `items` and may customize the mapping key through `DatasetProvider.itemSettingsKey`.
+
+Built-in providers are `directory`, `sqldb`, and `custom`. Each Dataset selects one provider to interpret private `source` and provider-specific mapping settings and expose a common data access interface. Directory providers discover relative paths dynamically, SQLDB providers use explicit public table aliases, and custom providers may combine sources. Every Dataset must explicitly specify `provider`.
 
 Directory Datasets do not follow symlinks. Folder metadata and immediate-child listings do not recursively scan ordinary child directories; `list()` discovers all files and archive entries recursively. Optional startup counting scans initial files; later files are discovered without automatic counting. Reader overrides match public paths without renaming files. SQL bindings or absolute file mappings in a directory Dataset are rejected; use custom for those combinations.
 
@@ -134,7 +139,7 @@ Dataset providers construct datasets, container readers browse archives, and for
 
 ### DAG and operator contract
 
-`input` is a single URI or an upstream `output` name; `inputs` is a list of such values. Upstream references also support `s1/result-1`. Tasks validate duplicate names, unknown dependencies, cycles, and target nodes before running serially in topological order. Execution defaults to the node hosting the first input URI, or can be set explicitly with `node: dacp://host:port`. The coordinating node resolves upstream references into concrete URIs and dispatches tasks through mTLS Flight actions; no central registry is required. Each subtask gets a new container with networking disabled, a read-only `/input` mount, and a writable `/output` mount.
+`inputs` is a nonempty list of URIs or upstream `output` names, including for single-input tasks. Upstream references also support `s1/result-1`. Tasks validate duplicate names, unknown dependencies, cycles, and target nodes before running serially in topological order. Execution defaults to the node hosting the first input URI, or can be set explicitly with `node: dacp://host:port`. The coordinating node resolves upstream references into concrete URIs and dispatches tasks through mTLS Flight actions; no central registry is required. Each subtask gets a new container with networking disabled, a read-only `/input` mount, and a writable `/output` mount.
 
 `/input/manifest.json` contains `file/path/format`; `file` points to an Arrow IPC stream. The bytes view uses `data: binary`, with one raw byte chunk per row. `/input/params.json` contains the parameter object. Single inputs use a FIFO, with IPC EOS marking completion; container reads drive upstream consumption. Multiple inputs are fully materialized on disk before the container starts. Temporary input directories are removed on completion or failure, and failed output directories are also deleted. Outputs are registered only when the container exits with code 0. The maximum task timeout is 30 minutes.
 

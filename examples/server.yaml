@@ -25,7 +25,7 @@ datasets:
     provider: directory
     source:
       root: ../examples/data
-    items:
+    reader_overrides:
       /events.json: {format: ndjson}
 allowed_uri_prefixes:
   - dacp://localhost:8815/data1

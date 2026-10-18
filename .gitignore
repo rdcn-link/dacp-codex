@@ -9,6 +9,7 @@ examples/certs/
 examples/output/
 
 .operator-cache/
+/plugins/
 .operator-catalog/
 
 examples/sql/*.mv.db

@@ -15,8 +15,8 @@ class CollaborationSpec extends AnyFunSuite {
     taskPeers=Seq(b),taskInputPrefixes=Seq(b+"/data",a+"/result"))
   val yaml = s"""job: distributed
     |tasks:
-    | - {id: first, input: '$b/data', operator: format_convert@1.0, output: converted}
-    | - {id: relay, input: converted/result-1, node: '$a', operator: identity@1.0, output: result}
+    | - {id: first, inputs: ['$b/data'], operator: format_convert@1.0, output: converted}
+    | - {id: relay, inputs: [converted/result-1], node: '$a', operator: identity@1.0, output: result}
     | - id: joined
     |   inputs: [converted, result]
     |   node: '$b'

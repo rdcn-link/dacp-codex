@@ -16,7 +16,7 @@ object OperatorOutput {
     paths.zipWithIndex.foreach { case (p,i) =>
       val name = s"_stream-$i.arrow"
       val entry = manifest.addObject();entry.put("file",name);entry.put("path",p.getFileName.toString);entry.put("format",Data.format(p))
-      val root = VectorSchemaRoot.create(Data.bytesSchema,allocator)
+      val root = VectorSchemaRoot.create(PluginSchemas.bytes,allocator)
       val writer = new ArrowStreamWriter(root,null,Files.newOutputStream(dir.resolve(name),StandardOpenOption.CREATE_NEW))
       val input = Files.newInputStream(p)
       try {
@@ -41,7 +41,7 @@ object OperatorOutput {
       val reader = new ArrowStreamReader(Files.newInputStream(ipc),allocator)
       val out = Files.newOutputStream(target,StandardOpenOption.CREATE_NEW)
       try {
-        require(reader.getVectorSchemaRoot.getSchema == Data.bytesSchema,"operator output must be Arrow binary view")
+        require(reader.getVectorSchemaRoot.getSchema == PluginSchemas.bytes,"operator output must be Arrow binary view")
         while(reader.loadNextBatch()) { val root=reader.getVectorSchemaRoot;val v=root.getVector(0).asInstanceOf[VarBinaryVector]
           (0 until root.getRowCount).foreach(i => out.write(v.get(i))) }
       } finally {out.close();reader.close()}

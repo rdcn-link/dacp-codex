@@ -84,21 +84,21 @@ output_root: output
 allowed_uri_prefixes: [dacp://localhost:8815/office]
 datasets:
   office:
+    provider: custom
     items:
       /orders:
         file: private.xlsx
         format: excel
-        sheet: Orders
-        header_row: 2
+        options: {sheet: Orders, header_row: 2}
         schema:
           - {name: id, type: int64}
           - {name: amount, type: float64}
 """)
       val binding = DatasetProviders.customBindings(Config.load(yaml).datasets("office")).head
-      assert(binding.options.format.contains("excel") && binding.options.sheet.contains("Orders"))
-      assert(binding.options.headerRow == 2)
+      assert(binding.options.format.contains("excel") && binding.options.parameters.get("sheet").contains("Orders"))
+      assert(binding.options.parameters("header_row") == Int.box(2))
       assert(binding.options.columns.get.getFields.asScala.map(_.getName).toSeq == Seq("id","amount"))
-      intercept[IllegalArgumentException](FileOptions(headerRow=0))
+      intercept[IllegalArgumentException](ExcelFormat.validateOptions(FileOptions(parameters=Map("header_row" -> Int.box(0)))))
     } finally Data.deleteTree(dir)
   }
 
@@ -119,7 +119,7 @@ datasets:
       val dir = Files.createTempDirectory("excel-")
       try {
         val file = dir.resolve(s"private.$extension"); workbook(file,header=2)
-        val options = FileOptions(headerRow=2)
+        val options = FileOptions(parameters=Map("header_row" -> Int.box(2)))
         assert(Formats.detect(file).id == "excel")
         val reader = ExcelFormat.rows(file,options)
         try {
@@ -130,7 +130,7 @@ datasets:
         assert(ExcelFormat.count(file,options).contains(2L))
         val schema = ExcelFormat.schema(file,options,2,1)
         assert(schema.getFields.asScala.map(_.getType.toString).toSeq == Seq("Int(64, true)","Utf8","Utf8","Bool","Int(64, true)"))
-        val explicit = new org.apache.arrow.vector.types.pojo.Schema(reader.names.map(name => Data.field(name,"utf8")).asJava)
+        val explicit = new org.apache.arrow.vector.types.pojo.Schema(reader.names.map(name => Records.field(name,"utf8")).asJava)
         assert(ExcelFormat.schema(file,options.copy(columns=Some(explicit)),1,1) == explicit)
         assert(ExcelFormat.cheapSchema(file,options).isEmpty && ExcelFormat.cheapCount(file,options).isEmpty)
       } finally Data.deleteTree(dir)
@@ -140,12 +140,12 @@ datasets:
       try {
         val file = dir.resolve(s"private.$extension"); workbook(file,multiple=true,rows=100)
         assert(intercept[FormatFailure](ExcelFormat.rows(file,FileOptions())).getMessage.contains("multiple sheets"))
-        assert(intercept[FormatFailure](ExcelFormat.rows(file,FileOptions(sheet=Some("Missing")))).getMessage.contains("not found"))
-        val reader = ExcelFormat.rows(file,FileOptions(sheet=Some("Orders")))
+        assert(intercept[FormatFailure](ExcelFormat.rows(file,FileOptions(parameters=Map("sheet" -> "Missing")))).getMessage.contains("not found"))
+        val reader = ExcelFormat.rows(file,FileOptions(parameters=Map("sheet" -> "Orders")))
         assert(reader.iterator.next().head == 1L)
         reader.close()
         assert(!Thread.getAllStackTraces.keySet().asScala.exists(t => t.isAlive && t.getName == "dacp-excel-reader"))
-        assert(ExcelFormat.count(file,FileOptions(sheet=Some("Other"))).contains(0L))
+        assert(ExcelFormat.count(file,FileOptions(parameters=Map("sheet" -> "Other"))).contains(0L))
       } finally Data.deleteTree(dir)
     }
   }
@@ -157,8 +157,8 @@ datasets:
     try {
       val file = dir.resolve("private-workbook.xlsx"); workbook(file,multiple=true)
       val config = Config("localhost",8815,"localhost",Map("public" -> DatasetDefinition.custom(Seq(
-        PublishedItem("/orders",file=Some(file),options=FileOptions(sheet=Some("Orders"))),
-        PublishedItem("/other",file=Some(file),options=FileOptions(sheet=Some("Other")))))),
+        PublishedItem("/orders",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Orders"))),
+        PublishedItem("/other",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Other")))))),
         Seq("dacp://localhost:8815/public"),dir,dir,dir,batchSize=1,inferSample=1)
       val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(config,allocator,outputs)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()

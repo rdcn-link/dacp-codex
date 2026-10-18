@@ -144,11 +144,11 @@ class NamespaceSpec extends AnyFunSuite {
       val csv = dir.resolve("orders.csv"); Files.writeString(csv,"id\n1\n2\n")
       val empty = dir.resolve("empty.csv"); Files.writeString(empty,"id\n")
       val config = Config("localhost",8815,"localhost",Map.empty,Seq.empty,dir,dir,dir)
-      val saved = FileRecordCount.capture(csv,FileOptions()).get
+      val saved = FileRecordCounts.capture(csv,FileOptions()).get
       assert(saved.value == 2L)
       val ns = new NamespaceAdapter(Seq(
         PublishedItem("/reports/orders",file=Some(csv),recordCount=Some(saved)),
-        PublishedItem("/empty",file=Some(empty),recordCount=FileRecordCount.capture(empty,FileOptions()))),config)
+        PublishedItem("/empty",file=Some(empty),recordCount=FileRecordCounts.capture(empty,FileOptions()))),config)
       assert(ns.list("/reports").head.recordCount.contains(2L))
       assert(ns.describe("/reports/orders").recordCount.contains(2L))
       assert(ns.list().find(_.path == "/empty").get.recordCount.contains(0L))
@@ -160,7 +160,7 @@ class NamespaceSpec extends AnyFunSuite {
       assert(ns.count("/reports/orders").contains(3L))
       assert(ns.list("/reports").head.recordCount.isEmpty)
       val binary = dir.resolve("image.bin"); Files.write(binary,Array[Byte](1,2))
-      assert(FileRecordCount.capture(binary,FileOptions()).isEmpty)
+      assert(FileRecordCounts.capture(binary,FileOptions()).isEmpty)
     } finally Data.deleteTree(dir)
   }
   test("example config fills direct file counts at publication without counting container children") {
@@ -186,6 +186,7 @@ output_root: output
 allowed_uri_prefixes: [dacp://localhost:8815/public]
 datasets:
   public:
+    provider: custom
     items:
       /missing: {file: ${dir.resolve("missing.csv")}}
 """

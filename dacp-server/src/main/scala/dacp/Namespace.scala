@@ -3,26 +3,10 @@ package dacp
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
 
-/** Logical paths never encode storage paths. The root is an implicit folder. */
-object LogicalPath {
-  def validate(path: String): String = {
-    require(path.startsWith("/") && !path.contains("\\") && !path.exists(_.isControl), "expected absolute logical path")
-    require(path == "/" || path.substring(1).split("/", -1).forall(p => p.nonEmpty && p != "." && p != ".."), "invalid logical path")
-    path
-  }
-  def parent(path: String): String = { val i = path.lastIndexOf('/'); if (i <= 0) "/" else path.take(i) }
-}
-
-/** Publisher-provided count tied to the file version observed during registration. */
-case class FileRecordCount(value: Long, size: Long, modified: java.nio.file.attribute.FileTime) {
-  require(value >= 0 && size >= 0,"file count and size must be nonnegative")
-  def matches(attributes: java.nio.file.attribute.BasicFileAttributes): Boolean =
-    size == attributes.size() && modified == attributes.lastModifiedTime()
-}
-object FileRecordCount {
+object FileRecordCounts {
   def capture(path: Path, options: FileOptions): Option[FileRecordCount] = {
     val handler = Formats.detect(path,options)
-    if (!handler.records) None else {
+    if (!handler.records || handler.isInstanceOf[StructuredFileHandler]) None else {
       val before = Files.readAttributes(path,classOf[java.nio.file.attribute.BasicFileAttributes])
       handler.count(path,options).flatMap { value =>
         val snapshot = FileRecordCount(value,before.size(),before.lastModifiedTime())
@@ -31,17 +15,6 @@ object FileRecordCount {
       }
     }
   }
-}
-
-case class PublishedItem(path: String, file: Option[Path] = None, sql: Option[String] = None,
-                         table: Option[String] = None, kind: String = "data", options: FileOptions = FileOptions(), recordCount: Option[FileRecordCount] = None, fileRoot: Option[Path] = None) {
-  LogicalPath.validate(path)
-  require(recordCount.isEmpty || (file.isDefined && kind == "data"), "published counts require a file data source")
-  require(path != "/", "root folder is implicit")
-  require(kind == "data" || kind == "folder", "unknown item kind")
-  require(if (kind == "folder") file.isEmpty && sql.isEmpty && table.isEmpty
-    else (file.isDefined && sql.isEmpty && table.isEmpty) || (file.isEmpty && sql.isDefined && table.isDefined),
-    "data requires a file or sql source/table mapping; folders have no source")
 }
 
 /** Resolves published aliases only; no automatic publication of private source names. */
@@ -59,9 +32,66 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDem
       parent = LogicalPath.parent(parent)
     }
     require(b.file.isDefined || b.options == FileOptions(), "format options require a file source")
-    b.options.format.foreach(Formats.byId)
+    b.options.format.foreach(id => Formats.byId(id).validateOptions(b.options))
     b.sql.foreach(source => require(config.sqlSources.contains(source), "unknown private SQL source"))
   }
+  private case class StructureSource(binding: PublishedItem, handler: StructuredFileHandler) {
+    def use[A](check: () => Unit)(f: DatasetAccess => A): A = {
+      check()
+      val (adapter,internal) = resolve(binding.path)
+      val file = adapter.asInstanceOf[DirectoryAdapter].resolve(internal)
+      val access = handler.openStructure(file,binding.options,config,check)
+      try f(access) finally access.close()
+    }
+  }
+  private def structures(parent: Option[String]): Map[String,StructureSource] = bindings.filter { b =>
+    b.file.nonEmpty && parent.forall(p => p == b.path || p.startsWith(b.path + "/"))
+  }.flatMap { b =>
+    val (adapter,internal) = resolve(b.path)
+    val path = adapter.asInstanceOf[DirectoryAdapter].resolve(internal)
+    Formats.detect(path,b.options) match {
+      case handler: StructuredFileHandler => Some(b.path -> StructureSource(b,handler))
+      case _ => None
+    }
+  }.toMap
+  private def publicChild(root: String, item: Item): Item = {
+    LogicalPath.validate(item.path)
+    require(item.path != "/", "structured listing must not contain its root")
+    val result = item.copy(path=root + item.path)
+    if (item.kind == "folder") result.copy(lastModifiedTimeMs=None,totalSizeBytes=None,recordCount=None)
+    else { require(item.kind == "data","invalid structured item kind"); result }
+  }
+  private def structuredListing(parent: Option[String]): Map[String,Item] = {
+    val result = mutable.Map.empty[String,Item]
+    structures(parent).foreach { case (root,source) =>
+      source.use(metadataDemand) { access =>
+        val children = parent match {
+          case Some(p) if p == root || p.startsWith(root + "/") => access.list(p.substring(root.length) match { case "" => "/"; case path => path })
+          case _ => access.list()
+        }
+        children.foreach { child =>
+          metadataDemand()
+          val item = publicChild(root,child)
+          require(!result.contains(item.path) && !entries.contains(item.path),"structured item path conflict")
+          result(item.path) = item
+        }
+      }
+      result.keys.toVector.filter(_.startsWith(root + "/")).foreach { path =>
+        var parent = LogicalPath.parent(path)
+        while (parent != root) {
+          require(!entries.contains(parent),"structured folder path conflict")
+          require(result.get(parent).forall(_.kind == "folder"),"structured data item has children")
+          result.getOrElseUpdate(parent,ItemProperties.folder(parent))
+          parent = LogicalPath.parent(parent)
+        }
+      }
+    }
+    result.toMap
+  }
+  private def withStructure[A](path: String, check: () => Unit = metadataDemand)(f: (DatasetAccess,String) => A): Option[A] =
+    structures(Some(path)).find { case (root,_) => path.startsWith(root + "/") }.map { case (root,source) =>
+      source.use(check)(access => f(access,path.substring(root.length)))
+    }
   private case class ContainerSource(file: Path, reader: ContainerReader, publicName: String) {
     lazy val index: Seq[ContainerEntry] = reader.index(file,publicName,metadataDemand)
   }
@@ -89,7 +119,9 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDem
         parent = LogicalPath.parent(parent)
       }
     }
-    result.toMap
+    val native = structuredListing(parent)
+    require(result.keySet.intersect(native.keySet).isEmpty,"structured item path conflict")
+    result.toMap ++ native
   }
   def withResolved[A](path: String, demand: () => Unit = () => ())(f: (DataSetAdapter,String) => A): A = {
     LogicalPath.validate(path)
@@ -138,7 +170,8 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDem
         case d: DirectoryAdapter => ItemProperties.file(description, d.resolve(internal), d.options, b.recordCount)
         case _ => description
       }
-      if (Containers.supports(description.format)) Item(b.path,description.format,Some(Data.bytesSchema),"folder")
+      if (Containers.supports(description.format) || (description.format != "sql" && Formats.byId(description.format).isInstanceOf[StructuredFileHandler]))
+        Item(b.path,description.format,Some(PluginSchemas.bytes),"folder",views=Some(Seq("bytes")))
       else enriched.copy(path = b.path)
     }
   }
@@ -147,12 +180,14 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDem
 
   def count(path: String): Option[Long] = {
     LogicalPath.validate(path)
-    val folder = path == "/" || entries.get(path).exists(_.kind == "folder") || archives.contains(path) ||
-      (!entries.contains(path) && virtual(Some(path)).get(path).exists(_.kind == "folder"))
-    if (folder) None else withResolved(path) { (source,internal) =>
-      source match {
-        case sql: SqlAdapter => Some(sql.count(internal))
-        case d: DirectoryAdapter => val p = d.resolve(internal); Formats.detect(p,d.options).count(p,d.options)
+    withStructure(path)((access,child) => access.count(child)).getOrElse {
+      val folder = path == "/" || entries.get(path).exists(_.kind == "folder") || archives.contains(path) || structures(Some(path)).contains(path) ||
+        (!entries.contains(path) && virtual(Some(path)).get(path).exists(_.kind == "folder"))
+      if (folder) None else withResolved(path) { (source,internal) =>
+        source match {
+          case sql: SqlAdapter => Some(sql.count(internal))
+          case d: DirectoryAdapter => val p = d.resolve(internal); Formats.detect(p,d.options).count(p,d.options)
+        }
       }
     }
   }
@@ -160,7 +195,11 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDem
     LogicalPath.validate(path)
     if (path == "/") ItemProperties.folder("/")
     else if (entries.contains(path)) metadata(entry(path), infer = true)
-    else {
+    else withStructure(path) { (access,child) =>
+      val item = access.describe(child)
+      require(item.path == child,"structured describe returned a different path")
+      publicChild(path.substring(0,path.length-child.length),item)
+    }.getOrElse {
       val item = virtual(Some(path)).getOrElse(path,throw new java.io.FileNotFoundException("logical item not found"))
       if (item.kind == "folder") item else withResolved(path) { (a,i) => a.describe(i).copy(path=path,
         lastModifiedTimeMs=item.lastModifiedTimeMs,totalSizeBytes=item.totalSizeBytes) }
@@ -176,7 +215,11 @@ class NamespaceAdapter(bindings: Seq[PublishedItem], config: Config, metadataDem
 
   def stream(path: String, view: String, allocator: org.apache.arrow.memory.BufferAllocator,
              listener: org.apache.arrow.flight.FlightProducer.ServerStreamListener, ready: () => Unit): Unit =
-    DatasetStreams.stream(this,path,view,allocator,config,listener,ready)
+    {
+      LogicalPath.validate(path)
+      withStructure(path,ready)((access,child) => access.stream(child,view,allocator,listener,ready))
+        .getOrElse(DatasetStreams.stream(this,path,view,allocator,config,listener,ready))
+    }
 
 }
 
