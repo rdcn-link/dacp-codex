@@ -53,6 +53,29 @@ object Identity extends BytesOperator {
 
 多端口继承 `Operator`，实现 `process(ctx)`：用 `ctx.inputNames`、`ctx.input(name).foreachRecords`、`ctx.recordsOutput(name, schema)` 或 bytes 对应方法读写。`ctx.params` 是 Jackson JSON 对象。
 
+## Scala 连续字节流模板
+
+`ByteStreamOperator` 使用标准 Java `InputStream` / `OutputStream`，适合接入压缩、摘要、解析等库。输入按需跨 Arrow 批次和字节块读取；输出缓冲区最多 64 KiB，每帧最多 64 KiB，不缓存完整 Item。它改善流式库的接入方式，但不是零复制承诺。
+
+```scala
+import java.io.{InputStream, OutputStream}
+import java.util.zip.GZIPOutputStream
+import com.fasterxml.jackson.databind.JsonNode
+import dacp.operator.ByteStreamOperator
+
+object StreamGzip extends ByteStreamOperator {
+  override def outputFormat: String = "gzip"
+  override def transform(input: InputStream, output: OutputStream, params: JsonNode): Unit = {
+    val gzip = new GZIPOutputStream(output)
+    try input.transferTo(gzip) finally gzip.close()
+  }
+}
+```
+
+完整文件：[StreamGzip.scala](../examples/operators/scala/src/main/scala/example/StreamGzip.scala)。将算子定义的入口设为 `example.StreamGzip`，输入声明 `source` 的 `bytes` 表示，输出声明 `result` 的 `bytes` / `gzip`。参数仍通过 `params` 读取。算子程序必须读到输入 EOF；提前关闭或读取固定长度后未到 EOF 会失败，不会产生成功 end。输出 `flush()` 立即发布缓冲数据；正常返回自动 flush 并发送 end。关闭输出适配器不会关闭协议 stdout，因此可以安全地关闭 `GZIPOutputStream` 等包装器；异常退出不自动发布残留缓冲。
+
+多端口作者也可使用 `ctx.input(name).byteStream()` 与 `ctx.bytesOutput(name, format).byteStream()`；仍需先声明全部输出，并按字典序完整消费每个输入。`BytesOperator` 是逐块数组模板，不把完整 Item 读入内存；它不保留业务记录边界。表格流使用已有的 `RecordsOperator`，按 `VectorSchemaRoot` 批处理并保留 schema，不应先转成字节再解析。
+
 ## 流契约
 
 所有输入按端口名的字典序逐个读到 Arrow EOS；不要交替读取多个 FIFO。所有输出必须在首次写数据前声明；正常退出自动发送 end，异常退出不发送成功结束。空结果允许没有 data 帧。stdout 保留给协议，普通打印重定向到 stderr。每个 records 批次序列化后最多 8 MiB，大批次应由业务程序切分；bytes 输出自动切为最多 64 KiB。参数校验及有界内存的业务算法由作者负责。SDK 不提供通用 join、广播或流水线调度。

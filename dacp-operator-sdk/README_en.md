@@ -53,6 +53,29 @@ Complete example: [SimpleIdentity.scala](../examples/operators/scala/src/main/sc
 
 For multiple ports, extend `Operator` and implement `process(ctx)`. Use `ctx.inputNames`, `ctx.input(name).foreachRecords`, `ctx.recordsOutput(name, schema)` or their bytes counterparts. `ctx.params` is a Jackson JSON object.
 
+## Scala continuous byte-stream template
+
+`ByteStreamOperator` uses standard Java `InputStream` / `OutputStream`, suitable for compression, hashing and parsing libraries. Input reads cross Arrow batches and byte chunks on demand. The output buffer and each output frame are at most 64 KiB; the whole Item is never buffered. This simplifies integration with streaming libraries but does not promise zero-copy behavior.
+
+```scala
+import java.io.{InputStream, OutputStream}
+import java.util.zip.GZIPOutputStream
+import com.fasterxml.jackson.databind.JsonNode
+import dacp.operator.ByteStreamOperator
+
+object StreamGzip extends ByteStreamOperator {
+  override def outputFormat: String = "gzip"
+  override def transform(input: InputStream, output: OutputStream, params: JsonNode): Unit = {
+    val gzip = new GZIPOutputStream(output)
+    try input.transferTo(gzip) finally gzip.close()
+  }
+}
+```
+
+Complete file: [StreamGzip.scala](../examples/operators/scala/src/main/scala/example/StreamGzip.scala). Set the operator entry point to `example.StreamGzip`, declare input `source` with representation `bytes` and output `result` with `bytes` / `gzip`. Read parameters through `params` as usual. Programs must read input through EOF. Closing early, or stopping after a fixed number of bytes without reaching EOF, fails without successful end events. Output `flush()` publishes buffered data immediately. Successful return automatically flushes and emits end. Closing the output adapter never closes protocol stdout, so wrappers such as `GZIPOutputStream` can safely be closed. Failure does not automatically publish remaining buffered data.
+
+Multiport authors can also use `ctx.input(name).byteStream()` and `ctx.bytesOutput(name, format).byteStream()`. Declare every output before writing and fully consume each input in lexical order. `BytesOperator` is a chunked array template; it does not read the entire Item into memory or preserve business record boundaries. Table streams use the existing `RecordsOperator`, processing `VectorSchemaRoot` batches with their schema instead of converting them to bytes and parsing again.
+
 ## Stream contract
 
 Consume inputs one at a time in lexical port-name order through Arrow EOS; do not alternate between FIFOs. Declare all outputs before the first data write. Successful exit automatically sends end events; failure sends no successful end. Empty outputs may have no data frames. stdout is reserved for the protocol; ordinary prints are redirected to stderr. Each serialized records batch must fit within 8 MiB; business code must split larger batches. Bytes output is automatically chunked to at most 64 KiB. Authors own parameter validation and bounded-memory business algorithms. The SDK does not provide general joins, broadcasting or pipeline scheduling.

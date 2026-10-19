@@ -6,6 +6,8 @@
 
 新算子建议使用 [Scala / Python SDK](../dacp-operator-sdk/README.md)，只实现业务转换。下面保留底层协议示例，供需要直接控制帧的作者参考。
 
+Scala 的连续字节流模板可直接接入 Java 流库，参见 [ByteStreamOperator 与 GZIP 示例](../dacp-operator-sdk/README.md#scala-连续字节流模板)。表格流使用 `RecordsOperator` 按 Arrow 批次处理。
+
 ## 启动参数的具体含义
 
 例如参数文件 `/input/params.json` 包含 `{"min_amount":20,"factor":2}`，Python 入口的等效调用为（实际启动器还会包一层加载程序）：

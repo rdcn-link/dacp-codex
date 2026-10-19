@@ -1,6 +1,6 @@
 package dacp.operator
 
-import java.io.{InputStream,OutputStream,ByteArrayOutputStream}
+import java.io.{InputStream,OutputStream,ByteArrayOutputStream,BufferedOutputStream,IOException}
 import java.nio.file.{Files,Path}
 import com.fasterxml.jackson.databind.{JsonNode,ObjectMapper}
 import org.apache.arrow.memory.RootAllocator
@@ -22,6 +22,16 @@ abstract class BytesOperator extends Operator {
   final def process(ctx:OperatorContext):Unit={
     val out=ctx.bytesOutput("result",outputFormat)
     ctx.input("source").foreachBytes(chunk=>out.write(transform(chunk,ctx.params)))
+  }
+}
+/** Byte-oriented libraries can read across Arrow chunk boundaries without whole-item buffering. */
+abstract class ByteStreamOperator extends Operator {
+  def transform(input:InputStream,output:OutputStream,params:JsonNode):Unit
+  def outputFormat:String="binary"
+  final def process(ctx:OperatorContext):Unit={
+    val output=ctx.bytesOutput("result",outputFormat).byteStream()
+    val input=ctx.input("source").byteStream()
+    try transform(input,output,ctx.params)finally input.close()
   }
 }
 abstract class RecordsOperator extends Operator {
@@ -96,6 +106,41 @@ final class OperatorContext(directory:Path,paramsFile:Path,out:OutputStream) ext
       iterating=true
       try {while({active();r.loadNextBatch()})f(r.getVectorSchemaRoot);consumed=true;index+=1}finally {r.close();reader=null}
     }
+    /** Read bytes continuously across IPC batches. Closing early does not consume the input. */
+    def byteStream():InputStream={
+      require(representation=="bytes","bytes input required")
+      val r=open();iterating=true
+      new InputStream {
+        private var chunk=Array.emptyByteArray
+        private var position=0
+        private var row=0
+        private var eof=false
+        private var streamClosed=false
+        private def readable():Unit={if(streamClosed)throw new IOException("input stream closed");active()}
+        private def advance():Boolean={
+          readable()
+          while(!eof && position==chunk.length){
+            val root=r.getVectorSchemaRoot
+            if(row<root.getRowCount){
+              val vector=root.getVector(0).asInstanceOf[VarBinaryVector]
+              require(!vector.isNull(row),"null bytes chunk")
+              chunk=vector.get(row);row+=1;position=0
+            }else if(r.loadNextBatch()){row=0}
+            else {eof=true;consumed=true;index+=1;closeReader()}
+          }
+          !eof
+        }
+        override def read():Int=if(!advance()) -1 else {val value=chunk(position)&0xff;position+=1;value}
+        override def read(bytes:Array[Byte],offset:Int,length:Int):Int={
+          java.util.Objects.checkFromIndexSize(offset,length,bytes.length)
+          readable()
+          if(length==0)0
+          else if(!advance()) -1
+          else {val count=math.min(length,chunk.length-position);System.arraycopy(chunk,position,bytes,offset,count);position+=count;count}
+        }
+        override def close():Unit=if(!streamClosed){streamClosed=true;closeReader()}
+      }
+    }
     /** Roots are borrowed and reused on the next callback; copy values before retaining them. */
     def foreachRecords(f:VectorSchemaRoot=>Unit):Unit={require(representation=="records","records input required");foreachBatch(f)}
     def foreachBytes(f:Array[Byte]=>Unit):Unit={require(representation=="bytes","bytes input required");foreachBatch(r=>{
@@ -106,6 +151,33 @@ final class OperatorContext(directory:Path,paramsFile:Path,out:OutputStream) ext
   }
   final class Output private[OperatorContext](val name:String,repr:String,schema:Option[Schema]) {
     def write(bytes:Array[Byte]):Unit={active();require(repr=="bytes","bytes output required");writing=true;bytes.grouped(65536).foreach(b=>frame("data",name,b))}
+    private var stream:OutputStream=null
+    private var streamClosed=false
+    /** Buffers at most 64 KiB. flush publishes pending bytes; close never closes protocol stdout. */
+    def byteStream():OutputStream={
+      active();require(repr=="bytes","bytes output required")
+      if(stream==null){
+        val sink=new OutputStream {
+          private var streamClosed=false
+          private def writable():Unit={if(streamClosed)throw new IOException("output stream closed");active()}
+          override def write(value:Int):Unit={writable();Output.this.write(Array(value.toByte))}
+          override def write(bytes:Array[Byte],offset:Int,length:Int):Unit={
+            writable();java.util.Objects.checkFromIndexSize(offset,length,bytes.length)
+            var start=offset
+            while(start<offset+length){val end=start+math.min(65536,offset+length-start);frame("data",name,java.util.Arrays.copyOfRange(bytes,start,end));writing=true;start=end}
+          }
+          override def flush():Unit={writable();out.flush()}
+          override def close():Unit={streamClosed=true}
+        }
+        stream=new BufferedOutputStream(sink,65536) {
+          override def write(value:Int):Unit={if(streamClosed)throw new IOException("output stream closed");active();writing=true;super.write(value)}
+          override def write(bytes:Array[Byte],offset:Int,length:Int):Unit={if(streamClosed)throw new IOException("output stream closed");active();writing=true;super.write(bytes,offset,length)}
+          override def close():Unit=if(!streamClosed){try super.close()finally streamClosed=true}
+        }
+      }
+      stream
+    }
+    private[OperatorContext] def flushStream():Unit=if(stream!=null && !streamClosed)stream.flush()
     /** Serializes before returning; caller keeps ownership of the root. */
     def write(root:VectorSchemaRoot):Unit={
       active();require(repr=="records" && schema.contains(root.getSchema),"output schema mismatch");writing=true
@@ -113,6 +185,6 @@ final class OperatorContext(directory:Path,paramsFile:Path,out:OutputStream) ext
       try {writer.start();writer.writeBatch();writer.end();frame("data",name,bytes.toByteArray)}finally writer.close()
     }
   }
-  private[operator] def finish():Unit={active();require(index==names.size,"all inputs must be consumed to Arrow EOS");require(outputs.nonEmpty,"operator must declare outputs");outputs.keys.foreach(p=>frame("end",p));finished=true}
+  private[operator] def finish():Unit={active();require(index==names.size,"all inputs must be consumed to Arrow EOS");require(outputs.nonEmpty,"operator must declare outputs");outputs.values.foreach(_.flushStream());outputs.keys.foreach(p=>frame("end",p));finished=true}
   def close():Unit=if(!closed){closed=true;var failure:Throwable=null;opened.values.foreach(i=>try i.closeReader()catch{case scala.util.control.NonFatal(t)=>if(failure==null)failure=t else failure.addSuppressed(t)});try allocator.close()catch{case scala.util.control.NonFatal(t)=>if(failure==null)failure=t else failure.addSuppressed(t)};if(failure!=null)throw failure}
 }

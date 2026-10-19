@@ -6,6 +6,8 @@ An operator is a data-processing program: it receives named Item input streams a
 
 Use the [Scala / Python SDK](../dacp-operator-sdk/README_en.md) for new operators and implement only business transformations. The lower-level examples below remain useful when direct frame control is needed.
 
+The Scala continuous byte-stream template integrates directly with Java streaming libraries; see [ByteStreamOperator and GZIP example](../dacp-operator-sdk/README_en.md#scala-continuous-byte-stream-template). Table streams use `RecordsOperator` to process Arrow batches.
+
 ## Concrete startup arguments
 
 For example, `/input/params.json` contains `{"min_amount":20,"factor":2}`. The equivalent Python entry invocation is (the actual launcher also uses a loader wrapper):
