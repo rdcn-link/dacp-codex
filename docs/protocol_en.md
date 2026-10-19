@@ -14,6 +14,7 @@ A job contains tasks. A task's `id` identifies dependency references; its `title
 
 | Purpose | Current transport |
 |---|---|
+| Dataset discovery | Flight `ListFlights` returns authorized public Dataset URIs; plugins can supply a dynamic catalog |
 | Browsing, metadata, and reading | Arrow Flight; see the technical reference and protobuf definitions for messages |
 | Ordinary node job execution | Flight `DoExchange` carrying control messages and result streams |
 | Union invitations, approval, members, status, and job control | Flight `DoAction` with the `dacp.union.` action prefix and JSON messages |

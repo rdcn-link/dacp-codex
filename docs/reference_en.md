@@ -206,3 +206,7 @@ The prefix `dacp://localhost:8815/data1` does not match `data10`. In this versio
 Service errors use Flight/gRPC statuses and explicit dacp error names: missing resources return `NOT_FOUND`; denied access returns `UNAUTHORIZED` with `FORBIDDEN`; schema conflicts return `INVALID_ARGUMENT` with `SCHEMA_CONFLICT`. Protobuf also defines error codes for protocol extensions. Any transport failure invalidates the current reader, and callers must reopen from the beginning; there are no retries within a stream.
 
 Server `mode` defaults to `NORMAL`. Inline source requires `DEBUG` at both coordinator and worker; `source_runtimes` maps runtime references to administrator-selected `image` and `executor` settings.
+
+## DatasetCatalog
+
+`dataset_catalog` selects a catalog provider and passes private plugin settings through `source`; it cannot coexist with nonempty `datasets`. Omission selects the static catalog. See [dynamic catalogs](dataset-catalogs_en.md) for contracts, JDBC examples, discovery, and authorization. Standard Flight `ListFlights` returns authorized public Dataset URIs without Item contents.

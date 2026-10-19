@@ -4,6 +4,8 @@
 
 协议总览：[DACP（Data Access and Collaboration Protocol）](protocol.md)。
 
+动态数据集目录与程序内启动：[DatasetCatalog](dataset-catalogs.md)、[嵌入式服务器](embedded-server.md)。
+
 ## 按角色阅读
 
 | 入口 | 适用对象 | 阅读路线 |

@@ -8,6 +8,7 @@ The core owns the common contracts, plugin discovery and lifecycle, Flight trans
 
 | Contribution | Current mechanism | Guide |
 |---|---|---|
+| Dataset catalog | Implement `DatasetCatalogProvider`; register through Java `ServiceLoader`, or inject a `DatasetCatalog` into `DacpServer` | [Dynamic catalogs](dataset-catalogs_en.md), [embedding](embedded-server_en.md) |
 | Dataset provider | Implement `DatasetProvider`; register through Java `ServiceLoader` | [Dataset providers](dataset-providers.md) |
 | File format handler | Implement `FormatHandler` or `StructuredFileHandler`; register through Java `ServiceLoader` | [Format handlers](format-handlers.md) |
 | Archive reader | Implement `ContainerReader`; register through Java `ServiceLoader` | [Container readers](format-handlers.md#container-readers) |

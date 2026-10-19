@@ -34,13 +34,13 @@ class CoreSpec extends AnyFunSuite {
     val c = Config("localhost",8815,"localhost",Map("d" -> DatasetDefinition.mixed(Seq(PublishedItem("/records", file = Some(p.resolve("x.csv")))))),Seq("dacp://localhost:8815/d"),p,p,p)
     val producer = new Producer(c,a)
     try {
-      val info = producer.getFlightInfo(null,FlightDescriptor.path("datasets","d"))
+      val info = producer.getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","d"))
       val meta = Metadata.DataSet.parseFrom(info.getAppMetadata)
       assert(meta.getItems(0).getPath == "/records")
-      val item = producer.getFlightInfo(null,FlightDescriptor.path("datasets","d","/records"))
+      val item = producer.getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","d","/records"))
       val ticket = Metadata.Ticket.parseFrom(item.getEndpoints.get(0).getTicket.getBytes)
       assert(ticket.getDataset == "d" && ticket.getItem == "/records")
-      intercept[FlightRuntimeException](producer.getFlightInfo(null,FlightDescriptor.path("wrong","d")))
+      intercept[FlightRuntimeException](producer.getFlightInfo(TestCalls.context,FlightDescriptor.path("wrong","d")))
       intercept[IllegalArgumentException](c.authorize("d2","x"))
     } finally {a.close()}
   }}

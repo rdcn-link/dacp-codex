@@ -19,24 +19,62 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
                   taskInputPrefixes: Seq[String] = Seq.empty, maxConcurrentTasks: Int = 2,
                   remoteOperatorLibraryUrls: Seq[String] = Seq.empty, operatorCache: Path = Path.of(".operator-cache"),
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
-                  sqlSources: Map[String, SqlConfig] = Map.empty, countFileRecordsOnStartup: Boolean = false, debug: Boolean = false, sourceRuntimes: Map[String, SourceRuntime] = Map.empty, union: Option[NodeUnionSettings] = None, executionHistoryDirectory: Option[Path] = None) extends DatasetContext with AutoCloseable {
+                  sqlSources: Map[String, SqlConfig] = Map.empty, countFileRecordsOnStartup: Boolean = false, debug: Boolean = false, sourceRuntimes: Map[String, SourceRuntime] = Map.empty, union: Option[NodeUnionSettings] = None, executionHistoryDirectory: Option[Path] = None,
+                  datasetCatalog: Option[DatasetCatalogDefinition] = None, catalogOverride: Option[DatasetCatalog] = None) extends CatalogContext with AutoCloseable {
   private[dacp] val taskSlots=new java.util.concurrent.Semaphore(maxConcurrentTasks)
   private var historyStore:ExecutionHistory=null
   def executionHistory:ExecutionHistory=synchronized {
     if(historyStore==null)historyStore=new ExecutionHistory(executionHistoryDirectory.getOrElse(Path.of(".dacp-executions",port.toString)))
     historyStore
   }
-  def close(): Unit = {published.values.foreach(_.close());synchronized {if(historyStore!=null)historyStore.close()}}
+  private var activeCatalog:DatasetCatalog=null
+  private var suppliedCatalog=catalogOverride
+  private[dacp] def installCatalog(value:DatasetCatalog):Unit=synchronized {
+    require(activeCatalog==null && !closed.get(),"catalog must be supplied before initialization")
+    suppliedCatalog=Some(value)
+  }
+  private val closed=new AtomicBoolean()
+  private def catalog:DatasetCatalog=synchronized {
+    require(!closed.get(),"configuration is closed")
+    if(activeCatalog==null)activeCatalog=suppliedCatalog.getOrElse(DatasetCatalogs.create(datasetCatalog.getOrElse(DatasetCatalogDefinition("static")),this))
+    activeCatalog
+  }
+  def close():Unit=if(closed.compareAndSet(false,true)) {
+    var failure:Throwable=null
+    val owned=synchronized {Option(activeCatalog).orElse(suppliedCatalog).toSeq++Option(historyStore).toSeq}
+    owned.foreach(p=>try p.close() catch{case scala.util.control.NonFatal(e)=>if(failure==null)failure=e else failure.addSuppressed(e)})
+    if(failure!=null)throw failure
+  }
   def sqlSourceNames: Set[String] = sqlSources.keySet
   def publish(items: Seq[PublishedItem]): PublishedDataset = DatasetProviders.publish(items,this)
   def openNamespace(items: Seq[PublishedItem], check: () => Unit): DatasetAccess = new NamespaceAdapter(items,this,check)
-  require(datasets.keySet.forall(n => n.nonEmpty && !n.contains("/") && n != "." && n != ".." && !n.contains("\\") && !n.exists(_.isControl)), "invalid dataset name")
-  private lazy val published = datasets.map { case (name,definition) =>
-    name -> DatasetProviders.byId(definition.provider).create(definition,this)
+  def configuredDatasets:Map[String,DatasetDefinition]=datasets
+  def createDataset(definition:DatasetDefinition):PublishedDataset=DatasetProviders.byId(definition.provider).create(definition,this)
+  datasets.keys.foreach(DatasetNames.validate)
+  require(datasetCatalog.isEmpty || datasets.isEmpty,"datasets and dataset_catalog are mutually exclusive")
+  def initializeDatasets(): Unit = { catalog; () }
+  def datasetInfos(check:()=>Unit=()=>()):Seq[DatasetInfo]={
+    val result=catalog.list(check).toVector
+    result.foreach(i=>DatasetNames.validate(i.name))
+    require(result.map(_.name).distinct.size==result.size,"duplicate dataset name")
+    result.sortBy(_.name)
   }
-  def initializeDatasets(): Unit = { published; () }
-  def openDataset(name: String, check: () => Unit = () => ()): DatasetAccess = published(name).open(check)
-  def hasDataset(name: String): Boolean = datasets.contains(name)
+  def openDataset(name:String,check:()=>Unit=()=>()):DatasetAccess={
+    DatasetNames.validate(name);check()
+    val lease=try catalog.open(name,check) catch{case _:java.io.FileNotFoundException=>throw new DatasetNotFound}
+    val access=try {check();lease.open(check)}catch{case scala.util.control.NonFatal(t)=>try lease.close() catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)};throw t}
+    new DatasetAccess {
+      private val ended=new AtomicBoolean()
+      def list():Seq[Item]=access.list()
+      def list(path:String):Seq[Item]=access.list(path)
+      def describe(path:String):Item=access.describe(path)
+      def count(path:String):Option[Long]=access.count(path)
+      override def scan(path:String,request:Scan,allocator:BufferAllocator,listener:FlightProducer.ServerStreamListener,ready:()=>Unit):Unit=access.scan(path,request,allocator,listener,ready)
+      def stream(path:String,view:String,allocator:BufferAllocator,listener:FlightProducer.ServerStreamListener,ready:()=>Unit):Unit=access.stream(path,view,allocator,listener,ready)
+      override def close():Unit=if(ended.compareAndSet(false,true))try access.close()finally lease.close()
+    }
+  }
+  def hasDataset(name:String):Boolean={DatasetNames.validate(name);datasetInfos().exists(_.name==name)}
   remoteOperatorLibraryUrls.foreach { base =>
     val uri = URI.create(base)
     require(Set("http", "https").contains(uri.getScheme) && uri.getHost != null &&
@@ -53,14 +91,14 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
   }
 }
 object Config {
-  def load(path: Path): Config = {
+  def load(path: Path, catalogOverride:Option[DatasetCatalog]=None): Config = {
     val in = Files.newInputStream(path)
     val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
     val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala finally in.close()
     val settings = Set("host", "port", "public_host", "datasets", "sql_sources", "allowed_uri_prefixes",
       "tls_cert", "tls_key", "tls_ca", "batch_size", "byte_chunk", "infer_sample",
       "local_operator_library", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
-      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "mode", "source_runtimes", "union", "execution_history_directory")
+      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "mode", "source_runtimes", "union", "execution_history_directory", "dataset_catalog")
     require(m.keySet.subsetOf(settings), "unknown server setting")
     PluginLoader.initialize(m.get("plugin_directory").map(v => Path.of(v.toString)))
     Formats.initialize()
@@ -75,7 +113,7 @@ object Config {
         v.get("tables").map(_.asInstanceOf[java.util.List[String]].asScala.toSeq),
         opt("fetch_size").map(_.toInt).getOrElse(n("batch_size",1024)),opt("query_timeout_seconds").map(_.toInt).getOrElse(60))
     }.toMap).getOrElse(Map.empty[String,SqlConfig])
-    val definitions = m.get("datasets").map(_.asInstanceOf[java.util.Map[String,Object]].asScala.map { case (name,raw) =>
+    val definitions = (if(catalogOverride.isDefined)None else m.get("datasets")).map(_.asInstanceOf[java.util.Map[String,Object]].asScala.map { case (name,raw) =>
       require(raw.isInstanceOf[java.util.Map[_,_]],"datasets require provider settings")
       val v = raw.asInstanceOf[java.util.Map[String,Object]].asScala.toMap
       require(v.contains("provider"), "dataset provider is required")
@@ -89,6 +127,16 @@ object Config {
       }.toMap).getOrElse(Map.empty[String,Map[String,Object]])
       name -> DatasetDefinition(provider,source,items)
     }.toMap).getOrElse(Map.empty[String,DatasetDefinition])
+    val catalogDefinition=if(catalogOverride.isDefined)None else m.get("dataset_catalog").map { raw=>
+      require(raw.isInstanceOf[java.util.Map[_,_]],"dataset_catalog must be a mapping")
+      val value=raw.asInstanceOf[java.util.Map[String,Object]].asScala.toMap
+      require(value.keySet.subsetOf(Set("provider","source")) && value.get("provider").exists(_.isInstanceOf[String]),"invalid dataset_catalog settings")
+      val source=value.get("source").map { raw=>
+        require(raw.isInstanceOf[java.util.Map[_,_]],"dataset_catalog source must be a mapping")
+        raw.asInstanceOf[java.util.Map[String,Object]].asScala.toMap
+      }.getOrElse(Map.empty[String,Object])
+      DatasetCatalogDefinition(value("provider").toString,source)
+    }
     val mode=m.get("mode").map(_.toString).getOrElse("NORMAL")
     require(Set("NORMAL","DEBUG")(mode),"mode must be NORMAL or DEBUG")
     val runtimes=m.get("source_runtimes").map(_.asInstanceOf[java.util.Map[String,java.util.Map[String,Object]]].asScala.map {case(id,raw)=>
@@ -102,9 +150,8 @@ object Config {
       Path.of(m.get("local_operator_library").map(_.toString).getOrElse("../operators")), strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), strings("remote_operator_library_urls"),
       Path.of(m.get("operator_cache").map(_.toString).getOrElse(".operator-cache")),
       m.get("operator_max_bytes").map(_.toString.toLong).getOrElse(8L * 1024 * 1024 * 1024), sql,
-      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), mode=="DEBUG", runtimes, m.get("union").map(v=>NodeUnionSettings.read(Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),m.get("execution_history_directory").map(v=>Path.of(v.toString)))
-    config.initializeDatasets()
-    config
+      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), mode=="DEBUG", runtimes, m.get("union").map(v=>NodeUnionSettings.read(Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),m.get("execution_history_directory").map(v=>Path.of(v.toString)),catalogDefinition,catalogOverride)
+    try {config.initializeDatasets();config} catch {case scala.util.control.NonFatal(t)=>try config.close() catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)};throw t}
   }
 }
 class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskService] = None, union: Option[UnionWorker] = None) extends NoOpFlightProducer {
@@ -114,14 +161,14 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
   }
   private def adapter(ds: String, item: String, ctx: FlightProducer.CallContext): DatasetAccess = {
     def active(): Unit = if (ctx.isCancelled) throw new java.util.concurrent.CancellationException()
-    if (!config.hasDataset(ds))
-      throw CallStatus.NOT_FOUND.withDescription("NOT_FOUND: dataset not found; check the dataset name").toRuntimeException
     config.authorize(ds,item)
     config.openDataset(ds,() => active())
   }
 
   private def fail(t: Throwable): FlightRuntimeException = t match {
     case e: FlightRuntimeException => e
+    case _: java.util.concurrent.CancellationException => CallStatus.CANCELLED.withDescription("request cancelled").toRuntimeException
+    case _: DatasetNotFound => CallStatus.NOT_FOUND.withDescription("NOT_FOUND: dataset not found; check the dataset name").toRuntimeException
     case e: java.io.FileNotFoundException => CallStatus.NOT_FOUND.withDescription("NOT_FOUND: logical resource unavailable").toRuntimeException
     case e: java.nio.file.NoSuchFileException => CallStatus.NOT_FOUND.withDescription("NOT_FOUND: logical resource unavailable").toRuntimeException
     case e: ScanFailure => CallStatus.INVALID_ARGUMENT.withDescription("SCAN_ERROR: " + e.getMessage).toRuntimeException
@@ -178,6 +225,18 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     }
     } finally a.close()
   } catch { case t: Throwable => throw fail(t) }
+  override def listFlights(ctx:FlightProducer.CallContext,criteria:Criteria,listener:FlightProducer.StreamListener[FlightInfo]):Unit=try {
+    def check():Unit=if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()
+    require(criteria.getExpression.isEmpty,"dataset discovery does not accept criteria")
+    config.datasetInfos(()=>check()).foreach { info=>
+      check()
+      if(scala.util.Try(config.authorize(info.name,"")).isSuccess) {
+        val meta=Metadata.DataSet.newBuilder().setUri(config.uri(info.name)).build()
+        listener.onNext(new FlightInfo(PluginSchemas.bytes,FlightDescriptor.path("datasets",info.name),java.util.Collections.emptyList[FlightEndpoint](),-1,-1,false,org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,meta.toByteArray))
+      }
+    }
+    listener.onCompleted()
+  }catch{case scala.util.control.NonFatal(t)=>listener.onError(fail(t))}
   override def doAction(ctx:FlightProducer.CallContext,action:Action,listener:FlightProducer.StreamListener[Result]):Unit=
     union match {
       case Some(worker) if action.getType.startsWith(dacp.union.Rpc.Prefix)=>worker.doAction(ctx,action,listener)
@@ -212,31 +271,15 @@ object Main {
   def main(args: Array[String]): Unit = {
     if(args.headOption.contains("history")){ExecutionHistoryAdmin.main(args.drop(1));return}
     if(args.headOption.contains("union")){UnionNodeAdmin.main(args.drop(1));return}
-    val config = Config.load(Path.of(args.headOption.getOrElse("../examples/server.yaml")))
-    val allocator = new RootAllocator(Long.MaxValue)
-    val executor = new TaskExecutor(config,allocator)
-    config.executionHistory
-    val tasks = new TaskService(config,allocator,executor)
-    val union=config.union.map(s=>new UnionWorker(config,s,allocator))
-    val producer = new Producer(config,allocator,Some(tasks),union)
-    val server = dacp.union.Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),producer),new dacp.union.Tls(config.cert,config.key,config.ca))
-      .maxInboundMessageSize(dacp.union.Rpc.MaxMessage).build()
-    try {server.start();union.foreach(_.start())} catch {case scala.util.control.NonFatal(t)=>
-      union.foreach(_.close());server.close();tasks.close();config.close();PluginLoader.close();allocator.close();throw t
+    require(args.length<=1,"submit jobs through the shell or SDK")
+    val server=DacpServer.builder().configFile(args.headOption.getOrElse("../examples/server.yaml")).build()
+    val stopped=new AtomicBoolean()
+    def stop():Unit=if(stopped.compareAndSet(false,true))try server.close()finally PluginLoader.close()
+    val hook=new Thread(()=>stop())
+    Runtime.getRuntime.addShutdownHook(hook)
+    try {server.start();server.awaitTermination()}finally {
+      try Runtime.getRuntime.removeShutdownHook(hook)catch{case _:IllegalStateException=>()}
+      stop()
     }
-    Runtime.getRuntime.addShutdownHook(new Thread(() => { union.foreach(_.close()); server.close(); tasks.close(); config.close(); PluginLoader.close(); allocator.close() }))
-    val log = org.slf4j.LoggerFactory.getLogger("dacp.Main")
-    log.debug(s"remote_operator_library_urls (${config.remoteOperatorLibraryUrls.size}):")
-    config.remoteOperatorLibraryUrls.zipWithIndex.foreach { case (url,index) =>
-      log.debug(s"  [$index] $url")
-    }
-    println(s"dacp listening on ${config.uri("")}")
-    val datasetNames = config.datasets.keySet.toSeq.sorted
-    println(s"configured datasets (${datasetNames.size}):")
-    datasetNames.foreach { name =>
-      println(s"  $name ${config.uri(name)}")
-    }
-    require(args.length <= 1,"submit jobs through the shell or SDK")
-    server.awaitTermination()
   }
 }

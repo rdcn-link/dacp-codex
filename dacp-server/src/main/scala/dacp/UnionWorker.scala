@@ -187,7 +187,6 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     }
     private def localInput(b:JsonNode):FrameSource={
       val u=DacpUri.parse(Json.text(b,"uri"));val split=u.getPath.drop(1).split("/",2);val path="/"+split(1);val view=Json.text(b,"view")
-      require(config.hasDataset(split(0)),"local dataset unavailable")
       val access=cancel.add(config.openDataset(split(0),()=>cancel.active()))
       val meta=access.describe(path)
       require(meta.kind=="data" && NamespaceAdapter.views(meta).contains(view),"local input view unavailable")

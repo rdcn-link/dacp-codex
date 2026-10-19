@@ -2,7 +2,7 @@
 
 [English](README_en.md)
 
-为 Dataset provider、文件处理器、结构化文件浏览、容器读取器和算子启动执行器提供共享的 Scala/JVM 契约。本模块依赖 Arrow 和 Scala，不依赖服务器、SQL 驱动、Docker、Excel 或 HTTP 的具体实现。
+为 Dataset 目录、Dataset provider、文件处理器、结构化文件浏览、容器读取器和算子启动执行器提供共享的 Scala/JVM 契约。本模块依赖 Arrow 和 Scala，不依赖服务器、SQL 驱动、Docker、Excel 或 HTTP 的具体实现。
 
 在项目根目录运行：
 
@@ -13,6 +13,7 @@
 
 贡献插件以 `Provided` 方式依赖 `io.github.rdcn-link:dacp-plugin-api_2.13:0.1.0-SNAPSHOT` 编译，服务器在运行时提供匹配的 API。本 API 尚未发布，契约变化时应同步更新插件和核心。
 
+- `DatasetCatalog`、`DatasetCatalogProvider`、`CatalogContext`、`DatasetInfo`：动态发现 Dataset 并取得独立访问租约，见[动态目录](../docs/dataset-catalogs.md)。
 - `DatasetProvider`、`DatasetDefinition`、`DatasetContext`、`PublishedDataset`、`DatasetAccess`：构建和访问原生命名空间。
 - `FormatHandler`、`FileOptions`、`Records`：解释文件并流式传输 Arrow 批次。
 - `StructuredFileHandler`：将文件内部的逻辑对象直接暴露为命名空间。

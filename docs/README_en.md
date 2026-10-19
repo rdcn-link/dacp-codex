@@ -4,6 +4,8 @@
 
 Protocol overview: [DACP (Data Access and Collaboration Protocol)](protocol_en.md).
 
+Dynamic catalogs and application embedding: [DatasetCatalog](dataset-catalogs_en.md), [embedded server](embedded-server_en.md).
+
 ## Read by role
 
 | Entry point | Audience | Reading path |

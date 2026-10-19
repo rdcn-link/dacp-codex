@@ -4,6 +4,8 @@
 
 Administrators deploy data nodes, Union Server, and the operator repository, and maintain certificates, authorization, published data, and execution records. See the [DACP protocol](../protocol_en.md) for protocol and identity boundaries.
 
+For Dataset identities supplied by a database or application, use a [dynamic catalog plugin](../dataset-catalogs_en.md). Applications hosting a node directly can use the [embedding API](../embedded-server_en.md).
+
 ## Single-node deployment
 
 Servers require JDK 17 and sbt 1.10.x. Operator execution also requires Linux and access to Docker Engine. Clients browsing data do not require Docker. Run `docker info` to check access for the service account; group membership changes require a new login.

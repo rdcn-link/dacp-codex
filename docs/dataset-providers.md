@@ -70,3 +70,7 @@ Dataset providers, [container readers](format-handlers.md#container-readers), an
 ## Records scans
 
 `DatasetAccess.scan` accepts a shared `Scan` request for filtering, projection, and limits. Its default implementation streams records through the common evaluator. Providers may override it for source execution, retaining residual filtering where needed. See [records scan contracts](records-scans.md#plugin-implementation-contract).
+
+## Dynamic Dataset identities
+
+`DatasetProvider` handles one Dataset. To discover the server-level Dataset list from a database or application, use [DatasetCatalog](dataset-catalogs_en.md). Static `datasets` configuration uses the built-in `static` catalog; a configured dynamic catalog owns the list instead. Existing Item browsing and read contracts remain unchanged.

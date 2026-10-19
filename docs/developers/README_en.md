@@ -4,6 +4,8 @@
 
 For contributors implementing operators, dataset providers, formats, executors, SDKs, or the server. For connecting to a node, browsing data, configuring built-in providers, and running jobs, start with the user guide. Commands below run from the project root unless stated otherwise.
 
+For catalog-level extensions and application startup, see [DatasetCatalog](../dataset-catalogs_en.md) and the [embedded server](../embedded-server_en.md).
+
 ## Architecture and extension points
 
 Core owns contracts, discovery and lifecycle, transport, authorization, namespace validation, cancellation, and resource management. Plugins own domain behavior, private settings and dependencies. Implementations of existing extension points must not require core registry or client changes. Built-ins use the same registration contracts as external plugins.

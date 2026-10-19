@@ -4,6 +4,8 @@
 
 管理员负责部署数据节点、Union Server 和算子仓库，维护证书、授权、数据发布及执行记录。协议与身份边界见 [DACP 协议](../protocol.md)。
 
+数据集清单来自数据库或业务程序时，使用[动态目录插件](../dataset-catalogs.md)；宿主应用直接运行节点时，参见[嵌入式启动](../embedded-server.md)。
+
 ## 单节点部署
 
 服务端要求 JDK 17、sbt 1.10.x；算子执行还需要 Linux 和可访问的 Docker Engine。浏览数据的客户端不需要 Docker。先用 `docker info` 检查服务进程是否有访问权限；调整用户组后需要重新登录。

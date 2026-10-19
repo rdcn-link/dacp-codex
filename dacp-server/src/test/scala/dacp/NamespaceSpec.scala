@@ -21,20 +21,21 @@ class NamespaceSpec extends AnyFunSuite {
     finally { allocator.close(); Data.deleteTree(dir) }
   }
   def list(producer: Producer, parts: String*): Seq[Metadata.Item] =
-    Metadata.DataSet.parseFrom(producer.getFlightInfo(null,FlightDescriptor.path(parts:_*)).getAppMetadata).getItemsList.asScala.toVector
+    Metadata.DataSet.parseFrom(producer.getFlightInfo(TestCalls.context,FlightDescriptor.path(parts:_*)).getAppMetadata).getItemsList.asScala.toVector
 
-  test("unknown datasets report a wrong name while existing datasets retain authorization") { fixture { (c,p) =>
+  test("unknown authorized datasets report a wrong name while other datasets retain authorization") { fixture { (c,_) =>
+    val allocator = new RootAllocator()
+    val p = new Producer(c.copy(prefixes=c.prefixes:+c.uri("missing")),allocator)
     val requests = Seq(Seq("datasets", "missing"), Seq("datasets", "missing", "list", "/"),
       Seq("datasets", "missing", "/orders"), Seq("datasets", "missing", "count", "/orders"))
     requests.foreach { parts =>
-      val error = intercept[FlightRuntimeException](p.getFlightInfo(null,FlightDescriptor.path(parts:_*)))
+      val error = intercept[FlightRuntimeException](p.getFlightInfo(TestCalls.context,FlightDescriptor.path(parts:_*)))
       assert(error.status().code() == FlightStatusCode.NOT_FOUND)
       assert(error.getMessage.contains("dataset not found") && error.getMessage.contains("dataset name"))
     }
-    val allocator = new RootAllocator()
     try {
       val restricted = new Producer(c.copy(prefixes=Seq("dacp://localhost:8815/other")),allocator)
-      val error = intercept[FlightRuntimeException](restricted.getFlightInfo(null,FlightDescriptor.path("datasets","public")))
+      val error = intercept[FlightRuntimeException](restricted.getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","public")))
       assert(error.status().code() == FlightStatusCode.UNAUTHORIZED)
     } finally allocator.close()
   }}
@@ -53,18 +54,18 @@ class NamespaceSpec extends AnyFunSuite {
     for (parts <- Seq(Seq("datasets","public","/"), Seq("datasets","public","/nested"), Seq("datasets","public","list","/events"),
       Seq("datasets","public","list","/missing"), Seq("datasets","public","events"),
       Seq("datasets","public","/../events"), Seq("datasets","public","/nested//orders"))) {
-      intercept[FlightRuntimeException](p.getFlightInfo(null,FlightDescriptor.path(parts:_*)))
+      intercept[FlightRuntimeException](p.getFlightInfo(TestCalls.context,FlightDescriptor.path(parts:_*)))
     }
   }}
   test("metadata and tickets do not disclose physical names; unpublished resources are inaccessible") { fixture { (_,p) =>
-    val info = p.getFlightInfo(null,FlightDescriptor.path("datasets","public","/nested/orders"))
+    val info = p.getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","public","/nested/orders"))
     val metadata = Metadata.Item.parseFrom(info.getAppMetadata)
     assert(metadata.getPath == "/nested/orders" && metadata.getKind == "data")
     val ticket = Metadata.Ticket.parseFrom(info.getEndpoints.get(0).getTicket.getBytes)
     assert(ticket.getItem == "/nested/orders")
     assert(!metadata.toString.contains("secret-orders") && !ticket.toString.contains("secret-orders"))
     for(path <- Seq("/secret-orders.csv","/unpublished.csv")) {
-      val error = intercept[FlightRuntimeException](p.getFlightInfo(null,FlightDescriptor.path("datasets","public",path)))
+      val error = intercept[FlightRuntimeException](p.getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","public",path)))
       assert(!error.getMessage.contains("private-storage") && !error.getMessage.contains(path))
     }
   }}
@@ -81,7 +82,7 @@ class NamespaceSpec extends AnyFunSuite {
     val a = new RootAllocator()
     try {
       val p = new Producer(config,a)
-      val error = intercept[FlightRuntimeException](p.getFlightInfo(null,FlightDescriptor.path("datasets","public","/published")))
+      val error = intercept[FlightRuntimeException](p.getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","public","/published")))
       assert(!error.getMessage.contains("private-missing") && !error.getMessage.contains(missing.getParent.toString))
     } finally a.close()
   }}
@@ -107,7 +108,7 @@ class NamespaceSpec extends AnyFunSuite {
       assert(folder.kind == "folder")
       assert(folder.totalSizeBytes.isEmpty && folder.recordCount.isEmpty && folder.lastModifiedTimeMs.isEmpty)
     }
-    val info = p.getFlightInfo(null,FlightDescriptor.path("datasets","public","/events"))
+    val info = p.getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","public","/events"))
     assert(!Metadata.Item.parseFrom(info.getAppMetadata).hasRecordCount)
     assert(adapter.count("/events").contains(1L))
   }}

@@ -206,3 +206,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 服务错误使用 Flight/gRPC 状态和明确的 dacp 错误名称：资源不存在为 `NOT_FOUND`；禁止访问为 `UNAUTHORIZED` 且消息含 `FORBIDDEN`；schema 冲突为 `INVALID_ARGUMENT` 且消息含 `SCHEMA_CONFLICT`。protobuf 同时定义错误码供协议扩展。任何传输失败使当前 reader 作废，调用方从头 open；没有流内重试。算子结果只通过流返回，不注册输出数据集或使用输出 TTL。
 
 服务端 `mode` 默认为 `NORMAL`。内嵌源码要求协调与执行节点均为 `DEBUG`；`source_runtimes` 将运行时引用映射为管理员选择的 `image` 与 `executor` 配置。
+
+## DatasetCatalog
+
+`dataset_catalog` 选择目录 provider，通过 `source` 传入插件私有参数；不能同时配置非空 `datasets`。未配置时使用静态目录。具体契约、JDBC 示例、发现和授权见[动态目录](dataset-catalogs.md)。标准 Flight `ListFlights` 返回授权的公开 Dataset URI，不返回 Item 内容。

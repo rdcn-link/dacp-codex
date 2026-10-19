@@ -126,7 +126,7 @@ class SqlSpec extends AnyFunSuite {
       val reader = new org.apache.arrow.vector.ipc.ArrowStreamReader(new java.io.ByteArrayInputStream(out.toByteArray),allocator)
       try { var rows = 0; while(reader.loadNextBatch()) rows += reader.getVectorSchemaRoot.getRowCount; assert(rows == 3) } finally reader.close()
       val restricted = config.copy(prefixes=Seq("dacp://localhost:8815/files"))
-      intercept[FlightRuntimeException](new Producer(restricted,allocator).getFlightInfo(null,FlightDescriptor.path("datasets","db")))
+      intercept[FlightRuntimeException](new Producer(restricted,allocator).getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","db")))
     } finally { client.close(); server.close(); allocator.close(); Data.deleteTree(dir) }
   }}
   test("SQL unsupported types fail explicitly and config loads private sources and explicit aliases") { database { conf =>

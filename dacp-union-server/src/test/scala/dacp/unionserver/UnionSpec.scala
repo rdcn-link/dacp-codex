@@ -27,14 +27,22 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
   private def tls(name:String)=new Tls(root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"))
   private def port():Int={val s=new java.net.ServerSocket(0);try s.getLocalPort finally s.close()}
   private def eventually(check: => Boolean,clue: => String="condition"):Unit={val end=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(15);while(!check && System.nanoTime()<end)Thread.sleep(50);assert(check,clue)}
-  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=20,web:Option[WebSettings]=None) {
+  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=20,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false) {
     val allocator=new RootAllocator()
     val dir=Files.createTempDirectory(root,"fixture-")
     val inputA=Array.fill[Byte](300000)(65.toByte);val inputB="local-B".getBytes
     Files.write(dir.resolve("a.bin"),inputA);Files.write(dir.resolve("b.bin"),inputB)
     val as=NodeUnionSettings(dir.resolve("a-state"),30,30)
     val bs=NodeUnionSettings(dir.resolve("b-state"),30,30)
-    def config(name:String)=Config("localhost",port(),"localhost",Map("data"->DatasetDefinition.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin")))))),Seq.empty,root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,executionHistoryDirectory=Some(dir.resolve(s"$name-executions")))
+    def config(name:String):Config={
+      val definition=DatasetDefinition.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin")))))
+      val c=Config("localhost",port(),"localhost",if(dynamicCatalog)Map.empty else Map("data"->definition),Seq.empty,root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,executionHistoryDirectory=Some(dir.resolve(s"$name-executions")))
+      if(dynamicCatalog)c.installCatalog(new DatasetCatalog {
+        def list():Seq[DatasetInfo]=Seq(DatasetInfo("data"))
+        def open(name:String):PublishedDataset={require(name=="data");c.createDataset(definition)}
+      })
+      c
+    }
     val ca=config("a");val cb=config("b")
     val runner:(Task,Map[String,FrameSource],OperatorFrame=>Unit,StreamCancel)=>Unit=(task,inputs,emit,cancel)=>{
       if(task.params.containsKey("fail"))throw new IllegalArgumentException("test failure")
@@ -156,8 +164,8 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(http(webPort,"/api/overview").headers().firstValue("Cache-Control").get()=="no-store")
     }finally f.close()
   }
-  test("two-node computation uses direct A-to-B stream and combines B-local input, while X relays final result") {
-    val f=new Fixture
+  test("two-node computation resolves dynamic catalogs and uses direct A-to-B stream while X relays final result") {
+    val f=new Fixture(dynamicCatalog=true)
     try {
       f.approved()
       intercept[IllegalArgumentException](f.ca.authorize("data","/input")) // compute grant does not authorize download

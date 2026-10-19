@@ -8,6 +8,8 @@ DACP uses Apache Arrow Flight for data access and collaborative computation acro
 
 For the data model, transport, trust, and collaboration contracts of DACP (Data Access and Collaboration Protocol), see the [protocol overview](docs/protocol_en.md).
 
+[DatasetCatalog plugins](docs/dataset-catalogs_en.md) can supply Dataset identities dynamically; Scala/JVM applications can host nodes through the [DacpServer API](docs/embedded-server_en.md).
+
 ## Read by role
 
 | Reader | Entry point | Main topics |

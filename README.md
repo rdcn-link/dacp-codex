@@ -8,6 +8,8 @@ DACP 基于 Apache Arrow Flight 提供数据访问与跨节点协作计算。服
 
 DACP（Data Access and Collaboration Protocol，数据访问与协作协议）的数据模型、传输、信任和协作约定见[协议说明](docs/protocol.md)。
 
+Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs.md)动态提供；Scala/JVM 应用可通过 [DacpServer API](docs/embedded-server.md)直接启动节点。
+
 ## 按角色阅读
 
 | 读者 | 入口 | 主要内容 |

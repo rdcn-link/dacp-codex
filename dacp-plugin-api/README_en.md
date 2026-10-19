@@ -2,7 +2,7 @@
 
 [中文](README.md)
 
-Shared Scala/JVM contracts for dataset providers, file handlers, structured-file browsing, container readers, and operator launch executors. This module depends on Arrow and Scala, and has no server, SQL driver, Docker, Excel, or HTTP implementation dependencies.
+Shared Scala/JVM contracts for Dataset catalogs, dataset providers, file handlers, structured-file browsing, container readers, and operator launch executors. This module depends on Arrow and Scala, and has no server, SQL driver, Docker, Excel, or HTTP implementation dependencies.
 
 From the repository root:
 
@@ -13,6 +13,7 @@ From the repository root:
 
 Contributed plugins compile against `io.github.rdcn-link:dacp-plugin-api_2.13:0.1.0-SNAPSHOT` as `Provided`. The server supplies the matching API at runtime. This is an unreleased API; update contributors and core together when contracts change.
 
+- `DatasetCatalog`, `DatasetCatalogProvider`, `CatalogContext`, and `DatasetInfo`: discover Datasets dynamically and acquire independent access leases; see [dynamic catalogs](../docs/dataset-catalogs_en.md).
 - `DatasetProvider`, `DatasetDefinition`, `DatasetContext`, `PublishedDataset`, and `DatasetAccess`: construct and access native namespaces.
 - `FormatHandler`, `FileOptions`, and `Records`: interpret files and stream Arrow batches.
 - `StructuredFileHandler`: expose file-internal logical objects directly as a namespace.

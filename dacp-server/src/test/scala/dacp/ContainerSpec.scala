@@ -39,7 +39,7 @@ class ContainerSpec extends AnyFunSuite {
           "nested.tar" -> tar(Seq.empty)))
         if (format == "tar") Files.write(file,bytes) else gzip(file,bytes)
         assert(Formats.detect(file).id == format)
-        val c = config(dir,file); val ns = c.openDataset("public").asInstanceOf[NamespaceAdapter]
+        val c = config(dir,file); val ns = new NamespaceAdapter(DatasetProviders.mixedBindings(c.datasets("public")),c)
         val root = ns.list("/").head
         assert(root.kind == "folder" && root.format == format && NamespaceAdapter.views(root) == Seq("bytes"))
         assert(root.totalSizeBytes.isEmpty && root.recordCount.isEmpty && root.lastModifiedTimeMs.isEmpty)
@@ -57,7 +57,7 @@ class ContainerSpec extends AnyFunSuite {
     val dir = Files.createTempDirectory("gzip-test-")
     try {
       val file = dir.resolve("private-storage.gz"); gzip(file,csv)
-      val c = config(dir,file,"/orders.csv.GZ"); val ns = c.openDataset("public").asInstanceOf[NamespaceAdapter]
+      val c = config(dir,file,"/orders.csv.GZ"); val ns = c.openDataset("public")
       val child = ns.list("/orders.csv.GZ").head
       assert(child.path == "/orders.csv.GZ/orders.csv" && child.format == "csv")
       assert(child.totalSizeBytes.isEmpty && child.lastModifiedTimeMs.isEmpty && child.recordCount.isEmpty)
