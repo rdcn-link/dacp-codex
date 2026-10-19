@@ -13,7 +13,7 @@ private[unionserver] final class Dashboard(settings:WebSettings,coordinator:Coor
   private val server=HttpServer.create(new InetSocketAddress(settings.host,settings.port),16)
   private val executor=Executors.newFixedThreadPool(4)
   private val closed=new AtomicBoolean()
-  private val assets=Map("/assets/dacp-logo.png"->("dacp-logo.png","image/png"),"/"->("index.html","text/html; charset=utf-8"),"/app.js"->("app.js","text/javascript; charset=utf-8"),"/style.css"->("style.css","text/css; charset=utf-8")).map {case(path,(file,kind))=>
+  private val assets=Map("/dag.js"->("dag.js","text/javascript; charset=utf-8"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript; charset=utf-8"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain; charset=utf-8"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"),"/"->("index.html","text/html; charset=utf-8"),"/app.js"->("app.js","text/javascript; charset=utf-8"),"/style.css"->("style.css","text/css; charset=utf-8")).map {case(path,(file,kind))=>
     val stream=Option(getClass.getResourceAsStream("/web/"+file)).getOrElse(throw new IllegalStateException("missing dashboard asset"))
     try path->(stream.readAllBytes(),kind)finally stream.close()
   }

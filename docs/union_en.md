@@ -38,14 +38,10 @@ tasks:
       source: {uri: "dacp://localhost:18861/data/sales", view: bytes}
 ```
 
-DAG task nodes show `title`, falling back to the ID; hover for the task ID. Nodes include state, execution node, input/output payload and cross-node payload. Edges show ports, payload, rate between observations, and record counts where applicable. Sending and receiving count separately; missing observations and terminal rates display `—`. Final-output edges use source output-port counters, not confirmed client-received bytes.
+The DAG uses locally bundled AntV G6 5.1.1 without an external CDN. Task cards show `title`, falling back to the ID, together with operator, state and input/output payload. Edges show ports and payload. Click a card or edge to inspect the full title, task ID, server address, cross-node payload, rate between observations and record counts where applicable below the graph. Sending and receiving count separately; missing observations and terminal rates display `—`. Final-output edges use source output-port counters, not confirmed client-received bytes.
 
-The DAG distinguishes steps using color, symbols, and borders: solid green ✓ for completed, thick blue ▶ for running, dashed gray ○ for not yet executed, and red ! for failed, cancelled, interrupted, or expired. A legend and explicit state text remain visible.
+Color, symbols and borders distinguish steps: solid green ✓ for completed, thick blue ▶ for running, dashed gray ○ for not yet executed, and red ! for failed, cancelled, interrupted or expired. Unknown execution state uses an amber border and `?` label rather than implying the step has not executed. A legend and explicit state text remain visible.
 
-Unknown execution state uses an amber border and `?` label rather than implying the step has not executed.
+G6 uses a combined layout: both server groups and their internal tasks are automatically arranged top to bottom by dependency. Each server region has a distinct pale background and a heading with its address and task count. Local inputs and tasks stay within the server region, cross-region edges represent data flow, and final outputs occupy a separate Union → client region. Double-click group backgrounds to collapse or expand them; “Expand all” restores the complete view.
 
-The DAG groups execution nodes into separate regions labelled with server addresses and task counts. Local inputs and tasks appear inside their server region; cross-region edges show data movement. Final outputs appear in a separate Union → client region.
-
-The layout uses vertical server swimlanes with node addresses at the top. Dependency levels flow downward, and cross-server edges point downward across lanes. Parallel steps stay in their server lane; edge labels show ports and traffic.
-
-The DAG toolbar offers zoom in/out, fit width, and 100% display, with 25%–300% zoom. Drag to pan or hold Ctrl / Command while scrolling to zoom around the pointer; touch devices use native scrolling. Automatic refresh preserves the current job’s zoom and pan, while changing jobs restores fit width.
+The toolbar offers zoom in/out, fit canvas and 100% display, with 15%–250% zoom. Drag to pan and scroll to zoom around the pointer. State refreshes update content while preserving layout, zoom, pan and collapsed groups. Switching jobs lays out and fits the new graph. Canvas information is also available in the task and port tables below for reading and assistive technology access.

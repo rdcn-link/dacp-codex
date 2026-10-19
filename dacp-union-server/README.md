@@ -163,4 +163,22 @@ web:
 
 HTTP 只读接口：`GET /api/overview`、`GET /api/jobs/ID`、`GET /api/history?offset=0&limit=100`。页面和接口公开展示节点状态、任务脚本、DAG 与执行历史。所有状态响应禁止缓存，不开放跨域。任务提交、计算与数据访问仍需 Flight 证书及授权。关闭 U 同时释放 HTTP 监听端口。
 
+DAG 使用本地打包的 AntV G6：按服务器自动分组，支持缩放、平移、双击分组折叠，以及点击查看任务 / 流量详情。状态刷新保留布局和当前视角。浏览器无需访问外部 CDN。
+
 所有全局作业默认保存执行记录，节点同时记录本地子任务。目录、查询命令、历史接口和中断语义见 [执行记录](../docs/execution-history.md)。
+
+### 前端开发与验证
+
+看板资源在 `src/main/resources/web/`。`dag.js` 将执行快照映射为 G6 的 node / edge / combo，并维护图实例和视口；`app.js` 负责只读 API 和其他页面区域。只有拓扑或所选作业变化时重新布局。自定义卡片以 Canvas 文本渲染，详情通过 DOM `textContent` 显示；任务元数据不作为 HTML 执行。
+
+本地依赖 `vendor/g6-5.1.1.min.js` 来自官方 npm 包 `@antv/g6@5.1.1` 的 `dist/g6.min.js`，MIT 许可保存在同目录 `G6-LICENSE.txt`。此文件 SHA-256 为 `3e091a94fd08994a383ff34bfba256bb8e382e4be4042197a206d2ecc0957331`。更新时同步版本文件名、HTML 引用、`Dashboard.scala` 静态资源清单及测试。普通构建无需 npm，也不会下载前端依赖。
+
+在仓库根目录运行浏览器契约测试（使用临时本地 HTTP 夹具，不需要节点或 Docker）：
+
+```bash
+python -m pip install playwright
+python -m playwright install chromium
+python scripts/test-union-dashboard.py
+```
+
+可通过 `--browser-executable /path/to/chromium` 指定浏览器，`--screenshots /tmp/dacp-dashboard` 保存桌面与手机截图。测试验证服务器分组不重叠、点击详情、缩放、状态刷新保持视角、折叠、文本注入防护、移动布局与离线资源。Scala 服务接口和资源路由测试在本模块运行 `sbt test`。

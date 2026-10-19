@@ -163,4 +163,22 @@ web:
 
 Read-only HTTP interfaces: `GET /api/overview`, `GET /api/jobs/ID`, and `GET /api/history?offset=0&limit=100`. Pages and APIs publicly expose node status, task scripts, DAGs, and execution history. State responses disable caching and cross-origin access. Task submission, computation, and data access still require Flight certificates and authorization. Stopping U also releases its HTTP listener.
 
+The DAG uses locally bundled AntV G6, with automatic server grouping, zoom/pan, double-click group collapse and click-to-inspect task/traffic details. State refreshes preserve layout and viewport. Browsers do not access an external CDN.
+
 All global jobs persist execution records by default, and nodes also record local subtasks. For directories, query commands, history interfaces, and interruption semantics, see [execution history](../docs/execution-history_en.md).
+
+### Frontend development and validation
+
+Dashboard resources live in `src/main/resources/web/`. `dag.js` maps execution snapshots to G6 nodes, edges and combos and manages the graph instance and viewport. `app.js` handles read-only APIs and other page sections. Layout runs again only when topology or the selected job changes. Custom cards render Canvas text and inspector details use DOM `textContent`; task metadata is never executed as HTML.
+
+The local `vendor/g6-5.1.1.min.js` is `dist/g6.min.js` from the official npm package `@antv/g6@5.1.1`. Its MIT license is retained as `G6-LICENSE.txt` in the same directory. The file SHA-256 is `3e091a94fd08994a383ff34bfba256bb8e382e4be4042197a206d2ecc0957331`. When updating, synchronize the versioned filename, HTML reference, `Dashboard.scala` asset list and tests. Normal builds need neither npm nor frontend dependency downloads.
+
+Run browser contract tests from the repository root. They use a temporary local HTTP fixture and require neither nodes nor Docker:
+
+```bash
+python -m pip install playwright
+python -m playwright install chromium
+python scripts/test-union-dashboard.py
+```
+
+Use `--browser-executable /path/to/chromium` to select a browser and `--screenshots /tmp/dacp-dashboard` to save desktop and mobile screenshots. Tests cover nonoverlapping server groups, inspection, zoom, viewport preservation during state refresh, collapse, text injection protection, mobile layout and offline assets. Run `sbt test` in this module for Scala service interfaces and asset routing tests.

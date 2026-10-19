@@ -1,0 +1,5 @@
+# Binary poster assets must not be treated as text or whitespace-checked.
+*.pdf binary
+*.png binary
+# Keep bundled third-party visualization code out of project language statistics.
+**/web/vendor/** linguist-vendored
