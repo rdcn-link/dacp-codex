@@ -73,20 +73,28 @@ operator_max_bytes: 8589934592
 | `/v1/blobs/sha256/<64 lowercase hex digits>` | 共享运行时归档或代码内容 |
 | `/health` | `ok` 加换行 |
 
-未知路径或缺失制品返回 404，未启用或不支持的写方法返回 405。HEAD 返回 Content-Length。网页附件使用制品原文件名和后缀。路径不能沿符号链接越出目录。8 个工作线程使用有界队列。列表忽略发布暂存目录，只读元数据而不对大制品计算摘要。
+未知路径或缺失制品返回 404，不支持的写方法返回 405。HEAD 返回 Content-Length。网页附件使用制品原文件名和后缀。路径不能沿符号链接越出目录。8 个工作线程使用有界队列。列表忽略发布暂存目录，只读元数据而不对大制品计算摘要。
 
 元数据位于 `<root>/<name>/<version>/manifest.json`，制品位于 `<root>/blobs/sha256/<digest>`，运行时导出索引位于 `<root>/images/<image-ID>.json`。参见 [清单格式](../docs/operator-packaging.md#content-addressed-storage)。项目尚未发布，直接采用新格式，不保留旧格式读取器；新格式使用新的开发目录。
 
 ## Token 认证发布 API
 
-管理员通过 `--publish-token-env` 指定保存发布 token 的环境变量名；token 至少 32 个可见 ASCII 字符。不配置此选项时发布接口关闭。缺失或错误 token 返回 401，公开浏览与下载不要求 token。一个 token 授予整个仓库的发布权限；更换环境变量后重启服务即可轮换，不会改变已发布算子。
+发布接口默认启用，所有发布请求必须携带有效 token。未指定 `--publish-token-env` 时，服务首次启动会生成随机 token，保存到 `<root>/.publish-token`（权限 `0600`），后续启动复用；启动日志仅显示文件路径，不显示 token。管理员可通过 `--publish-token-env` 指定已有 token 的环境变量名；token 至少 32 个可见 ASCII 字符。缺失或错误 token 返回 401，公开浏览与下载不要求 token。一个 token 授予整个仓库的发布权限；使用默认文件时替换 `.publish-token`，使用环境变量时修改其值，随后重启服务即可轮换，不会改变已发布算子。
+
+使用默认生成的 token 调用上传脚本前，在仓库主机读取并导出：
+
+```bash
+export DACP_REPOSITORY_PUBLISH_TOKEN="$(cat .operator-catalog/.publish-token)"
+```
+
+也可以在启动时指定自己的 token：
 
 ```bash
 export DACP_REPOSITORY_PUBLISH_TOKEN="$(openssl rand -hex 32)"
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 127.0.0.1 --port 8820 --publish-token-env DACP_REPOSITORY_PUBLISH_TOKEN --publish-max-bytes 8589934592
 ```
 
-跨机器发布使用 HTTPS，可通过下节的内置 TLS 或可信反向代理提供。token 放在 `Authorization: Bearer <token>` 请求头，不放在 URL 中。网站仍公开只读，发布通过 HTTP API 或上传脚本完成。
+跨机器发布使用 HTTPS，可通过下节的内置 TLS 或可信反向代理提供。token 放在 `Authorization: Bearer <token>` 请求头，不放在 URL 中。Web UI 仅支持公开浏览和下载，不提供发布表单或上传按钮；发布仅通过携带 token 的 HTTP API 或上传脚本完成。
 
 | 接口 | 请求及行为 |
 |---|---|

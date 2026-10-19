@@ -5,7 +5,7 @@ import java.security.KeyStore
 import javax.net.ssl.{KeyManagerFactory, SSLContext}
 
 object Main {
-  private val usage = "publish name@version --image IMAGE --ports FILE --root DIR [--description TEXT] [--executor ID --entrypoint MAIN --artifact FILE --executor-config FILE] [--source-archive FILE --source-repository URL --source-revision COMMIT --license SPDX --license-file FILE --build-instructions FILE --sbom FILE] | seed --operators DIR --root DIR | serve --root DIR [--host HOST] [--port PORT] [--tls-keystore PKCS12 --tls-password-env ENV] [--publish-token-env ENV --publish-max-bytes BYTES]"
+  private val usage = "publish name@version --image IMAGE --ports FILE --root DIR [--description TEXT] [--executor ID --entrypoint MAIN --artifact FILE --executor-config FILE] [--source-archive FILE --source-repository URL --source-revision COMMIT --license SPDX --license-file FILE --build-instructions FILE --sbom FILE] | seed --operators DIR --root DIR | serve --root DIR [--host HOST] [--port PORT] [--tls-keystore PKCS12 --tls-password-env ENV] [--publish-token-env ENV] [--publish-max-bytes BYTES]"
   def main(args: Array[String]): Unit = {
     require(args.nonEmpty, usage)
     val publish = args(0) == "publish"
@@ -47,7 +47,6 @@ object Main {
           val context = SSLContext.getInstance("TLS"); context.init(keys.getKeyManagers, null, null); context
         } finally java.util.Arrays.fill(password, '\u0000')
       }
-      require(!settings.contains("--publish-max-bytes") || settings.contains("--publish-token-env"), "publish byte limit requires publisher authentication")
       val publishToken = settings.get("--publish-token-env").map { name =>
         sys.env.getOrElse(name, throw new IllegalArgumentException("missing publish token environment variable"))
       }
@@ -55,6 +54,7 @@ object Main {
       Runtime.getRuntime.addShutdownHook(new Thread(() => server.close()))
       server.start()
       println(s"Operator repository listening on ${server.boundPort}")
+      if(publishToken.isEmpty) println(s"Publisher token file: ${PublishToken.path(root.toAbsolutePath.normalize())}")
     }
   }
 }

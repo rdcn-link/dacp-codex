@@ -2,7 +2,7 @@
 
 DACP operators consume named data-item streams and produce named output streams. Publish a small Scala/Java JAR, Python source or wheel, or a complete container. Dependencies belong in a shared runtime image. Repository operators run in NORMAL or DEBUG mode; [inline source submission](operator-source_en.md) requires DEBUG.
 
-The repository website supports public search, viewing, and downloads. Publication uses the administrator CLI or the enabled [token-authenticated HTTP API](../dacp-operator-repository/README_en.md#token-authenticated-publication-api). An administrator can run `publish` / `seed`, or a publisher can use `scripts/upload-operator.py` with a publication token to upload a locally generated catalog.
+The repository website supports public search, viewing, and downloads. Publication uses the administrator CLI or the default-enabled [token-authenticated HTTP API](../dacp-operator-repository/README_en.md#token-authenticated-publication-api). An administrator can run `publish` / `seed`, or a publisher can use `scripts/upload-operator.py` with a publication token to upload a locally generated catalog.
 
 ## Execution contract
 

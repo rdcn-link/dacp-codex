@@ -8,9 +8,9 @@ import scala.jdk.CollectionConverters._
 
 class PublishingSpec extends AnyFunSuite {
   private val token="publisher-test-token-0123456789abcdef"
-  private def fixture(enabled:Boolean=true)(run:(Path,RepositoryServer)=>Unit):Unit={
+  private def fixture(explicitToken:Boolean=true)(run:(Path,RepositoryServer)=>Unit):Unit={
     val root=Files.createTempDirectory("publish-api-")
-    val server=new RepositoryServer(root,port=0,publishToken=if(enabled)Some(token)else None,publishMaxBytes=1024)
+    val server=new RepositoryServer(root,port=0,publishToken=if(explicitToken)Some(token)else None,publishMaxBytes=1024)
     server.start()
     try run(root,server) finally {server.close();val files=Files.walk(root);try files.iterator.asScala.toSeq.sortBy(_.getNameCount).reverse.foreach(Files.delete(_))finally files.close()}
   }
@@ -53,7 +53,7 @@ class PublishingSpec extends AnyFunSuite {
     assert(status==0)
     assert(request(s,"/v1/operators/example/1",auth=None).statusCode()==200)
   }}
-  test("missing and wrong tokens cannot upload; disabling publishing leaves HTTP writes forbidden") {
+  test("missing and wrong tokens cannot upload; default publication requires the generated token") {
     fixture(){(root,s)=>
       for(auth<-Seq(None,Some("wrong"))) {
         assert(request(s,"/v1/operators","POST","{}".getBytes,auth).statusCode()==401)
@@ -61,7 +61,22 @@ class PublishingSpec extends AnyFunSuite {
       }
       assert(Repository.catalog(root).size()==0)
     }
-    fixture(false){(_,s)=>assert(request(s,"/v1/operators","POST","{}".getBytes).statusCode()==405)}
+    fixture(false){(root,s)=>
+      assert(request(s,"/v1/operators","POST","{}".getBytes,auth=None).statusCode()==401)
+      val file=PublishToken.path(root)
+      val generated=Files.readString(file).trim
+      assert(generated.matches("[a-f0-9]{64}"))
+      assert(java.nio.file.attribute.PosixFilePermissions.toString(Files.getPosixFilePermissions(file))=="rw-------")
+      assert(PublishToken.load(root)==generated)
+      assert(request(s,"/v1/operators","POST","{}".getBytes,auth=Some(generated)).statusCode()==400)
+      assert(request(s,"/.publish-token",auth=None).statusCode()==404)
+      assert(!new String(request(s,"/",auth=None).body(),"UTF-8").contains(generated))
+      val restarted=new RepositoryServer(root,port=0);restarted.start()
+      try {
+        assert(Files.readString(file).trim==generated)
+        assert(request(restarted,"/v1/operators","POST","{}".getBytes,auth=Some(generated)).statusCode()==400)
+      }finally restarted.close()
+    }
   }
   test("reject malformed, oversized and incomplete publications without exposing partial operators") {fixture(){(root,s)=>
     val blob="/v1/blobs/sha256/"+"a"*64

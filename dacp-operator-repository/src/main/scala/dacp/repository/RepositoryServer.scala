@@ -19,7 +19,7 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
       https.setHttpsConfigurator(new HttpsConfigurator(context)); https
     case None => HttpServer.create(new InetSocketAddress(host, port), 64)
   }
-  private val publishing = publishToken.map(new Publishing(catalog, _, publishMaxBytes))
+  private val publishing = new Publishing(catalog, publishToken.getOrElse(PublishToken.load(catalog)), publishMaxBytes)
   private val executor = new ThreadPoolExecutor(8, 8, 0L, java.util.concurrent.TimeUnit.SECONDS,
     new java.util.concurrent.ArrayBlockingQueue[Runnable](64), new ThreadPoolExecutor.CallerRunsPolicy())
   server.setExecutor(executor)
@@ -70,7 +70,7 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
   server.createContext("/", exchange => {
     try {
       val uri = exchange.getRequestURI
-      if (publishing.exists(_.handle(exchange))) ()
+      if (publishing.handle(exchange)) ()
       else if (!Set("GET", "HEAD").contains(exchange.getRequestMethod)) {
         exchange.getResponseHeaders.set("Allow", "GET, HEAD"); reply(exchange, 405, "method not allowed\n")
       } else if (uri.getRawPath == "/") {

@@ -73,20 +73,28 @@ Open `http://localhost:8820/`. Anyone can search names, versions, and descriptio
 | `/v1/blobs/sha256/<64 lowercase hex digits>` | Shared runtime archive or code bytes |
 | `/health` | `ok` followed by a newline |
 
-Unknown paths/missing artifacts return 404; disabled or unsupported write methods return 405. HEAD supplies Content-Length. Web download links include the original artifact filename after the digest (`/v1/blobs/sha256/DIGEST/FILENAME`); GET and HEAD responses use it in `Content-Disposition`, preserving file extensions. Digest-only URLs are the content-addressed retrieval API. Paths cannot follow symlinks outside the catalog. Eight workers use a bounded queue. Staging directories are excluded from listing. Catalog reads metadata without hashing large blobs.
+Unknown paths/missing artifacts return 404; unsupported write methods return 405. HEAD supplies Content-Length. Web download links include the original artifact filename after the digest (`/v1/blobs/sha256/DIGEST/FILENAME`); GET and HEAD responses use it in `Content-Disposition`, preserving file extensions. Digest-only URLs are the content-addressed retrieval API. Paths cannot follow symlinks outside the catalog. Eight workers use a bounded queue. Staging directories are excluded from listing. Catalog reads metadata without hashing large blobs.
 
 Metadata lives in `<root>/<name>/<version>/manifest.json`; blobs in `<root>/blobs/sha256/<digest>`; the runtime export index in `<root>/images/<image-ID>.json`. See the [manifest schema](../docs/operator-packaging.md#content-addressed-storage). This unreleased project directly uses the new schema, without old-schema readers. Use a fresh development catalog for the new format.
 
 ## Token-authenticated publication API
 
-Administrators enable publishing with `--publish-token-env`, naming the environment variable containing a token of at least 32 visible ASCII characters. Publishing is disabled when this option is absent. Missing or incorrect tokens return 401; public browsing and downloads require no token. One token grants publication rights across the repository. Change the environment variable and restart to rotate it without changing published operators.
+Publication endpoints are enabled by default, and every publication request requires a valid token. Without `--publish-token-env`, the first server startup generates a random token in `<root>/.publish-token` (permissions `0600`); subsequent starts reuse it. Startup logs show only its path, never the token. Administrators may override this credential with `--publish-token-env`, naming an environment variable containing a token of at least 32 visible ASCII characters. Missing or incorrect tokens return 401; public browsing and downloads require no token. One token grants publication rights across the repository. Replace `.publish-token` when using the default file, or change the environment variable when using an override, then restart to rotate it without changing published operators.
+
+Before using the upload script with the generated token, read and export it on the repository host:
+
+```bash
+export DACP_REPOSITORY_PUBLISH_TOKEN="$(cat .operator-catalog/.publish-token)"
+```
+
+Alternatively, supply your own token when starting the server:
 
 ```bash
 export DACP_REPOSITORY_PUBLISH_TOKEN="$(openssl rand -hex 32)"
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 127.0.0.1 --port 8820 --publish-token-env DACP_REPOSITORY_PUBLISH_TOKEN --publish-max-bytes 8589934592
 ```
 
-Use HTTPS for remote publishing, through built-in TLS described below or a trusted reverse proxy. Send the token in the `Authorization: Bearer <token>` header, not in URLs. The website remains publicly readable; publishing uses the HTTP API or upload script.
+Use HTTPS for remote publishing, through built-in TLS described below or a trusted reverse proxy. Send the token in the `Authorization: Bearer <token>` header, not in URLs. The Web UI only supports public browsing and downloads, with no publication form or upload button. Publishing uses the token-authenticated HTTP API or upload script exclusively.
 
 | Interface | Request and behavior |
 |---|---|

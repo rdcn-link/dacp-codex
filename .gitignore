@@ -29,3 +29,6 @@ examples/sql/*.trace.db
 .union-demo/
 
 .dacp-executions/
+
+# Generated repository publisher credential
+.publish-token

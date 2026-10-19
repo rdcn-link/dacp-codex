@@ -2,7 +2,7 @@
 
 DACP 算子消费命名数据项流，并产生命名输出流。可以发布小型 Scala/Java JAR、Python 源码或 wheel，或完整容器；依赖放入共享运行时镜像。仓库算子可在 NORMAL 或 DEBUG 模式执行；[内嵌源码](operator-source.md)仅允许 DEBUG 模式。
 
-仓库网站允许公开搜索、查看和下载。发布可通过管理员 CLI，或启用后的 [token 认证 HTTP API](../dacp-operator-repository/README.md#token-认证发布-api)。贡献者可由管理员运行 `publish` / `seed`，也可使用发布 token，通过 `scripts/upload-operator.py` 上传本地生成的算子目录。
+仓库网站允许公开搜索、查看和下载。发布可通过管理员 CLI，或默认启用的 [token 认证 HTTP API](../dacp-operator-repository/README.md#token-认证发布-api)。贡献者可由管理员运行 `publish` / `seed`，也可使用发布 token，通过 `scripts/upload-operator.py` 上传本地生成的算子目录。
 
 ## 执行契约
 
