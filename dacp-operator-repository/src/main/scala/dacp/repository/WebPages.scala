@@ -9,7 +9,7 @@ object WebPages {
   def escape(value:String):String=value.flatMap {
     case '&'=>"&amp;";case '<'=>"&lt;";case '>'=>"&gt;";case '"'=>"&quot;";case '\''=>"&#39;";case c=>c.toString
   }
-  private val slots="\\{\\{([a-z_]+)\\}\\}".r
+  private val slots="\\{\\{([a-z_][a-z0-9_]*)\\}\\}".r
   private val templates=Seq("layout","index","operator-grid","operator-card","empty","browse-link","detail","version-link","artifact-download","source-review","repository-link","code-block","paragraph","404").map {name=>
     val in=Option(getClass.getResourceAsStream(s"/web/templates/$name.html")).getOrElse(throw new IllegalStateException(s"missing HTML template: $name"))
     try name->new String(in.readAllBytes(),UTF_8)finally in.close()

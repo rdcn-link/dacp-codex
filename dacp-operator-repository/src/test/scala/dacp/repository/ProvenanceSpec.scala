@@ -34,6 +34,10 @@ class ProvenanceSpec extends AnyFunSuite {
     assert(one.path("provenance")==two.path("provenance"))
     Repository.validate(root,one)
     val html=WebPages.detail(one,Seq(one))
+    (Seq(one.path("runtime").path("archive")) ++ Provenance.descriptors(one.path("provenance"))).foreach { a =>
+      assert(html.contains("SHA-256: " + a.path("sha256").asText))
+    }
+    assert(!html.contains("{{"))
     assert(html.contains("Source archive") && html.contains("License text") && html.contains("Dependency SBOM"))
     assert(html.contains("&lt;script&gt;") && !html.contains("<script>not HTML"))
     assert(html.contains("do not certify safety") && html.contains("abcdef123"))

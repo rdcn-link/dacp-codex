@@ -192,7 +192,8 @@ class RepositorySpec extends AnyFunSuite {
       val page = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(
         s"http://127.0.0.1:${server.boundPort}/operators/first/1")).build(), HttpResponse.BodyHandlers.ofString())
       assert(page.body().contains("Operator code") && page.body().contains("Shared runtime"))
-      assert(page.body().contains(first.path("artifact").path("sha256").asText))
+      assert(page.body().contains("SHA-256: " + first.path("artifact").path("sha256").asText))
+      assert(!page.body().contains("{{"))
     } finally server.close()
   }}
   test("HTTP contract serves manifests and archives and rejects traversal and writes") { withRoot { root =>

@@ -33,7 +33,7 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository pub
   --build-instructions BUILD.txt --sbom dependencies.cdx.json
 ```
 
-Replace `<exact-commit>` before running. Unlike YAML inline instructions, `--build-instructions` reads a UTF-8 text file. Publication remains an administrator CLI operation; the public HTTP server is read-only. Existing versions cannot be modified; publish a new version when adding evidence.
+Replace `<exact-commit>` before running. Unlike YAML inline instructions, `--build-instructions` reads a UTF-8 text file. Publication uses the administrator CLI or the [token-authenticated HTTP API](../dacp-operator-repository/README_en.md#token-authenticated-publication-api); public browsing and downloads require no token. Existing versions cannot be modified; publish a new version when adding evidence.
 
 API v2 manifests carry an optional `provenance` object. Text fields retain the names above. Each file field becomes `{ "sha256": "<64 lowercase hex digits>", "size": 123, "filename": "sources.zip" }`. Download its bytes at `/v1/blobs/sha256/<sha256>` and compare both size and SHA-256 with the manifest. Publication and repeated seeding verify evidence blobs. Source, license and SBOM files share the same content-addressed storage as execution artifacts.
 

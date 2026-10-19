@@ -9,7 +9,8 @@ import javax.net.ssl.SSLContext
 import scala.jdk.CollectionConverters._
 
 final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int = 8820,
-                             tls: Option[SSLContext] = None) extends AutoCloseable {
+                             tls: Option[SSLContext] = None, publishToken: Option[String] = None,
+                             publishMaxBytes: Long = 8589934592L) extends AutoCloseable {
   Files.createDirectories(root)
   private val catalog = root.toRealPath()
   private val server: HttpServer = tls match {
@@ -18,6 +19,7 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
       https.setHttpsConfigurator(new HttpsConfigurator(context)); https
     case None => HttpServer.create(new InetSocketAddress(host, port), 64)
   }
+  private val publishing = publishToken.map(new Publishing(catalog, _, publishMaxBytes))
   private val executor = new ThreadPoolExecutor(8, 8, 0L, java.util.concurrent.TimeUnit.SECONDS,
     new java.util.concurrent.ArrayBlockingQueue[Runnable](64), new ThreadPoolExecutor.CallerRunsPolicy())
   server.setExecutor(executor)
@@ -68,7 +70,8 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
   server.createContext("/", exchange => {
     try {
       val uri = exchange.getRequestURI
-      if (!Set("GET", "HEAD").contains(exchange.getRequestMethod)) {
+      if (publishing.exists(_.handle(exchange))) ()
+      else if (!Set("GET", "HEAD").contains(exchange.getRequestMethod)) {
         exchange.getResponseHeaders.set("Allow", "GET, HEAD"); reply(exchange, 405, "method not allowed\n")
       } else if (uri.getRawPath == "/") {
         val query = search(uri.getRawQuery)
@@ -107,6 +110,10 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
         case _ => html(exchange, 404, WebPages.notFound)
       }
     } catch {
+      case error: PublishFailure =>
+        if(error.status == 401) exchange.getResponseHeaders.set("WWW-Authenticate", "Bearer")
+        if(exchange.getResponseCode == -1) reply(exchange, error.status, error.detail + "\n")
+      case _: com.fasterxml.jackson.core.JsonProcessingException => if(exchange.getResponseCode == -1) reply(exchange, 400, "invalid JSON manifest\n")
       case error: IllegalArgumentException => if (exchange.getResponseCode == -1) reply(exchange, 400, error.getMessage + "\n")
       case _: java.io.IOException => () // Includes clients disconnecting while downloading.
       case scala.util.control.NonFatal(error) =>

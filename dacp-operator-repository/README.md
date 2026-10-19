@@ -61,7 +61,7 @@ operator_max_bytes: 8589934592
 
 ## 公开网站与 HTTP API
 
-打开 `http://localhost:8820/`，无需登录即可搜索名称、版本和描述，查看版本并下载代码和运行时。页面分别展示大小、校验和、执行器、入口、运行时镜像 ID 及任务引用。所有文本转义，无需 JavaScript 或外部资源。发布仅由管理员 CLI 完成，没有 HTTP 上传接口。
+打开 `http://localhost:8820/`，无需登录即可搜索名称、版本和描述，查看版本并下载代码和运行时。页面分别展示大小、校验和、执行器、入口、运行时镜像 ID 及任务引用。所有文本转义，无需 JavaScript 或外部资源。发布支持管理员 CLI 和下述 token 认证 HTTP API。
 
 | GET / HEAD 端点 | 响应 |
 |---|---|
@@ -73,9 +73,35 @@ operator_max_bytes: 8589934592
 | `/v1/blobs/sha256/<64 lowercase hex digits>` | 共享运行时归档或代码内容 |
 | `/health` | `ok` 加换行 |
 
-未知路径或缺失制品返回 404，写方法返回 405。HEAD 返回 Content-Length。网页附件使用制品原文件名和后缀。路径不能沿符号链接越出目录。8 个工作线程使用有界队列。列表忽略发布暂存目录，只读元数据而不对大制品计算摘要。
+未知路径或缺失制品返回 404，未启用或不支持的写方法返回 405。HEAD 返回 Content-Length。网页附件使用制品原文件名和后缀。路径不能沿符号链接越出目录。8 个工作线程使用有界队列。列表忽略发布暂存目录，只读元数据而不对大制品计算摘要。
 
 元数据位于 `<root>/<name>/<version>/manifest.json`，制品位于 `<root>/blobs/sha256/<digest>`，运行时导出索引位于 `<root>/images/<image-ID>.json`。参见 [清单格式](../docs/operator-packaging.md#content-addressed-storage)。项目尚未发布，直接采用新格式，不保留旧格式读取器；新格式使用新的开发目录。
+
+## Token 认证发布 API
+
+管理员通过 `--publish-token-env` 指定保存发布 token 的环境变量名；token 至少 32 个可见 ASCII 字符。不配置此选项时发布接口关闭。缺失或错误 token 返回 401，公开浏览与下载不要求 token。一个 token 授予整个仓库的发布权限；更换环境变量后重启服务即可轮换，不会改变已发布算子。
+
+```bash
+export DACP_REPOSITORY_PUBLISH_TOKEN="$(openssl rand -hex 32)"
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 127.0.0.1 --port 8820 --publish-token-env DACP_REPOSITORY_PUBLISH_TOKEN --publish-max-bytes 8589934592
+```
+
+跨机器发布使用 HTTPS，可通过下节的内置 TLS 或可信反向代理提供。token 放在 `Authorization: Bearer <token>` 请求头，不放在 URL 中。网站仍公开只读，发布通过 HTTP API 或上传脚本完成。
+
+| 接口 | 请求及行为 |
+|---|---|
+| `PUT /v1/blobs/sha256/<digest>` | `application/octet-stream` 原始文件；流式接收并验证 SHA-256，重复上传相同内容可复用 |
+| `POST /v1/operators` | `application/json`，现有 `api_version: 2` 清单；引用的所有制品须先上传并通过大小、摘要与元数据校验 |
+
+成功返回 201；清单响应的 `Location` 指向公开清单。已有同名同版本返回 409，不覆盖内容。错误摘要或无效清单返回 400，不支持的 Content-Type 返回 415，超限返回 413。清单上限 64 KiB；单次制品默认上限 8 GiB，由 `--publish-max-bytes` 设置。完整制品上传后才写入内容寻址目录，清单验证成功后原子发布；失败的临时上传会删除。已上传但未被清单引用的制品会保留，当前没有自动回收机制。
+
+上传在发布者本机通过 CLI 生成的目录（`publish` 或 `seed`），包含运行时、代码和源码材料：
+
+```bash
+python3 scripts/upload-operator.py summary@1 --catalog .operator-catalog --url https://repository.example.org --token-env DACP_REPOSITORY_PUBLISH_TOKEN
+```
+
+脚本仅依赖 Python 标准库，逐块上传大文件，自动收集清单中的运行时、算子代码、源码归档、许可证文件和 SBOM。本机测试可使用 `--url http://localhost:8820`。仓库服务器不执行上传代码、不拉取外部 URL、也不调用 Docker；导出 Docker 运行时发生在发布者本机。源码和许可证材料仍由发布者声明，不构成安全或合法性认证。
 
 ## HTTPS 与运行
 

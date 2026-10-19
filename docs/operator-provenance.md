@@ -33,7 +33,7 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository pub
   --build-instructions BUILD.txt --sbom dependencies.cdx.json
 ```
 
-运行前替换 `<exact-commit>`。YAML 中直接填写构建说明，而 `--build-instructions` 读取 UTF-8 文本文件。发布仍通过管理员 CLI 完成，公开 HTTP 服务只读。已发布版本不能修改，补充审查材料时须发布新版本。
+运行前替换 `<exact-commit>`。YAML 中直接填写构建说明，而 `--build-instructions` 读取 UTF-8 文本文件。发布支持管理员 CLI 或 [token 认证 HTTP API](../dacp-operator-repository/README.md#token-认证发布-api)，公开浏览与下载不需要 token。已发布版本不能修改，补充审查材料时须发布新版本。
 
 API v2 清单增加可选的 `provenance` 对象。文本字段保持上述名称；文件字段变为 `{ "sha256": "<64 lowercase hex digits>", "size": 123, "filename": "sources.zip" }`。通过 `/v1/blobs/sha256/<sha256>` 下载，并核对大小和 SHA-256。发布和重复初始化会校验材料文件；源码、许可证和 SBOM 与执行文件共用内容寻址存储。
 

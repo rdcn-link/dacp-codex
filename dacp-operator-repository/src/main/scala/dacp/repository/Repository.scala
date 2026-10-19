@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import scala.sys.process._
 import scala.jdk.CollectionConverters._
 
-/** Immutable operator artifacts, published by an administrator and served read-only. */
+/** Immutable operator artifacts with public reads and authenticated publication. */
 object Repository {
   val mapper = new ObjectMapper()
   def parts(reference: String): (String, String) = {

@@ -61,7 +61,7 @@ Tasks retain references such as `operator: format_convert@1.1`. Resolution check
 
 ## Public website and HTTP API
 
-Open `http://localhost:8820/`. Anyone can search names, versions, and descriptions, view versions, and download code and runtimes without signing in. Pages show separate sizes/checksums, executor, entrypoint, runtime image ID, and task references. All text is escaped. Pages work without JavaScript or external assets. Publication is an administrator CLI action; there is no HTTP upload endpoint.
+Open `http://localhost:8820/`. Anyone can search names, versions, and descriptions, view versions, and download code and runtimes without signing in. Pages show separate sizes/checksums, executor, entrypoint, runtime image ID, and task references. All text is escaped. Pages work without JavaScript or external assets. Publication uses the administrator CLI or the token-authenticated HTTP API below.
 
 | GET / HEAD endpoint | Response |
 |---|---|
@@ -73,9 +73,35 @@ Open `http://localhost:8820/`. Anyone can search names, versions, and descriptio
 | `/v1/blobs/sha256/<64 lowercase hex digits>` | Shared runtime archive or code bytes |
 | `/health` | `ok` followed by a newline |
 
-Unknown paths/missing artifacts return 404; writes return 405. HEAD supplies Content-Length. Web download links include the original artifact filename after the digest (`/v1/blobs/sha256/DIGEST/FILENAME`); GET and HEAD responses use it in `Content-Disposition`, preserving file extensions. Digest-only URLs are the content-addressed retrieval API. Paths cannot follow symlinks outside the catalog. Eight workers use a bounded queue. Staging directories are excluded from listing. Catalog reads metadata without hashing large blobs.
+Unknown paths/missing artifacts return 404; disabled or unsupported write methods return 405. HEAD supplies Content-Length. Web download links include the original artifact filename after the digest (`/v1/blobs/sha256/DIGEST/FILENAME`); GET and HEAD responses use it in `Content-Disposition`, preserving file extensions. Digest-only URLs are the content-addressed retrieval API. Paths cannot follow symlinks outside the catalog. Eight workers use a bounded queue. Staging directories are excluded from listing. Catalog reads metadata without hashing large blobs.
 
 Metadata lives in `<root>/<name>/<version>/manifest.json`; blobs in `<root>/blobs/sha256/<digest>`; the runtime export index in `<root>/images/<image-ID>.json`. See the [manifest schema](../docs/operator-packaging.md#content-addressed-storage). This unreleased project directly uses the new schema, without old-schema readers. Use a fresh development catalog for the new format.
+
+## Token-authenticated publication API
+
+Administrators enable publishing with `--publish-token-env`, naming the environment variable containing a token of at least 32 visible ASCII characters. Publishing is disabled when this option is absent. Missing or incorrect tokens return 401; public browsing and downloads require no token. One token grants publication rights across the repository. Change the environment variable and restart to rotate it without changing published operators.
+
+```bash
+export DACP_REPOSITORY_PUBLISH_TOKEN="$(openssl rand -hex 32)"
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 127.0.0.1 --port 8820 --publish-token-env DACP_REPOSITORY_PUBLISH_TOKEN --publish-max-bytes 8589934592
+```
+
+Use HTTPS for remote publishing, through built-in TLS described below or a trusted reverse proxy. Send the token in the `Authorization: Bearer <token>` header, not in URLs. The website remains publicly readable; publishing uses the HTTP API or upload script.
+
+| Interface | Request and behavior |
+|---|---|
+| `PUT /v1/blobs/sha256/<digest>` | Raw `application/octet-stream` content; streams uploads and verifies SHA-256; identical content can be uploaded again and reused |
+| `POST /v1/operators` | Existing `api_version: 2` manifest as `application/json`; all referenced artifacts must already be uploaded and pass size, digest, and metadata validation |
+
+Success returns 201; a manifest response includes its public manifest URL in `Location`. Existing name/version pairs return 409 and cannot be overwritten. Invalid digests or manifests return 400, unsupported Content-Type returns 415, and oversized requests return 413. Manifests are limited to 64 KiB; each artifact defaults to 8 GiB, configurable with `--publish-max-bytes`. Completed uploads enter content-addressed storage, and validated manifests are published atomically. Failed temporary uploads are removed. Uploaded blobs not referenced by a manifest remain stored; automatic garbage collection is not implemented.
+
+Upload a catalog generated locally with the CLI (`publish` or `seed`), including runtime, code, and source materials:
+
+```bash
+python3 scripts/upload-operator.py summary@1 --catalog .operator-catalog --url https://repository.example.org --token-env DACP_REPOSITORY_PUBLISH_TOKEN
+```
+
+The script uses only the Python standard library, streams large files, and collects runtime archives, operator code, source archives, license files, and SBOMs from the manifest. Use `--url http://localhost:8820` for local testing. The repository server does not execute uploaded code, fetch external URLs, or call Docker; Docker runtime export occurs on the publisher's machine. Source and licensing materials remain publisher declarations, rather than safety or legal certification.
 
 ## HTTPS and operation
 
