@@ -31,7 +31,7 @@ Map a ZIP file using an ordinary file alias. The server publishes it as `kind=fo
 ```yaml
 datasets:
   public:
-    provider: custom
+    provider: mixed
     items:
       /archive: {file: /private/reports.ZIP}
 ```
@@ -77,7 +77,7 @@ File mappings accept these private reader options:
 ```yaml
 datasets:
   office:
-    provider: custom
+    provider: mixed
     items:
       /orders:
         file: /private/sales.xlsx
@@ -121,17 +121,17 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 ### Populating counts at publication
 
-Set `count_file_records_on_startup: true` to count custom file mappings and initially discovered directory record files once while loading configuration and reuse those counts in ordinary browsing. It defaults to false. Counts are tied to file size and modification time; changes detected during or after counting leave the result unknown. Restarting recounts files. Explicit `count` still reads current content without changing saved metadata. SQL, archive children, and folders are excluded. Invalid record files fail startup when this option is enabled.
+Set `count_file_records_on_startup: true` to count mixed file mappings and initially discovered directory record files once while loading configuration and reuse those counts in ordinary browsing. It defaults to false. Counts are tied to file size and modification time; changes detected during or after counting leave the result unknown. Restarting recounts files. Explicit `count` still reads current content without changing saved metadata. SQL, archive children, and folders are excluded. Invalid record files fail startup when this option is enabled.
 
 `plugin_directory` optionally selects a directory containing plugin and dependency JARs. It is loaded before registry initialization and requires a restart after changes. Reader-specific parameters go under `options`; handlers validate them. See [plugins](plugins.md) for the standalone API and structured-file contracts.
 
 ## Dataset construction
 
-Directory uses optional `reader_overrides`, SQLDB uses `tables` mappings from public paths to private tables, and custom uses `items`. Directory and SQLDB reject `items`. Plugins default to `items` and may customize the mapping key through `DatasetProvider.itemSettingsKey`.
+Directory uses optional `reader_overrides`, SQLDB uses `tables` mappings from public paths to private tables, and mixed uses `items`. Directory and SQLDB reject `items`. Plugins default to `items` and may customize the mapping key through `DatasetProvider.itemSettingsKey`.
 
-Built-in providers are `directory`, `sqldb`, and `custom`. Each Dataset selects one provider to interpret private `source` and provider-specific mapping settings and expose a common data access interface. Directory providers discover relative paths dynamically, SQLDB providers use explicit public table aliases, and custom providers may combine sources. Every Dataset must explicitly specify `provider`.
+Built-in providers are `directory`, `sqldb`, and `mixed`. Each Dataset selects one provider to interpret private `source` and provider-specific mapping settings and expose a common data access interface. Directory providers discover relative paths dynamically, SQLDB providers use explicit public table aliases, and mixed providers may combine sources. Every Dataset must explicitly specify `provider`.
 
-Directory Datasets do not follow symlinks. Folder metadata and immediate-child listings do not recursively scan ordinary child directories; `list()` discovers all files and archive entries recursively. Optional startup counting scans initial files; later files are discovered without automatic counting. Reader overrides match public paths without renaming files. SQL bindings or absolute file mappings in a directory Dataset are rejected; use custom for those combinations.
+Directory Datasets do not follow symlinks. Folder metadata and immediate-child listings do not recursively scan ordinary child directories; `list()` discovers all files and archive entries recursively. Optional startup counting scans initial files; later files are discovered without automatic counting. Reader overrides match public paths without renaming files. SQL bindings or absolute file mappings in a directory Dataset are rejected; use mixed for those combinations.
 
 Dataset providers construct datasets, container readers browse archives, and format handlers interpret content. Future providers such as MongoDB can implement their own listing, metadata, and streaming without pretending to be files or SQL tables, or changing the protocol or SDKs. See the [provider development guide](dataset-providers.md).
 

@@ -6,7 +6,7 @@ port: 8815
 count_file_records_on_startup: true
 datasets:
   data1:
-    provider: custom
+    provider: mixed
     items:
       /events: {file: ../examples/data/events.json, format: ndjson}
       /reports/orders: {file: ../examples/data/nested/orders.csv}
@@ -18,7 +18,7 @@ datasets:
       /bundle_gzip: {file: ../examples/data/reports.tar.gz}
       /orders.csv.gz: {file: ../examples/data/orders.csv.gz}
   csv_data:
-    provider: custom
+    provider: mixed
     items:
       /orders: {file: ../examples/data/nested/orders.csv}
   documents:

@@ -23,7 +23,7 @@ case class DatasetDefinition(provider: String, source: Map[String,Object] = Map.
   override def toString: String = s"DatasetDefinition($provider,<private settings>)"
 }
 object DatasetDefinition {
-  def custom(items: Seq[PublishedItem]): DatasetDefinition = DatasetDefinition("custom",bindings=Some(items))
+  def mixed(items: Seq[PublishedItem]): DatasetDefinition = DatasetDefinition("mixed",bindings=Some(items))
 }
 /** ServiceLoader extension point; each provider owns parsing and construction of its settings. */
 trait DatasetProvider {

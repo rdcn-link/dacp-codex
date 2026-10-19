@@ -178,7 +178,7 @@ Datasets are constructed by extensible providers. Three providers are built in, 
 |---|---|---|
 | `directory` | Discovers files, subdirectories, and archives beneath a root | `source.root` |
 | `sqldb` | Publishes tables from one SQL connection under public aliases | `source.connection` |
-| `custom` | Defines each Item explicitly, combining files, SQL tables, and logical folders | Item `file`, `sql`, and `table` bindings |
+| `mixed` | Defines each Item explicitly, combining files, SQL tables, and logical folders | Item `file`, `sql`, and `table` bindings |
 
 ```yaml
 datasets:
@@ -197,7 +197,7 @@ datasets:
       /customers: {table: CUSTOMERS}
 
   research:
-    provider: custom
+    provider: mixed
     items:
       /measurements: {file: /private/results.csv}
       /customers: {sql: warehouse, table: CUSTOMERS}
@@ -216,9 +216,9 @@ This is a configuration fragment; merge it with listener, TLS, and URI allowlist
 
 Directory Datasets expose paths relative to their root, such as `/reports/orders.csv`. Empty directories are folders, and supported archives can be browsed further. Subsequent listings reflect additions, deletions, and changes. The root stays private, all symbolic links are ignored, and access remains confined to the root. Optional directory `reader_overrides` override reader format, sheet, header row, and schema; they do not rename paths or add other sources.
 
-SQL Dataset `tables` bind public paths to private tables in the selected connection; tables are not automatically exposed. `custom` retains explicit mappings and mixed-source flexibility. Every Dataset must explicitly specify `provider`.
+SQL Dataset `tables` bind public paths to private tables in the selected connection; tables are not automatically exposed. `mixed` retains explicit mappings and mixed-source flexibility. Every Dataset must explicitly specify `provider`.
 
-The default example provides `data1` and `csv_data` (custom), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](../../examples/sql/README_en.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](../../docs/dataset-providers.md).
+The default example provides `data1` and `csv_data` (mixed), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](../../examples/sql/README_en.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](../../docs/dataset-providers.md).
 
 ### Formats and views
 
@@ -248,7 +248,7 @@ See the [technical reference](../../docs/reference_en.md) for format details, Ex
 
 Items may carry modification time, byte size, and an exact record count. Unknown values differ from `0`. All three properties remain unknown for every folder; computing them never traverses children.
 
-The example server enables `count_file_records_on_startup: true`: custom file mappings and initially discovered directory record files such as CSV, NDJSON, and Excel are counted once when published, so `/events` and `/reports/orders` show `2` in Records. This option defaults to off; enabling it increases startup time, and counting failures fail startup. SQL, archive children, and all folders are excluded from startup counting. Newly discovered directory files do not trigger counting during browsing; query explicitly or restart to populate them.
+The example server enables `count_file_records_on_startup: true`: mixed file mappings and initially discovered directory record files such as CSV, NDJSON, and Excel are counted once when published, so `/events` and `/reports/orders` show `2` in Records. This option defaults to off; enabling it increases startup time, and counting failures fail startup. SQL, archive children, and all folders are excluded from startup counting. Newly discovered directory files do not trigger counting during browsing; query explicitly or restart to populate them.
 
 Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Saved file counts become unknown when size or modification time changes. Restart to repopulate them, or use `count` to request the latest value explicitly; explicit requests do not update saved listing counts. Parquet can still obtain counts from its footer. Metadata is not an atomic snapshot with subsequent reads.
 

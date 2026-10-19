@@ -8,7 +8,7 @@ A Dataset is a logical namespace. Providers decide how to construct it; clients 
 |---|---|---|
 | `directory` | `root`: private filesystem directory | `reader_overrides`: optional reader settings keyed by logical path |
 | `sqldb` | `connection`: private `sql_sources` name | `tables`: public aliases mapped with `{table: PRIVATE_TABLE}` |
-| `custom` | No source settings | `items`: explicit `{file: ...}`, `{sql: ..., table: ...}`, or `{kind: folder}` |
+| `mixed` | No source settings | `items`: explicit `{file: ...}`, `{sql: ..., table: ...}`, or `{kind: folder}` |
 
 ```yaml
 datasets:
@@ -25,19 +25,19 @@ datasets:
     tables:
       /customers: {table: PRIVATE_CUSTOMERS}
   research:
-    provider: custom
+    provider: mixed
     items:
       /measurements: {file: /private/results.csv}
       /customers: {sql: warehouse, table: PRIVATE_CUSTOMERS}
 ```
 
-Directory roots must exist at startup. Paths are resolved against the server working directory. Root-relative public names reflect the filesystem; all symlinks are ignored, including links pointing inside the root. Unsupported filesystem entries and names that cannot form valid logical paths are skipped. Empty directories are folders. Supported containers expose children and original-file bytes, exactly as in custom Datasets. Directory `reader_overrides` accept only `format`, `schema`, and handler-owned `options`; they cannot add sources or aliases.
+Directory roots must exist at startup. Paths are resolved against the server working directory. Root-relative public names reflect the filesystem; all symlinks are ignored, including links pointing inside the root. Unsupported filesystem entries and names that cannot form valid logical paths are skipped. Empty directories are folders. Supported containers expose children and original-file bytes, exactly as in mixed Datasets. Directory `reader_overrides` accept only `format`, `schema`, and handler-owned `options`; they cannot add sources or aliases.
 
 Each directory request discovers the relevant paths anew. `list()` walks the root recursively, while `list(path)` reads immediate children of ordinary directories. Metadata for an ordinary folder does not visit descendants. Container directory enumeration retains its own format-specific scanning cost. No watcher or cross-request directory index is required.
 
-`count_file_records_on_startup: true` captures counts for custom file mappings and initially discovered directory record files. SQL tables, containers, and archive entries are excluded. Later additions are discovered without counting; changed files lose their saved counts when size or modification time differs. Explicit `count` is independent of saved counts. Startup counting is opt in and may be expensive.
+`count_file_records_on_startup: true` captures counts for mixed file mappings and initially discovered directory record files. SQL tables, containers, and archive entries are excluded. Later additions are discovered without counting; changed files lose their saved counts when size or modification time differs. Explicit `count` is independent of saved counts. Startup counting is opt in and may be expensive.
 
-SQLDB Datasets use one connection but still require public aliases: private table names are never automatically published. Every Dataset must explicitly specify `provider`. Each Dataset has exactly one provider; custom is the mode for combining independent sources.
+SQLDB Datasets use one connection but still require public aliases: private table names are never automatically published. Every Dataset must explicitly specify `provider`. Each Dataset has exactly one provider; mixed is the mode for combining independent sources.
 
 Directory and SQLDB reject `items`; use their provider-specific keys.
 
@@ -63,7 +63,7 @@ Use `Item.views = Some(Seq("records", "bytes"))` to advertise native capabilitie
 
 Native providers can implement streams directly, so MongoDB need not be modeled as a file or JDBC connection. MongoDB is not implemented in this change. The test [TestDatasetProvider](../dacp-server/src/test/scala/dacp/TestDatasetProvider.scala) demonstrates ServiceLoader discovery and native streaming through the unchanged Flight protocol.
 
-Dataset providers, [container readers](format-handlers.md#container-readers), and [format handlers](format-handlers.md) have separate responsibilities: constructing a namespace, browsing embedded containers, and interpreting data content. `custom` and `sqldb` reuse `NamespaceAdapter`; the directory provider constructs scoped namespaces as filesystem paths are discovered. Task outputs are transient item streams and do not enter the dataset namespace.
+Dataset providers, [container readers](format-handlers.md#container-readers), and [format handlers](format-handlers.md) have separate responsibilities: constructing a namespace, browsing embedded containers, and interpreting data content. `mixed` and `sqldb` reuse `NamespaceAdapter`; the directory provider constructs scoped namespaces as filesystem paths are discovered. Task outputs are transient item streams and do not enter the dataset namespace.
 
 `DatasetContext` supplies batch settings and optional namespace publication helpers (`publish`, `openNamespace`), without exposing server implementation classes. Native backends can implement access directly. The server closes each request access handle; implement `PublishedDataset.close` to release provider-level resources at shutdown. Use [PluginChecks](../dacp-plugin-api/src/main/scala/dacp/PluginChecks.scala) in contributor tests, and see the [standalone example](../examples/plugins/README.md).
 

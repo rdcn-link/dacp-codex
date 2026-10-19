@@ -4,7 +4,7 @@ public_host: localhost
 port: 8816
 datasets:
   csv_data:
-    provider: custom
+    provider: mixed
     items:
       /orders: {file: ../examples/data/nested/orders.csv}
 # Whole-node prefixes permit this demonstration pipeline.

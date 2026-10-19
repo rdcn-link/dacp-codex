@@ -8,3 +8,10 @@ libraryDependencies ++= Seq(
 Compile / mainClass := Some("dacp.repository.Main")
 fork := true
 enablePlugins(JavaAppPackaging)
+
+// Package the shared project logo into both websites.
+Compile / resourceGenerators += Def.task {
+  val output = (Compile / resourceManaged).value / "web" / "dacp-logo.png"
+  IO.copyFile(baseDirectory.value.getParentFile / "assets" / "dacp-logo.png", output)
+  Seq(output)
+}.taskValue

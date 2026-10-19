@@ -4,7 +4,7 @@ public_host: localhost
 port: 18861
 datasets:
   data:
-    provider: custom
+    provider: mixed
     items:
       /sales: {file: ../examples/union/sales.csv}
 allowed_uri_prefixes: []

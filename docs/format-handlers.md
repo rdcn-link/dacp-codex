@@ -61,4 +61,4 @@ Use `PluginChecks.listing(access)` for metadata contract tests. Streaming, cance
 
 ## Records scans
 
-`FormatHandler.scan` supplies bounded batch filtering, projection, and early limit termination for every records handler. Override it to optimize the source reader; directory-backed and custom datasets invoke the same contract, including for archive children. Native structured children use `DatasetAccess.scan`. See [records scan contracts](records-scans.md#plugin-implementation-contract).
+`FormatHandler.scan` supplies bounded batch filtering, projection, and early limit termination for every records handler. Override it to optimize the source reader; directory-backed and mixed datasets invoke the same contract, including for archive children. Native structured children use `DatasetAccess.scan`. See [records scan contracts](records-scans.md#plugin-implementation-contract).

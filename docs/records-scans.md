@@ -113,7 +113,7 @@ Authorization still applies to the public Item path. Scan requests contain publi
 The standalone `dacp-plugin-api` module provides `Literal`, `Predicate`, `Scan`, `BoundScan`, and `ScanStreams`.
 
 - `DatasetAccess.scan(path, request, allocator, listener, ready)` defaults to transforming `stream(path, "records", ...)` through `ScanStreams`.
-- `FormatHandler.scan(path, options, request, allocator, batch, sample, listener, demand)` defaults to the same streaming transformation around its records reader. It is used for directory-backed and custom file Items, including staged archive children.
+- `FormatHandler.scan(path, options, request, allocator, batch, sample, listener, demand)` defaults to the same streaming transformation around its records reader. It is used for directory-backed and mixed file Items, including staged archive children.
 - Structured-file children use `DatasetAccess.scan`, so a contributed scientific handler can query native records without exposing physical files or flattening arrays.
 - Override `scan` to optimize a backend. Validate the full request against the full public schema with `request.bind(schema)` before translating anything. Retain columns required by the predicate until filtering completes. Translation must use quoted identifiers and bound values where applicable.
 - An override is responsible for the complete semantics of its request. For partial pushdown, pass source batches through `ScanStreams.stream(request, allocator, listener) { filtered => ... }`. Start `filtered` with the source root, emit through it, and let it enforce residual filtering, output projection, and the global limit. Keep the original predicate for a safe final check.

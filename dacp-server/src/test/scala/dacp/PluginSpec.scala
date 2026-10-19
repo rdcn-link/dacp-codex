@@ -16,7 +16,7 @@ class PluginSpec extends AnyFunSuite {
     Files.writeString(dir.resolve("private.testpack"),"id\n1\n2\n")
     val c = Config("localhost",8815,"localhost",Map(
       "native" -> DatasetDefinition("example-message",Map("message" -> "native dataset")),
-      "files" -> DatasetDefinition.custom(Seq(
+      "files" -> DatasetDefinition.mixed(Seq(
         PublishedItem("/science",file=Some(dir.resolve("private.message")),options=FileOptions(parameters=Map("prefix" -> "hello "))),
         PublishedItem("/archive",file=Some(dir.resolve("private.testpack"))))),
       "directory" -> DatasetDefinition("directory",Map("root" -> dir.toString))),

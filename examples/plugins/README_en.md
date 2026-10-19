@@ -31,7 +31,7 @@ datasets:
     source:
       message: Hello from a contributed dataset
   files:
-    provider: custom
+    provider: mixed
     items:
       /document:
         file: /private/example.message

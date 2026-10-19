@@ -72,8 +72,8 @@ class SqlSpec extends AnyFunSuite {
   test("Flight serves SQL records and byte-view IPC alongside directory datasets") { database { conf =>
     val allocator = new RootAllocator()
     val dir = Files.createTempDirectory("sql-files-"); Files.writeString(dir.resolve("x.csv"),"id\n1\n")
-    val config = Config("localhost",8815,"localhost",Map("files" -> DatasetDefinition.custom(Seq(PublishedItem("/records", file=Some(dir.resolve("x.csv"))))),
-      "db" -> DatasetDefinition.custom(Seq(PublishedItem("/orders", sql=Some("warehouse"), table=Some("ORDERS")),
+    val config = Config("localhost",8815,"localhost",Map("files" -> DatasetDefinition.mixed(Seq(PublishedItem("/records", file=Some(dir.resolve("x.csv"))))),
+      "db" -> DatasetDefinition.mixed(Seq(PublishedItem("/orders", sql=Some("warehouse"), table=Some("ORDERS")),
         PublishedItem("/reports/file",file=Some(dir.resolve("x.csv")))))),Seq("dacp://localhost:8815/files","dacp://localhost:8815/db"),dir,dir,dir, batchSize=2,byteChunk=32,sqlSources=Map("warehouse"->conf))
     val server = FlightServer.builder(allocator,Location.forGrpcInsecure("127.0.0.1",0),new Producer(config,allocator)).build().start()
     val client = FlightClient.builder(allocator,server.getLocation).build()
@@ -152,7 +152,7 @@ sql_sources:
 """)
       val loaded = Config.load(p)
       assert(loaded.datasets.isEmpty && loaded.sqlSources("db").fetchSize == 17 && !loaded.hasDataset("db"))
-      intercept[IllegalArgumentException](loaded.copy(datasets=Map("bad/name"->DatasetDefinition.custom(Seq.empty))))
+      intercept[IllegalArgumentException](loaded.copy(datasets=Map("bad/name"->DatasetDefinition.mixed(Seq.empty))))
     } finally Files.delete(p)
   }}
 }

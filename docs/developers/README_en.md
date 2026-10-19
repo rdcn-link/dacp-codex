@@ -87,7 +87,7 @@ datasets:
 
 Clients read `/records` without receiving `source.file`. Plugins needing per-item mappings receive them through `items` by default, or can override `DatasetProvider.itemSettingsKey` to declare their own configuration key; parsed mappings are always available as `definition.items`. `source` can contain nested plugin-specific parameters; the plugin must validate types, required values, and unknown parameters.
 
-Directory providers use `reader_overrides`, SQLDB uses `tables`, and custom uses `items`. Directory and SQLDB reject `items`. Native backends such as a future MongoDB provider can implement `PublishedDataset` and `DatasetAccess` directly for listing, metadata, counting, and streaming without mapping to files or SQL. See the [provider development guide](../../docs/dataset-providers.md) for interfaces, cancellation, and resource cleanup requirements. MongoDB is not implemented yet.
+Directory providers use `reader_overrides`, SQLDB uses `tables`, and mixed uses `items`. Directory and SQLDB reject `items`. Native backends such as a future MongoDB provider can implement `PublishedDataset` and `DatasetAccess` directly for listing, metadata, counting, and streaming without mapping to files or SQL. See the [provider development guide](../../docs/dataset-providers.md) for interfaces, cancellation, and resource cleanup requirements. MongoDB is not implemented yet.
 
 ### File and structured-content plugins
 

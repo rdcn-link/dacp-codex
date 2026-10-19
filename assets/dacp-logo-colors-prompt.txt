@@ -1,0 +1,3 @@
+Mode: built-in image_gen edit; transparent background.
+Input: assets/dacp-logo.png (previous blue/teal logo).
+Prompt: Change only the three circular C nodes: top vivid violet, middle turquoise teal, bottom warm amber orange. Preserve the dark blue C arc, exact DACP wordmark, proportions and horizontal composition. Transparent background; no additional symbols, text, shadows or backdrop.

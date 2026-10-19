@@ -15,7 +15,7 @@ class NamespaceSpec extends AnyFunSuite {
     Files.writeString(dir.resolve("unpublished.csv"),"hidden\n1\n")
     val entries = Seq(PublishedItem("/events",file=Some(file)), PublishedItem("/nested/orders",file=Some(file)),
       PublishedItem("/nested/archive/old",file=Some(file)), PublishedItem("/empty",kind="folder"))
-    val config = Config("localhost",8815,"localhost",Map("public"->DatasetDefinition.custom(entries)),Seq("dacp://localhost:8815/public"),dir,dir,dir)
+    val config = Config("localhost",8815,"localhost",Map("public"->DatasetDefinition.mixed(entries)),Seq("dacp://localhost:8815/public"),dir,dir,dir)
     val allocator = new RootAllocator()
     try test(config,new Producer(config,allocator))
     finally { allocator.close(); Data.deleteTree(dir) }
@@ -69,15 +69,15 @@ class NamespaceSpec extends AnyFunSuite {
     }
   }}
   test("invalid mappings reject duplicate aliases, data parents, and unknown sources") { fixture { (c,_) =>
-    val data = DatasetProviders.customBindings(c.datasets("public")).head
+    val data = DatasetProviders.mixedBindings(c.datasets("public")).head
     intercept[IllegalArgumentException](new NamespaceAdapter(Seq(data,data),c))
     intercept[IllegalArgumentException](new NamespaceAdapter(Seq(data,PublishedItem("/events/child",kind="folder")),c))
     intercept[IllegalArgumentException](PublishedItem("relative",kind="folder"))
     intercept[IllegalArgumentException](new NamespaceAdapter(Seq(PublishedItem("/data",sql=Some("unknown"),table=Some("SECRET"))),c))
   }}
   test("missing private files produce sanitized client errors") { fixture { (c,_) =>
-    val missing = DatasetProviders.customBindings(c.datasets("public")).head.file.get.resolveSibling("private-missing.csv")
-    val config = c.copy(datasets=Map("public" -> DatasetDefinition.custom(Seq(PublishedItem("/published",file=Some(missing))))))
+    val missing = DatasetProviders.mixedBindings(c.datasets("public")).head.file.get.resolveSibling("private-missing.csv")
+    val config = c.copy(datasets=Map("public" -> DatasetDefinition.mixed(Seq(PublishedItem("/published",file=Some(missing))))))
     val a = new RootAllocator()
     try {
       val p = new Producer(config,a)
@@ -86,7 +86,7 @@ class NamespaceSpec extends AnyFunSuite {
     } finally a.close()
   }}
   test("file statistics preserve zero timestamps; folder statistics remain unknown") { fixture { (c,p) =>
-    val file = DatasetProviders.customBindings(c.datasets("public")).head.file.get
+    val file = DatasetProviders.mixedBindings(c.datasets("public")).head.file.get
     Files.setLastModifiedTime(file,java.nio.file.attribute.FileTime.fromMillis(0))
     val all = list(p,"datasets","public").map(i => i.getPath -> i).toMap
     val item = all("/events")
@@ -176,12 +176,12 @@ tls_ca: ca.pem
 allowed_uri_prefixes: [dacp://localhost:8815/public]
 datasets:
   public:
-    provider: custom
+    provider: mixed
     items:
       /missing: {file: ${dir.resolve("missing.csv")}}
 """
       Files.writeString(yaml,text)
-      assert(DatasetProviders.customBindings(Config.load(yaml).datasets("public")).head.recordCount.isEmpty)
+      assert(DatasetProviders.mixedBindings(Config.load(yaml).datasets("public")).head.recordCount.isEmpty)
       Files.writeString(yaml,text + "count_file_records_on_startup: true\n")
       intercept[java.nio.file.NoSuchFileException](Config.load(yaml))
     } finally Data.deleteTree(dir)

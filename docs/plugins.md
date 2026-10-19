@@ -16,7 +16,7 @@ The core owns the common contracts, plugin discovery and lifecycle, Flight trans
 
 Dataset providers and format handlers currently run inside the JVM server. They must be installed by the server administrator in `plugin_directory` with their private dependency JARs, and loaded on restart. They are not sandboxed or uploaded by clients. Operators execute separately in containers.
 
-Dataset providers construct logical namespaces and implement listing, metadata, counting, and streaming. File handlers interpret content. Operators perform transformations. A new format should be usable from both directory-backed and custom datasets without adding a new dataset provider just for that format.
+Dataset providers construct logical namespaces and implement listing, metadata, counting, and streaming. File handlers interpret content. Operators perform transformations. A new format should be usable from both directory-backed and mixed datasets without adding a new dataset provider just for that format.
 
 ## Contribution contract
 

@@ -30,6 +30,11 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
     require(in != null, "missing repository stylesheet")
     try new String(in.readAllBytes(), UTF_8) finally in.close()
   }
+  private val logo = {
+    val in = getClass.getResourceAsStream("/web/dacp-logo.png")
+    require(in != null, "missing DACP logo")
+    try in.readAllBytes() finally in.close()
+  }
   private def headers(exchange: HttpExchange, status: Int, size: Long, contentType: String): Unit = {
     exchange.getResponseHeaders.set("Content-Type", contentType)
     exchange.getResponseHeaders.set("X-Content-Type-Options", "nosniff")
@@ -71,6 +76,9 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
       } else if (uri.getRawQuery != null) reply(exchange, 404, "not found\n")
       else uri.getRawPath match {
         case "/health" => reply(exchange, 200, "ok\n")
+        case "/assets/dacp-logo.png" =>
+          headers(exchange, 200, logo.length, "image/png")
+          if (exchange.getRequestMethod != "HEAD") exchange.getResponseBody.write(logo)
         case "/assets/repository.css" => reply(exchange, 200, css, "text/css; charset=utf-8")
         case "/v1/operators" =>
           reply(exchange, 200, Repository.mapper.writeValueAsString(Repository.catalog(catalog)), "application/json")

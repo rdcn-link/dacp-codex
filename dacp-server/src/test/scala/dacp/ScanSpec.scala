@@ -55,7 +55,7 @@ class ScanSpec extends AnyFunSuite {
         writer.write(record)
       }
     } finally writer.close()
-    val config = Config("localhost",8815,"localhost",Map("data" -> DatasetDefinition.custom(Seq(
+    val config = Config("localhost",8815,"localhost",Map("data" -> DatasetDefinition.mixed(Seq(
       PublishedItem("/records",file=Some(dir.resolve("private.csv"))),
       PublishedItem("/parquet",file=Some(dir.resolve("private.parquet")))))),Seq("dacp://localhost:8815/"),dir,dir,dir,batchSize=2)
     val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(config,allocator)).build().start()

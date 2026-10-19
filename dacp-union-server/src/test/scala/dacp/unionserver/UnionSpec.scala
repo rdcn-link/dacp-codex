@@ -34,7 +34,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     Files.write(dir.resolve("a.bin"),inputA);Files.write(dir.resolve("b.bin"),inputB)
     val as=NodeUnionSettings(dir.resolve("a-state"),30,30)
     val bs=NodeUnionSettings(dir.resolve("b-state"),30,30)
-    def config(name:String)=Config("localhost",port(),"localhost",Map("data"->DatasetDefinition.custom(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin")))))),Seq.empty,root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,executionHistoryDirectory=Some(dir.resolve(s"$name-executions")))
+    def config(name:String)=Config("localhost",port(),"localhost",Map("data"->DatasetDefinition.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin")))))),Seq.empty,root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,executionHistoryDirectory=Some(dir.resolve(s"$name-executions")))
     val ca=config("a");val cb=config("b")
     val runner:(Task,Map[String,FrameSource],OperatorFrame=>Unit,StreamCancel)=>Unit=(task,inputs,emit,cancel)=>{
       if(task.params.containsKey("fail"))throw new IllegalArgumentException("test failure")
@@ -146,6 +146,10 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     try {
       assert(http(webPort,"/").statusCode()==200)
       assert(!http(webPort,"/").body().contains("login-form"))
+      assert(http(webPort,"/").body().contains("/assets/dacp-logo.png"))
+      val logo=java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"http://127.0.0.1:$webPort/assets/dacp-logo.png")).build(),java.net.http.HttpResponse.BodyHandlers.ofByteArray())
+      assert(logo.statusCode()==200 && logo.headers().firstValue("Content-Type").get()=="image/png")
+      assert(logo.body().sameElements(Files.readAllBytes(java.nio.file.Path.of("../assets/dacp-logo.png"))))
       assert(http(webPort,"/api/overview").statusCode()==200)
       assert(http(webPort,"/api/history").statusCode()==200)
       assert(http(webPort,"/api/overview","POST").statusCode()==405)

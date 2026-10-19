@@ -9,7 +9,7 @@ import org.apache.arrow.flight.FlightProducer.ServerStreamListener
 
 object DatasetProviders {
   private lazy val providers: Seq[DatasetProvider] = {
-    val all = Seq(new CustomDatasetProvider,new DirectoryDatasetProvider,new SqlDatasetProvider) ++
+    val all = Seq(new MixedDatasetProvider,new DirectoryDatasetProvider,new SqlDatasetProvider) ++
       ServiceLoader.load(classOf[DatasetProvider],PluginLoader.classLoader).iterator().asScala.toVector
     require(all.forall(_.id.matches("[a-z][a-z0-9-]*")),"invalid dataset provider id")
     require(all.forall(p => p.itemSettingsKey.matches("[a-z][a-z0-9_]*") &&
@@ -24,9 +24,9 @@ object DatasetProviders {
       val fields = raw.asInstanceOf[java.util.List[java.util.Map[String,String]]].asScala
       new org.apache.arrow.vector.types.pojo.Schema(fields.map(c => Records.field(c.get("name"),c.get("type"))).asJava)
     }, v.get("options").map(_.asInstanceOf[java.util.Map[String,Object]].asScala.toMap).getOrElse(Map.empty))
-  def customBindings(d: DatasetDefinition): Seq[PublishedItem] = d.bindings.getOrElse {
+  def mixedBindings(d: DatasetDefinition): Seq[PublishedItem] = d.bindings.getOrElse {
     d.items.toVector.map { case (logical,v) =>
-      require(v.keySet.subsetOf(Set("file","sql","table","kind","format","options","schema")),"unknown custom item option")
+      require(v.keySet.subsetOf(Set("file","sql","table","kind","format","options","schema")),"unknown mixed item option")
       PublishedItem(logical,v.get("file").map(x => Path.of(x.toString)),v.get("sql").map(_.toString),
         v.get("table").map(_.toString),v.get("kind").map(_.toString).getOrElse("data"),fileOptions(v))
     }
@@ -41,11 +41,11 @@ object DatasetProviders {
     }
   }
 }
-class CustomDatasetProvider extends DatasetProvider {
-  val id = "custom"
+class MixedDatasetProvider extends DatasetProvider {
+  val id = "mixed"
   def create(d: DatasetDefinition, config: DatasetContext): PublishedDataset = {
-    require(d.source.isEmpty,"custom datasets do not accept source settings")
-    config.publish(DatasetProviders.customBindings(d))
+    require(d.source.isEmpty,"mixed datasets do not accept source settings")
+    config.publish(DatasetProviders.mixedBindings(d))
   }
 }
 class SqlDatasetProvider extends DatasetProvider {

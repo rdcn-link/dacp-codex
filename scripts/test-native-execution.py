@@ -44,7 +44,7 @@ def main():
         (base/'source.txt').write_bytes(payload)
         (base/'empty.bin').write_bytes(b'')
         config = dict(host='127.0.0.1', public_host='localhost', port=int(NODE.rsplit(':', 1)[1]),
-                      datasets=dict(data=dict(provider='custom', items={'/source': dict(file=str(base/'source.txt')), '/empty': dict(file=str(base/'empty.bin'))})),
+                      datasets=dict(data=dict(provider='mixed', items={'/source': dict(file=str(base/'source.txt')), '/empty': dict(file=str(base/'empty.bin'))})),
                       allowed_uri_prefixes=[NODE+'/data'], local_operator_library=str(library),
                       tls_cert=str(ROOT/'examples/certs/server.crt'), tls_key=str(ROOT/'examples/certs/server.key'),
                       tls_ca=str(ROOT/'examples/certs/ca.crt'))

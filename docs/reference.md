@@ -31,7 +31,7 @@ format 标识源数据表示方式，view 标识读取方式。客户端使用�
 ```yaml
 datasets:
   public:
-    provider: custom
+    provider: mixed
     items:
       /archive: {file: /private/reports.ZIP}
 ```
@@ -77,7 +77,7 @@ TAR 列举顺序扫描归档；压缩 TAR 需要解压扫描。为验证整个�
 ```yaml
 datasets:
   office:
-    provider: custom
+    provider: mixed
     items:
       /orders:
         file: /private/sales.xlsx
@@ -121,17 +121,17 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 ### 发布时填充记录数
 
-配置 `count_file_records_on_startup: true` 后，服务器在加载配置时对 custom 文件映射和目录初次发现的记录文件执行一次精确计数并保存结果，普通浏览复用该结果。默认关闭。计数与文件大小和修改时间绑定；计数期间或之后检测到文件变化时，结果为未知。重启会重新计数，显式 `count` 仍按当前内容计算且不修改保存的元数据。该选项不计数 SQL、归档子项或 folder；启用时无效记录文件会导致启动失败。
+配置 `count_file_records_on_startup: true` 后，服务器在加载配置时对 mixed 文件映射和目录初次发现的记录文件执行一次精确计数并保存结果，普通浏览复用该结果。默认关闭。计数与文件大小和修改时间绑定；计数期间或之后检测到文件变化时，结果为未知。重启会重新计数，显式 `count` 仍按当前内容计算且不修改保存的元数据。该选项不计数 SQL、归档子项或 folder；启用时无效记录文件会导致启动失败。
 
 `plugin_directory` 可选指定插件及依赖 JAR 所在目录，在注册表初始化前加载，修改后需要重启。读取器专用参数放入 `options`，由处理器自行校验。独立 API 与结构化文件契约见 [插件指南](plugins.md)。
 
 ## Dataset 构建
 
-目录使用可选 `reader_overrides`，SQLDB 使用公开路径到私有表的 `tables` 映射，custom 使用 `items`。目录和 SQLDB 不接受 `items`。插件默认使用 `items`，可通过 `DatasetProvider.itemSettingsKey` 自定义映射键。
+目录使用可选 `reader_overrides`，SQLDB 使用公开路径到私有表的 `tables` 映射，mixed 使用 `items`。目录和 SQLDB 不接受 `items`。插件默认使用 `items`，可通过 `DatasetProvider.itemSettingsKey` 自定义映射键。
 
-内置 `directory`、`sqldb` 和 `custom` provider。每个 Dataset 选择一个 provider，由它解释私有 `source` 和各 provider 的映射配置，并提供统一的数据访问接口。目录 provider 动态发现相对路径，SQLDB provider 使用显式公开表别名，custom provider 可混合来源。每个 Dataset 必须显式指定 `provider`。
+内置 `directory`、`sqldb` 和 `mixed` provider。每个 Dataset 选择一个 provider，由它解释私有 `source` 和各 provider 的映射配置，并提供统一的数据访问接口。目录 provider 动态发现相对路径，SQLDB provider 使用显式公开表别名，mixed provider 可混合来源。每个 Dataset 必须显式指定 `provider`。
 
-目录 Dataset 不跟随符号链接。集合属性和直接子项列举不递归扫描普通子目录；只有 `list()` 才递归发现所有文件和归档条目。配置加载时启用启动计数会扫描初始文件，后续新文件只被发现、不自动计数。读取选项覆盖按公开路径匹配，不改变文件命名。目录中的新增 SQL 绑定或绝对路径映射被拒绝；这类组合应使用 custom。
+目录 Dataset 不跟随符号链接。集合属性和直接子项列举不递归扫描普通子目录；只有 `list()` 才递归发现所有文件和归档条目。配置加载时启用启动计数会扫描初始文件，后续新文件只被发现、不自动计数。读取选项覆盖按公开路径匹配，不改变文件命名。目录中的新增 SQL 绑定或绝对路径映射被拒绝；这类组合应使用 mixed。
 
 Dataset provider、容器 reader、格式 handler 分别负责构建数据集、浏览归档、解释内容。MongoDB 等未来 provider 可自行实现列举、元数据及流式读取，无需伪装成文件或 SQL 表，也不要求修改协议或 SDK。参见 [provider 开发指南](dataset-providers.md)。
 

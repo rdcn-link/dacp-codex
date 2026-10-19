@@ -83,7 +83,7 @@ tls_ca: ca.pem
 allowed_uri_prefixes: [dacp://localhost:8815/office]
 datasets:
   office:
-    provider: custom
+    provider: mixed
     items:
       /orders:
         file: private.xlsx
@@ -93,7 +93,7 @@ datasets:
           - {name: id, type: int64}
           - {name: amount, type: float64}
 """)
-      val binding = DatasetProviders.customBindings(Config.load(yaml).datasets("office")).head
+      val binding = DatasetProviders.mixedBindings(Config.load(yaml).datasets("office")).head
       assert(binding.options.format.contains("excel") && binding.options.parameters.get("sheet").contains("Orders"))
       assert(binding.options.parameters("header_row") == Int.box(2))
       assert(binding.options.columns.get.getFields.asScala.map(_.getName).toSeq == Seq("id","amount"))
@@ -154,7 +154,7 @@ datasets:
     val allocator = new RootAllocator()
     try {
       val file = dir.resolve("private-workbook.xlsx"); workbook(file,multiple=true)
-      val config = Config("localhost",8815,"localhost",Map("public" -> DatasetDefinition.custom(Seq(
+      val config = Config("localhost",8815,"localhost",Map("public" -> DatasetDefinition.mixed(Seq(
         PublishedItem("/orders",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Orders"))),
         PublishedItem("/other",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Other")))))),
         Seq("dacp://localhost:8815/public"),dir,dir,dir,batchSize=1,inferSample=1)

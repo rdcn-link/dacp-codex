@@ -178,7 +178,7 @@ Dataset 由可扩展的 provider 构建。内置三种方式，对客户端提�
 |---|---|---|
 | `directory` | 自动发现根目录中的文件、子目录和归档 | `source.root` |
 | `sqldb` | 从一个 SQL 连接发布具有公开别名的表 | `source.connection` |
-| `custom` | 逐个定义 Item，可组合文件、SQL 表及逻辑集合 | Item 的 `file`、`sql`、`table` |
+| `mixed` | 逐个定义 Item，可组合文件、SQL 表及逻辑集合 | Item 的 `file`、`sql`、`table` |
 
 ```yaml
 datasets:
@@ -197,7 +197,7 @@ datasets:
       /customers: {table: CUSTOMERS}
 
   research:
-    provider: custom
+    provider: mixed
     items:
       /measurements: {file: /private/results.csv}
       /customers: {sql: warehouse, table: CUSTOMERS}
@@ -216,9 +216,9 @@ sql_sources:
 
 目录 Dataset 将根目录内的相对路径作为公开逻辑路径，例如 `/reports/orders.csv`；空目录也是 folder，受支持的归档可继续浏览。后续列举会反映文件新增、删除和修改。根目录保持私有，所有符号链接均忽略；不会访问根目录之外的数据。目录的 `reader_overrides` 是可选读取选项覆盖，支持格式、工作表、表头行和 schema，不用于重命名或额外添加来源。
 
-SQL Dataset 的 `tables` 将公开路径绑定到选定连接的私有表名，不自动暴露所有表。`custom` 保留逐项映射和混合来源的灵活性。每个 Dataset 必须显式指定 `provider`。
+SQL Dataset 的 `tables` 将公开路径绑定到选定连接的私有表名，不自动暴露所有表。`mixed` 保留逐项映射和混合来源的灵活性。每个 Dataset 必须显式指定 `provider`。
 
-默认示例同时提供 `data1`、`csv_data`（custom）和 `documents`（directory）。在 shell 中执行 `use documents`、`ls /`，或读取 `/nested/orders.csv`。SQLDB 的完整初始化示例见 [SQL 示例](../../examples/sql/README.md)。添加 MongoDB 等新来源时，可通过 provider JAR 扩展，无需修改客户端；开发接口见 [Dataset provider 指南](../../docs/dataset-providers.md)。
+默认示例同时提供 `data1`、`csv_data`（mixed）和 `documents`（directory）。在 shell 中执行 `use documents`、`ls /`，或读取 `/nested/orders.csv`。SQLDB 的完整初始化示例见 [SQL 示例](../../examples/sql/README.md)。添加 MongoDB 等新来源时，可通过 provider JAR 扩展，无需修改客户端；开发接口见 [Dataset provider 指南](../../docs/dataset-providers.md)。
 
 ### 格式与视图
 
@@ -248,7 +248,7 @@ ZIP 列举只读取目录索引；TAR 需要顺序扫描，`.tar.gz` / `.tgz` �
 
 Item 可携带修改时间、字节大小和精确记录数。未知值与 `0` 不同；所有 folder 的这三个属性始终为未知，不遍历子项来计算。
 
-示例服务启用了 `count_file_records_on_startup: true`：在发布时对 custom 文件映射及目录初次发现的 CSV、NDJSON、Excel 等记录文件计算一次精确记录数，因此 `/events` 和 `/reports/orders` 的 Records 显示为 `2`。此选项默认关闭；启用后会增加启动时间，计数失败会使启动失败。SQL、归档子项和所有 folder 不参与启动计数。目录中新发现的文件不会在浏览时触发计数，可显式查询或重启后填充。
+示例服务启用了 `count_file_records_on_startup: true`：在发布时对 mixed 文件映射及目录初次发现的 CSV、NDJSON、Excel 等记录文件计算一次精确记录数，因此 `/events` 和 `/reports/orders` 的 Records 显示为 `2`。此选项默认关闭；启用后会增加启动时间，计数失败会使启动失败。SQL、归档子项和所有 folder 不参与启动计数。目录中新发现的文件不会在浏览时触发计数，可显式查询或重启后填充。
 
 普通浏览不扫描文件计数，也不执行 SQL `COUNT(*)`。已保存的文件计数在大小或修改时间变化后回到未知；重启可重新填充，也可用 `count` 显式查询最新数量，但显式查询不更新已保存的列表计数。Parquet 仍可从 footer 获取记录数。元数据与之后读取的内容不构成原子快照。
 

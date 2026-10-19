@@ -4,7 +4,7 @@ public_host: localhost
 port: 8815
 datasets:
   files:
-    provider: custom
+    provider: mixed
     items:
       /image: {file: ../examples/data/pixel.png}
       /reports/orders: {file: ../examples/data/nested/orders.csv}

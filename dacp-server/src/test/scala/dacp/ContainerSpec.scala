@@ -27,7 +27,7 @@ class ContainerSpec extends AnyFunSuite {
     bytes.toByteArray
   }
   private def config(dir: Path, file: Path, alias: String = "/archive"): Config =
-    Config("localhost",8815,"localhost",Map("public" -> DatasetDefinition.custom(Seq(PublishedItem(alias,file=Some(file))))),
+    Config("localhost",8815,"localhost",Map("public" -> DatasetDefinition.mixed(Seq(PublishedItem(alias,file=Some(file))))),
       Seq("dacp://localhost:8815/public"),dir,dir,dir)
 
   for ((suffix,format) <- Seq("tar" -> "tar","tar.gz" -> "tar-gzip","TGZ" -> "tar-gzip")) {
@@ -118,7 +118,7 @@ class ContainerSpec extends AnyFunSuite {
     try {
       val file = dir.resolve("private.tar.gz"); gzip(file,tar(Seq("reports/orders.csv" -> csv)))
       val gz = dir.resolve("private.csv.gz"); gzip(gz,csv)
-      val c = config(dir,file).copy(datasets=Map("public" -> DatasetDefinition.custom(Seq(PublishedItem("/archive",file=Some(file)),PublishedItem("/orders.csv.gz",file=Some(gz))))))
+      val c = config(dir,file).copy(datasets=Map("public" -> DatasetDefinition.mixed(Seq(PublishedItem("/archive",file=Some(file)),PublishedItem("/orders.csv.gz",file=Some(gz))))))
       val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()
       try {

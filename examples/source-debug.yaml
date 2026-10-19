@@ -5,7 +5,7 @@ public_host: localhost
 port: 18815
 datasets:
   data1:
-    provider: custom
+    provider: mixed
     items:
       /orders: {file: ../examples/data/nested/orders.csv}
 allowed_uri_prefixes: [dacp://localhost:18815/data1]

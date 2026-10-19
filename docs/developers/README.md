@@ -87,7 +87,7 @@ datasets:
 
 客户端读取 `/records`，不会获得 `source.file`。需要逐项映射的插件默认通过 `items` 接收参数，也可覆盖 `DatasetProvider.itemSettingsKey` 声明自己的配置键；解析后的映射统一由 `definition.items` 提供。`source` 可包含插件自定义的嵌套参数，插件必须自行校验类型、必填项和未知参数。
 
-目录 provider 使用 `reader_overrides`，SQLDB 使用 `tables`，custom 使用 `items`。目录和 SQLDB 不接受 `items`。原生后端（例如未来的 MongoDB provider）可直接实现 `PublishedDataset` 和 `DatasetAccess`，提供列举、元数据、计数与流式读取，无需映射成文件或 SQL。完整接口和取消、资源释放要求见 [provider 开发指南](../../docs/dataset-providers.md)。MongoDB 尚未实现。
+目录 provider 使用 `reader_overrides`，SQLDB 使用 `tables`，mixed 使用 `items`。目录和 SQLDB 不接受 `items`。原生后端（例如未来的 MongoDB provider）可直接实现 `PublishedDataset` 和 `DatasetAccess`，提供列举、元数据、计数与流式读取，无需映射成文件或 SQL。完整接口和取消、资源释放要求见 [provider 开发指南](../../docs/dataset-providers.md)。MongoDB 尚未实现。
 
 ### 文件与结构化内容插件
 

@@ -91,8 +91,8 @@ datasets:
     source: {message: configured payload}
     entries:
       /message: {label: configured item}
-  custom:
-    provider: custom
+  mixed:
+    provider: mixed
     items:
       /orders: {file: $dir/orders.csv}
 """
@@ -103,9 +103,10 @@ datasets:
       assert(c.datasets("plugin").items("/message")("label") == "configured item")
       assert(c.openDataset("plugin").describe("/message").views.contains(Seq("bytes")))
       assert(c.openDataset("directory").list("/").exists(_.path == "/orders.csv"))
-      assert(c.openDataset("custom").list().map(_.path) == Seq("/orders"))
+      assert(c.openDataset("mixed").list().map(_.path) == Seq("/orders"))
       for (bad <- Seq(
         "datasets: {bad: {provider: unknown}}",
+        "datasets: {bad: {provider: custom, items: {}}}",
         "datasets: {bad: {items: {}}}",
         "sql_datasets: {}",
         "datasets: {bad: /private/directory}",
@@ -115,9 +116,9 @@ datasets:
         s"datasets: {bad: {provider: directory, source: {root: $dir}, reader_overrides: {}, items: {}}}",
         "datasets: {bad: {provider: sqldb, tables: {}, items: {}}}",
         s"datasets: {bad: {provider: directory, source: {root: $dir}, tables: {}}}",
-        "datasets: {bad: {provider: custom, reader_overrides: {}}}",
+        "datasets: {bad: {provider: mixed, reader_overrides: {}}}",
         s"datasets: {bad: {provider: directory, source: {root: $dir}, reader_overrides: {/x: {file: /private}}}}",
-        s"datasets: {bad: {provider: custom, source: {root: $dir}}}",
+        s"datasets: {bad: {provider: mixed, source: {root: $dir}}}",
         s"datasets: {bad: {provider: directory, source: {root: $dir}, items: {/x: {file: /private}}}}",
         "datasets: {bad: {provider: sqldb, source: {connection: missing}}}",
         s"datasets: {bad: {provider: directory, directory: $dir, source: {root: $dir}}}")) {
@@ -125,7 +126,7 @@ datasets:
       }
     } finally Data.deleteTree(dir)
   }
-  test("directory, sqldb, custom mixed sources, and external providers share the Flight interface") {
+  test("directory, sqldb, mixed sources, and external providers share the Flight interface") {
     val dir = Files.createTempDirectory("dataset-flight-"); val allocator = new RootAllocator()
     val url = "jdbc:h2:mem:dataset_provider_"+System.nanoTime()+";DB_CLOSE_DELAY=-1"
     val db = DriverManager.getConnection(url,"sa","")
@@ -137,7 +138,7 @@ datasets:
       val defs = Map(
         "files" -> directory(dir),
         "sales" -> DatasetDefinition("sqldb",Map("connection" -> "warehouse"),Map("/customers" -> Map("table" -> "PRIVATE_CUSTOMERS"))),
-        "custom" -> DatasetDefinition.custom(Seq(PublishedItem("/orders",file=Some(dir.resolve("orders.csv"))),
+        "mixed" -> DatasetDefinition.mixed(Seq(PublishedItem("/orders",file=Some(dir.resolve("orders.csv"))),
           PublishedItem("/customers",sql=Some("warehouse"),table=Some("PRIVATE_CUSTOMERS")))),
         "plugin" -> DatasetDefinition("test-dataset",Map("message" -> "external provider")))
       val c = config(dir,defs).copy(sqlSources=Map("warehouse" -> SqlConfig(url,Some("sa"),Some(""),Some("PUBLIC"))))
@@ -145,7 +146,7 @@ datasets:
       val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()
       try {
-        for ((dataset,path) <- Seq("files" -> "/orders.csv","files" -> "/archive.zip/orders.csv","sales" -> "/customers","custom" -> "/orders","custom" -> "/customers")) {
+        for ((dataset,path) <- Seq("files" -> "/orders.csv","files" -> "/archive.zip/orders.csv","sales" -> "/customers","mixed" -> "/orders","mixed" -> "/customers")) {
           val listing = Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets",dataset)).getAppMetadata)
           assert(!listing.toString.contains("PRIVATE_CUSTOMERS") && !listing.toString.contains(dir.toString))
           assert(!listing.getItemsList.asScala.find(_.getPath == path).get.hasRecordCount)

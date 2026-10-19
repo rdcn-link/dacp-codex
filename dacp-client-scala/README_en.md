@@ -101,7 +101,7 @@ ZIP archives appear as `kind=folder`, `format=zip`, with a `bytes` view. Browse 
 
 TAR (`tar`), GZIP (`gzip`), and compressed TAR (`tar-gzip`, `.tar.gz` / `.tgz`) use the same folder model as ZIP. In the default example, browse `/bundle` or `/bundle_gzip`, and open `/orders.csv.gz/orders.csv` for decompressed CSV records. Open `/orders.csv.gz` itself with `asBytes()` for the original compressed file. GZIP child names come from the public alias; aliases without a `.gz` suffix expose `content`. TAR scans are sequential and compressed TAR scans require decompression, so large archives can delay listing or opening. Nested containers remain binary Items.
 
-Dataset construction is server-side: `directory`, `sqldb`, and `custom` providers all expose the same SDK API. The default server's `documents` Dataset discovers `examples/data`; connect to `dacp://localhost:8815/documents` and use `list("/")` or `open("/nested/orders.csv")`. Directory changes appear on subsequent requests. Public table aliases and private source bindings remain server-side.
+Dataset construction is server-side: `directory`, `sqldb`, and `mixed` providers all expose the same SDK API. The default server's `documents` Dataset discovers `examples/data`; connect to `dacp://localhost:8815/documents` and use `list("/")` or `open("/nested/orders.csv")`. Directory changes appear on subsequent requests. Public table aliases and private source bindings remain server-side.
 
 ## Filter, projection, and limit
 

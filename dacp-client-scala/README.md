@@ -101,7 +101,7 @@ ZIP 归档显示为 `kind=folder`、`format=zip`，提供 `bytes` 视图。使�
 
 TAR（`tar`）、GZIP（`gzip`）及压缩 TAR（`tar-gzip`、`.tar.gz` / `.tgz`）与 ZIP 使用相同的文件夹模型。默认示例可浏览 `/bundle` 或 `/bundle_gzip`，通过 `/orders.csv.gz/orders.csv` 读取解压后的 CSV 记录，通过 `/orders.csv.gz` 的 `asBytes()` 读取原始压缩文件。GZIP 子项名称来自公开别名；不带 `.gz` 后缀的别名使用 `content`。TAR 顺序扫描，压缩 TAR 扫描需要解压，因此大型归档可能延迟列举或打开。嵌套容器保持为二进制 Item。
 
-Dataset 在服务器端构建：`directory`、`sqldb` 和 `custom` provider 提供相同 SDK API。默认服务器的 `documents` Dataset 自动发现 `examples/data`；连接 `dacp://localhost:8815/documents` 后使用 `list("/")` 或 `open("/nested/orders.csv")`。目录变更会出现在后续请求中。公开表别名和私有数据源绑定保留在服务器端。
+Dataset 在服务器端构建：`directory`、`sqldb` 和 `mixed` provider 提供相同 SDK API。默认服务器的 `documents` Dataset 自动发现 `examples/data`；连接 `dacp://localhost:8815/documents` 后使用 `list("/")` 或 `open("/nested/orders.csv")`。目录变更会出现在后续请求中。公开表别名和私有数据源绑定保留在服务器端。
 
 ## 过滤、投影与限制
 
