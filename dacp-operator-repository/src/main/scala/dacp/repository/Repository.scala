@@ -71,7 +71,8 @@ object Repository {
     require(manifest.path("api_version").asInt == 2, "unsupported operator manifest")
     parts(s"${manifest.path("name").asText}@${manifest.path("version").asText}")
     require(manifest.path("runtime").path("image").asText.matches("sha256:[a-f0-9]{64}"), "runtime image must be pinned")
-    val descriptors = Seq(manifest.path("runtime").path("archive")) ++ Option(manifest.get("artifact"))
+    val descriptors = Seq(manifest.path("runtime").path("archive")) ++ Option(manifest.get("artifact")) ++
+      Option(manifest.get("provenance")).toSeq.flatMap { n=>Provenance.validateMetadata(n);Provenance.descriptors(n) }
     descriptors.foreach { a =>
       val file = blob(root, a.path("sha256").asText)
       require(a.path("size").asLong > 0 && Files.size(file) == a.path("size").asLong && checksum(file) == a.path("sha256").asText,
@@ -99,7 +100,7 @@ object Repository {
       val in = Files.newInputStream(file)
       val d = try new org.yaml.snakeyaml.Yaml(options).load[java.util.Map[String, Object]](in).asScala.toMap finally in.close()
       require(Set("name", "version", "image", "inputs", "outputs").subsetOf(d.keySet) &&
-        d.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "outputs", "executor_config")), "invalid operator definition")
+        d.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "outputs", "executor_config", "provenance")), "invalid operator definition")
       val reference = s"${d("name")}@${d("version")}"
       val (name, version) = parts(reference)
       require(name == file.getParent.getParent.getFileName.toString && version == file.getParent.getFileName.toString,
@@ -109,7 +110,8 @@ object Repository {
       else publish(root, reference, d("image").toString, mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](d.asJava), exporter, d.getOrElse("description", "").toString,
         d.getOrElse("executor", "container").toString, d.getOrElse("entrypoint", "").toString,
         d.get("artifact").map(v => file.getParent.resolve(v.toString)),
-        mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](d.getOrElse("executor_config",new java.util.LinkedHashMap[String,Object]())))
+        mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](d.getOrElse("executor_config",new java.util.LinkedHashMap[String,Object]())),
+        Provenance.fromDefinition(mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](d.getOrElse("provenance",new java.util.LinkedHashMap[String,Object]())),file.getParent))
       reference
     }
   }
@@ -123,8 +125,9 @@ object Repository {
       require(Process(Seq("docker", "save", "-o", destination.toString, imageId)).! == 0, "docker save failed")
   }
   def publish(root: Path, reference: String, image: String, ports: com.fasterxml.jackson.databind.JsonNode, exporter: ImageExporter = Docker, description: String = "",
-              executor: String = "container", entrypoint: String = "", artifact: Option[Path] = None, configuration: com.fasterxml.jackson.databind.JsonNode = mapper.createObjectNode()): String = synchronized {
+              executor: String = "container", entrypoint: String = "", artifact: Option[Path] = None, configuration: com.fasterxml.jackson.databind.JsonNode = mapper.createObjectNode(), provenance: Provenance = Provenance()): String = synchronized {
     validatePorts(ports)
+    provenance.validate()
     require(configuration.isObject, "executor_config must be a mapping")
     val (name, version) = parts(reference)
     require(executor.matches("[a-z][a-z0-9_-]*"), "invalid executor ID")
@@ -169,7 +172,13 @@ object Repository {
           require(filename.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*"), "invalid artifact filename")
           manifest.set[com.fasterxml.jackson.databind.JsonNode]("artifact", store(root, source, filename))
         }
+        val evidence=Provenance.textMetadata(provenance)
+        Seq("source_archive"->provenance.sourceArchive,"license_file"->provenance.licenseFile,"sbom"->provenance.sbom).foreach {
+          case(key,file)=>file.foreach(p=>evidence.set[com.fasterxml.jackson.databind.JsonNode](key,store(root,p,p.getFileName.toString)))
+        }
+        if(evidence.size()>0) manifest.set[com.fasterxml.jackson.databind.JsonNode]("provenance",evidence)
         val json = mapper.writeValueAsString(manifest)
+        require(json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=65536,"operator manifest exceeds 64 KiB")
         Files.writeString(stage.resolve("manifest.json"), json)
         Files.move(stage, target, StandardCopyOption.ATOMIC_MOVE)
         json

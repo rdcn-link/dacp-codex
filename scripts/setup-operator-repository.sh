@@ -18,6 +18,7 @@ while [[ $# -gt 0 ]]; do
   fi
 done
 scripts/build-operator-image.sh
+python3 scripts/package-operator-sources.py
 (cd dacp-operator-repository && sbt -batch stage)
 repository_bin="$project_root/dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository"
 "$repository_bin" seed --operators "$project_root/operators" --root "$catalog"

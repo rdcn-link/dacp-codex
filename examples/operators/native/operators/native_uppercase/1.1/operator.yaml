@@ -1,0 +1,20 @@
+name: native_uppercase
+version: "1.1"
+description: Uppercase a byte stream using a small compiled C executable with ordinary stdin and stdout.
+image: dacp/operator-python:1.0
+executor: command
+entrypoint: /operator/uppercase
+artifact: ../../../build/uppercase
+executor_config:
+  args: []
+  stdin: source
+  stdout: {port: result, representation: bytes, format: text}
+inputs:
+  source: {representations: [bytes], formats: []}
+outputs:
+  result: {representations: [bytes], formats: [text]}
+
+provenance:
+  source_archive: ../../../../../../.operator-sources/dacp-sources.zip
+  source_repository: https://github.com/rdcn-link/dacp-codex
+  build_instructions: See examples/operators/native/README_en.md for the C compiler command and runtime setup.

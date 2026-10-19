@@ -1,0 +1,17 @@
+job: regional-revenue
+tasks:
+  - id: ta
+    title: 汇总本地商品销量
+    node: dacp://localhost:18861
+    operator: quantity_sum@1.0
+    inputs:
+      source: {uri: 'dacp://localhost:18861/data/sales', view: bytes}
+  - id: tb
+    title: 融合价格计算商品收入
+    node: dacp://localhost:18862
+    operator: revenue_join@1.0
+    inputs:
+      quantities: {task: ta, port: result}
+      prices: {uri: 'dacp://localhost:18862/data/prices', view: bytes}
+outputs:
+  revenue: {task: tb, port: result}

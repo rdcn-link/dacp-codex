@@ -1,5 +1,7 @@
 # DACP 算子运行时
 
+[English](README_en.md)
+
 `format_convert@1.1` 和 `identity@1.1` 的独立 Scala 实现，不含数据服务器、Docker 客户端、SQL 驱动、Excel 读取器或任务协调器。两个算子共享薄 JAR 和 JVM/Arrow/Parquet 依赖环境。服务器仅在测试中依赖本模块。
 
 在项目根目录、Linux 环境下构建，需要含 `jlink` 的 JDK 17、sbt、Python 3、`ldd` 和本地 Docker Engine 访问权限：

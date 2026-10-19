@@ -1,5 +1,7 @@
 # DACP Scala SDK
 
+[中文](README.md)
+
 A standalone Scala 2.13 SDK for reading DACP datasets over Apache Arrow Flight with mTLS. Requires JDK 17 and sbt 1.10.x. It uses the shared [protobuf definition](../proto/dacp.proto) and has no dependency on the DACP server project.
 
 Build and publish to your local Ivy repository from this directory:
@@ -136,3 +138,7 @@ Using.resource(Job.run("dacp://localhost:8815",
 `JobStream` is an `AutoCloseable` iterator. Use a resource scope even when stopping early: closing cancels the remaining job. Exhaustion or failure releases resources automatically. Errors after data delivery indicate partial results. Output port metadata includes representation, format, and records schema. Event payload arrays remain valid after advancing or closing the stream.
 
 For a records data event, call `event.records(allocator)` with your own Arrow allocator and close the returned reader in a resource scope. Its single record batch is borrowed from that reader and remains valid until the reader advances or closes. Source datasets remain browsable; job results are streams and cannot be reopened.
+
+## Union client
+
+`dacp.client.Union` submits jobs to independent X, exposes separate `results()` and `events()` streams, and provides `status()` and `cancel()`. Close executions and streams with `Using.resource`. See the [Union server](../dacp-union-server/README_en.md) for complete code and mTLS configuration.

@@ -1,0 +1,21 @@
+name: format_convert
+version: "1.3"
+image: dacp/operator-jvm:1.1
+executor: jvm
+entrypoint: dacp.OperatorMain
+artifact: ../../../dacp-operator-runtime/target/universal/stage/lib/default.dacp-operator-runtime-0.1.0-SNAPSHOT.jar
+description: Convert CSV and NDJSON data to Parquet with schema validation and configurable compression.
+
+inputs:
+  source:
+    representations: [bytes]
+    formats: [csv, ndjson]
+outputs:
+  result:
+    representations: [bytes]
+    formats: [parquet]
+
+provenance:
+  source_archive: ../../../.operator-sources/dacp-sources.zip
+  source_repository: https://github.com/rdcn-link/dacp-codex
+  build_instructions: cd dacp-operator-runtime && sbt -batch stage

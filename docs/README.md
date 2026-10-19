@@ -2,25 +2,46 @@
 
 [English](README_en.md) · [项目首页](../README.md)
 
-## 用户文档
+协议总览：[DACP（Data Access and Collaboration Protocol）](protocol.md)。
 
-从[用户指南](users/README.md)开始：快速开始、dacp-shell 帮助与示例、Python/Scala SDK、记录查询、内置 Dataset 配置、算子执行和流式作业。面向数据使用者与使用已有组件部署节点的管理员，不要求编写服务端插件。
+## 按角色阅读
 
-- [用户指南](users/README.md)
-- [Scala SDK 用法](../dacp-client-scala/README.md)
-- [多节点作业示例](../examples/multi-node/README.md)
-- [算子仓库部署与管理](../dacp-operator-repository/README.md)
+| 入口 | 适用对象 | 阅读路线 |
+|---|---|---|
+| [用户指南](users/README.md) | 使用已部署服务的数据使用者、分析人员和应用使用者 | 连接 → 浏览与查询 → 执行作业 → 看板和历史 |
+| [管理员指南](administrators/README.md) | 部署节点、Union 或算子仓库的运维人员 | 环境与证书 → 发布数据 → 算子与授权 → 监控、存储和停机 |
+| [开发者指南](developers/README.md) | 算子作者、应用集成者及插件和协议开发者 | 模块架构 → 扩展契约 → 实现与注册 → 测试 |
 
-## 开发者文档
+## 工具与模块手册
 
-从[开发者指南](developers/README.md)开始：架构、源码构建、算子开发与发布、插件注册、协议契约及测试。
+| 工具 | 文档 |
+|---|---|
+| dacp-shell、Python SDK | [用户指南](users/README.md)、[查询语义](records-scans.md)（英文） |
+| Scala SDK | [Scala 客户端](../dacp-client-scala/README.md) |
+| DACP Server | [管理员指南](administrators/README.md)、[配置和协议参考](reference.md) |
+| Union Server 与 Web 看板 | [Union 手册](../dacp-union-server/README.md)、[协作协议](union.md)、[双节点示例](../examples/union/README.md) |
+| 算子仓库 CLI 与网站 | [仓库手册](../dacp-operator-repository/README.md) |
+| 算子运行时与执行器 | [运行时](../dacp-operator-runtime/README.md)、[执行器](../dacp-operator-executors/README.md) |
+| 插件 API 与 Union 传输工具 | [插件 API](../dacp-plugin-api/README.md)、[Union 协议模块](../dacp-union-protocol/README.md) |
 
-- [开发者指南](developers/README.md)
-- [算子编写与上传](operator-authoring.md)
-- [原生可执行程序](native-commands.md)
-- [DEBUG 源码算子](operator-source.md)
-- [插件扩展点](plugins.md)（英文）
-- [Dataset provider](dataset-providers.md)与[文件格式处理器](format-handlers.md)（英文）
-- [算子打包](operator-packaging.md)、[流契约](operator-streams.md)与[记录查询契约](records-scans.md)（英文）
+## 专题参考
 
-[技术参考](reference.md)为用户与开发者共享的格式、传输及配置说明。各主题文档保持单一来源，从对应读者指南链接进入。
+| 主题 | 文档 |
+|---|---|
+| 算子编写、发布、代码示例 | [Scala / Java / Python 算子](operator-authoring.md)、[原生命令](native-commands.md) |
+| DEBUG 源码提交 | [源码运行时与 heredoc](operator-source.md) |
+| 运行时、制品、缓存和帧协议 | [算子打包](operator-packaging.md)、[流契约](operator-streams.md)（英文） |
+| 源码、许可证、构建说明和 SBOM | [算子审查材料](operator-provenance.md) |
+| 执行记录、历史查询和重启语义 | [执行记录](execution-history.md) |
+| 插件发现与贡献要求 | [插件体系](plugins.md)（英文） |
+| Dataset 后端、文件格式和结构化浏览 | [Dataset provider](dataset-providers.md)、[格式处理器](format-handlers.md)（英文） |
+| 过滤、列投影、SQL shell 与优化契约 | [记录查询](records-scans.md)（英文） |
+| 数据模型、读取能力和节点配置字段 | [技术参考](reference.md) |
+
+## 可运行示例
+
+- [普通节点间 Job](../examples/multi-node/README.md)和 [Union 跨中心分析](../examples/union/README.md)。
+- [Scala 算子](../examples/operators/scala/README.md)、[Python 算子](../examples/operators/python/README.md)、[原生可执行算子](../examples/operators/native/README.md)。
+- [插件工程](../examples/plugins/README.md)和 [SQL 数据发布](../examples/sql/README.md)。
+
+除非文档另行指定，命令从项目根目录执行。服务配置中的相对路径以服务进程工作目录为基准。示例证书、主机名、端口及文件路径用于本地演示，部署时按实际环境配置。各 README 的 `README.md` 为中文，`README_en.md` 为对应英文版。

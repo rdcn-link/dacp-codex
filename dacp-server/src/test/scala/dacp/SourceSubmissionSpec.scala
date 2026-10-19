@@ -10,7 +10,7 @@ import dacp.protocol.Metadata
 class SourceSubmissionSpec extends AnyFunSuite {
   test("NORMAL denies source at both coordinator and direct worker Flight entry points") {
     val allocator=new RootAllocator()
-    val config=Config("localhost",18816,"localhost",Map.empty,Seq("dacp://localhost:18816/data"),Path.of("unused"),Path.of("unused"),Path.of("unused"))
+    val config=Config("localhost",18816,"localhost",Map.empty,Seq("dacp://localhost:18816/data"),Path.of("unused"),Path.of("unused"),Path.of("unused"),executionHistoryDirectory=Some(Files.createTempDirectory("dacp-source-history-")))
     val service=new TaskService(config,allocator,new TaskExecutor(config,allocator))
     val producer=new NoOpFlightProducer {
       override def doExchange(ctx:FlightProducer.CallContext,r:FlightStream,w:FlightProducer.ServerStreamListener):Unit=service.exchange(ctx,r,w)
@@ -22,7 +22,7 @@ class SourceSubmissionSpec extends AnyFunSuite {
     val worker=s"""{"id":"run","operator":$source,"params":{},"ports":["source"],"sources":["dacp://localhost:18816/data/item"]}"""
     val requests=Seq(Metadata.OperatorRequest.newBuilder().setJobYaml(job).build(),
       Metadata.OperatorRequest.newBuilder().setTaskJson(com.google.protobuf.ByteString.copyFromUtf8(worker)).build())
-    try requests.foreach { request=>
+    try {requests.foreach { request=>
       val exchange=client.doExchange(FlightDescriptor.command(request.toByteArray))
       val root=VectorSchemaRoot.create(PluginSchemas.bytes,allocator)
       try {
@@ -31,7 +31,15 @@ class SourceSubmissionSpec extends AnyFunSuite {
         assert(error.status().code()==FlightStatusCode.UNAUTHORIZED)
         assert(error.getMessage.contains("DEBUG"))
       } finally {try exchange.close() catch{case _:FlightRuntimeException=>()};root.close()}
-    } finally {client.close();server.close();service.close();allocator.close()}
+      }
+      val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(3)
+      while(config.executionHistory.list().count(_.path("state").asText=="failed")<2 && System.nanoTime()<deadline)Thread.sleep(10)
+      val records=config.executionHistory.list()
+      assert(records.size==2)
+      assert(records.forall(_.path("state").asText=="failed"))
+      assert(records.forall(_.path("message").asText.contains("DEBUG")))
+      assert(records.forall(!_.toString.contains("def process")))
+    } finally {client.close();server.close();service.close();config.close();allocator.close()}
   }
   test("record stream metadata uses IPC message schemas, including nonempty field types") {
     val schema=new org.apache.arrow.vector.types.pojo.Schema(java.util.List.of(Records.field("id","int64")))

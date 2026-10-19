@@ -65,7 +65,7 @@ object FormatConvert {
     val metadata = RuntimeJson.mapper.createObjectNode(); val schemas = metadata.putObject("items")
     try manifest.elements.asScala.zipWithIndex.foreach { case (entry,index) =>
       val format = option("from","auto") match { case "auto" => entry.get("format").asText; case f => f }
-      val ipc = new ArrowStreamReader(Files.newInputStream(input.resolve(entry.get("file").asText)),allocator)
+      val ipc = new ArrowStreamReader(new java.io.FileInputStream(input.resolve(entry.get("file").asText).toFile),allocator)
       try {
         val rows = parsed(new BinaryInput(ipc),format)
         try {

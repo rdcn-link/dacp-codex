@@ -23,3 +23,9 @@ examples/sql/*.trace.db
 *.p12
 *.pfx
 .DS_Store
+
+.operator-sources/
+
+.union-demo/
+
+.dacp-executions/

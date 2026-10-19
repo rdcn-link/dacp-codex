@@ -11,8 +11,8 @@ object OperatorMain {
   def main(args: Array[String]): Unit = {
     require(args.length == 3 && args(0) == "operator", "expected operator INPUT PARAMS")
     val allocator = new RootAllocator(Long.MaxValue)
-    try sys.env.getOrElse("DACP_OPERATOR", throw new IllegalArgumentException("DACP_OPERATOR is required")) match {
-      case "format_convert@1.1" =>
+    try sys.env.getOrElse("DACP_OPERATOR", throw new IllegalArgumentException("DACP_OPERATOR is required")).takeWhile(_ != '@') match {
+      case "format_convert" =>
         val input=Path.of(args(1))
         val manifest=RuntimeJson.mapper.readTree(input.resolve("manifest.json").toFile)
         require(manifest.size()==1 && manifest.get(0).path("port").asText=="source" && manifest.get(0).path("representation").asText=="bytes","format_convert requires source bytes")
@@ -26,7 +26,7 @@ object OperatorMain {
           try {val buffer=new Array[Byte](65536);var n=in.read(buffer);while(n>=0){if(n>0)StreamOutput.data(buffer.take(n));n=in.read(buffer)}} finally in.close()
           StreamOutput.event("end")
         } finally {val files=Files.walk(scratch);try files.iterator.asScala.toVector.sortBy(_.getNameCount).reverse.foreach(Files.delete(_))finally files.close()}
-      case "identity@1.1" => Identity.run(Path.of(args(1)), allocator)
+      case "identity" => Identity.run(Path.of(args(1)), allocator)
       case operator => throw new IllegalArgumentException(s"unknown operator: $operator")
     } finally allocator.close()
   }

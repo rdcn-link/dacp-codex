@@ -1,0 +1,22 @@
+name: identity_python
+version: "1.1"
+description: Copy Arrow byte streams with a small Python source artifact and shared PyArrow runtime.
+image: dacp/operator-python:1.0
+executor: python
+entrypoint: identity
+artifact: identity.py
+
+inputs:
+  source:
+    representations: [bytes, records]
+    formats: []
+outputs:
+  result:
+    representations: [bytes, records]
+    formats: []
+
+provenance:
+  source_archive: ../../../../../.operator-sources/dacp-sources.zip
+  source_repository: https://github.com/rdcn-link/dacp-codex
+  build_instructions: |
+    Python source is the execution artifact; runtime dependencies: examples/operators/python/Dockerfile.

@@ -24,6 +24,8 @@ class OperatorLibrarySpec extends AnyFunSuite {
     Seq("inputs"->"source","outputs"->"result").foreach {case(key,port)=>
       val p=node.putObject(key).putObject(port);p.putArray("representations").add("bytes");p.putArray("formats")
     }
+    // Review evidence is deliberately unavailable: execution must never fetch it.
+    node.putObject("provenance").putObject("source_archive").put("sha256","b"*64).put("size",100).put("filename","sources.zip")
     node.toString
   }
   private def config(root: Path, base: String) = Config("localhost",8815,"localhost",Map.empty,Seq.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"),
@@ -63,7 +65,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
       assert(OperatorLibrary.resolve(c,"native@1",docker).command==resolved.command)
     } finally {server.stop(0);cleanup(root)}
   }
-  test("local definitions win; distinct remote operators share runtime/code downloads and work offline") {
+  test("local definitions win; distinct remote operators share runtime/code downloads and work offline without fetching review evidence") {
     val root = Files.createTempDirectory("operator-shared-")
     var requests = Vector.empty[String]; var loads = 0; var installed = false
     val inspect = proxy(classOf[com.github.dockerjava.api.command.InspectImageCmd]) { _ =>
@@ -86,7 +88,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
     try {
       installed = true
       val local = c.localOperatorLibrary.resolve("first/1/operator.yaml")
-      Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\ninputs: {source: {representations: [bytes], formats: []}}\noutputs: {result: {representations: [bytes], formats: []}}\n")
+      Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\nprovenance: {source_archive: missing-sources.zip, license: MIT}\ninputs: {source: {representations: [bytes], formats: []}}\noutputs: {result: {representations: [bytes], formats: []}}\n")
       assert(OperatorLibrary.resolve(c,"first@1",docker).image == image && requests.isEmpty)
       Files.delete(local); installed = false
       val first = OperatorLibrary.resolve(c,"first@1",docker)

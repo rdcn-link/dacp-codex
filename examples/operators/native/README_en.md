@@ -1,5 +1,7 @@
 # Native command operator example
 
+[中文](README.md)
+
 This C program reads stdin and writes uppercase bytes to stdout. It has no DACP or Arrow dependency. The `command` executor bridges those streams inside the container.
 
 From the project root:
@@ -15,6 +17,7 @@ Build/install the shared `dacp/operator-python:1.0` runtime as described in the 
 Set the execution server's `local_operator_library` to the absolute path of `examples/operators/native/operators`, or seed a public repository:
 
 ```bash
+python3 scripts/package-operator-sources.py
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository seed \
   --operators examples/operators/native/operators --root .operator-catalog
 ```
@@ -37,3 +40,5 @@ Validation uses the real server, mTLS and Docker, on temporary port 18817:
 ```
 
 Run with Docker group access (for example, wrap the last command in `sg docker -c '...'` if needed). The test compiles the program and verifies output larger than pipe buffers, partial failure, incremental delivery, cancellation and recovery. It cleans up its server and temporary files. Native source submission, records conversion, and multiple input/output pipes are not implemented.
+
+New source-bearing versions and optional license/SBOM publication are described in [source and review information](../../../docs/operator-provenance_en.md). Package sources before seeding.

@@ -1,5 +1,7 @@
 # DACP plugin API
 
+[中文](README.md)
+
 Shared Scala/JVM contracts for dataset providers, file handlers, structured-file browsing, container readers, and operator launch executors. This module depends on Arrow and Scala, and has no server, SQL driver, Docker, Excel, or HTTP implementation dependencies.
 
 From the repository root:
@@ -19,7 +21,7 @@ Contributed plugins compile against `io.github.rdcn-link:dacp-plugin-api_2.13:0.
 - `Item`, `PublishedItem`, `LogicalPath`, `PluginSchemas`, and `FormatFailure`: common public/private contracts.
 - `PluginChecks.listing`: reusable metadata checks for contributor tests, without reading or counting content.
 
-See the [plugin guide](../docs/plugins.md) and the [standalone example](../examples/plugins/README.md) for configuration, registration, lifecycle, and tests. Compile with the same Scala version as the server. Keep third-party libraries out of the core; package required dependencies alongside the plugin without copying server-provided APIs.
+See the [plugin guide](../docs/plugins.md) and the [standalone example](../examples/plugins/README_en.md) for configuration, registration, lifecycle, and tests. Compile with the same Scala version as the server. Keep third-party libraries out of the core; package required dependencies alongside the plugin without copying server-provided APIs.
 
 Records query contracts include `Scan`, typed `Literal`/`Predicate` trees, schema-bound validation, and `ScanStreams` for bounded filtering/projection with early termination. Providers and file handlers can override `scan` for source optimizations while preserving the common semantics. See [records queries](../docs/records-scans.md).
 

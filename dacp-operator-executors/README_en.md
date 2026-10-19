@@ -1,5 +1,7 @@
 # DACP operator executors
 
+[中文](README.md)
+
 Launch plugins for `container`, `jvm`, `python`, and `command` operators. All run inside a shared Docker runtime environment. JARs and Python packages are downloaded separately from that environment and mounted read-only; operator code is never loaded into the server JVM.
 
 Built-in implementations register through `META-INF/services/dacp.OperatorExecutor`, the same contract used by external plugins. The core owns container isolation, timeout, cancellation, and cleanup. Plugins validate their own artifact and entrypoint and supply the launch command.

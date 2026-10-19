@@ -63,7 +63,7 @@ object OperatorLibrary {
       val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
       val in = Files.newInputStream(local)
       val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala.toMap finally in.close()
-      require(m.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "outputs", "executor_config")), "unknown operator setting")
+      require(m.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "outputs", "executor_config", "provenance")), "unknown operator setting")
       require(m("name").toString == p(0) && m("version").toString == p(1), "operator identity mismatch")
       val artifact = m.get("artifact").map(v => local.getParent.resolve(v.toString).toAbsolutePath.normalize)
       artifact.foreach(f => require(Files.isRegularFile(f) && Files.size(f) > 0 && Files.size(f) <= config.operatorMaxBytes, "invalid operator artifact size"))

@@ -19,8 +19,14 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
                   taskInputPrefixes: Seq[String] = Seq.empty, maxConcurrentTasks: Int = 2,
                   remoteOperatorLibraryUrls: Seq[String] = Seq.empty, operatorCache: Path = Path.of(".operator-cache"),
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
-                  sqlSources: Map[String, SqlConfig] = Map.empty, countFileRecordsOnStartup: Boolean = false, debug: Boolean = false, sourceRuntimes: Map[String, SourceRuntime] = Map.empty) extends DatasetContext with AutoCloseable {
-  def close(): Unit = published.values.foreach(_.close())
+                  sqlSources: Map[String, SqlConfig] = Map.empty, countFileRecordsOnStartup: Boolean = false, debug: Boolean = false, sourceRuntimes: Map[String, SourceRuntime] = Map.empty, union: Option[NodeUnionSettings] = None, executionHistoryDirectory: Option[Path] = None) extends DatasetContext with AutoCloseable {
+  private[dacp] val taskSlots=new java.util.concurrent.Semaphore(maxConcurrentTasks)
+  private var historyStore:ExecutionHistory=null
+  def executionHistory:ExecutionHistory=synchronized {
+    if(historyStore==null)historyStore=new ExecutionHistory(executionHistoryDirectory.getOrElse(Path.of(".dacp-executions",port.toString)))
+    historyStore
+  }
+  def close(): Unit = {published.values.foreach(_.close());synchronized {if(historyStore!=null)historyStore.close()}}
   def sqlSourceNames: Set[String] = sqlSources.keySet
   def publish(items: Seq[PublishedItem]): PublishedDataset = DatasetProviders.publish(items,this)
   def openNamespace(items: Seq[PublishedItem], check: () => Unit): DatasetAccess = new NamespaceAdapter(items,this,check)
@@ -54,7 +60,7 @@ object Config {
     val settings = Set("host", "port", "public_host", "datasets", "sql_sources", "allowed_uri_prefixes",
       "tls_cert", "tls_key", "tls_ca", "batch_size", "byte_chunk", "infer_sample",
       "local_operator_library", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
-      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "mode", "source_runtimes")
+      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "mode", "source_runtimes", "union", "execution_history_directory")
     require(m.keySet.subsetOf(settings), "unknown server setting")
     PluginLoader.initialize(m.get("plugin_directory").map(v => Path.of(v.toString)))
     Formats.initialize()
@@ -96,12 +102,12 @@ object Config {
       Path.of(m.get("local_operator_library").map(_.toString).getOrElse("../operators")), strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), strings("remote_operator_library_urls"),
       Path.of(m.get("operator_cache").map(_.toString).getOrElse(".operator-cache")),
       m.get("operator_max_bytes").map(_.toString.toLong).getOrElse(8L * 1024 * 1024 * 1024), sql,
-      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), mode=="DEBUG", runtimes)
+      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), mode=="DEBUG", runtimes, m.get("union").map(v=>NodeUnionSettings.read(Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),m.get("execution_history_directory").map(v=>Path.of(v.toString)))
     config.initializeDatasets()
     config
   }
 }
-class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskService] = None) extends NoOpFlightProducer {
+class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskService] = None, union: Option[UnionWorker] = None) extends NoOpFlightProducer {
   override def doExchange(ctx: FlightProducer.CallContext, reader: FlightStream, writer: FlightProducer.ServerStreamListener): Unit = tasks match {
     case Some(service) => service.exchange(ctx,reader,writer)
     case None => writer.error(CallStatus.UNIMPLEMENTED.withDescription("task execution disabled").toRuntimeException)
@@ -172,7 +178,16 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     }
     } finally a.close()
   } catch { case t: Throwable => throw fail(t) }
+  override def doAction(ctx:FlightProducer.CallContext,action:Action,listener:FlightProducer.StreamListener[Result]):Unit=
+    union match {
+      case Some(worker) if action.getType.startsWith(dacp.union.Rpc.Prefix)=>worker.doAction(ctx,action,listener)
+      case _=>listener.onError(CallStatus.UNIMPLEMENTED.withDescription("unknown action").toRuntimeException)
+    }
   override def getStream(ctx: FlightProducer.CallContext, ticket: Ticket, listener: FlightProducer.ServerStreamListener): Unit = {
+    if(dacp.union.Rpc.isTicket(ticket.getBytes)){
+      union match {case Some(worker)=>worker.getStream(ctx,ticket,listener);case None=>listener.error(CallStatus.UNIMPLEMENTED.withDescription("Union disabled").toRuntimeException)}
+      return
+    }
     try {
       val t = Metadata.Ticket.parseFrom(ticket.getBytes)
       require(Set("records","bytes").contains(t.getView), "invalid view")
@@ -195,15 +210,21 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
 }
 object Main {
   def main(args: Array[String]): Unit = {
+    if(args.headOption.contains("history")){ExecutionHistoryAdmin.main(args.drop(1));return}
+    if(args.headOption.contains("union")){UnionNodeAdmin.main(args.drop(1));return}
     val config = Config.load(Path.of(args.headOption.getOrElse("../examples/server.yaml")))
     val allocator = new RootAllocator(Long.MaxValue)
     val executor = new TaskExecutor(config,allocator)
+    config.executionHistory
     val tasks = new TaskService(config,allocator,executor)
-    val producer = new Producer(config,allocator,Some(tasks))
-    val server = FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),producer)
-      .useTls(config.cert.toFile,config.key.toFile).useMTlsClientVerification(config.ca.toFile)
-      .build().start()
-    Runtime.getRuntime.addShutdownHook(new Thread(() => { server.close(); tasks.close(); config.close(); PluginLoader.close(); allocator.close() }))
+    val union=config.union.map(s=>new UnionWorker(config,s,allocator))
+    val producer = new Producer(config,allocator,Some(tasks),union)
+    val server = dacp.union.Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),producer),new dacp.union.Tls(config.cert,config.key,config.ca))
+      .maxInboundMessageSize(dacp.union.Rpc.MaxMessage).build()
+    try {server.start();union.foreach(_.start())} catch {case scala.util.control.NonFatal(t)=>
+      union.foreach(_.close());server.close();tasks.close();config.close();PluginLoader.close();allocator.close();throw t
+    }
+    Runtime.getRuntime.addShutdownHook(new Thread(() => { union.foreach(_.close()); server.close(); tasks.close(); config.close(); PluginLoader.close(); allocator.close() }))
     val log = org.slf4j.LoggerFactory.getLogger("dacp.Main")
     log.debug(s"remote_operator_library_urls (${config.remoteOperatorLibraryUrls.size}):")
     config.remoteOperatorLibraryUrls.zipWithIndex.foreach { case (url,index) =>

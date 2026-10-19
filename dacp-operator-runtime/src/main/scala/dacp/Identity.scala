@@ -11,7 +11,7 @@ object Identity {
     val manifest=RuntimeJson.mapper.readTree(Files.readAllBytes(input.resolve("manifest.json")))
     require(manifest.size()==1 && manifest.get(0).path("port").asText=="source","identity requires source")
     val entry=manifest.get(0)
-    val reader=new ArrowStreamReader(Files.newInputStream(input.resolve(entry.path("file").asText)),allocator)
+    val reader=new ArrowStreamReader(new java.io.FileInputStream(input.resolve(entry.path("file").asText).toFile),allocator)
     try {
       val root=reader.getVectorSchemaRoot
       val repr=entry.path("representation").asText

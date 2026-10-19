@@ -1,5 +1,7 @@
 # DACP operator repository
 
+[中文](README.md)
+
 A standalone Scala HTTP/HTTPS repository with public search, version pages, and downloads. Operators have immutable `name@version` manifests, shared runtime images, and optional small JAR, Python source, or wheel artifacts. Runtime and code blobs are stored once per SHA-256, even when several operators reference them. Serving needs no Docker; publishing runtime images needs the Docker CLI/engine. Build with JDK 17, Scala 2.13, and sbt 1.10.x.
 
 The Maven artifact and executable are `dacp-operator-repository` (no Scala suffix); source package is `dacp.repository`.
@@ -27,11 +29,12 @@ Both use the same thin Scala JAR and runtime environment. The repository exports
 ```bash
 # From the project root; images must already be installed.
 (cd dacp-operator-repository && sbt test stage)
+python3 scripts/package-operator-sources.py
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository seed --operators operators --root .operator-catalog
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820
 ```
 
-`seed` discovers `<operators>/<name>/<version>/operator.yaml`. Definitions require `name`, `version`, and `image`; optional fields are `description`, `executor` (default `container`), `entrypoint`, and `artifact` (relative file path). Names/versions match `[A-Za-z0-9_-][A-Za-z0-9_.-]*`. Unknown fields, duplicate keys, mismatched directories, and empty definition directories fail.
+`seed` discovers `<operators>/<name>/<version>/operator.yaml`. Definitions require `name`, `version`, `image`, `inputs`, and `outputs`; optional fields are `description`, `executor` (default `container`), `entrypoint`, `artifact` (relative file path), `executor_config`, and `provenance`. Names/versions match `[A-Za-z0-9_-][A-Za-z0-9_.-]*`. Unknown fields, duplicate keys, mismatched directories, and empty definition directories fail.
 
 Manual thin-JAR publication:
 
@@ -70,7 +73,7 @@ Open `http://localhost:8820/`. Anyone can search names, versions, and descriptio
 | `/v1/blobs/sha256/<64 lowercase hex digits>` | Shared runtime archive or code bytes |
 | `/health` | `ok` followed by a newline |
 
-Unknown paths/missing artifacts return 404; writes return 405. HEAD supplies Content-Length. Blob attachments use their digest as the HTTP filename; HTML download attributes suggest the artifact filename. Paths cannot follow symlinks outside the catalog. Eight workers use a bounded queue. Staging directories are excluded from listing. Catalog reads metadata without hashing large blobs.
+Unknown paths/missing artifacts return 404; writes return 405. HEAD supplies Content-Length. Web download links include the original artifact filename after the digest (`/v1/blobs/sha256/DIGEST/FILENAME`); GET and HEAD responses use it in `Content-Disposition`, preserving file extensions. Digest-only URLs are the content-addressed retrieval API. Paths cannot follow symlinks outside the catalog. Eight workers use a bounded queue. Staging directories are excluded from listing. Catalog reads metadata without hashing large blobs.
 
 Metadata lives in `<root>/<name>/<version>/manifest.json`; blobs in `<root>/blobs/sha256/<digest>`; the runtime export index in `<root>/images/<image-ID>.json`. See the [manifest schema](../docs/operator-packaging.md#content-addressed-storage). This unreleased project directly uses the new schema, without old-schema readers. Use a fresh development catalog for the new format.
 
@@ -100,3 +103,9 @@ For complete source examples, wheel packaging, remote file transfer, administrat
 Definitions must include named `inputs` and `outputs` ports. `publish --ports FILE` is required; use YAML/JSON port declarations or a complete operator definition. `seed` reads these declarations from definitions. See the [authoring guide](../docs/operator-authoring_en.md).
 
 Native commands use `executor: command`, with plugin-owned settings in `executor_config`. `seed` preserves this mapping; manual publication accepts a standalone YAML/JSON mapping through `--executor-config FILE`. The repository stores it as `execution.config`; the execution-node plugin validates it. See [native commands](../docs/native-commands_en.md).
+
+## Operator review evidence
+
+Publish optional source archives, repository revisions, license declarations/text, build instructions and SBOMs. Public pages show downloads and missing information. See [source and review information](../docs/operator-provenance_en.md).
+
+The homepage groups entries by operator name and shows only the newest version, counting operators. Numeric runs in version labels compare as integers (`1.10` is newer than `1.9`); a release ranks above its hyphenated prerelease suffix, and other text compares lexically. Search matches names, versions, and descriptions across all versions while displaying the newest version of each matching operator. Detail pages list all versions from newest to oldest; the JSON catalog still includes every version.

@@ -1,0 +1,19 @@
+# Run from dacp-server.
+host: 127.0.0.1
+public_host: localhost
+port: 18862
+datasets:
+  data:
+    provider: custom
+    items:
+      /prices: {file: ../examples/union/prices.csv}
+allowed_uri_prefixes: []
+tls_cert: ../examples/certs/node-b.crt
+tls_key: ../examples/certs/node-b.key
+tls_ca: ../examples/certs/ca.crt
+local_operator_library: ../examples/union/operators
+max_concurrent_tasks: 4
+union:
+  state_directory: ../.union-demo/b
+  execution_timeout_seconds: 120
+execution_history_directory: ../.union-demo/b-executions

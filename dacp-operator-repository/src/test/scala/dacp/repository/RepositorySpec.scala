@@ -105,6 +105,19 @@ class RepositorySpec extends AnyFunSuite {
     try assert(!files.iterator.asScala.exists(_.getFileName.toString.startsWith(".publish-"))) finally files.close()
     publish(root,"identity@1.0","tag",exporter)
   }}
+  test("homepage selects the newest numeric version independently of catalog order") {
+    def item(v:String)=Repository.mapper.createObjectNode().put("name","demo").put("version",v)
+    val versions=Seq("1.9","1.10","1.2","1.10-rc1").map(item)
+    val page=WebPages.index(versions,"")
+    assert(page.contains("/operators/demo/1.10\""))
+    assert(!page.contains("/operators/demo/1.9\""))
+    assert(!page.contains("/operators/demo/1.10-rc1"))
+    assert(page.sliding("class=\"operator-card\"".length).count(_=="class=\"operator-card\"")==1)
+    assert(WebPages.index(versions.reverse,"")==page)
+    assert(WebPages.versionOrdering.gt("2.0","1.99"))
+    assert(WebPages.versionOrdering.gt("2.0-rc10","2.0-rc2"))
+    assert(WebPages.versionOrdering.gt("2.0","2.0-rc10"))
+  }
   test("public web search, operator details and downloads work without authentication") { withRoot { root =>
     publish(root, "convert@1.0", "tag", exporter, "Convert CSV to Parquet")
     publish(root, "convert@2.0", "tag", exporter, "Convert tables")
@@ -118,11 +131,13 @@ class RepositorySpec extends AnyFunSuite {
     try {
       val home = request("/")
       assert(home.statusCode() == 200 && home.headers().firstValue("Content-Type").get().startsWith("text/html"))
-      assert(home.body().contains("/operators/convert/1.0") && home.body().contains("/operators/identity/1.0"))
+      assert(home.body().contains("/operators/convert/2.0") && home.body().contains("/operators/identity/1.0"))
+      assert(!home.body().contains("/operators/convert/1.0"))
+      assert(home.body().contains("2 operators"))
       assert(home.body().contains("&lt;script&gt;") && !home.body().contains("<script>"))
       val filtered = request("/?q=PARQUET")
-      assert(filtered.statusCode() == 200 && filtered.body().contains("/operators/convert/1.0"))
-      assert(!filtered.body().contains("/operators/identity/1.0") && !filtered.body().contains("/operators/convert/2.0"))
+      assert(filtered.statusCode() == 200 && filtered.body().contains("/operators/convert/2.0"))
+      assert(!filtered.body().contains("/operators/identity/1.0") && !filtered.body().contains("/operators/convert/1.0"))
       assert(request("/?q=nonexistent").body().contains("No matching operators"))
       assert(request("/?q=%3Cscript%3E").body().contains("&lt;script&gt;"))
       assert(!request("/?q=%22%3E%3Cscript%3E").body().contains("<script>"))
@@ -140,6 +155,14 @@ class RepositorySpec extends AnyFunSuite {
       val archive = request("/v1/blobs/sha256/" + Repository.catalog(root).get(0).path("runtime").path("archive").path("sha256").asText)
       assert(archive.body() == "image archive")
       assert(archive.headers().firstValue("Content-Disposition").get().startsWith("attachment;"))
+      val blobUrl="/v1/blobs/sha256/"+Repository.catalog(root).get(0).path("runtime").path("archive").path("sha256").asText
+      val named=request(blobUrl+"/runtime.tar")
+      assert(named.statusCode()==200 && named.body()==archive.body())
+      assert(named.headers().firstValue("Content-Disposition").get()=="attachment; filename=\"runtime.tar\"")
+      val namedHead=request(blobUrl+"/runtime.tar","HEAD")
+      assert(namedHead.body().isEmpty && namedHead.headers().firstValue("Content-Disposition").get()=="attachment; filename=\"runtime.tar\"")
+      assert(request(blobUrl+"/bad%0D%0Aname.zip").statusCode()==404)
+
       val head = request("/v1/blobs/sha256/" + Repository.catalog(root).get(0).path("runtime").path("archive").path("sha256").asText, "HEAD")
       assert(head.statusCode() == 200 && head.body().isEmpty && head.headers().firstValue("Content-Length").get() == "13")
       assert(request("/", "HEAD").body().isEmpty)

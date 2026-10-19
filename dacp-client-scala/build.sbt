@@ -11,3 +11,6 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "3.2.19" % Test)
 Test / fork := true
 Test / javaOptions ++= Seq("--add-opens=java.base/java.nio=ALL-UNNAMED", "-Dio.netty.tryReflectionSetAccessible=true")
+
+lazy val unionProtocol = RootProject(file("../dacp-union-protocol"))
+dependsOn(unionProtocol)

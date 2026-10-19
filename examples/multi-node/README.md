@@ -1,8 +1,10 @@
-# Collaborative DACP servers
+# DACP 多服务器协作
 
-Only B owns the CSV source. A coordinates a two-task streaming chain: B converts the item to Parquet, then A relays its bytes with identity. Flight DoExchange carries task requests and output frames over mTLS. No result dataset or retained output URI is created.
+[English](README_en.md)
 
-From the project root, prepare the environment and run the integration:
+只有节点 B 持有 CSV 数据源。节点 A 协调包含两个任务的流式链：B 将数据项转换为 Parquet，再由 A 使用 identity 转发其字节。Flight DoExchange 通过 mTLS 传输任务请求和输出帧，不会创建结果 Dataset 或持久化的输出 URI。
+
+在项目根目录准备环境并运行集成测试：
 
 ```bash
 python3 -m venv .venv
@@ -10,20 +12,20 @@ python3 -m venv .venv
 bash scripts/certs.sh
 scripts/build-operator-image.sh
 bash scripts/test-collaboration.sh
-# Also exercise remote repository downloads and verified caches:
+# 同时验证远程仓库下载和校验后的缓存：
 DACP_TEST_REMOTE_REPOSITORY=1 bash scripts/test-collaboration.sh
 ```
 
-Docker access is required. The runner stages the server, uses temporary ports 18815/18816 (repository 18820), verifies exact Parquet content, repeated runs, upstream failure recovery, and client-certificate enforcement, then stops its servers. Override `DACP_TEST_PORT_A`, `DACP_TEST_PORT_B`, or `DACP_TEST_REPOSITORY_PORT` as needed. Logs remain in the printed temporary directory. `DACP_PYTHON` overrides `.venv/bin/python`.
+需要 Docker 访问权限。测试脚本通过 stage 构建服务器，使用临时端口 18815/18816（仓库为 18820），验证 Parquet 内容、重复执行、上游失败恢复和客户端证书强制验证，随后停止服务器。可以覆盖 `DACP_TEST_PORT_A`、`DACP_TEST_PORT_B` 或 `DACP_TEST_REPOSITORY_PORT`。日志保留在输出的临时目录中；`DACP_PYTHON` 可覆盖默认的 `.venv/bin/python`。
 
-For manual execution, run these in separate terminals from `dacp-server`:
+手动运行时，在不同终端中从 `dacp-server` 目录分别执行：
 
 ```bash
 sbt 'run ../examples/multi-node/node-a.yaml'
 sbt 'run ../examples/multi-node/node-b.yaml'
 ```
 
-Manual configurations use ports 8815/8816. Submit from the project root:
+手动配置使用端口 8815/8816。从项目根目录提交：
 
 ```python
 import os
@@ -40,8 +42,8 @@ with Job.run('dacp://localhost:8815',
             print(event['port'], len(event['data']))
 ```
 
-Repeated runs reuse output port names safely. Closing the iterator early cancels the pipeline. A successful `complete` event follows all output ends; failures after data delivery mean the displayed output is partial. Slow consumers apply backpressure. Streams cannot be reopened.
+重复执行可以安全复用输出端口名称。提前关闭迭代器会取消流水线。所有输出结束后才发送成功的 `complete` 事件；如果交付数据后发生失败，已显示的输出只是不完整结果。慢速消费者会施加背压。流不能重新打开。
 
-Tasks can choose an explicit `node`; otherwise placement follows their input anchor. `task_peers` authorizes dispatch, `task_input_prefixes` authorizes worker source reads, and `allowed_uri_prefixes` controls public source access. There is no central registry. On separate machines, replace localhost with advertised origins, provide matching certificate SANs, and configure permitted peers and source prefixes.
+任务可以显式指定 `node`，否则根据输入锚点确定位置。`task_peers` 授权任务分发，`task_input_prefixes` 授权工作节点读取输入源，`allowed_uri_prefixes` 控制公开数据源访问。系统没有中心注册表。跨机器部署时，应将 localhost 替换为对外公布的地址，提供匹配的证书 SAN，并配置允许的节点及数据源前缀。
 
-Each operator runs in an isolated container. `identity@1.1` preserves streamed bytes, including Parquet footers; it shares the JVM runtime with `format_convert@1.1`. Output ports have at most one consumer, and multiple inputs must be consumed in lexical order. General scheduling, fan-out, retries, checkpoints, and replay are not implemented. See [the streaming contract](../../docs/operator-streams.md).
+每个算子在隔离容器中运行。`identity@1.1` 保留流式字节（包括 Parquet 文件尾），并与 `format_convert@1.1` 共享 JVM 运行环境。每个输出端口最多有一个消费者，多输入必须按字典序消费。尚未实现通用调度、扇出、重试、检查点和重放。参见[流式契约](../../docs/operator-streams.md)。

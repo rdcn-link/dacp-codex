@@ -310,3 +310,13 @@ docker image ls
 ```
 
 `run --runtime` 可使用的 ID 来自服务端配置中的 `source_runtimes`，例如 `examples/source-debug.yaml` 中的 `python@1.0` 与 `scala@1.0`。Docker 镜像列表不等于已配置的源码运行时列表；普通仓库算子的运行时则由各算子定义或 manifest 指定。
+
+## 算子审查材料
+
+支持发布可选的源码包、仓库修订版本、许可证声明与文本、构建说明和 SBOM。公开页面提供下载并标注缺失信息。参见[源码与审查信息](../operator-provenance.md)。
+
+## Union 协作作业
+
+通过 [Union 服务器](../../dacp-union-server/README.md) 提交显式节点 DAG、订阅执行状态和流量，并读取最终流。节点邀请和审批、Python 与 Scala 用法见模块文档；[双节点示例](../../examples/union/README.md) 演示本地销量汇总与跨节点价格融合。
+
+DACP 与 Union 默认持久化全部执行记录；Union 看板支持重启后的历史查询。本地查询命令及保存目录见 [执行记录](../execution-history.md)。

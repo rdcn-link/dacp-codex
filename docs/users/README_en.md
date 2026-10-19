@@ -155,7 +155,7 @@ Run `help` for the command list and a short example session. Run `help show`, `h
 
 ### Scala SDK
 
-The standalone [Scala 2.13 SDK](../../dacp-client-scala/README.md) provides the same data access model without depending on the server project. Publish it to the local Ivy repository first:
+The standalone [Scala 2.13 SDK](../../dacp-client-scala/README_en.md) provides the same data access model without depending on the server project. Publish it to the local Ivy repository first:
 
 ```bash
 cd dacp-client-scala
@@ -218,7 +218,7 @@ Directory Datasets expose paths relative to their root, such as `/reports/orders
 
 SQL Dataset `tables` bind public paths to private tables in the selected connection; tables are not automatically exposed. `custom` retains explicit mappings and mixed-source flexibility. Every Dataset must explicitly specify `provider`.
 
-The default example provides `data1` and `csv_data` (custom), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](../../examples/sql/README.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](../../docs/dataset-providers.md).
+The default example provides `data1` and `csv_data` (custom), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](../../examples/sql/README_en.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](../../docs/dataset-providers.md).
 
 ### Formats and views
 
@@ -268,7 +268,7 @@ In a connected shell started from the project root, run `submit examples/convert
 
 Further reading:
 
-- [Two-node example](../../examples/multi-node/README.md): task placement, remote inputs, and consuming outputs.
+- [Two-node example](../../examples/multi-node/README_en.md): task placement, remote inputs, and consuming outputs.
 - [Scala operator repository and website](../../dacp-operator-repository/README_en.md): public search, version details, downloads, and immutable operator publication.
 - [Write and upload custom operators](../../docs/operator-authoring_en.md): complete Scala/Python source, packaging, publication, remote transfer, and execution.
 - [Task and operator reference](../../docs/reference_en.md#task-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
@@ -310,3 +310,13 @@ docker image ls
 ```
 
 IDs accepted by `run --runtime` come from `source_runtimes` in the server configuration, such as `python@1.0` and `scala@1.0` in `examples/source-debug.yaml`. Installed Docker images are not the same list as configured source runtimes. Ordinary repository operators select their runtime through their definitions or manifests.
+
+## Operator review evidence
+
+Publish optional source archives, repository revisions, license declarations/text, build instructions and SBOMs. Public pages show downloads and missing information. See [source and review information](../operator-provenance_en.md).
+
+## Union collaboration jobs
+
+Submit explicit-placement DAGs through the [Union server](../../dacp-union-server/README_en.md), subscribe to execution status and traffic, and read final streams. Module documentation covers invitation, approval, Python, and Scala usage; the [two-node example](../../examples/union/README_en.md) combines local sales aggregation with cross-node price analysis.
+
+DACP and Union persist all execution records by default; the Union dashboard can query history after restart. For local query commands and storage directories, see [execution history](../execution-history_en.md).

@@ -1,20 +1,22 @@
-# A user-defined Scala operator
+# 自定义 Scala 算子
 
-This standalone example implements `scala_identity@1.0` without importing or rebuilding the DACP server. It produces a thin JAR, sharing Scala, Arrow, Jackson, and the JVM from `dacp/operator-jvm:1.1`. The operator preserves the original input bytes; replace its batch processing with your transformation.
+[English](README_en.md)
 
-Example files:
+此独立示例实现 `scala_identity@1.0`，无需导入或重新构建 DACP 服务器。它生成薄 JAR，并复用 `dacp/operator-jvm:1.1` 中的 Scala、Arrow、Jackson 和 JVM。算子保留原始输入字节；可以将批次处理代码替换为自己的变换逻辑。
 
-- [Complete Scala source](src/main/scala/example/ScalaIdentity.scala)
-- [Thin-JAR sbt build](build.sbt)
-- [Operator definition](operators/scala_identity/1.0/operator.yaml)
-- [Step-by-step authoring and upload guide](../../../docs/operator-authoring_en.md)
+示例文件：
 
-## Build and publish
+- [完整 Scala 源码](src/main/scala/example/ScalaIdentity.scala)
+- [薄 JAR 的 sbt 构建配置](build.sbt)
+- [算子定义](operators/scala_identity/1.0/operator.yaml)
+- [编写与上传的逐步指南](../../../docs/operator-authoring.md)
 
-From the project root, with JDK 17, sbt, and Docker access:
+## 构建与发布
+
+在项目根目录运行，需要 JDK 17、sbt 和 Docker 访问权限：
 
 ```bash
-# Build the shared environment once (skip when already installed).
+# 首次构建共享环境，已安装时可跳过。
 scripts/build-operator-image.sh
 (cd examples/operators/scala && sbt package)
 (cd dacp-operator-repository && sbt stage)
@@ -22,39 +24,39 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository see
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --port 8820
 ```
 
-Configure the execution node:
+配置执行节点：
 
 ```yaml
 remote_operator_library_urls:
   - http://localhost:8820
 ```
 
-Run in the connected shell:
+在已连接的 shell 中运行：
 
 ```text
 run scala_identity@1.0 --input source=/events
 ```
 
-The operator also works locally: set `local_operator_library: ../examples/operators/scala/operators` when launching from `dacp-server`. Build the JAR and install the runtime image first.
+算子也支持本地执行：从 `dacp-server` 启动时，设置 `local_operator_library: ../examples/operators/scala/operators`，并提前构建 JAR 和安装运行时镜像。
 
-## Entry point and stream contract
+## 入口点与流契约
 
-The JVM launcher passes `operator /input /input/params.json` to `example.ScalaIdentity.main`. Read named input metadata (`port`, `file`, `representation`, `format`) from `/input/manifest.json`. The example accepts one bytes port named `source`, represented by an Arrow IPC stream containing one binary `data` column. Stop at IPC EOS, including for FIFO inputs.
+JVM 启动器向 `example.ScalaIdentity.main` 传递 `operator /input /input/params.json`。从 `/input/manifest.json` 读取具名输入的元数据（`port`、`file`、`representation`、`format`）。示例接收一个名为 `source` 的 bytes 端口，用仅含二进制 `data` 列的 Arrow IPC 流表示。读取到 IPC EOS 时停止，包括 FIFO 输入。
 
-Write start/data/end frames to stdout for the `result` port; diagnostics belong on stderr. The shell consumes output incrementally, without publishing a saved dataset. The complete source demonstrates framing and resource cleanup. See the [execution contract](../../../docs/operator-authoring_en.md).
+将 `result` 端口的 start/data/end 帧写到标准输出，诊断信息写到标准错误。Shell 增量消费输出，不会发布保存后的 Dataset。完整源码演示了帧编码与资源清理。参见[执行契约](../../../docs/operator-authoring.md)。
 
-## Keep the artifact small
+## 缩小制品体积
 
-[build.sbt](build.sbt) marks runtime libraries `Provided`, so they stay out of the operator JAR. Match Scala and dependency versions to the shared runtime. If your operator needs another library, build a new shared runtime with that library under `/opt/lib`; package private libraries in a self-contained JAR only when appropriate. Reuse existing runtime digests for code-only updates.
+[build.sbt](build.sbt) 将运行时依赖标记为 `Provided`，避免将它们打入算子 JAR。Scala 和依赖版本应与共享运行环境匹配。如果算子需要额外库，可以构建新共享运行环境并将该库放入 `/opt/lib`；仅在合适时将私有库打入自包含 JAR。仅更新代码时复用已有运行环境摘要。
 
-[operator.yaml](operators/scala_identity/1.0/operator.yaml) selects the runtime image, executor, main class, and JAR path. Publish a distinct name/entrypoint for another operator. Several operators can reference the same JAR containing different main classes. Adding them requires no core registry edits, server rebuild, or client changes.
+[operator.yaml](operators/scala_identity/1.0/operator.yaml) 选择运行时镜像、执行器、主类和 JAR 路径。为其他算子发布不同的名称或入口点。多个算子可以引用同一 JAR 中的不同主类，无需修改核心注册表、重新构建服务器或修改客户端。
 
-To exercise this JAR and both Python artifact types in real containers, build the Python environment as described in the [Python example](../python/README_en.md), then run from the project root:
+要在真实容器中验证此 JAR 及两类 Python 制品，请先按 [Python 示例](../python/README.md)构建 Python 环境，再从项目根目录运行：
 
 ```bash
 (cd dacp-server && DACP_TEST_OPERATOR_PACKAGES=1 sbt 'testOnly dacp.OperatorPackageSpec')
 ```
 
-See [operator packaging](../../../docs/operator-packaging.md) for executor plugins, validation, caching, resource limits, and platform restrictions.
+执行器插件、验证、缓存、资源限制和平台限制见[算子打包](../../../docs/operator-packaging.md)。
 
-For complete source examples, wheel packaging, remote file transfer, administrator publication, and execution instructions, see [Write and upload custom operators](../../../docs/operator-authoring_en.md).
+完整源码示例、wheel 打包、远程文件传输、管理员发布和执行步骤见[编写与上传自定义算子](../../../docs/operator-authoring.md)。

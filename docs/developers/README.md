@@ -131,3 +131,13 @@ DACP 优先采用插件机制扩展。新的数据集后端、文件格式和处
 stage 服务端、构建所需运行时并准备示例证书后，使用 Docker 权限运行 `.venv/bin/python scripts/test-native-execution.py`，验证原生流、部分失败和取消。`scripts/test-source-submission.py` 需要启动 `examples/source-debug.yaml` 中的 DEBUG 服务，验证 Python/Scala heredoc。前置条件与测试端口见脚本及对应指南。
 
 [技术参考](../reference.md)说明传输及配置。测试、示例与中英文文档须同步。本项目尚未发布，直接替换被废弃接口，不保留兼容别名或迁移回退。
+
+## 算子审查材料
+
+支持发布可选的源码包、仓库修订版本、许可证声明与文本、构建说明和 SBOM。公开页面提供下载并标注缺失信息。参见[源码与审查信息](../operator-provenance.md)。
+
+## Union 开发
+
+[Union 协议](../union.md) 定义证书身份、计算授权和直接流。`dacp-union-protocol` 提供共享传输工具，`dacp-server/UnionWorker` 复用插件数据访问及算子执行器，`dacp-union-server` 负责成员轮询、子任务准备和结果转发。运行 `cd dacp-union-server && sbt test` 验证真实 mTLS 的双节点契约。领域分析算子放在 `examples/union/operators`，不修改核心注册表。
+
+普通 Flight 请求、Union 节点子任务和全局作业共用持久化执行记录。生命周期、原子写入及测试见 [执行记录](../execution-history.md)。

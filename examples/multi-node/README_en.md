@@ -1,5 +1,7 @@
 # Collaborative DACP servers
 
+[中文](README.md)
+
 Only B owns the CSV source. A coordinates a two-task streaming chain: B converts the item to Parquet, then A relays its bytes with identity. Flight DoExchange carries task requests and output frames over mTLS. No result dataset or retained output URI is created.
 
 From the project root, prepare the environment and run the integration:

@@ -9,3 +9,6 @@ __all__.append("DacpError")
 
 from .expressions import col, Predicate
 __all__ += ["col", "Predicate"]
+
+from .union import Union, UnionExecution
+__all__ += ["Union", "UnionExecution"]

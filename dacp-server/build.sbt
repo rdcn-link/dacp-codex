@@ -37,3 +37,6 @@ Test / unmanagedSourceDirectories += baseDirectory.value / ".." / "examples" / "
 
 lazy val operatorExecutors = RootProject(file("../dacp-operator-executors"))
 dependsOn(operatorExecutors)
+
+lazy val unionProtocol = RootProject(file("../dacp-union-protocol"))
+dependsOn(unionProtocol)

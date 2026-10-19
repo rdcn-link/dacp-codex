@@ -1,5 +1,6 @@
 name: native_uppercase
 version: "1.0"
+description: Uppercase a byte stream using a small compiled C executable with ordinary stdin and stdout.
 image: dacp/operator-python:1.0
 executor: command
 entrypoint: /operator/uppercase

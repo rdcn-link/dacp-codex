@@ -5,7 +5,7 @@ import scala.jdk.CollectionConverters._
 import org.yaml.snakeyaml.Yaml
 
 case class InputBinding(uri: Option[String] = None, task: Option[String] = None, port: String = "result", view: String = "bytes")
-case class Task(id: String, inputs: Map[String,InputBinding], operator: String, params: java.util.Map[String,Object], node: Option[String] = None, source: Option[SourceOperator] = None)
+case class Task(id: String, inputs: Map[String,InputBinding], operator: String, params: java.util.Map[String,Object], node: Option[String] = None, source: Option[SourceOperator] = None, title: Option[String] = None)
 case class JobPlan(tasks: Vector[Task], outputs: Map[String,(String,String)])
 case class SourceOperator(runtime: String, source: String, entrypoint: String = "Main")
 object Jobs {
@@ -26,6 +26,7 @@ object Jobs {
     value.asInstanceOf[java.util.Map[String,Object]].asScala.toMap
   }
   def validate(t: Task): Unit = {
+    t.title.foreach(v=>require(v.trim.nonEmpty && v.length<=256 && !v.exists(_.isControl),"title must contain 1 to 256 characters without control characters"))
     name(t.id); t.inputs.keys.foreach(name)
     require(t.inputs.nonEmpty,"named item inputs required")
     require(t.source.isDefined || t.operator.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*@[A-Za-z0-9_-][A-Za-z0-9_.-]*"),"operator must be name@version")
@@ -48,7 +49,7 @@ object Jobs {
     require(doc.get("tasks").exists(_.isInstanceOf[java.util.List[_]]),"tasks must be a list")
     val tasks=doc("tasks").asInstanceOf[java.util.List[Object]].asScala.map { raw =>
       val m=mapping(raw,"task")
-      require(m.keySet.subsetOf(Set("id","inputs","operator","params","node")) && Set("id","inputs","operator").subsetOf(m.keySet),"invalid task settings")
+      require(m.keySet.subsetOf(Set("id","title","inputs","operator","params","node")) && Set("id","inputs","operator").subsetOf(m.keySet),"invalid task settings")
       val inputs=mapping(m("inputs"),"inputs").map { case (port,raw) =>
         val b=mapping(raw,"input binding")
         require(b.keySet.subsetOf(Set("uri","task","port","view")),"unknown input binding setting")
@@ -56,7 +57,8 @@ object Jobs {
       }
       val params=new java.util.LinkedHashMap[String,Object](); m.get("params").foreach(v => mapping(v,"params").foreach{case(k,v)=>params.put(k,v)})
       val inline=if(m("operator").isInstanceOf[java.util.Map[_,_]])Some(source(m("operator")))else None
-      val t=Task(m("id").toString,inputs,if(inline.isDefined)""else m("operator").toString,params,m.get("node").map(_.toString),inline);validate(t);t
+      require(m.get("title").forall(_.isInstanceOf[String]),"title must be a string")
+      val t=Task(m("id").toString,inputs,if(inline.isDefined)""else m("operator").toString,params,m.get("node").map(_.toString),inline,m.get("title").map(_.toString));validate(t);t
     }.toVector
     require(tasks.nonEmpty && tasks.size <= 64 && tasks.map(_.id).distinct.size == tasks.size,"empty, oversized, or duplicate task list")
     val ids=tasks.map(_.id).toSet

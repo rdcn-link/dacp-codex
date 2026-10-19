@@ -1,20 +1,22 @@
 # DACP Scala SDK
 
-A standalone Scala 2.13 SDK for reading DACP datasets over Apache Arrow Flight with mTLS. Requires JDK 17 and sbt 1.10.x. It uses the shared [protobuf definition](../proto/dacp.proto) and has no dependency on the DACP server project.
+[English](README_en.md)
 
-Build and publish to your local Ivy repository from this directory:
+独立的 Scala 2.13 SDK，通过 Apache Arrow Flight 和 mTLS 读取 DACP Dataset。需要 JDK 17 和 sbt 1.10.x。使用共享的 [protobuf 定义](../proto/dacp.proto)，不依赖 DACP 服务器项目。
+
+在本目录构建并发布到本地 Ivy 仓库：
 
 ```bash
 sbt test publishLocal
 ```
 
-In a Scala 2.13 application's `build.sbt`:
+在 Scala 2.13 应用的 `build.sbt` 中添加：
 
 ```scala
 libraryDependencies += "io.github.rdcn-link" %% "dacp-client-scala" % "0.1.0"
 ```
 
-This dependency is available after `publishLocal`; it is not published to Maven Central. Run the consuming JVM with `--add-opens=java.base/java.nio=ALL-UNNAMED` and `-Dio.netty.tryReflectionSetAccessible=true`, as required by this Arrow version. For an sbt application, configure:
+执行 `publishLocal` 后即可使用该依赖；它尚未发布到 Maven Central。按照本 Arrow 版本的要求，运行应用 JVM 时需添加 `--add-opens=java.base/java.nio=ALL-UNNAMED` 和 `-Dio.netty.tryReflectionSetAccessible=true`。sbt 应用配置如下：
 
 ```scala
 fork := true
@@ -23,7 +25,7 @@ javaOptions ++= Seq(
   "-Dio.netty.tryReflectionSetAccessible=true")
 ```
 
-Configure `DACP_CA`, `DACP_CERT`, and `DACP_KEY` with PEM file paths, or pass explicit paths using `TlsConfig`. Server certificate verification remains enabled. A missing CA uses the default trust roots; a client certificate and key must be supplied together. The remote DACP server requires client certificates.
+通过 `DACP_CA`、`DACP_CERT`、`DACP_KEY` 配置 PEM 文件路径，或使用 `TlsConfig` 显式传递路径。服务器证书验证保持启用。未指定 CA 时使用默认信任根；客户端证书和密钥必须成对提供。远端 DACP 服务器要求客户端证书。
 
 ```scala
 import dacp.client.{Source, TlsConfig}
@@ -57,7 +59,7 @@ Using.resource(Source.open("dacp://localhost:8815/data1", tls)) { ds =>
 }
 ```
 
-For direct Item URI access:
+直接访问 Item URI：
 
 ```scala
 Using.resource(Source.openItem("dacp://localhost:8815/data1/image", tls)) { item =>
@@ -67,21 +69,21 @@ Using.resource(Source.openItem("dacp://localhost:8815/data1/image", tls)) { item
 }
 ```
 
-`Source.open` accepts a dataset URI and returns `Dataset`; `Source.openItem` accepts an Item URI and returns `ItemStream`. `Dataset.list()` returns all Items recursively, including folders and data. `Dataset.list("/")` lists root children; `Dataset.list("/reports")` lists only immediate children of that folder. Each `Item` has an absolute logical `path`, `kind` (`folder` or `data`), `format`, supported `views`, and an optional Arrow schema. Paths never identify private files or SQL table names. Use `Dataset.open("/reports/orders")` for data; ordinary folders support listing only, while archive and compression folders also offer bytes. Relative paths are rejected. Raw CSV/NDJSON/Excel listing schemas may be absent; `asRecords().schema` obtains the record schema. The server startup log provides configured dataset names; dataset discovery is not implemented by the protocol.
+`Source.open` 接收 Dataset URI 并返回 `Dataset`；`Source.openItem` 接收 Item URI 并返回 `ItemStream`。`Dataset.list()` 递归返回所有 Item，包括文件夹和数据。`Dataset.list("/")` 列出根节点子项，`Dataset.list("/reports")` 只列出该文件夹的直接子项。每个 `Item` 包含绝对逻辑 `path`、`kind`（`folder` 或 `data`）、`format`、支持的 `views` 和可选 Arrow schema。路径不标识私有文件或 SQL 表名。使用 `Dataset.open("/reports/orders")` 访问数据；普通文件夹仅支持列举，而归档和压缩文件夹还提供 bytes。相对路径会被拒绝。原始 CSV/NDJSON/Excel 的列表 schema 可能缺失，可通过 `asRecords().schema` 获取记录 schema。服务器启动日志提供已配置的 Dataset 名称，协议尚未实现 Dataset 发现。
 
-Item statistics are optional: `lastModifiedTimeMs: Option[Long]` (UTC Unix milliseconds), `lastModifiedTime: Option[Instant]`, `totalSizeBytes: Option[Long]`, and `recordCount: Option[Long]`. `Some(0L)` means known zero; `None` means unknown or not applicable. File metadata supplies time and size; CSV/NDJSON/Excel counts remain unknown during browsing; `ds.count(path)` explicitly scans them. Parquet uses footer counts. SQL leaves count, time, and byte size unknown during browsing; `ds.count("/reports/orders")` explicitly requests an exact `COUNT(*)`. All folder properties are always `None`, including for empty folders; folder metadata never visits child Items. Binary data has unknown record count.
+Item 统计信息均为可选：`lastModifiedTimeMs: Option[Long]`（UTC Unix 毫秒）、`lastModifiedTime: Option[Instant]`、`totalSizeBytes: Option[Long]` 和 `recordCount: Option[Long]`。`Some(0L)` 表示已知为零，`None` 表示未知或不适用。文件元数据提供时间和大小；CSV/NDJSON/Excel 浏览时不统计记录，`ds.count(path)` 才显式扫描。Parquet 使用文件尾计数。SQL 浏览时计数、时间和字节大小均未知；`ds.count("/reports/orders")` 显式请求精确的 `COUNT(*)`。所有文件夹属性始终为 `None`，包括空文件夹；文件夹元数据不会访问子 Item。二进制数据的记录数未知。
 
-Listings avoid record scans. Explicit counts can be expensive because they scan files or SQL tables. SQL counts respect the configured statement timeout, and client RPC deadlines still apply. Statistics are observations and do not form an atomic snapshot with later reads.
+列表操作避免扫描记录。显式计数可能扫描文件或 SQL 表，开销较大。SQL 计数遵守配置的语句超时，客户端 RPC 截止时间同样有效。统计值是观测结果，与后续读取不构成原子快照。
 
-`asRecords()` returns a closeable `RecordStream`. Call `next()` to load a batch and then read `root`. Arrow reuses the root on subsequent calls: consume or copy its contents before advancing, and do not retain it after closing the reader. CSV, NDJSON, Excel, DACP-generated Parquet with Arrow schema metadata, and SQL tables support the records view.
+`asRecords()` 返回可关闭的 `RecordStream`。调用 `next()` 加载批次后读取 `root`。Arrow 在后续调用中复用 root，因此必须在前进前消费或复制内容，且不得在读取器关闭后保留它。CSV、NDJSON、Excel、带 Arrow schema 元数据的 DACP 生成 Parquet，以及 SQL 表均支持 records 视图。
 
-`asBytes()` returns a Java `InputStream`. File Items produce original file bytes; SQL tables produce Arrow IPC stream bytes. Reads consume chunks incrementally without collecting the complete Item. Standard `readNBytes` and `transferTo` are available; `readAllBytes` collects the complete Item in memory and should be reserved for small resources.
+`asBytes()` 返回 Java `InputStream`。文件 Item 返回原始文件字节；SQL 表返回 Arrow IPC 流字节。读取按块增量消费，不收集整个 Item。支持标准的 `readNBytes` 和 `transferTo`；`readAllBytes` 会将整个 Item 收集到内存中，应仅用于小型资源。
 
-Use `Using.resource` for datasets, item handles, and readers, including when stopping early. Closing a reader cancels unfinished reads and releases Arrow buffers; closing an item closes its readers; closing a dataset closes its items, Flight connection, and allocator. Items opened through a dataset share its connection. Direct item access owns a private dataset connection and closes it with the item. These objects are intended for single-threaded use.
+对 Dataset、Item 句柄和读取器使用 `Using.resource`，包括提前停止的场景。关闭读取器会取消未完成读取并释放 Arrow 缓冲区；关闭 Item 会关闭其读取器；关闭 Dataset 会关闭其 Item、Flight 连接和分配器。通过 Dataset 打开的 Item 共享其连接。直接访问 Item 时独占私有 Dataset 连接，并随 Item 一起关闭。这些对象按单线程使用设计。
 
-Each listing, item lookup, or content read has a deadline of 30 seconds by default. For long streams, set a larger `timeoutSeconds` on `Source.open` or `Source.openItem`; the deadline applies to the entire Flight RPC, not just connection establishment. Failed readers are terminal: close them and reopen the resource to retry from the beginning. There are no automatic retries or resumable reads.
+每次列举、Item 查找或内容读取默认具有 30 秒截止时间。对于长流，在 `Source.open` 或 `Source.openItem` 上设置更大的 `timeoutSeconds`；截止时间作用于整个 Flight RPC，而不仅是建连。失败后的读取器不可继续使用，应关闭并重新打开资源，从头重试。没有自动重试或断点续读。
 
-Tests start an in-process Flight server and check metadata, records, byte chunk boundaries, partial reads, EOF, failure behavior, URI validation, cancellation, and resource cleanup. To also test against the running local example server, from this directory run:
+测试启动进程内 Flight 服务器，检查元数据、记录、字节块边界、部分读取、EOF、失败行为、URI 验证、取消和资源清理。若还需测试本地运行中的示例服务器，在本目录运行：
 
 ```bash
 DACP_CA=../examples/certs/ca.crt \
@@ -91,17 +93,17 @@ DACP_SCALA_TEST_URI=dacp://localhost:8815/data1 \
 sbt test
 ```
 
-Transport failures surface as `DacpException`, with a stable `code` and readable message, without underlying transport descriptions or causes. Handle `NOT_FOUND`, `ACCESS_DENIED`, `UNAVAILABLE`, `TIMEOUT`, or other DACP codes rather than transport exceptions. Streaming failures are terminal; reopen the item to retry.
+传输失败以 `DacpException` 返回，包含稳定的 `code` 和可读消息，不含底层传输描述或异常原因。请处理 `NOT_FOUND`、`ACCESS_DENIED`、`UNAVAILABLE`、`TIMEOUT` 等 DACP 错误码，而非传输异常。流失败后不可继续读取，应重新打开 Item 重试。
 
-Formats describe source data: SQL reports `sql`, `.jsonl`/`.ndjson` report `ndjson`, `.xls`/`.xlsx` report `excel`. Ordinary `.json` has bytes only unless configured as `ndjson` on the server. Choose reading methods from each Item’s advertised `views`; new format handlers require no SDK changes.
+格式描述源数据：SQL 为 `sql`，`.jsonl`/`.ndjson` 为 `ndjson`，`.xls`/`.xlsx` 为 `excel`。普通 `.json` 仅支持 bytes，除非服务器将其配置为 `ndjson`。请依据各 Item 公布的 `views` 选择读取方法；新增格式处理器无需修改 SDK。
 
-ZIP archives appear as `kind=folder`, `format=zip`, with a `bytes` view. Browse entries with `ds.list("/archive")`, read CSV entries with `ds.open("/archive/reports/orders.csv").asRecords()`, and download the archive with `ds.open("/archive").asBytes()`. Check advertised views before opening a folder; ordinary folders have no streams. Nested archives remain binary data Items.
+ZIP 归档显示为 `kind=folder`、`format=zip`，提供 `bytes` 视图。使用 `ds.list("/archive")` 浏览条目，使用 `ds.open("/archive/reports/orders.csv").asRecords()` 读取 CSV 条目，使用 `ds.open("/archive").asBytes()` 下载归档。打开文件夹前检查公布的视图；普通文件夹没有流。嵌套归档保持为二进制 data Item。
 
-TAR (`tar`), GZIP (`gzip`), and compressed TAR (`tar-gzip`, `.tar.gz` / `.tgz`) use the same folder model as ZIP. In the default example, browse `/bundle` or `/bundle_gzip`, and open `/orders.csv.gz/orders.csv` for decompressed CSV records. Open `/orders.csv.gz` itself with `asBytes()` for the original compressed file. GZIP child names come from the public alias; aliases without a `.gz` suffix expose `content`. TAR scans are sequential and compressed TAR scans require decompression, so large archives can delay listing or opening. Nested containers remain binary Items.
+TAR（`tar`）、GZIP（`gzip`）及压缩 TAR（`tar-gzip`、`.tar.gz` / `.tgz`）与 ZIP 使用相同的文件夹模型。默认示例可浏览 `/bundle` 或 `/bundle_gzip`，通过 `/orders.csv.gz/orders.csv` 读取解压后的 CSV 记录，通过 `/orders.csv.gz` 的 `asBytes()` 读取原始压缩文件。GZIP 子项名称来自公开别名；不带 `.gz` 后缀的别名使用 `content`。TAR 顺序扫描，压缩 TAR 扫描需要解压，因此大型归档可能延迟列举或打开。嵌套容器保持为二进制 Item。
 
-Dataset construction is server-side: `directory`, `sqldb`, and `custom` providers all expose the same SDK API. The default server's `documents` Dataset discovers `examples/data`; connect to `dacp://localhost:8815/documents` and use `list("/")` or `open("/nested/orders.csv")`. Directory changes appear on subsequent requests. Public table aliases and private source bindings remain server-side.
+Dataset 在服务器端构建：`directory`、`sqldb` 和 `custom` provider 提供相同 SDK API。默认服务器的 `documents` Dataset 自动发现 `examples/data`；连接 `dacp://localhost:8815/documents` 后使用 `list("/")` 或 `open("/nested/orders.csv")`。目录变更会出现在后续请求中。公开表别名和私有数据源绑定保留在服务器端。
 
-## Filter, projection, and limit
+## 过滤、投影与限制
 
 ```scala
 import dacp.client.Expressions.col
@@ -115,9 +117,9 @@ Using.resource(ds.open("/reports/orders",
 }
 ```
 
-Use an open `ds` inside the Dataset resource scope above. Equality uses `===`, inequality `=!=`, membership `.isin(Seq(...))`, and null checks `.isNull`/`.isNotNull`. The server applies filtering before projection and the global limit; bytes reject query options. See [shared semantics and examples](../docs/records-scans.md).
+在上述 Dataset 资源作用域内使用已打开的 `ds`。相等使用 `===`，不等使用 `=!=`，集合成员检查使用 `.isin(Seq(...))`，空值检查使用 `.isNull`/`.isNotNull`。服务器先过滤，再投影并应用全局限制；bytes 不接受查询选项。参见[共享语义与示例](../docs/records-scans.md)。
 
-## Streaming jobs
+## 流式作业
 
 ```scala
 import dacp.client.Job
@@ -133,6 +135,10 @@ Using.resource(Job.run("dacp://localhost:8815",
 }
 ```
 
-`JobStream` is an `AutoCloseable` iterator. Use a resource scope even when stopping early: closing cancels the remaining job. Exhaustion or failure releases resources automatically. Errors after data delivery indicate partial results. Output port metadata includes representation, format, and records schema. Event payload arrays remain valid after advancing or closing the stream.
+`JobStream` 是实现 `AutoCloseable` 的迭代器。即使提前停止也应使用资源作用域，关闭会取消剩余作业。迭代结束或失败会自动释放资源。交付数据后出错表示结果不完整。输出端口元数据包含表示、格式和记录 schema。事件负载数组在前进或关闭流后仍有效。
 
-For a records data event, call `event.records(allocator)` with your own Arrow allocator and close the returned reader in a resource scope. Its single record batch is borrowed from that reader and remains valid until the reader advances or closes. Source datasets remain browsable; job results are streams and cannot be reopened.
+对于 records 数据事件，使用自己的 Arrow 分配器调用 `event.records(allocator)`，并在资源作用域内关闭返回的读取器。其单个记录批次借用于该读取器，在读取器前进或关闭前有效。源 Dataset 仍可浏览；作业结果为流，不能重新打开。
+
+## Union 客户端
+
+`dacp.client.Union` 支持向独立 X 提交作业，分别读取 `results()` 和 `events()`，查询 `status()` 或 `cancel()`。执行和流均用 `Using.resource` 关闭。完整代码及 mTLS 配置见 [Union 服务器](../dacp-union-server/README.md)。

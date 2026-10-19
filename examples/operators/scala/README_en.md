@@ -1,5 +1,7 @@
 # A user-defined Scala operator
 
+[中文](README.md)
+
 This standalone example implements `scala_identity@1.0` without importing or rebuilding the DACP server. It produces a thin JAR, sharing Scala, Arrow, Jackson, and the JVM from `dacp/operator-jvm:1.1`. The operator preserves the original input bytes; replace its batch processing with your transformation.
 
 Example files:

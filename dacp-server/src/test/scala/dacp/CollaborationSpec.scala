@@ -17,6 +17,14 @@ class CollaborationSpec extends AnyFunSuite {
     |   inputs:
     |     source: {uri: 'dacp://localhost:18815/data/message'}
     |""".stripMargin
+  test("task titles describe work while ids remain dependency identifiers") {
+    val text=yaml.replace("id: first","id: first\n   title: 汇总销量")
+    assert(Jobs.parse(text).tasks.head.title.contains("汇总销量"))
+    assert(Jobs.parse(text).tasks.head.id=="first")
+    assert(Jobs.parse(yaml).tasks.head.title.isEmpty)
+    for(value<-Seq("''","123","null","'"+("x"*257)+"'"))
+      intercept[IllegalArgumentException](Jobs.parse(yaml.replace("id: first",s"id: first\n   title: $value")))
+  }
   test("source task preserves text and explicit runtime without an operator ID") {
     val task=Jobs.parse(yaml).tasks.head
     assert(task.operator.isEmpty)

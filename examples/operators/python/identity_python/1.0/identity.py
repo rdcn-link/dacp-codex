@@ -25,7 +25,7 @@ def main():
     if len(manifest) != 1 or manifest[0]['port'] != 'source':
         raise ValueError('expected source input')
     item = manifest[0]
-    with (source/item['file']).open('rb', buffering=0) as raw:
+    with (source/item['file']).open('rb') as raw:
         with pa.ipc.open_stream(raw) as reader:
             metadata = dict(representation=item['representation'], format=item['format'])
             if item['representation'] == 'records':

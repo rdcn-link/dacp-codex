@@ -1,5 +1,7 @@
 # DACP operator runtime
 
+[中文](README.md)
+
 Standalone Scala code for `format_convert@1.1` and `identity@1.1`, without the data server, Docker client, SQL drivers, Excel readers, or task coordinator. Both operators share one thin JAR and a JVM/Arrow/Parquet dependency environment. The server has only a test dependency on this module.
 
 Build from the project root on Linux, with JDK 17 including `jlink`, sbt, Python 3, `ldd`, and local Docker engine access:

@@ -9,7 +9,7 @@ import dacp.protocol.Metadata
 
 /** Incremental bidirectional Flight exchange. No retained result handles or dataset registry. */
 class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecutor) extends AutoCloseable {
-  private val permits=new Semaphore(config.maxConcurrentTasks)
+  private val permits=config.taskSlots
   private val jobs=new Semaphore(config.maxConcurrentTasks)
   private val active=java.util.concurrent.ConcurrentHashMap.newKeySet[StreamCancel]()
   private def join(t:Thread,c:StreamCancel):Unit={while(t.isAlive){c.active();t.join(50)};c.active()}
@@ -18,20 +18,37 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     active.add(cancel)
     val root=VectorSchemaRoot.create(PluginSchemas.bytes,allocator)
     var acquired:Semaphore=null
+    var record:ExecutionHistory#Record=null
+    var finalState="failed"
+    var failureMessage=Option.empty[String]
+    val metrics=new java.util.concurrent.ConcurrentHashMap[String,UnionPortMetrics]()
+    def metric(direction:String,f:OperatorFrame):Unit={
+      val h=StreamProtocol.header(f);val key=direction+"/"+h.path("port").asText
+      metrics.computeIfAbsent(key,_=>new UnionPortMetrics(allocator)).observe(f,remote=true)
+    }
     val monitor=StreamProtocol.thread(cancel){while(true){cancel.active();Thread.sleep(50)}}
     try {
+      val owner=try dacp.union.Rpc.identity catch{case _:dacp.union.UnionFailure=>Option(ctx.peerIdentity()).getOrElse("anonymous")}
+      record=config.executionHistory.begin("dacp_exchange",metadata=dacp.union.Json.obj().put("node",DacpUri.origin(config.uri(""))).put("owner",owner))
       val bytes=reader.getDescriptor.getCommand
       require(bytes.length<=1024*1024,"request exceeds 1 MiB")
       val request=Metadata.OperatorRequest.parseFrom(bytes)
       writer.start(root)
-      def emit(f:OperatorFrame):Unit=StreamProtocol.send(writer,root,f,cancel)
+      def emit(f:OperatorFrame):Unit={metric("outputs",f);StreamProtocol.send(writer,root,f,cancel)}
       if(request.hasJobYaml) {
         require(jobs.tryAcquire(),"job capacity reached");acquired=jobs
-        coordinate(request.getJobYaml,emit,cancel)
+        record.update("running",dacp.union.Json.obj().put("request_type","job"))
+        coordinate(request.getJobYaml,emit,cancel,record)
       } else if(request.hasTaskJson) {
         require(permits.tryAcquire(),"node task capacity reached");acquired=permits
         val n=Data.mapper.readTree(request.getTaskJson.toByteArray)
-        require(n.isObject && n.fieldNames.asScala.toSet==Set("id","operator","params","ports","sources"),"invalid worker request")
+        require(n.isObject && Set("id","operator","params","ports","sources").subsetOf(n.fieldNames.asScala.toSet) && n.fieldNames.asScala.toSet.subsetOf(Set("id","operator","params","ports","sources","parent_execution_id","title")),"invalid worker request")
+        val details=dacp.union.Json.obj().put("request_type","task").put("task_id",n.path("id").asText)
+        Option(n.get("title")).foreach(v=>details.set[com.fasterxml.jackson.databind.JsonNode]("title",v))
+        details.put("operator",if(n.path("operator").isObject)"inline:"+n.path("operator").path("runtime").asText else n.path("operator").asText)
+        if(n.has("parent_execution_id"))details.put("parent_execution_id",dacp.union.Json.id(dacp.union.Json.text(n,"parent_execution_id")))
+        details.set[com.fasterxml.jackson.databind.JsonNode]("sources",n.path("sources"))
+        record.update("running",details)
         val sources=n.path("sources").elements.asScala.map(_.asText).toVector
         require(sources.nonEmpty,"source item provenance required")
         val prefixes=if(config.taskInputPrefixes.nonEmpty) config.taskInputPrefixes else config.prefixes
@@ -45,7 +62,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         val inline=if(n.path("operator").isObject)Some(Jobs.source(Data.mapper.convertValue(n.path("operator"),classOf[java.util.LinkedHashMap[String,Object]])))else None
         require(inline.isEmpty || config.debug,"FORBIDDEN: source submission requires DEBUG mode")
         val task=Task(n.path("id").asText,ports.map(p=>p->InputBinding(uri=Some(sources.head))).toMap,n.path("operator").asText,
-          Data.mapper.convertValue(n.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),source=inline)
+          Data.mapper.convertValue(n.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),source=inline,title=Option(n.get("title")).map(v=>{require(v.isTextual,"title must be a string");v.asText}))
         Jobs.validate(task)
         val queues=ports.map(p=>p->new FrameQueue(cancel)).toMap
         // Every input metadata frame precedes any payload, preventing startup head-of-line blocking.
@@ -55,7 +72,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
           val f=StreamProtocol.receive(reader.getRoot);val h=StreamProtocol.header(f);val port=h.path("port").asText
           require(h.path("type").asText=="start" && queues.contains(port) && !started(port),"invalid input metadata")
           started+=port
-          queues(port).put(f)
+          metric("inputs",f);queues(port).put(f)
         }
         val incoming=StreamProtocol.thread(cancel){
           var ended=Set.empty[String]
@@ -63,22 +80,26 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
             val f=StreamProtocol.receive(reader.getRoot);val h=StreamProtocol.header(f);val port=h.path("port").asText
             require(queues.contains(port) && !ended(port),"unexpected input port")
             require(Set("data","end")(h.path("type").asText),"invalid input event")
-            queues(port).put(f);if(h.path("type").asText=="end") ended+=port
+            metric("inputs",f);queues(port).put(f);if(h.path("type").asText=="end") ended+=port
           }
           require(ended==ports.toSet,"input stream truncated")
         }
         executor.execute(task,queues,emit,cancel);join(incoming,cancel)
       } else throw new IllegalArgumentException("missing exchange request")
-      emit(StreamProtocol.frame("complete"));writer.completed()
+      emit(StreamProtocol.frame("complete"));writer.completed();finalState="succeeded"
     } catch {
-      case _:java.util.concurrent.CancellationException=>()
+      case t:java.util.concurrent.CancellationException=>finalState="cancelled";failureMessage=Some(Option(t.getMessage).getOrElse("client disconnected"))
       case caught:Throwable=>
         val t=cancel.cause(caught)
+        finalState=if(t.isInstanceOf[java.util.concurrent.TimeoutException])"expired"else if(t.isInstanceOf[java.util.concurrent.CancellationException])"cancelled"else "failed"
+        failureMessage=Some(Option(t.getMessage).getOrElse(t.getClass.getSimpleName))
         org.slf4j.LoggerFactory.getLogger(classOf[TaskService]).warn("operator exchange failed",t)
         val status=if(Option(t.getMessage).exists(_.contains("FORBIDDEN"))) CallStatus.UNAUTHORIZED else if(t.isInstanceOf[IllegalArgumentException]) CallStatus.INVALID_ARGUMENT else CallStatus.INTERNAL
         if(!writer.isCancelled)writer.error(status.withDescription(Option(t.getMessage).getOrElse("operator execution failed")).toRuntimeException)
     } finally {
-      cancel.close();monitor.interrupt();if(acquired!=null)acquired.release();active.remove(cancel);root.close()
+      try {
+        if(record!=null){val detail=dacp.union.Json.obj();val ports=detail.putObject("ports");metrics.asScala.foreach{case(k,v)=>ports.set[com.fasterxml.jackson.databind.JsonNode](k,v.snapshot)};record.update(finalState,detail,failureMessage)}
+      } finally {cancel.close();monitor.interrupt();if(acquired!=null)acquired.release();active.remove(cancel);root.close()}
     }
   }
   private def source(binding:InputBinding,c:StreamCancel): FrameSource = {
@@ -108,8 +129,11 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
       def close():Unit={stream.close();client.close()}
     }
   }
-  private def coordinate(yaml:String,emit:OperatorFrame=>Unit,c:StreamCancel):Unit={
+  private def coordinate(yaml:String,emit:OperatorFrame=>Unit,c:StreamCancel,record:ExecutionHistory#Record):Unit={
     val plan=Jobs.parse(yaml)
+    val details=dacp.union.Json.obj();val tasks=details.putArray("tasks")
+    plan.tasks.foreach { t=>val entry=tasks.addObject().put("id",t.id).put("operator",t.source.map(code=>"inline:"+code.runtime).getOrElse(t.operator));t.title.foreach(entry.put("title",_)) }
+    record.update("running",details)
     plan.tasks.foreach(Jobs.authorizeSource(config,_))
     val local=DacpUri.origin(config.uri(""));val allowed=config.taskPeers.map(DacpUri.node).toSet+local
     var targets=Map.empty[String,String];var provenance=Map.empty[String,Vector[String]]
@@ -139,16 +163,17 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
             val label=if(plan.outputs.isEmpty)Some(t.id+"."+port)else plan.outputs.find(_._2==(t.id,port)).map(_._1)
             label.foreach(name=>terminal.put(StreamProtocol.rename(f,name,t.id)))
         }
-      },c)
+      },c,record.id)
       val required=edges.filter(_._1==t.id).map(_._2).toSet++plan.outputs.values.filter(_._1==t.id).map(_._2)
       require(required.subsetOf(seen),"unknown upstream/selected output port")
     }}
     val completion=StreamProtocol.thread(c){threads.foreach(join(_,c));terminal.end()}
     var next=terminal.next();while(next.nonEmpty){emit(next.get);next=terminal.next()};join(completion,c)
   }
-  private def peer(node:String,t:Task,sources:Vector[String],inputs:Map[String,FrameSource],emit:OperatorFrame=>Unit,c:StreamCancel):Unit={
+  private def peer(node:String,t:Task,sources:Vector[String],inputs:Map[String,FrameSource],emit:OperatorFrame=>Unit,c:StreamCancel,parentExecutionId:String):Unit={
     val client=c.add(NodeConnection.open(config,allocator,node))
-    val n=Data.mapper.createObjectNode().put("id",t.id).put("operator",t.operator)
+    val n=Data.mapper.createObjectNode().put("id",t.id).put("operator",t.operator).put("parent_execution_id",parentExecutionId)
+    t.title.foreach(n.put("title",_))
     n.set[com.fasterxml.jackson.databind.JsonNode]("params",Data.mapper.valueToTree(t.params))
     t.source.foreach { code =>
       val op=n.putObject("operator");op.put("runtime",code.runtime).put("source",code.source).put("entrypoint",code.entrypoint)

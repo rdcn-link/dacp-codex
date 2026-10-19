@@ -1,5 +1,7 @@
 # DACP 算子仓库
 
+[English](README_en.md)
+
 独立的 Scala HTTP/HTTPS 仓库，提供公开搜索、版本页面和下载。每个算子由不可变的 `name@version` 清单、共享运行时镜像，以及可选的小型 JAR、Python 源码或 wheel 制品组成。运行时与代码按 SHA-256 只存储一份，可供多个算子引用。提供下载无需 Docker；发布运行时镜像需要 Docker CLI/Engine。使用 JDK 17、Scala 2.13、sbt 1.10.x 构建。
 
 Maven 制品名和可执行程序均为 `dacp-operator-repository`（不带 Scala 后缀），源码包名为 `dacp.repository`。
@@ -27,11 +29,12 @@ curl http://localhost:8820/v1/operators
 ```bash
 # 在项目根目录执行；相关镜像必须已安装。
 (cd dacp-operator-repository && sbt test stage)
+python3 scripts/package-operator-sources.py
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository seed --operators operators --root .operator-catalog
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820
 ```
 
-`seed` 发现 `<operators>/<name>/<version>/operator.yaml`。必填 `name`、`version`、`image`、`inputs`、`outputs`；可选 `description`、`executor`（默认 `container`）、`entrypoint`、`artifact`（相对文件路径）。名称和版本匹配 `[A-Za-z0-9_-][A-Za-z0-9_.-]*`。未知字段、重复键、目录身份不符和空定义目录会失败。
+`seed` 发现 `<operators>/<name>/<version>/operator.yaml`。必填 `name`、`version`、`image`、`inputs`、`outputs`；可选 `description`、`executor`（默认 `container`）、`entrypoint`、`artifact`（相对文件路径）、`executor_config`、`provenance`。名称和版本匹配 `[A-Za-z0-9_-][A-Za-z0-9_.-]*`。未知字段、重复键、目录身份不符和空定义目录会失败。
 
 手动发布薄 JAR：
 
@@ -70,7 +73,7 @@ operator_max_bytes: 8589934592
 | `/v1/blobs/sha256/<64 lowercase hex digits>` | 共享运行时归档或代码内容 |
 | `/health` | `ok` 加换行 |
 
-未知路径或缺失制品返回 404，写方法返回 405。HEAD 返回 Content-Length。HTTP 附件文件名为摘要，HTML download 属性建议使用制品文件名。路径不能沿符号链接越出目录。8 个工作线程使用有界队列。列表忽略发布暂存目录，只读元数据而不对大制品计算摘要。
+未知路径或缺失制品返回 404，写方法返回 405。HEAD 返回 Content-Length。网页附件使用制品原文件名和后缀。路径不能沿符号链接越出目录。8 个工作线程使用有界队列。列表忽略发布暂存目录，只读元数据而不对大制品计算摘要。
 
 元数据位于 `<root>/<name>/<version>/manifest.json`，制品位于 `<root>/blobs/sha256/<digest>`，运行时导出索引位于 `<root>/images/<image-ID>.json`。参见 [清单格式](../docs/operator-packaging.md#content-addressed-storage)。项目尚未发布，直接采用新格式，不保留旧格式读取器；新格式使用新的开发目录。
 
@@ -100,3 +103,11 @@ scripts/test-operator-repository.sh
 定义必须包含命名 `inputs`、`outputs` 端口。`publish --ports FILE` 为必填项，文件可为包含端口声明的 YAML/JSON 或完整算子定义；`seed` 从定义中读取这些声明。详见[编写指南](../docs/operator-authoring.md)。
 
 原生命令使用 `executor: command`，插件设置位于 `executor_config`。`seed` 保留该映射；手工发布用 `--executor-config FILE` 传入单独的 YAML/JSON 映射，仓库保存为 `execution.config`，执行节点插件验证。详见[原生命令指南](../docs/native-commands.md)。
+
+## 算子审查材料
+
+支持发布可选的源码包、仓库修订版本、许可证声明与文本、构建说明和 SBOM。公开页面提供下载并标注缺失信息。参见[源码与审查信息](../docs/operator-provenance.md)。
+
+首页按算子名称合并，每个算子只展示最新版本，计数按算子计算。版本标签中的数字段按整数比较（如 `1.10` 高于 `1.9`），正式版本高于同名带连字符的预发布版本，其他文本按字典序比较。搜索匹配任一版本的名称、版本或描述时，仍展示该算子的最新版本。详情页按版本从新到旧列出全部版本；JSON 目录仍包含全部版本。
+
+网页下载链接在摘要后携带原文件名：`/v1/blobs/sha256/DIGEST/FILENAME`。GET 和 HEAD 响应通过 `Content-Disposition` 保留原文件名及后缀。仅含摘要的 URL 用于按内容寻址的读取 API。

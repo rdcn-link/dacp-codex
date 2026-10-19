@@ -1,11 +1,14 @@
 # Small Python operators
 
+[中文](README.md)
+
 This example distributes `identity.py` separately from a reusable Python/PyArrow environment. Its source artifact is a few kilobytes; Python and PyArrow are downloaded once per runtime digest. The operator preserves input bytes using the standard Arrow IPC boundary, including FIFO EOS handling.
 
 Run from the project root, with Docker access and a staged operator repository:
 
 ```bash
 docker build -t dacp/operator-python:1.0 examples/operators/python
+python3 scripts/package-operator-sources.py
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository seed --operators examples/operators/python --root .operator-catalog
 ```
 
@@ -21,3 +24,5 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository pub
 Dependencies must already exist in the runtime. The executor installs the wheel offline with `--no-index --no-deps`, then invokes its module. Multiple operators may reference different modules in the same wheel. See [packaging and executor contracts](../../../docs/operator-packaging.md).
 
 For complete source examples, wheel packaging, remote file transfer, administrator publication, and execution instructions, see [Write and upload custom operators](../../../docs/operator-authoring_en.md).
+
+New source-bearing versions and optional license/SBOM publication are described in [source and review information](../../../docs/operator-provenance_en.md). Package sources before seeding.

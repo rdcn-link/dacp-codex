@@ -1,22 +1,43 @@
 # DACP
 
-<img src="assets/dacp-logo.png" alt="DACP logo: connected nodes forming a C for Collaborative" width="480">
+<img src="assets/dacp-logo.png" alt="DACP logo: connected nodes form the C in Collaborative" width="240">
 
 [中文](README.md)
 
-DACP is a data collaboration protocol and prototype built on Apache Arrow Flight. Nodes publish data through a common interface: clients browse files, SQL tables, and archives and compressed files using logical names, and submit YAML tasks to run computation where the data resides.
+DACP uses Apache Arrow Flight for data access and collaborative computation across nodes. Servers publish files, SQL tables, and structured-file contents as Datasets and Items. Clients browse data, read record or byte streams, and submit tasks composed of operators. Computation runs near the data and returns live output streams.
 
-The project includes a Scala 2.13 server, Python and Scala client SDKs, and the interactive `dacp-shell` terminal. Nodes are addressed directly by URI and connect through mTLS, without a central registry.
+For the data model, transport, trust, and collaboration contracts of DACP (Data Access and Collaboration Protocol), see the [protocol overview](docs/protocol_en.md).
 
-## Documentation
+## Read by role
 
-| Audience | Start here | Topics |
+| Reader | Entry point | Main topics |
 |---|---|---|
-| Users and node administrators | [User guide](docs/users/README_en.md) | Quick start, shell examples, SDKs, dataset setup, queries and streaming jobs |
-| Operator authors and project contributors | [Developer guide](docs/developers/README_en.md) | Architecture, operator authoring, plugin contracts, protocol and tests |
+| User | [User guide](docs/users/README_en.md) | dacp-shell, Python / Scala SDKs, queries, jobs, result streams, and dashboards |
+| Administrator | [Administrator guide](docs/administrators/README_en.md) | Deployment, data publication, certificates and authorization, Union membership, operator repositories, logs, and history |
+| Developer | [Developer guide](docs/developers/README_en.md) | Operators, plugin registration, SDK integration, protocols, source builds, and tests |
 
 [Documentation index](docs/README_en.md) · [中文文档](docs/README.md)
 
-For a local example, follow the [quick start](docs/users/README_en.md#quick-start). In dacp-shell, type `help` for example usages or `help run` for operator execution examples.
+## Components and tools
 
-The server uses JDK 17 and Scala 2.13; clients include Python, Scala and dacp-shell. Browsing does not require Docker. Operator execution uses isolated Docker containers and returns streams, without saving result datasets. The project is unreleased and does not retain superseded interfaces for compatibility.
+| Component | Purpose |
+|---|---|
+| `dacp-server` | Publishes data, handles Flight requests, and executes local and distributed tasks |
+| `dacp-shell` | Interactive browsing, SQL queries, operator execution, and job-file submission; installed with the Python SDK |
+| `dacp-client` / `dacp-client-scala` | Python / Scala applications access data, execute Jobs, and submit Union jobs |
+| [dacp-union-server](dacp-union-server/README_en.md) | Manages one Union, invites nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
+| [Union web dashboard](dacp-union-server/README_en.md#http-operations-dashboard) | Public read-only view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
+| [dacp-operator-repository](dacp-operator-repository/README_en.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; administrators publish through the CLI |
+| `dacp-operator-runtime` / `dacp-operator-executors` | Shared operator environments, JVM / Python / container launchers, and native-command stream bridging |
+| `dacp-plugin-api` / `dacp-union-protocol` | Public plugin contracts and shared Union Flight transport utilities |
+
+Servers use JDK 17 and Scala 2.13; the Python SDK requires Python 3.10+. Browsing data needs no Docker. Operator execution requires Linux and an accessible Docker Engine. Builds use sbt 1.10.x.
+
+## Get started
+
+- Existing server: start with [connecting and browsing](docs/users/README_en.md#connecting-and-browsing).
+- Local demonstration: follow [single-node deployment](docs/administrators/README_en.md#single-node-deployment).
+- Distributed demonstration: run the [two-node Union example](examples/union/README_en.md).
+- Custom computation: read [writing and publishing operators](docs/operator-authoring_en.md).
+
+Data access and task execution use Flight mTLS; the operator repository and read-only dashboard use HTTP/HTTPS. Union CA trust, client allowlists, and node compute approval are configured separately. Each operator runs in its own container. Outputs are not registered as Datasets. Servers persist execution metadata, while result contents are delivered through single-consumption streams.

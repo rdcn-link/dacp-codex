@@ -95,7 +95,7 @@ File plugins implement `FormatHandler` and register in `META-INF/services/dacp.F
 
 To browse logical objects inside a file, implement `StructuredFileHandler` and register through the same format service file. Its `openStructure` returns `DatasetAccess` and can stream internal objects directly without extracting temporary files. The file root is a folder with original bytes; children explicitly advertise `records` or `bytes`. Archive readers can implement `ContainerReader` and register in `META-INF/services/dacp.ContainerReader`, without modifying core format registries.
 
-The standalone API lives in [dacp-plugin-api](../../dacp-plugin-api). Runnable contributions and build/install instructions are in [examples/plugins](../../examples/plugins/README.md). `PluginChecks.listing` provides reusable metadata contract checks. The server closes request-scoped access handles and releases provider resources on shutdown. Concrete NetCDF/FITS parsers and new array/image views are not implemented yet; contributors can represent internal file objects through the current interfaces, without silently flattening arrays into records.
+The standalone API lives in [dacp-plugin-api](../../dacp-plugin-api). Runnable contributions and build/install instructions are in [examples/plugins](../../examples/plugins/README_en.md). `PluginChecks.listing` provides reusable metadata contract checks. The server closes request-scoped access handles and releases provider resources on shutdown. Concrete NetCDF/FITS parsers and new array/image views are not implemented yet; contributors can represent internal file objects through the current interfaces, without silently flattening arrays into records.
 
 ## Development and validation
 
@@ -131,3 +131,13 @@ The protocol is defined in [proto/dacp.proto](../../proto/dacp.proto). Source co
 After staging the server, building the referenced runtimes and preparing example certificates, run `.venv/bin/python scripts/test-native-execution.py` with Docker access for native streaming, partial-failure and cancellation checks. `scripts/test-source-submission.py` requires the DEBUG server from `examples/source-debug.yaml`; it checks Python/Scala heredocs. See each script and the linked guides for prerequisites and test ports.
 
 The [technical reference](../reference_en.md) documents transport and configuration. Keep tests, examples, and Chinese/English documentation synchronized. This project is unreleased: replace superseded interfaces directly, without compatibility aliases or migration fallbacks.
+
+## Operator review evidence
+
+Publish optional source archives, repository revisions, license declarations/text, build instructions and SBOMs. Public pages show downloads and missing information. See [source and review information](../operator-provenance_en.md).
+
+## Union development
+
+The [Union protocol](../union_en.md) defines certificate identity, compute authorization, and direct streams. `dacp-union-protocol` provides shared transport helpers; `dacp-server/UnionWorker` reuses plugin data access and operator execution; `dacp-union-server` handles member polling, subjob preparation, and result forwarding. Run `cd dacp-union-server && sbt test` for two-node contracts over real mTLS. Domain analysis operators live in `examples/union/operators`, without core registry changes.
+
+Ordinary Flight requests, Union node subtasks, and global jobs share persistent execution records. For lifecycle, atomic writes, and tests, see [execution history](../execution-history_en.md).

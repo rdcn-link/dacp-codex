@@ -114,3 +114,7 @@ For a step-by-step workflow with full source examples and remote upload instruct
 ## Execution contract
 
 The implemented [item-based, stream-only contract](operator-streams.md) binds named item inputs and returns named item streams. The `ports.yaml` passed to publication contains the same `inputs` and `outputs` maps as the local definition. Dataset mapping and general pipeline scheduling remain future work.
+
+## Optional review evidence
+
+API v2 supports optional `provenance` metadata and SHA-256-addressed source, license and SBOM downloads. These files are separate from execution and never fetched automatically by execution nodes. See [source and review information](operator-provenance_en.md) for YAML fields, CLI flags, manifest descriptors and validation limits.
