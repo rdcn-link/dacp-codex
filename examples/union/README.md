@@ -12,7 +12,7 @@ A 在本地汇总销量，输出 `{"apple": 6, "pear": 3}`；B 直接拉取该�
 bash scripts/certs.sh
 python3 examples/union/prepare.py
 python3 -m pip install -e ./dacp-client
-docker build -t dacp/operator-python:1.0 examples/operators/python
+docker build -f examples/operators/python/Dockerfile -t dacp/operator-python:1.0 .
 ```
 
 准备脚本使用现有 `server` 证书作为 X 身份、`client` 证书作为 C 身份，生成 `.union-demo/x.yaml` 和两个有效期为 24 小时的审批文件。示例证书仅供本机演示。

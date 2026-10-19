@@ -2,6 +2,43 @@
 
 An operator is a data-processing program: it receives named Item input streams and JSON business parameters, then returns named output streams. This guide starts with a complete Python workflow, followed by Scala, packaging, publication and the wire contract.
 
+## Prefer operator templates
+
+Use the [Scala / Python SDK](../dacp-operator-sdk/README_en.md) for new operators and implement only business transformations. The lower-level examples below remain useful when direct frame control is needed.
+
+## Concrete startup arguments
+
+For example, `/input/params.json` contains `{"min_amount":20,"factor":2}`. The equivalent Python entry invocation is (the actual launcher also uses a loader wrapper):
+
+```bash
+/usr/local/bin/python /operator/filter_amount.py operator /input /input/params.json
+```
+
+`sys.argv[1:]` is `['operator', '/input', '/input/params.json']`. `operator` is a fixed protocol marker, followed by the streams directory and the parameter file path, not a JSON string. Scala `main(args)` receives the same three arguments, for example:
+
+```bash
+/opt/java/bin/java --add-opens=java.base/java.nio=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true -cp '/operator/scala-identity_2.13-1.0.jar:/opt/lib/*' example.ScalaIdentity operator /input /input/params.json
+```
+
+## Multiple inputs and outputs
+
+Complete example: [split_orders](../examples/operators/python/split_orders/1.0/split_orders.py), [port definition](../examples/operators/python/split_orders/1.0/operator.yaml), [job file](../examples/operators/python/split_orders/1.0/job.yaml). Both `left` / `right` inputs have `id:int64, amount:float64`. With `min_amount=20`, the supplied data produces ids 2 and 3 on `accepted`, and ids 1 and 4 on `rejected`.
+
+The framework generates the manifest. Look up ports by name rather than hardcoding file numbers:
+
+```json
+[{"port":"left","file":"0.arrow","representation":"records","format":"csv"},{"port":"right","file":"1.arrow","representation":"records","format":"csv"}]
+```
+
+Shell binding example:
+
+```text
+run split_orders@1.0 --input left=/orders_a --input right=/orders_b --view records --params '{"min_amount":20}'
+```
+
+`--view` applies to all inputs; use job YAML for different representations per input. Each output may have its own schema. Declare every output before writing data; even empty outputs need start/end events. The SDK handles these frames. Consume inputs in lexical port-name order through EOS to avoid blocking from alternating FIFO reads. The shell returns terminal ports `run.accepted` / `run.rejected`; job YAML `outputs` can rename them to labels such as `qualified` / `other`. Each output supports only one consumer; duplication requires explicit separate ports. The DEBUG inline Python helper still has only `result`, and the native executor still has one bytes stdin/stdout pair.
+
+
 ## Distinguish data inputs, parameters and outputs
 
 | Part | Example | How the program obtains it |
@@ -144,7 +181,7 @@ This script substitutes ordinary Arrow IPC files for FIFOs and checks batches, p
 Build the shared runtime and publish:
 
 ```bash
-docker build -t dacp/operator-python:1.0 examples/operators/python
+docker build -f examples/operators/python/Dockerfile -t dacp/operator-python:1.0 .
 (cd dacp-operator-repository && sbt stage)
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish filter_amount@1.0 \
   --image dacp/operator-python:1.0 --executor python --entrypoint filter_amount \
@@ -239,7 +276,7 @@ JDK 17, sbt, Linux, and Docker access are required to build/publish. Ordinary JA
 The complete [identity.py](../examples/operators/python/identity_python/1.0/identity.py) preserves either byte chunks or Arrow record batches. The shared runtime [Dockerfile](../examples/operators/python/Dockerfile) uses Python 3.12 and PyArrow 23.0.1.
 
 ```bash
-docker build -t dacp/operator-python:1.0 examples/operators/python
+docker build -f examples/operators/python/Dockerfile -t dacp/operator-python:1.0 .
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish identity_python@1.0 \
   --image dacp/operator-python:1.0 --executor python --entrypoint identity \
   --artifact examples/operators/python/identity_python/1.0/identity.py \

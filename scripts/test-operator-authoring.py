@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run the guide's records operator locally and verify its binary output contract."""
+import os
 import base64
 import json
 from pathlib import Path
@@ -9,6 +10,8 @@ import sys
 import tempfile
 
 import pyarrow as pa
+
+os.environ['PYTHONPATH'] = str(Path(__file__).resolve().parents[1] / 'dacp-operator-sdk/python') + os.pathsep + os.environ.get('PYTHONPATH', '')
 
 OPERATOR = Path(__file__).resolve().parents[1] / 'examples/operators/python/filter_amount/1.0/filter_amount.py'
 
@@ -61,3 +64,39 @@ with tempfile.TemporaryDirectory(prefix='dacp-authoring-') as temporary:
     assert run(directory, dict(factor=True)).returncode != 0
     assert run(directory, {}).returncode == 0
 print('Authoring example passed: parameters, batches, null filtering, output schema, empty output and errors')
+
+MULTIPORT = OPERATOR.parents[2] / 'split_orders/1.0/split_orders.py'
+with tempfile.TemporaryDirectory(prefix='dacp-multiport-') as temporary:
+    directory = Path(temporary)
+    for name, ids, amounts in [('left', [1, 2], [12.5, 30.0]), ('right', [3, 4, 5], [60.0, 8.0, None])]:
+        with (directory / (name + '.arrow')).open('wb') as output:
+            with pa.ipc.new_stream(output, schema) as writer:
+                writer.write_batch(pa.record_batch([ids, amounts], schema=schema))
+    # Reverse manifest order intentionally: operator must dispatch by name and sort input ports.
+    manifest = [dict(port=p, file=p + '.arrow', representation='records', format='csv') for p in ['right', 'left']]
+    (directory / 'manifest.json').write_text(json.dumps(manifest))
+    (directory / 'params.json').write_text(json.dumps(dict(min_amount=20)))
+    def execute():
+        return subprocess.run([sys.executable, str(MULTIPORT), 'operator', str(directory),
+                               str(directory / 'params.json')], capture_output=True, check=False)
+    result = execute()
+    assert result.returncode == 0, result.stderr.decode()
+    events = list(frames(result.stdout))
+    assert [(h['port'], h['type']) for h, _ in events[:2]] == [('accepted', 'start'), ('rejected', 'start')]
+    assert [(h['port'], h['type']) for h, _ in events[-2:]] == [('accepted', 'end'), ('rejected', 'end')]
+    output = dict(accepted=[], rejected=[])
+    for header, payload in events[2:-2]:
+        assert header['type'] == 'data'
+        with pa.ipc.open_stream(payload) as reader:
+            assert reader.schema == schema
+            batches = list(reader)
+            assert len(batches) == 1
+            output[header['port']].extend(batches[0].column('id').to_pylist())
+    assert output == dict(accepted=[2, 3], rejected=[1, 4, 5])
+    (directory / 'params.json').write_text(json.dumps(dict(min_amount=1000)))
+    empty = execute()
+    assert empty.returncode == 0
+    assert not any(h['type'] == 'data' and h['port'] == 'accepted' for h, _ in frames(empty.stdout))
+    (directory / 'manifest.json').write_text(json.dumps(manifest[:1]))
+    assert execute().returncode != 0
+print('Multiport example passed: named inputs, two output schemas, frame order, nulls and empty port')

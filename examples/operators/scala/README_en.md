@@ -1,5 +1,7 @@
 # A user-defined Scala operator
 
+Before building, publish plugin-api and operator-sdk to the local dependency repository as described in the [SDK guide](../../../dacp-operator-sdk/README_en.md). The new [SimpleIdentity](src/main/scala/example/SimpleIdentity.scala) uses the template; ScalaIdentity demonstrates the lower-level protocol.
+
 [中文](README.md)
 
 This standalone example implements `scala_identity@1.0` without importing or rebuilding the DACP server. It produces a thin JAR, sharing Scala, Arrow, Jackson, and the JVM from `dacp/operator-jvm:1.1`. The operator preserves the original input bytes; replace its batch processing with your transformation.

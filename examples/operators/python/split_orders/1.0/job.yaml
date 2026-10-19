@@ -1,0 +1,12 @@
+job: split-orders-demo
+tasks:
+  - id: split
+    title: Combine two order streams and split by amount
+    operator: split_orders@1.0
+    inputs:
+      left: {uri: 'dacp://localhost:8815/data1/orders_a', view: records}
+      right: {uri: 'dacp://localhost:8815/data1/orders_b', view: records}
+    params: {min_amount: 20}
+outputs:
+  qualified: {task: split, port: accepted}
+  other: {task: split, port: rejected}

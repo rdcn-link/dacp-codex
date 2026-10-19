@@ -1,5 +1,7 @@
 # 自定义 Scala 算子
 
+构建前，请按 [SDK 说明](../../../dacp-operator-sdk/README.md)将 plugin-api 和 operator-sdk 发布到本地依赖库。新增 [SimpleIdentity](src/main/scala/example/SimpleIdentity.scala) 使用模板；原 ScalaIdentity 展示底层协议。
+
 [English](README_en.md)
 
 此独立示例实现 `scala_identity@1.0`，无需导入或重新构建 DACP 服务器。它生成薄 JAR，并复用 `dacp/operator-jvm:1.1` 中的 Scala、Arrow、Jackson 和 JVM。算子保留原始输入字节；可以将批次处理代码替换为自己的变换逻辑。

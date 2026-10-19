@@ -1,0 +1,13 @@
+name: split_orders
+version: '1.0'
+description: Consume left then right and split orders into accepted and rejected streams.
+image: dacp/operator-python:1.0
+executor: python
+entrypoint: split_orders
+artifact: split_orders.py
+inputs:
+  left: {representations: [records], formats: []}
+  right: {representations: [records], formats: []}
+outputs:
+  accepted: {representations: [records], formats: [arrow]}
+  rejected: {representations: [records], formats: [arrow]}

@@ -2,6 +2,43 @@
 
 算子是一个数据处理程序：接收命名的 Item 输入流和一份 JSON 业务参数，处理后返回命名输出流。下面先用一个完整的 Python 示例串起开发过程，再说明 Scala、打包发布和底层协议。
 
+## 优先使用算子模板
+
+新算子建议使用 [Scala / Python SDK](../dacp-operator-sdk/README.md)，只实现业务转换。下面保留底层协议示例，供需要直接控制帧的作者参考。
+
+## 启动参数的具体含义
+
+例如参数文件 `/input/params.json` 包含 `{"min_amount":20,"factor":2}`，Python 入口的等效调用为（实际启动器还会包一层加载程序）：
+
+```bash
+/usr/local/bin/python /operator/filter_amount.py operator /input /input/params.json
+```
+
+`sys.argv[1:]` 是 `['operator', '/input', '/input/params.json']`。`operator` 是固定协议标记，第二项是流目录，第三项是参数文件路径，不是 JSON 字符串。Scala 的 `main(args)` 接收同样三项，例如：
+
+```bash
+/opt/java/bin/java --add-opens=java.base/java.nio=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true -cp '/operator/scala-identity_2.13-1.0.jar:/opt/lib/*' example.ScalaIdentity operator /input /input/params.json
+```
+
+## 多输入与多输出
+
+完整例子：[split_orders](../examples/operators/python/split_orders/1.0/split_orders.py)、[端口定义](../examples/operators/python/split_orders/1.0/operator.yaml)、[作业文件](../examples/operators/python/split_orders/1.0/job.yaml)。两个输入 `left` / `right` 均为 `id:int64, amount:float64`；`min_amount=20` 时，示例的 `accepted` 输出 id 2、3，`rejected` 输出 id 1、4。
+
+manifest 由框架生成，必须按端口查找，不要硬编码文件编号：
+
+```json
+[{"port":"left","file":"0.arrow","representation":"records","format":"csv"},{"port":"right","file":"1.arrow","representation":"records","format":"csv"}]
+```
+
+Shell 绑定示例：
+
+```text
+run split_orders@1.0 --input left=/orders_a --input right=/orders_b --view records --params '{"min_amount":20}'
+```
+
+`--view` 应用于全部输入；不同输入需要不同表示时使用作业 YAML。每个输出端口可有独立 schema，必须先声明所有输出再写数据，空输出也需要 start/end。SDK 自动处理这些帧。输入按端口名排序逐个消费到 EOS，避免交替读 FIFO 导致阻塞。Shell 返回终端端口 `run.accepted` / `run.rejected`；作业 YAML 的 `outputs` 可以改成 `qualified` / `other` 等标签。每个输出仅支持一个消费者，复制需显式声明不同端口；DEBUG 内联 Python 帮助器仍只有 `result`，native 执行器仍只有单一 bytes stdin/stdout。
+
+
 ## 先分清输入数据、参数和输出
 
 | 内容 | 示例 | 程序如何获取 |
@@ -144,7 +181,7 @@ python3 scripts/test-operator-authoring.py
 构建共享运行环境并发布：
 
 ```bash
-docker build -t dacp/operator-python:1.0 examples/operators/python
+docker build -f examples/operators/python/Dockerfile -t dacp/operator-python:1.0 .
 (cd dacp-operator-repository && sbt stage)
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish filter_amount@1.0 \
   --image dacp/operator-python:1.0 --executor python --entrypoint filter_amount \
@@ -239,7 +276,7 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository pub
 完整的 [identity.py](../examples/operators/python/identity_python/1.0/identity.py) 保留字节块或 Arrow 记录批次。共享运行时 [Dockerfile](../examples/operators/python/Dockerfile) 使用 Python 3.12 和 PyArrow 23.0.1。
 
 ```bash
-docker build -t dacp/operator-python:1.0 examples/operators/python
+docker build -f examples/operators/python/Dockerfile -t dacp/operator-python:1.0 .
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish identity_python@1.0 \
   --image dacp/operator-python:1.0 --executor python --entrypoint identity \
   --artifact examples/operators/python/identity_python/1.0/identity.py \

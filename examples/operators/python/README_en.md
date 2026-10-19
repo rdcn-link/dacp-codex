@@ -7,7 +7,7 @@ This example distributes `identity.py` separately from a reusable Python/PyArrow
 Run from the project root, with Docker access and a staged operator repository:
 
 ```bash
-docker build -t dacp/operator-python:1.0 examples/operators/python
+docker build -f examples/operators/python/Dockerfile -t dacp/operator-python:1.0 .
 python3 scripts/package-operator-sources.py
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository seed --operators examples/operators/python --root .operator-catalog
 ```

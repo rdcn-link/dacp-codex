@@ -12,7 +12,7 @@ Run preparation from the repository root. Requires JDK 17, sbt, OpenSSL, Python,
 bash scripts/certs.sh
 python3 examples/union/prepare.py
 python3 -m pip install -e ./dacp-client
-docker build -t dacp/operator-python:1.0 examples/operators/python
+docker build -f examples/operators/python/Dockerfile -t dacp/operator-python:1.0 .
 ```
 
 Preparation uses the existing `server` certificate as X and `client` certificate as C. It creates `.union-demo/x.yaml` and two approval policies valid for 24 hours. Example certificates are for local demonstration only.

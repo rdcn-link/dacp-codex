@@ -7,7 +7,7 @@
 在项目根目录运行，需要 Docker 访问权限和已通过 stage 构建的算子仓库：
 
 ```bash
-docker build -t dacp/operator-python:1.0 examples/operators/python
+docker build -f examples/operators/python/Dockerfile -t dacp/operator-python:1.0 .
 python3 scripts/package-operator-sources.py
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository seed --operators examples/operators/python --root .operator-catalog
 ```

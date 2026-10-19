@@ -1,0 +1,118 @@
+package dacp.operator
+
+import java.io.{InputStream,OutputStream,ByteArrayOutputStream}
+import java.nio.file.{Files,Path}
+import com.fasterxml.jackson.databind.{JsonNode,ObjectMapper}
+import org.apache.arrow.memory.RootAllocator
+import org.apache.arrow.vector.{VectorSchemaRoot,VarBinaryVector}
+import org.apache.arrow.vector.ipc.{ArrowStreamReader,ArrowStreamWriter}
+import org.apache.arrow.vector.types.pojo.Schema
+import dacp.{OperatorFrame,OperatorFrames,PluginSchemas}
+import scala.collection.mutable
+import scala.jdk.CollectionConverters._
+
+/** Business logic only. The runner owns streams, output framing, end events and cleanup. */
+trait Operator {
+  def process(context:OperatorContext):Unit
+  final def main(args:Array[String]):Unit=OperatorRunner.run(args)(process)
+}
+abstract class BytesOperator extends Operator {
+  def transform(chunk:Array[Byte],params:JsonNode):Array[Byte]
+  def outputFormat:String="binary"
+  final def process(ctx:OperatorContext):Unit={
+    val out=ctx.bytesOutput("result",outputFormat)
+    ctx.input("source").foreachBytes(chunk=>out.write(transform(chunk,ctx.params)))
+  }
+}
+abstract class RecordsOperator extends Operator {
+  def outputSchema(input:Schema,params:JsonNode):Schema=input
+  /** Returned roots are borrowed; the SDK serializes synchronously and does not close them. */
+  def transform(batch:VectorSchemaRoot,params:JsonNode):Option[VectorSchemaRoot]
+  final def process(ctx:OperatorContext):Unit={
+    val in=ctx.input("source")
+    val out=ctx.recordsOutput("result",outputSchema(in.schema,ctx.params))
+    in.foreachRecords(root=>transform(root,ctx.params).foreach(out.write))
+  }
+}
+object OperatorRunner {
+  def run(args:Array[String],out:OutputStream=System.out)(process:OperatorContext=>Unit):Unit={
+    require(args.length==3 && args(0)=="operator","expected operator INPUT PARAMS")
+    val ctx=new OperatorContext(Path.of(args(1)),Path.of(args(2)),out)
+    try {Console.withOut(System.err){process(ctx)};ctx.finish()}finally ctx.close()
+  }
+}
+final class OperatorContext(directory:Path,paramsFile:Path,out:OutputStream) extends AutoCloseable {
+  private val mapper=new ObjectMapper()
+  val params:JsonNode=mapper.readTree(Files.readAllBytes(paramsFile))
+  require(params!=null && params.isObject,"params must be a JSON object")
+  private val manifest=mapper.readTree(Files.readAllBytes(directory.resolve("manifest.json")))
+  require(manifest!=null && manifest.isArray,"manifest must be an array")
+  private val entries=manifest.elements.asScala.toVector
+  private def validName(s:String):Boolean=s.matches("[A-Za-z_][A-Za-z0-9_-]{0,127}")
+  require(entries.forall(e=>validName(e.path("port").asText)) && entries.map(_.path("port").asText).distinct.size==entries.size,"invalid or duplicate input port")
+  private val allocator=new RootAllocator()
+  private val names=entries.map(_.path("port").asText).sorted
+  private var index=0
+  private var writing=false
+  private var finished=false
+  private var closed=false
+  private val opened=mutable.Map.empty[String,Input]
+  private val outputs=mutable.LinkedHashMap.empty[String,Output]
+  def inputNames:Vector[String]=names
+  private def active():Unit={require(!closed && !finished,"operator context ended");if(Thread.currentThread().isInterrupted)throw new java.util.concurrent.CancellationException()}
+  private def frame(kind:String,port:String,data:Array[Byte]=Array.emptyByteArray,repr:String="",format:String="",schema:Option[Schema]=None):Unit={
+    active();val h=mapper.createObjectNode().put("type",kind).put("port",port)
+    if(kind=="start") {h.put("representation",repr).put("format",format);schema.foreach(s=>h.put("schema",java.util.Base64.getEncoder.encodeToString(s.serializeAsMessage())))}
+    OperatorFrames.write(out,OperatorFrame(mapper.writeValueAsBytes(h),data))
+  }
+  def input(name:String):Input={active();require(names.contains(name),"unknown input port");opened.getOrElseUpdate(name,new Input(name,entries.find(_.path("port").asText==name).get))}
+  private def output(name:String,repr:String,format:String,schema:Option[Schema]):Output={
+    active();require(validName(name) && !outputs.contains(name),"invalid or duplicate output port")
+    require(!writing,"declare all outputs before writing data")
+    val value=new Output(name,repr,schema);frame("start",name,repr=repr,format=format,schema=schema);outputs(name)=value;value
+  }
+  def bytesOutput(name:String,format:String="binary"):Output=output(name,"bytes",format,None)
+  def recordsOutput(name:String,schema:Schema,format:String="arrow"):Output=output(name,"records",format,Some(schema))
+  final class Input private[OperatorContext](val name:String,entry:JsonNode) {
+    val representation:String=entry.path("representation").asText
+    val format:String=entry.path("format").asText
+    require(Set("bytes","records")(representation),"unsupported input representation")
+    private var reader:ArrowStreamReader=null
+    private var consumed=false
+    private var iterating=false
+    private def open():ArrowStreamReader={
+      active();require(index<names.size && names(index)==name && !consumed && !iterating,"consume inputs once in lexical port order")
+      if(reader==null){
+        val relative=Path.of(entry.path("file").asText)
+        require(!relative.isAbsolute && relative.getNameCount==1 && relative.toString!=".." && relative.toString!=".","invalid input filename")
+        val raw=Files.newInputStream(directory.resolve(relative))
+        try {reader=new ArrowStreamReader(raw,allocator);reader.getVectorSchemaRoot}catch{case t:Throwable=>if(reader!=null)reader.close()else raw.close();throw t}
+        if(representation=="bytes")require(reader.getVectorSchemaRoot.getSchema==PluginSchemas.bytes,"invalid bytes schema")
+      };reader
+    }
+    def schema:Schema=open().getVectorSchemaRoot.getSchema
+    private def foreachBatch(f:VectorSchemaRoot=>Unit):Unit={
+      val r=open()
+      iterating=true
+      try {while({active();r.loadNextBatch()})f(r.getVectorSchemaRoot);consumed=true;index+=1}finally {r.close();reader=null}
+    }
+    /** Roots are borrowed and reused on the next callback; copy values before retaining them. */
+    def foreachRecords(f:VectorSchemaRoot=>Unit):Unit={require(representation=="records","records input required");foreachBatch(f)}
+    def foreachBytes(f:Array[Byte]=>Unit):Unit={require(representation=="bytes","bytes input required");foreachBatch(r=>{
+      val v=r.getVector(0).asInstanceOf[VarBinaryVector]
+      (0 until r.getRowCount).foreach(i=>{require(!v.isNull(i),"null bytes chunk");f(v.get(i))})
+    })}
+    private[OperatorContext] def closeReader():Unit=if(reader!=null){reader.close();reader=null}
+  }
+  final class Output private[OperatorContext](val name:String,repr:String,schema:Option[Schema]) {
+    def write(bytes:Array[Byte]):Unit={active();require(repr=="bytes","bytes output required");writing=true;bytes.grouped(65536).foreach(b=>frame("data",name,b))}
+    /** Serializes before returning; caller keeps ownership of the root. */
+    def write(root:VectorSchemaRoot):Unit={
+      active();require(repr=="records" && schema.contains(root.getSchema),"output schema mismatch");writing=true
+      val bytes=new ByteArrayOutputStream();val writer=new ArrowStreamWriter(root,null,bytes)
+      try {writer.start();writer.writeBatch();writer.end();frame("data",name,bytes.toByteArray)}finally writer.close()
+    }
+  }
+  private[operator] def finish():Unit={active();require(index==names.size,"all inputs must be consumed to Arrow EOS");require(outputs.nonEmpty,"operator must declare outputs");outputs.keys.foreach(p=>frame("end",p));finished=true}
+  def close():Unit=if(!closed){closed=true;var failure:Throwable=null;opened.values.foreach(i=>try i.closeReader()catch{case scala.util.control.NonFatal(t)=>if(failure==null)failure=t else failure.addSuppressed(t)});try allocator.close()catch{case scala.util.control.NonFatal(t)=>if(failure==null)failure=t else failure.addSuppressed(t)};if(failure!=null)throw failure}
+}

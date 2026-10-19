@@ -29,3 +29,6 @@ dependencyOverrides ++= Seq(
   "io.netty" % "netty-codec-socks" % "4.1.110.Final",
   "io.netty" % "netty-handler" % "4.1.119.Final",
   "io.netty" % "netty-transport-native-unix-common" % "4.1.119.Final")
+
+lazy val operatorSdk = RootProject(file("../dacp-operator-sdk"))
+dependsOn(operatorSdk)
