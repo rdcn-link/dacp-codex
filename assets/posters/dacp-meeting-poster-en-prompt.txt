@@ -1,23 +1,31 @@
-Generated using the built-in image_gen tool with assets/dacp-logo.png as the brand reference.
+Generated using the built-in image_gen tool. Edit target: previous meeting poster; brand reference: assets/dacp-logo.png.
 
-Use case: ads-marketing.
-Asset type: finished portrait conference meeting poster for the DACP software project, suitable for printing and digital sharing. High resolution portrait approximately ISO A-series aspect ratio, preferably 2048 x 2896 or larger.
-Input image: supplied DACP logo is a brand reference. Reproduce the existing C-shaped connected-node symbol and exact DACP wordmark faithfully near the top. C means Collaborative. Do not turn the symbol into D.
-Art direction: polished Swiss-inspired technology conference poster, white background, deep navy-blue typography, teal accents, exceptionally clean grid, strong typography, generous margins, clear reading order. Professional and restrained, attractive at a distance. Flat crisp graphic illustration, no photography, no mockup or surrounding room. Full poster fills image.
-Layout: top brand logo; very large two-line headline; concise subheading. Middle: beautiful simple conceptual illustration of three equal autonomous data nodes connected as peers, using blue and teal. Each node contains a minimal database or file symbol; show small flowing batches between nodes, suggesting data collaboration without a central hub. Bottom half: three concise feature blocks, then a prominent GitHub address in footer.
-Use only the following text, spelled exactly, with excellent legibility:
+Use case: text-localization / ads-marketing.
+Asset type: updated finished English portrait conference poster for the DACP software project, high-resolution portrait A-series aspect ratio, preferably 2048 x 2896 or larger.
+Input 1 is the old poster to update. Input 2 is the authoritative CURRENT DACP logo. Preserve the clean Swiss-inspired white, navy and teal conference-poster design and very large readable headline, but update outdated feature copy and the collaboration diagram to accurately reflect the current project. Use the supplied current logo at modest size at the top; faithfully preserve its C-shaped connected-node symbol with PURPLE, TEAL and AMBER nodes and navy DACP wordmark. No alternative logo.
+Use generous print-safe margins, crisp highly legible English text, clear hierarchy, balanced white space. Flat vector-like graphic styling, opaque white background. The poster fills the image, no mockup.
+Layout: compact logo and full protocol name at top; large two-line headline; subtitle. A polished middle diagram shows three autonomous servers A, B, C, each with a small database/file symbol, direct data-stream connections A to B and C to B. A smaller Union controller above connects with fine dashed scheduling/monitoring lines to all three servers; direct data streams must visibly travel BETWEEN servers rather than via Union. Distinguish servers with blue, teal and violet accents. The controller is labelled UNION; optional node labels A, B, C. Do not imply Union is required for standalone access.
+Below the diagram use four compact clearly separated feature blocks in a two-by-two grid. Footer gives technology line, exact project URL, and MVP badge. Do not include GitHub's mascot or any partner logo.
+All text to include, verbatim:
 "DACP"
+"Data Access and Collaboration Protocol"
 "Collaborate across"
 "autonomous data nodes."
-"Data collaboration built on Apache Arrow Flight"
-"AUTONOMOUS BY DESIGN"
-"No central registry. Each node serves its own data."
-"STREAM DATA"
-"Read files and SQL tables through a Python SDK."
-"RUN TASKS NEAR DATA"
-"Coordinate YAML DAGs across nodes with Docker operators."
-"Scala server  /  Python SDK  /  mTLS"
+"Stream data. Run operators. Coordinate workflows."
+"UNION"
+"A"
+"B"
+"C"
+"AUTONOMOUS DATA"
+"Serve files and SQL tables with pluggable catalogs."
+"STREAM FIRST"
+"Read bytes or Arrow records. Process data in batches."
+"COMPUTE NEAR DATA"
+"Java / Scala, Python and native command operators."
+"COORDINATE WITH UNION"
+"Submit YAML workflows. Monitor tasks, health and traffic."
+"Scala servers / Python SDK / Shell / mTLS"
 "Explore the project"
 "github.com/rdcn-link/dacp-codex"
 "MVP"
-Constraints: faithfully communicate an MVP, no invented performance statistics, no claims that data never moves, no partner logos, no QR codes, no extra slogans or body copy. Text must be readable and not clipped. Repository address must be exact. Make the main headline very large. Keep footer comfortably inside print-safe margins. No gradients, glows, 3D, shadows, stock-circuit imagery, or visual clutter. Opaque white background.
+Constraints: this is an MVP; no invented speed, scalability, security, legal or performance guarantees. No claims that data never moves. No claim that all operators require Docker. Preserve exact URL and spellings. No QR code, no extra body text, no gradients, glows, photography, 3D, stock circuits or decorative clutter. Make body text readable when printed on A4.
