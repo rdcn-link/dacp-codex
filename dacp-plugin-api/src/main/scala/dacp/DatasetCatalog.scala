@@ -20,13 +20,11 @@ trait DatasetCatalog extends AutoCloseable {
 case class DatasetCatalogDefinition(provider:String,source:Map[String,Object]=Map.empty) {
   override def toString:String=s"DatasetCatalogDefinition($provider,<private settings>)"
 }
-trait DatasetCatalogProvider {
+trait DatasetCatalogProvider extends Plugin {
   def id:String
   def create(settings:Map[String,Object],context:CatalogContext):DatasetCatalog
 }
 trait CatalogContext extends DatasetContext {
   /** Static configuration, used by the built-in static catalog. */
   def configuredDatasets:Map[String,DatasetDefinition]
-  /** Construct a caller-owned dataset using the installed dataset provider plugins. */
-  def createDataset(definition:DatasetDefinition):PublishedDataset
 }

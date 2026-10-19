@@ -57,6 +57,6 @@ To exercise this JAR and both Python artifact types in real containers, build th
 (cd dacp-server && DACP_TEST_OPERATOR_PACKAGES=1 sbt 'testOnly dacp.OperatorPackageSpec')
 ```
 
-See [operator packaging](../../../docs/operator-packaging.md) for executor plugins, validation, caching, resource limits, and platform restrictions.
+See [operator packaging](../../../docs/operator-packaging_en.md) for executor plugins, validation, caching, resource limits, and platform restrictions.
 
 For complete source examples, wheel packaging, remote file transfer, administrator publication, and execution instructions, see [Write and upload custom operators](../../../docs/operator-authoring_en.md).

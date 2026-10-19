@@ -26,7 +26,7 @@ def main():
             allowed_uri_prefixes=[origin+'/data'], tls_cert=str(ROOT/'examples/certs/node-a.crt'),
             tls_key=str(ROOT/'examples/certs/node-a.key'), tls_ca=str(ROOT/'examples/certs/ca.crt'),
             mode='DEBUG',source_runtimes={'python@1.0': {'executor':'python','image':'dacp/operator-python:1.0'}},
-            max_concurrent_tasks=4,execution_history_directory=str(state/'executions'))
+            max_concurrent_tasks=4,execution_store=dict(provider='file',settings=dict(directory=str(state/'executions'))))
         path=state/'server.yaml';path.write_text(json.dumps(config))
         with (state/'server.log').open('w+') as log:
             process=subprocess.Popen([str(NODE),str(path)],cwd=ROOT/'dacp-server',stdout=log,stderr=subprocess.STDOUT)

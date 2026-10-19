@@ -15,15 +15,17 @@ datasets:
     tables:
       /reports/orders: {table: ORDERS}
       /clients: {table: CUSTOMERS}
-sql_sources:
+sources:
   warehouse:
-    url: "jdbc:h2:../examples/sql/sales;INIT=RUNSCRIPT FROM '../examples/sql/init.sql'"
-    user: sa
-    password: ""
-    schema: PUBLIC
-    tables: [ORDERS, CUSTOMERS]
-    fetch_size: 256
-    query_timeout_seconds: 60
+    provider: jdbc
+    settings:
+      url: "jdbc:h2:../examples/sql/sales;INIT=RUNSCRIPT FROM '../examples/sql/init.sql'"
+      user: sa
+      password: ""
+      schema: PUBLIC
+      tables: [ORDERS, CUSTOMERS]
+      fetch_size: 256
+      query_timeout_seconds: 60
 allowed_uri_prefixes:
   - dacp://localhost:8815/files
   - dacp://localhost:8815/sales

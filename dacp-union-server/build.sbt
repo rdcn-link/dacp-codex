@@ -1,7 +1,7 @@
 name := "dacp-union-server"
 scalaVersion := "2.13.16"
 lazy val worker = RootProject(file("../dacp-server"))
-dependsOn(worker)
+dependsOn(worker % "compile->compile;runtime->runtime;test->runtime")
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
 Compile / mainClass := Some("dacp.unionserver.Main")
 fork := true

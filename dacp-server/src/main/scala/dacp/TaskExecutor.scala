@@ -31,7 +31,7 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
           val runtime=config.sourceRuntimes.getOrElse(code.runtime,throw new IllegalArgumentException("source runtime is not configured"))
           val artifact=temporary.resolve("operator.source")
           Files.writeString(artifact,code.source)
-          val command=OperatorExecutors.sourceCommand(runtime.executor,OperatorProgram(code.runtime,code.entrypoint,Some(artifact)),"/operator/operator.source")
+          val command=config.plugins.byId(classOf[OperatorExecutor],runtime.executor).sourceCommand(OperatorProgram(code.runtime,code.entrypoint,Some(artifact)),"/operator/operator.source")
           val contract=PortContract(Set("bytes","records"),Set.empty,None)
           ResolvedOperator(docker.inspectImageCmd(runtime.image).exec().getId,Some(artifact),Some("/operator/operator.source"),command,inputs.keys.map(_->contract).toMap,Map("result"->contract))
       }

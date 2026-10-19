@@ -38,7 +38,7 @@ with Source.open("dacp://localhost:8815/sales") as ds:
 
 ## PostgreSQL
 
-已捆绑 PostgreSQL 和 H2 JDBC 驱动。替换 `sql_sources` 下的私有 `warehouse` 数据源，并更新其显式公开映射：
+已捆绑 PostgreSQL 和 H2 JDBC 驱动。替换 `sources` 下的私有 `warehouse` 数据源，并更新其显式公开映射：
 
 ```yaml
 datasets:
@@ -49,20 +49,22 @@ datasets:
     tables:
       /reports/orders: {table: orders}
       /clients: {table: customers}
-sql_sources:
+sources:
   warehouse:
-    url: jdbc:postgresql://db-host:5432/sales?sslmode=verify-full
-    user_env: DACP_DB_USER
-    password_env: DACP_DB_PASSWORD
-    schema: public
-    tables: [orders, customers]
-    fetch_size: 256
-    query_timeout_seconds: 60
+    provider: jdbc
+    settings:
+      url: jdbc:postgresql://db-host:5432/sales?sslmode=verify-full
+      user_env: DACP_DB_USER
+      password_env: DACP_DB_PASSWORD
+      schema: public
+      tables: [orders, customers]
+      fetch_size: 256
+      query_timeout_seconds: 60
 ```
 
 启动节点前设置上述环境变量，并为 PostgreSQL 驱动配置可信的服务器 CA，以使用 `verify-full`。数据库账号需要对公开表具有 SELECT 权限，并对 schema 具有 USAGE 权限。凭据保留在服务器上，不会发送给 DACP 客户端。也支持直接填写 `user` / `password`；环境变量字段优先，引用的变量缺失时配置加载失败。每个私有 SQL 数据源描述一个数据库 schema。如需组合多个数据源，可以使用 `provider: mixed` 并配置 Item 级 `sql` 绑定。
 
-使用 `provider: directory` 和 `source.root` 自动发现文件，或显式配置 `sqldb` / `mixed` 的公开 Item 映射及私有 `sql_sources`。未映射的私有数据源和表不会公开。文件映射使用 `{file: /private/path.csv}`；SQL 映射使用 `{sql: warehouse, table: private_table}`。客户端可见的名称和路径是独立选择的别名。每个私有 SQL 数据源支持：
+使用 `provider: directory` 和 `source.root` 自动发现文件，或显式配置 `sqldb` / `mixed` 的公开 Item 映射及私有 `sources`。未映射的私有数据源和表不会公开。文件映射使用 `{file: /private/path.csv}`；SQL 映射使用 `{sql: warehouse, table: private_table}`。客户端可见的名称和路径是独立选择的别名。每个私有 SQL 数据源支持：
 
 | 字段 | 含义 |
 |---|---|

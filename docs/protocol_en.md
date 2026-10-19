@@ -22,7 +22,7 @@ A job contains tasks. A task's `id` identifies dependency references; its `title
 | Operator repository search, versions, and artifact downloads | HTTP/HTTPS |
 | Public read-only Union dashboard | HTTP for status and history; it does not authorize computation submission |
 
-The shared Union transport module limits JSON messages to 1 MiB. For exact actions, tickets, and fields, see the [Union protocol](union_en.md), [technical reference](reference_en.md), `proto/dacp.proto`, and `dacp-union-protocol`. The operator process port framing protocol is an executor interface, described in the [operator stream contract](operator-streams.md), rather than the client Flight interface.
+The shared Union transport module limits JSON messages to 1 MiB. For exact actions, tickets, and fields, see the [Union protocol](union_en.md), [technical reference](reference_en.md), `proto/dacp.proto`, and `dacp-union-protocol`. The operator process port framing protocol is an executor interface, described in the [operator stream contract](operator-streams_en.md), rather than the client Flight interface.
 
 ## Identity, trust, and authorization
 
@@ -46,4 +46,4 @@ Nodes and Union persist execution metadata; Union also records job scripts and s
 
 ## Implementation and extensions
 
-Core owns public contracts, transport, authorization, namespaces, and resource management. Plugins extend data backends, formats, structured browsing, and executors. Changes to representations or wire contracts must update shared interfaces, servers, Python/Scala clients, tests, and bilingual documentation together. See the [plugin architecture](plugins.md) for implemented and planned extension boundaries.
+Core owns public contracts, transport, authorization, namespaces, and resource management. Plugins extend data backends, formats, structured browsing, and executors. Changes to representations or wire contracts must update shared interfaces, servers, Python/Scala clients, tests, and bilingual documentation together. See the [plugin architecture](plugins_en.md) for implemented and planned extension boundaries.

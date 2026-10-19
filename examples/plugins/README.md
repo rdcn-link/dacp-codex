@@ -24,7 +24,7 @@ cp examples/plugins/target/scala-2.13/dacp-example-plugins_2.13-0.1.0-SNAPSHOT.j
 将以下片段加入完整服务器配置（还需配置监听、TLS 和 URI 白名单）。相对路径基于服务器工作目录解析；本示例从 `dacp-server/` 启动：
 
 ```yaml
-plugin_directory: ../plugins
+plugin_directory: ../.dacp-plugins
 datasets:
   greeting:
     provider: example-message

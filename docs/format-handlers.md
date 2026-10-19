@@ -1,64 +1,66 @@
-# Adding a format handler
+# 添加格式处理器
 
-The server resolves file mappings through `Formats`. `SqlAdapter` handles SQL separately. Detection precedence is an explicit configuration override, compound container suffixes, provider signature matches (at most eight bytes), provider extension matches, then binary fallback. Extensions are lowercase and case-insensitive on filenames. IDs match `[a-z][a-z0-9-]*`; `sql` is reserved. Duplicate IDs or extensions fail registry initialization.
+服务器通过每个插件环境的 `Formats` 解析文件映射，`SqlAdapter` 单独处理 SQL。识别优先级为显式配置、复合归档后缀、签名匹配（最多八字节）、扩展名匹配、二进制回退。扩展名声明为小写，文件名匹配不区分大小写。ID 符合 `[a-z][a-z0-9-]*`，`sql` 保留。重复 ID 或扩展名导致注册表初始化失败。
 
-Implement `dacp.FormatHandler` in a JAR compiled against the standalone `dacp-plugin-api` with a `Provided` dependency. Scala providers use its trait directly; Java implementations can implement the generated JVM interface. Scala trait defaults are easiest to reuse from Scala. A complete independently built plugin project is in [examples/plugins](../examples/plugins/README.md). Providers must have a public no-argument constructor.
+在独立 JAR 中实现 `dacp.FormatHandler`，编译依赖独立的 `dacp-plugin-api`，范围为 `Provided`。Scala 直接实现 trait，Java 实现对应 JVM 接口；Scala trait 默认方法更适合通过 Scala 适配器复用。完整独立项目见 [examples/plugins](../examples/plugins/README.md)。实现需要公开无参构造器。
 
 ```scala
 package example
 
-import dacp.{Records, FileOptions, FormatHandler}
-import java.nio.file.Path
+import dacp.{ByteSource, Records, FileOptions, FormatHandler}
 import scala.jdk.CollectionConverters._
 
 class LineProvider extends FormatHandler {
   val id = "lines"
   val extensions = Set("lines")
   override val records = true
-  override def rows(path: Path, options: FileOptions): Records.Rows =
+  override def rows(source: ByteSource, options: FileOptions): Records.Rows =
     new Records.Rows {
-      private val input = java.nio.file.Files.lines(path)
+      private val input = new java.io.BufferedReader(
+        new java.io.InputStreamReader(source.open(() => ()), java.nio.charset.StandardCharsets.UTF_8))
       val names = Seq("value")
-      val iterator = input.iterator().asScala.map(line => Seq(line))
+      val iterator = input.lines().iterator().asScala.map(line => Seq(line))
       def close(): Unit = input.close()
     }
 }
 ```
 
-Add `META-INF/services/dacp.FormatHandler` to the provider JAR:
+在 JAR 中添加 `META-INF/services/dacp.FormatHandler`：
 
 ```text
 example.LineProvider
 ```
 
-Put the JAR and its private dependencies in the configured `plugin_directory` and restart. The registry discovers it through `ServiceLoader`. A Java provider must implement Scala collection signatures; a small Scala adapter can delegate parsing to any Java library, as Excel delegates to Apache POI.
+将插件及私有依赖放入 `plugin_directory`，重启后由 ServiceLoader 发现。Java 实现需遵守 Scala 集合签名；可用小型 Scala 适配器调用 Java 解析库，Excel 对 Apache POI 的适配就是一个例子。
 
-`rows` supplies ordered column names, a lazy iterator, and an idempotent `close`. Shared default methods infer a schema from a bounded sample, stream record batches, and compute explicit counts. Override `schema`, `stream`, or `count` for formats such as Parquet that have specialized readers. `cheapSchema` and `cheapCount` run during listing and must avoid full data scans. Detection, listing, and reading must agree on the format ID and advertised capability. A format with `records = false` exposes bytes only.
+`rows` 提供有序列名、惰性迭代器和幂等 `close`。默认方法根据有界样本推断 schema、输出记录批次并计算显式计数。Parquet 等专用读取器可覆盖 `schema`、`stream`、`count`。列表中的 `cheapSchema`、`cheapCount` 必须避免全量扫描。识别、列表和读取对格式 ID 和公开能力的解释必须一致。`records = false` 只提供 bytes。
 
-The shared file reader sends original bytes without conversion. Opening records must not alter the source. Implementations must close parser resources on success, failure, and cancellation, and call the supplied `demand` callback before reading each record batch. Third-party exceptions must be mapped to `FormatFailure` with a fixed public message, without filenames, sheet names, data values, or library diagnostics. SDKs translate these into `FORMAT_ERROR`.
+输入是可重新打开的 `ByteSource`，不要求本地 `Path`。源提供公开文件名、可选大小/版本、输入流和可选范围读取。源插件负责连接、认证及同一操作中的版本一致性。所有打开的流由调用方关闭。CSV/NDJSON 直接读流，Parquet 使用大小和范围读取；Excel 显式使用 `ByteSource.materialize` 创建必要的临时文件并随读取器关闭清理。`localPath` 只是一种可选优化。源不得将凭据或私有 URI 放入 `name`。
 
-`FileOptions` carries private `format`, ordered Arrow columns, and a `parameters: Map[String,Object]` populated from YAML `options`. Override `validateOptions` to validate handler-owned keys, types, and values. The default rejects all parameters. Excel owns `options.sheet` and `options.header_row`; shared code contains no Excel-specific option validation. Nested YAML values retain Java map/list representations. The options stay server-side: public tickets contain only the dataset, logical Item path, and view. Schema is unavailable in ordinary CSV/NDJSON/Excel listings; opening records infers it or validates configured columns. Folder properties remain unknown and never visit descendants.
+共享文件读取器不转换原始 bytes，打开 records 不得修改源。实现必须在成功、失败和取消时关闭解析器，并在每批读取前调用 `demand`。第三方错误应转换为固定公共消息的 `FormatFailure`，不包含文件名、工作表名、数据值或库诊断。SDK 将其转换为 `FORMAT_ERROR`。
 
-Excel uses HSSF events for XLS and SAX/XSSF events for XLSX, a 16-row queue, and cancellation checks between parser events. Shared-string dictionaries and individual rows/cells still consume memory. Numeric dates remain Excel serial values. Only cached formula results are read; formulas are never recalculated. Multiple sheets require a configured selection. This is read support, without workbook editing or spreadsheet rendering.
+`FileOptions` 包含私有 `format`、有序 Arrow columns 和由 YAML `options` 填充的 `parameters: Map[String,Object]`。覆盖 `validateOptions` 校验处理器专用键、类型和值，默认拒绝所有参数。Excel 自行处理 `options.sheet`、`options.header_row`，核心不含 Excel 校验分支。嵌套 YAML 保留 Java map/list。设置留在服务器端；公开 ticket 仅包含 Dataset、逻辑 Item 路径和视图。普通 CSV/NDJSON/Excel 列表不推断 schema，打开 records 时推断或校验配置列。folder 属性保持未知，不访问后代。
 
-## Container readers
+Excel 对 XLS 使用 HSSF 事件，对 XLSX 使用 SAX/XSSF，队列最多 16 行，解析事件之间检查取消。共享字符串字典和单行/单元格仍占内存。数值日期保留 Excel 序列值；只读公式缓存，不重新计算。多工作表必须配置选择。仅支持读取，不提供编辑或渲染。
 
-`ContainerReader` is the separate interface for enumerating children and staging an entry as a seekable file. Register a reader in `META-INF/services/dacp.ContainerReader`. Declare its `id`, `extensions`, and optional compound filename matcher; DACP automatically creates the matching format entry. Do not also register a format with the same ID. Built-in and external readers share the same interface. Duplicate IDs/extensions and ambiguous filename matches are rejected.
+## 归档读取器
 
-`NamespaceAdapter` publishes mapped containers as folders with a bytes view returning the original file, infers parent folders, and passes staged children to existing format readers. All folder properties stay unknown. Nested containers remain binary data. GZIP's one child is named from the public alias, ignoring private filenames. Compound `.tar.gz` and `.tgz` suffixes resolve before ordinary extension detection.
+`ContainerReader` 独立负责枚举子项、将条目暂存为可寻址文件。通过 `META-INF/services/dacp.ContainerReader` 注册，声明 `id`、`extensions` 和可选复合文件名匹配器；DACP 自动生成对应格式条目，不应另注册相同 ID 的格式。内置与外部读取器共用接口，拒绝重复 ID/扩展名和歧义匹配。
 
-ZIP listings use the archive directory without decompressing payloads. TAR and compressed TAR scan sequentially, with decompression for the latter; GZIP listings only read the header. Entry reads stage one file and clean it on success, failure, or cancellation. TAR scans validate the whole archive, including entries after the requested one, before exposing staged content. Scans and decompression must honor the supplied demand/cancellation callback.
+`NamespaceAdapter` 把映射归档发布为 folder，bytes 返回原文件，推导父目录，并将暂存条目交给格式读取器。folder 属性保持未知。嵌套归档保持二进制数据。GZIP 唯一子项从公开别名命名，不使用私有文件名。`.tar.gz`、`.tgz` 优先于普通扩展名识别。
 
-Limits are 10,000 entries, 512 MiB per decompressed entry, and 2 GiB total declared size. TAR also bounds total decompressed bytes to that size plus 16 MiB of metadata/padding. Duplicate entries, invalid paths, and file/parent conflicts are rejected. TAR links, sparse files, and special entries are unsupported. Container roots reject records; their data children advertise views through the regular format registry.
+ZIP 列表读取归档目录，不解压载荷；TAR 和压缩 TAR 顺序扫描，后者需解压；GZIP 列表只读头。读取条目时暂存一个文件，在成功、失败或取消时清理。TAR 暴露暂存内容前校验整个归档，包括目标之后的条目。扫描和解压遵守 demand/取消回调。
 
-## Native structured files
+最多 10,000 个条目，单条解压后最多 512 MiB，声明总大小最多 2 GiB。TAR 的解压总量还限制为该大小加 16 MiB 元数据/填充。拒绝重复条目、无效路径和文件/父目录冲突。不支持 TAR 链接、稀疏文件和特殊条目。归档根拒绝 records，数据子项通过常规格式注册表声明视图。
 
-Implement `StructuredFileHandler` (a `FormatHandler`) and register it in the format service file. `openStructure(path, options, context, check)` returns a request-scoped `DatasetAccess` rooted at `/`. It can expose logical objects without extracting files. List public absolute paths relative to that root; the server prefixes the published file alias. Implement both recursive `list()` and immediate-child `list(path)`, plus `describe`, `count`, and synchronous `stream`. Child Items must explicitly advertise their views when using native formats that do not have a file handler. Schema must match the selected stream; choose the schema of the first advertised view in Item metadata. The server closes access handles on success and failure. Honor `check` during discovery and `ready` before reading and emitting batches, and use `close` to release file handles even after cancellation.
+## 原生结构化文件
 
-The file root is a folder with original-file bytes and unknown properties. Folder metadata does not open its structure or compute descendants. Nested logical folders also have unknown properties. Native child bytes have handler-defined semantics that must be documented; the root bytes always preserve the physical file. Ordinary listing must not compute expensive counts. Startup counting skips structured roots.
+实现 `StructuredFileHandler` 并在格式服务文件注册。`openStructure(source, options, context, check)` 返回以 `/` 为根的请求级 `DatasetAccess`，可以直接暴露逻辑对象，无需提取文件。公开绝对路径相对结构根，服务器加上发布文件别名前缀。实现递归 `list()`、直接子项 `list(path)`、`describe`、`count` 和同步 `stream`。子 Item 使用无文件处理器的原生格式时，必须明确声明视图；schema 匹配所选流，元数据使用首个公开视图的 schema。核心在成功和失败后关闭句柄。发现时遵守 `check`，读写批次前遵守 `ready`；取消后也要释放文件句柄。
 
-Use `PluginChecks.listing(access)` for metadata contract tests. Streaming, cancellation, private errors, and cleanup tests are demonstrated by [PluginSpec](../dacp-server/src/test/scala/dacp/PluginSpec.scala). NetCDF and FITS plugins can expose groups, variables, or HDUs through this interface; actual parsers and array/image views are not included. Specify any record projection explicitly rather than silently flattening arrays.
+文件根是带原文件 bytes 的 folder，属性未知；根元数据不打开结构或计算后代。嵌套 folder 属性同样未知。子对象 bytes 的语义由处理器说明，根 bytes 始终保留原文件。普通列表不得计算昂贵计数，启动计数跳过结构化根。
 
-## Records scans
+使用 `PluginChecks.listing(access)` 检查元数据契约。[PluginSpec](../dacp-server/src/test/scala/dacp/PluginSpec.scala) 展示流、取消、私有错误和清理测试。NetCDF/FITS 可通过该接口暴露组、变量和 HDU，但尚不包含解析器及数组/图像视图。记录投影必须明确设计，不能静默展开数组。
 
-`FormatHandler.scan` supplies bounded batch filtering, projection, and early limit termination for every records handler. Override it to optimize the source reader; directory-backed and mixed datasets invoke the same contract, including for archive children. Native structured children use `DatasetAccess.scan`. See [records scan contracts](records-scans.md#plugin-implementation-contract).
+## 记录扫描
+
+`FormatHandler.scan` 为所有 records 处理器提供有界批次过滤、投影和到达限制后的提前终止。可覆盖以优化源读取；directory、mixed 及归档子项使用同一契约。原生结构化子项使用 `DatasetAccess.scan`。见[记录扫描契约](records-scans.md#插件实现契约)。

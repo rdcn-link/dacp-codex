@@ -17,7 +17,7 @@ case class FileOptions(format: Option[String] = None, columns: Option[Schema] = 
 }
 
 /** Implementations must release resources on close and honor demand before each batch. */
-trait FormatHandler {
+trait FormatHandler extends Plugin {
   def id: String
   def extensions: Set[String]
   def records: Boolean = false
@@ -25,28 +25,29 @@ trait FormatHandler {
     require(options.parameters.isEmpty, "this format does not accept reader parameters")
   def signatureMatches(header: Array[Byte]): Boolean = false
   def matches(header: Array[Byte], extension: String): Boolean = extensions(extension)
-  def rows(path: Path, options: FileOptions): Records.Rows = throw new IllegalArgumentException("unsupported stream view")
-  def cheapSchema(path: Path, options: FileOptions): Option[Schema] = None
-  def cheapCount(path: Path, options: FileOptions): Option[Long] = None
-  def schema(path: Path, options: FileOptions, batch: Int, sample: Int): Schema =
+  def rows(path: ByteSource, options: FileOptions): Records.Rows = throw new IllegalArgumentException("unsupported stream view")
+  def cheapSchema(path: ByteSource, options: FileOptions): Option[Schema] = None
+  def cheapCount(path: ByteSource, options: FileOptions): Option[Long] = None
+  def schema(path: ByteSource, options: FileOptions, batch: Int, sample: Int): Schema =
     if (!records) PluginSchemas.bytes else Records.inferSchema(rows(path,options),batch,sample,options.columns)
-  def count(path: Path, options: FileOptions): Option[Long] = if (!records) None else {
+  def count(path: ByteSource, options: FileOptions): Option[Long] = if (!records) None else {
     val reader = rows(path,options)
     try Some(reader.iterator.foldLeft(0L)((n,_) => Math.addExact(n,1L))) finally reader.close()
   }
   /** Optional source optimization; default preserves semantics with bounded batch filtering. */
-  def scan(path: Path, options: FileOptions, request: Scan, allocator: BufferAllocator, batch: Int, sample: Int,
+  def scan(path: ByteSource, options: FileOptions, request: Scan, allocator: BufferAllocator, batch: Int, sample: Int,
            listener: org.apache.arrow.flight.FlightProducer.ServerStreamListener, demand: () => Unit): Unit = {
     require(records,"scan options require records view")
     ScanStreams.stream(request,allocator,listener) { filtered =>
       stream(path,options,allocator,batch,sample)(root => filtered.start(root),_ => filtered.putNext(),demand)
     }
   }
-  def stream(path: Path, options: FileOptions, allocator: BufferAllocator, batch: Int, sample: Int)(
+  def stream(path: ByteSource, options: FileOptions, allocator: BufferAllocator, batch: Int, sample: Int)(
       start: VectorSchemaRoot => Unit, emit: VectorSchemaRoot => Unit, demand: () => Unit): Unit = {
-    val root = VectorSchemaRoot.create(schema(path,options,batch,sample),allocator)
+    val source=ByteSource.withCheck(path,demand)
+    val root = VectorSchemaRoot.create(schema(source,options,batch,sample),allocator)
     try {
-      val reader = rows(path,options)
+      val reader = rows(source,options)
       try {
         start(root)
         val iterator = reader.iterator
@@ -63,6 +64,6 @@ trait FormatHandler {
 
 /** Native logical objects inside a file; children need not be extracted as files. */
 trait StructuredFileHandler extends FormatHandler {
-  def openStructure(path: Path, options: FileOptions, context: DatasetContext,
+  def openStructure(path: ByteSource, options: FileOptions, context: DatasetContext,
                     check: () => Unit): DatasetAccess
 }

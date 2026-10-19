@@ -42,7 +42,7 @@ object OperatorLibrary {
     val lock = c.lock()
     try f finally { lock.release(); c.close() }
   }
-  private def plan(reference: String, image: String, executor: String, entrypoint: String,
+  private def plan(config: Config, reference: String, image: String, executor: String, entrypoint: String,
                    artifact: Option[Path], filename: Option[String], ports: JsonNode, configuration: JsonNode): ResolvedOperator = {
     val target = filename.map { name =>
       require(name.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*"), "invalid artifact filename")
@@ -51,7 +51,7 @@ object OperatorLibrary {
     require(configuration.isObject, "executor_config must be a mapping")
     val settings = Data.mapper.convertValue(configuration,classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap
     val inputs = OperatorPorts.read(ports.path("inputs")); val outputs = OperatorPorts.read(ports.path("outputs"))
-    val command = OperatorExecutors.command(executor, OperatorProgram(reference, entrypoint, artifact, settings,
+    val command = config.plugins.byId(classOf[OperatorExecutor],executor).command( OperatorProgram(reference, entrypoint, artifact, settings,
       inputs.map { case (k,v) => k -> v.representations }, outputs.map { case (k,v) => k -> v.representations }), target)
     ResolvedOperator(image, artifact, target, command, inputs, outputs)
   }
@@ -69,7 +69,7 @@ object OperatorLibrary {
       artifact.foreach(f => require(Files.isRegularFile(f) && Files.size(f) > 0 && Files.size(f) <= config.operatorMaxBytes, "invalid operator artifact size"))
       try {
         val image = docker.inspectImageCmd(m("image").toString).exec().getId
-        return plan(reference, image, m.getOrElse("executor", "container").toString, m.getOrElse("entrypoint", "").toString,
+        return plan(config,reference, image, m.getOrElse("executor", "container").toString, m.getOrElse("entrypoint", "").toString,
           artifact, artifact.map(_.getFileName.toString), Data.mapper.valueToTree[JsonNode](m.asJava), Data.mapper.valueToTree[JsonNode](m.getOrElse("executor_config",new java.util.LinkedHashMap[String,Object]())))
       } catch { case _: com.github.dockerjava.api.exception.NotFoundException => () }
     }
@@ -106,7 +106,7 @@ object OperatorLibrary {
           val artifact = Option(m.get("artifact")).map(blob)
           val execution = m.path("execution")
           val image = runtime.path("image").asText
-          val resolved = plan(reference, image, execution.path("executor").asText, execution.path("entrypoint").asText,
+          val resolved = plan(config,reference, image, execution.path("executor").asText, execution.path("entrypoint").asText,
             artifact, Option(m.get("artifact")).map(_.path("filename").asText), m, Option(execution.get("config")).getOrElse(Data.mapper.createObjectNode()))
           try docker.inspectImageCmd(image).exec() catch {
             case _: com.github.dockerjava.api.exception.NotFoundException =>

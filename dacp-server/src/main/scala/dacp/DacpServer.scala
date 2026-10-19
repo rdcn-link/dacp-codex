@@ -18,6 +18,7 @@ final class DacpServer private(config:Config) extends AutoCloseable {
     try {
       config.initializeDatasets()
       allocator=new RootAllocator(Long.MaxValue)
+      config.accessLog
       config.executionHistory
       tasks=new TaskService(config,allocator,new TaskExecutor(config,allocator))
       union=config.union.map(s=>new UnionWorker(config,s,allocator))
@@ -53,6 +54,8 @@ object DacpServer {
     private var file:Option[Path]=None
     private var supplied:Option[Config]=None
     private var catalogInstance:Option[DatasetCatalog]=None
+    private var pluginInstance:Option[(PluginEnvironment,Boolean)]=None
+    def plugins(value:PluginEnvironment,owned:Boolean=false):Builder={require(!built && value!=null,"invalid plugins or reused builder");pluginInstance=Some(value->owned);this}
     private var built=false
     def configFile(path:String):Builder=configFile(Path.of(path))
     def configFile(path:Path):Builder={require(!built,"builder already used");file=Some(path);supplied=None;this}
@@ -62,8 +65,8 @@ object DacpServer {
       require(!built,"builder already used")
       require(file.isDefined || supplied.isDefined,"configFile or config required")
       val config=supplied match {
-        case Some(c)=>catalogInstance.foreach(c.installCatalog);c
-        case None=>Config.load(file.get,catalogInstance)
+        case Some(c)=>catalogInstance.foreach(c.installCatalog);pluginInstance.foreach{case(p,owned)=>c.installPlugins(p,owned)};c
+        case None=>Config.load(file.get,catalogInstance,pluginInstance.map(_._1),pluginInstance.exists(_._2))
       }
       built=true
       new DacpServer(config)

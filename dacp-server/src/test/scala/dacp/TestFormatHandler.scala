@@ -7,5 +7,5 @@ class TestFormatHandler extends FormatHandler {
   val id = "test-format"
   val extensions = Set("dacptest")
   override val records = true
-  override def rows(path: Path, options: FileOptions): Records.Rows = Data.delimitedRows(path,"csv")
+  override def rows(path: ByteSource, options: FileOptions): Records.Rows = DelimitedRows.read(path,"csv")
 }

@@ -12,6 +12,10 @@ import scala.jdk.CollectionConverters._
 import dacp.protocol.Metadata
 
 class ContainerSpec extends AnyFunSuite {
+  private val plugins=new PluginEnvironment()
+  private val Formats=plugins.formats
+  private val Containers=plugins.containers
+
   private val csv = "id,name\n1,one\n2,two\n".getBytes("UTF-8")
   private def gzip(path: Path, bytes: Array[Byte]): Unit = {
     val out = new GZIPOutputStream(Files.newOutputStream(path))
@@ -27,7 +31,7 @@ class ContainerSpec extends AnyFunSuite {
     bytes.toByteArray
   }
   private def config(dir: Path, file: Path, alias: String = "/archive"): Config =
-    Config("localhost",8815,"localhost",Map("public" -> DatasetDefinition.mixed(Seq(PublishedItem(alias,file=Some(file))))),
+    Config("localhost",8815,"localhost",Map("public" -> FileDatasets.mixed(Seq(PublishedItem(alias,file=Some(file))))),
       Seq("dacp://localhost:8815/public"),dir,dir,dir)
 
   for ((suffix,format) <- Seq("tar" -> "tar","tar.gz" -> "tar-gzip","TGZ" -> "tar-gzip")) {
@@ -38,10 +42,10 @@ class ContainerSpec extends AnyFunSuite {
         val bytes = tar(Seq("./" -> Array.emptyByteArray,"./reports/orders.csv" -> csv,"empty/" -> Array.emptyByteArray,
           "nested.tar" -> tar(Seq.empty)))
         if (format == "tar") Files.write(file,bytes) else gzip(file,bytes)
-        assert(Formats.detect(file).id == format)
-        val c = config(dir,file); val ns = new NamespaceAdapter(DatasetProviders.mixedBindings(c.datasets("public")),c)
+        assert(Formats.detect(ByteSource.local(file)).id == format)
+        val c = config(dir,file); val ns = new NamespaceAdapter(DatasetPublication.mixedBindings(c.datasets("public")),c)
         val root = ns.list("/").head
-        assert(root.kind == "folder" && root.format == format && NamespaceAdapter.views(root) == Seq("bytes"))
+        assert(root.kind == "folder" && root.format == format && plugins.views(root) == Seq("bytes"))
         assert(root.totalSizeBytes.isEmpty && root.recordCount.isEmpty && root.lastModifiedTimeMs.isEmpty)
         assert(ns.list("/archive").map(_.path) == Seq("/archive/empty","/archive/nested.tar","/archive/reports"))
         assert(ns.list("/archive/reports").head.format == "csv")
@@ -81,7 +85,7 @@ class ContainerSpec extends AnyFunSuite {
       }
       // Preserve an absolute name in a raw header (the writer normalizes absolute paths).
       for ((name,flag,size) <- Seq(("/absolute",TarConstants.LF_NORMAL,0L),("link",TarConstants.LF_SYMLINK,0L),
-        ("hardlink",TarConstants.LF_LINK,0L),("huge",TarConstants.LF_NORMAL,Containers.MaxEntryBytes+1))) {
+        ("hardlink",TarConstants.LF_LINK,0L),("huge",TarConstants.LF_NORMAL,ZipArchive.MaxEntryBytes+1))) {
         val e = new TarArchiveEntry(name,flag,true); e.setSize(size); e.setLinkName("/private/target")
         val header = new Array[Byte](512); e.writeEntryHeader(header)
         Files.write(file,header ++ new Array[Byte](1024))
@@ -118,7 +122,7 @@ class ContainerSpec extends AnyFunSuite {
     try {
       val file = dir.resolve("private.tar.gz"); gzip(file,tar(Seq("reports/orders.csv" -> csv)))
       val gz = dir.resolve("private.csv.gz"); gzip(gz,csv)
-      val c = config(dir,file).copy(datasets=Map("public" -> DatasetDefinition.mixed(Seq(PublishedItem("/archive",file=Some(file)),PublishedItem("/orders.csv.gz",file=Some(gz))))))
+      val c = config(dir,file).copy(datasets=Map("public" -> FileDatasets.mixed(Seq(PublishedItem("/archive",file=Some(file)),PublishedItem("/orders.csv.gz",file=Some(gz))))))
       val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()
       try {

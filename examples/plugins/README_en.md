@@ -24,7 +24,7 @@ cp examples/plugins/target/scala-2.13/dacp-example-plugins_2.13-0.1.0-SNAPSHOT.j
 Add this fragment to a complete server configuration (including listener, TLS, and URI allowlist settings). Relative paths resolve against the server working directory; this example starts from `dacp-server/`:
 
 ```yaml
-plugin_directory: ../plugins
+plugin_directory: ../.dacp-plugins
 datasets:
   greeting:
     provider: example-message

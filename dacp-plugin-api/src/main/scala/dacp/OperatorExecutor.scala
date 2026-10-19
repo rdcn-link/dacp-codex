@@ -14,7 +14,7 @@ case class OperatorCommand(entrypoint: Option[Vector[String]] = None,
                            arguments: Vector[String] = Vector("operator", "/input", "/input/params.json"),
                            environment: Map[String, String] = Map.empty,
                            executableScratch: Boolean = false)
-trait OperatorExecutor {
+trait OperatorExecutor extends Plugin {
   /** Source compilers/launchers execute exclusively inside the isolated runtime container. */
   def sourceCommand(program: OperatorProgram, artifactPath: String): OperatorCommand =
     throw new IllegalArgumentException(s"executor $id does not support source")

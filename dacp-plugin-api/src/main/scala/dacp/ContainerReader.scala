@@ -5,7 +5,7 @@ import java.nio.file.Path
 case class ContainerEntry(name: String, directory: Boolean, size: Option[Long], modified: Option[Long])
 
 /** Container readers enumerate logical children; format readers interpret each child's content. */
-trait ContainerReader {
+trait ContainerReader extends Plugin {
   def id: String
   def extensions: Set[String]
   def matchesName(name: String): Boolean = extensions(name.split("\\.").last.toLowerCase(java.util.Locale.ROOT))

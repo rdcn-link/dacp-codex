@@ -9,7 +9,7 @@
 默认的 `static` 目录从配置中的 `datasets` 构建数据集。动态目录使用以下配置，不能同时声明非空的 `datasets`：
 
 ```yaml
-plugin_directory: ./plugins
+plugin_directory: ./.dacp-plugins
 dataset_catalog:
   provider: example-jdbc-catalog
   source:
@@ -54,7 +54,7 @@ trait DatasetCatalogProvider {
 }
 ```
 
-`DatasetInfo` 只包含公开名称 `name`。`CatalogContext.createDataset(definition)` 复用已安装的 Dataset provider；`publish` 和 `openNamespace` 复用文件与 SQL 映射；原生后端也可以直接实现 `PublishedDataset`。不要将科学数组、图像或分组隐式转换成记录。
+`DatasetInfo` 只包含公开名称 `name`。`CatalogContext.createDataset(definition)` 复用已安装的 Dataset provider；传入 `FileDatasets.mixed` 可复用文件与 SQL 映射；原生后端也可以直接实现 `PublishedDataset`。不要将科学数组、图像或分组隐式转换成记录。
 
 实现类提供公开无参构造函数，并在 JAR 中加入：
 

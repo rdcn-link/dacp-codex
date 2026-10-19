@@ -9,6 +9,10 @@ import dacp.protocol.Metadata
 import scala.jdk.CollectionConverters._
 
 class PluginSpec extends AnyFunSuite {
+  private val plugins=new PluginEnvironment()
+  private val Formats=plugins.formats
+  private val Containers=plugins.containers
+
   test("independent example plugins and registered containers work through the Flight namespace") {
     val dir = Files.createTempDirectory("plugin-contract-")
     val allocator = new RootAllocator()
@@ -16,7 +20,7 @@ class PluginSpec extends AnyFunSuite {
     Files.writeString(dir.resolve("private.testpack"),"id\n1\n2\n")
     val c = Config("localhost",8815,"localhost",Map(
       "native" -> DatasetDefinition("example-message",Map("message" -> "native dataset")),
-      "files" -> DatasetDefinition.mixed(Seq(
+      "files" -> FileDatasets.mixed(Seq(
         PublishedItem("/science",file=Some(dir.resolve("private.message")),options=FileOptions(parameters=Map("prefix" -> "hello "))),
         PublishedItem("/archive",file=Some(dir.resolve("private.testpack"))))),
       "directory" -> DatasetDefinition("directory",Map("root" -> dir.toString))),
@@ -42,19 +46,31 @@ class PluginSpec extends AnyFunSuite {
       assert(read("files","/science") == "native child")
       assert(read("directory","/private.message/message") == "native child")
       assert(read("files","/archive/nested/entry.csv") == "id\n1\n2\n")
-      val summaryInfo = client.getInfo(FlightDescriptor.path("datasets","files","/science/summary"))
-      val summaryQuery = Metadata.Scan.newBuilder().setLimit(1)
-        .setProjection(Metadata.Scan.Projection.newBuilder().addColumns("characters"))
-        .setPredicate(Metadata.Predicate.newBuilder().setOp("gt").setColumn("characters")
-          .addValues(Metadata.Literal.newBuilder().setType("integer").setValue("1")))
-      val summaryTicket = Metadata.Ticket.parseFrom(summaryInfo.getEndpoints.get(0).getTicket.getBytes).toBuilder
-        .setView("records").setScan(summaryQuery).build()
-      val summaryStream = client.getStream(new Ticket(summaryTicket.toByteArray))
+      // A native records source whose format is unknown to the core format registry.
+      val nativeInfo = client.getInfo(FlightDescriptor.path("datasets","native","/summary"))
+      val nativeStream = client.getStream(nativeInfo.getEndpoints.get(0).getTicket)
       try {
-        assert(summaryStream.next())
-        assert(summaryStream.getRoot.getVector("characters").asInstanceOf[org.apache.arrow.vector.BigIntVector].get(0) == "hello native child".length.toLong)
-        assert(!summaryStream.next())
-      } finally summaryStream.close()
+        assert(nativeStream.next())
+        assert(nativeStream.getRoot.getVector("characters").asInstanceOf[org.apache.arrow.vector.BigIntVector].get(0) == "native dataset".length.toLong)
+        assert(!nativeStream.next())
+      } finally nativeStream.close()
+      val nativeCount = client.getInfo(FlightDescriptor.path("datasets","native","count","/summary"))
+      assert(Metadata.Item.parseFrom(nativeCount.getAppMetadata).getRecordCount == 1L)
+      for ((dataset,path) <- Seq("native" -> "/summary", "files" -> "/science/summary")) {
+        val summaryInfo = client.getInfo(FlightDescriptor.path("datasets",dataset,path))
+        val summaryQuery = Metadata.Scan.newBuilder().setLimit(1)
+          .setProjection(Metadata.Scan.Projection.newBuilder().addColumns("characters"))
+          .setPredicate(Metadata.Predicate.newBuilder().setOp("gt").setColumn("characters")
+            .addValues(Metadata.Literal.newBuilder().setType("integer").setValue("1")))
+        val summaryTicket = Metadata.Ticket.parseFrom(summaryInfo.getEndpoints.get(0).getTicket.getBytes).toBuilder
+          .setView("records").setScan(summaryQuery).build()
+        val summaryStream = client.getStream(new Ticket(summaryTicket.toByteArray))
+        try {
+          assert(summaryStream.next())
+          assert(summaryStream.getRoot.getVector("characters").asInstanceOf[org.apache.arrow.vector.BigIntVector].get(0) == (if (dataset == "native") "native dataset" else "hello native child").length.toLong)
+          assert(!summaryStream.next())
+        } finally summaryStream.close()
+      }
       val ds = c.openDataset("files")
       try {
         PluginChecks.listing(ds)
@@ -84,7 +100,7 @@ class PluginSpec extends AnyFunSuite {
       assert(TestTrackedHandler.opened.get() == before + 2)
       assert(TestTrackedHandler.opened.get() == TestTrackedHandler.closed.get())
       val handler = Formats.byId("test-tracked").asInstanceOf[StructuredFileHandler]
-      val access = handler.openStructure(file,FileOptions(),c,() => ())
+      val access = handler.openStructure(ByteSource.local(file),FileOptions(),c,() => ())
       val allocator = new RootAllocator()
       try {
         intercept[java.util.concurrent.CancellationException] {

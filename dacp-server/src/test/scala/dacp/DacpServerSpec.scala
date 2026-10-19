@@ -19,7 +19,7 @@ class DacpServerSpec extends AnyFunSuite {
   }
   private def config(dir:Path,cert:Path,key:Path):Config={
     val socket=new ServerSocket(0);val port=try socket.getLocalPort finally socket.close()
-    Config("localhost",port,"localhost",Map.empty,Seq(s"dacp://localhost:$port/public"),cert,key,cert,executionHistoryDirectory=Some(dir.resolve("history")))
+    Config("localhost",port,"localhost",Map.empty,Seq(s"dacp://localhost:$port/public"),cert,key,cert,executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve("history")).toString))))
   }
   private def catalog(counter:AtomicInteger)=new DatasetCatalog {
     def list():Seq[DatasetInfo]=Seq(DatasetInfo("public"))
@@ -57,7 +57,7 @@ class DacpServerSpec extends AnyFunSuite {
     }
     val server=DacpServer.builder().config(c).catalog(cat).build().start()
     intercept[IllegalStateException](server.close());server.close()
-    val history=new ExecutionHistory(dir.resolve("history"));history.close()
+    val history=new ExecutionHistory(new FileExecutionStore(dir.resolve("history"),false));history.close()
     val socket=new ServerSocket(c.port);socket.close()
   }}
   test("configFile embedding overrides configured catalog without instantiating its provider") {fixture{(dir,cert,key)=>
@@ -69,7 +69,7 @@ tls_cert: $cert
 tls_key: $key
 tls_ca: $cert
 allowed_uri_prefixes: [dacp://localhost:${c.port}/public]
-execution_history_directory: ${dir.resolve("history")}
+execution_store: {provider: file, settings: {directory: '${dir.resolve("history")}'}}
 dataset_catalog: {provider: does-not-exist}
 """)
     val builder=DacpServer.builder().configFile(yaml).catalog(catalog(count))

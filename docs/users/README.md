@@ -146,7 +146,7 @@ SELECT amount FROM 2 WHERE id > 1 LIMIT 10
 SELECT * FROM "/reports/orders" WHERE id IN (1, 2) AND amount IS NOT NULL
 ```
 
-shell 使用 SQLGlot 将支持的 SQL 子集转换为与 SDK 相同的远程扫描请求。`FROM` 可以是当前 Dataset 内用双引号包围的绝对 Item 路径，也可以是最近一次 `ls` 结果中的条目编号（例如 `FROM 2`）。编号跟随最新列表的顺序，包括 `ls PATH`；编号超出范围时会报错。支持 `SELECT *` 或公开列名列表，以及可选的 `WHERE` 和 `LIMIT`；SQL 关键字不区分大小写。结果以带外边框的表格显示。`--rows` 预览上限仍然有效：发送给服务器的行数限制取 SQL `LIMIT` 和预览上限中的较小值；省略 `LIMIT` 时使用预览上限。输入 `help select` 查看语法。不支持的连接、排序、聚合、别名和子查询会明确报错。参见 [SQL shell 说明](../../docs/records-scans.md#sql-in-dacp-shell)。
+shell 使用 SQLGlot 将支持的 SQL 子集转换为与 SDK 相同的远程扫描请求。`FROM` 可以是当前 Dataset 内用双引号包围的绝对 Item 路径，也可以是最近一次 `ls` 结果中的条目编号（例如 `FROM 2`）。编号跟随最新列表的顺序，包括 `ls PATH`；编号超出范围时会报错。支持 `SELECT *` 或公开列名列表，以及可选的 `WHERE` 和 `LIMIT`；SQL 关键字不区分大小写。结果以带外边框的表格显示。`--rows` 预览上限仍然有效：发送给服务器的行数限制取 SQL `LIMIT` 和预览上限中的较小值；省略 `LIMIT` 时使用预览上限。输入 `help select` 查看语法。不支持的连接、排序、聚合、别名和子查询会明确报错。参见 [SQL shell 说明](../../docs/records-scans.md#dacp-shell-中的-sql)。
 
 
 ### 帮助与命令示例
@@ -203,13 +203,15 @@ datasets:
       /customers: {sql: warehouse, table: CUSTOMERS}
       /empty: {kind: folder}
 
-sql_sources:
+sources:
   warehouse:
-    url: jdbc:h2:../examples/sql/sales
-    user: sa
-    password: ""
-    schema: PUBLIC
-    tables: [CUSTOMERS]
+    provider: jdbc
+    settings:
+      url: jdbc:h2:../examples/sql/sales
+      user: sa
+      password: ""
+      schema: PUBLIC
+      tables: [CUSTOMERS]
 ```
 
 这是配置片段，需与监听地址、TLS 和 URI 白名单合并，并替换示例路径及数据库连接。相对路径以服务进程工作目录为基准。

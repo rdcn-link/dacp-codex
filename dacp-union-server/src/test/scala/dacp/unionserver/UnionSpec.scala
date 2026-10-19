@@ -35,8 +35,8 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val as=NodeUnionSettings(dir.resolve("a-state"),30,30)
     val bs=NodeUnionSettings(dir.resolve("b-state"),30,30)
     def config(name:String):Config={
-      val definition=DatasetDefinition.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin")))))
-      val c=Config("localhost",port(),"localhost",if(dynamicCatalog)Map.empty else Map("data"->definition),Seq.empty,root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,executionHistoryDirectory=Some(dir.resolve(s"$name-executions")))
+      val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin")))))
+      val c=Config("localhost",port(),"localhost",if(dynamicCatalog)Map.empty else Map("data"->definition),Seq.empty,root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve(s"$name-executions")).toString))))
       if(dynamicCatalog)c.installCatalog(new DatasetCatalog {
         def list():Seq[DatasetInfo]=Seq(DatasetInfo("data"))
         def open(name:String):PublishedDataset={require(name=="data");c.createDataset(definition)}

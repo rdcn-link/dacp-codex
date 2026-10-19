@@ -57,7 +57,7 @@ operator_cache: /var/lib/dacp/operators
 operator_max_bytes: 8589934592
 ```
 
-任务继续使用 `operator: format_convert@1.1`。解析顺序为本地定义与已安装镜像、完整缓存、配置的远程仓库。仅清单 HTTP 404 会继续下一个仓库。远程与缓存制品均验证大小和 SHA-256，执行使用固定镜像 ID。制品可跨算子和仓库共享，完整缓存支持离线执行。大小限制针对单个制品。参见 [缓存布局与限制](../docs/operator-packaging.md#content-addressed-storage)。
+任务继续使用 `operator: format_convert@1.1`。解析顺序为本地定义与已安装镜像、完整缓存、配置的远程仓库。仅清单 HTTP 404 会继续下一个仓库。远程与缓存制品均验证大小和 SHA-256，执行使用固定镜像 ID。制品可跨算子和仓库共享，完整缓存支持离线执行。大小限制针对单个制品。参见 [缓存布局与限制](../docs/operator-packaging.md#内容寻址存储)。
 
 ## 公开网站与 HTTP API
 
@@ -75,7 +75,7 @@ operator_max_bytes: 8589934592
 
 未知路径或缺失制品返回 404，不支持的写方法返回 405。HEAD 返回 Content-Length。网页附件使用制品原文件名和后缀。路径不能沿符号链接越出目录。8 个工作线程使用有界队列。列表忽略发布暂存目录，只读元数据而不对大制品计算摘要。
 
-元数据位于 `<root>/<name>/<version>/manifest.json`，制品位于 `<root>/blobs/sha256/<digest>`，运行时导出索引位于 `<root>/images/<image-ID>.json`。参见 [清单格式](../docs/operator-packaging.md#content-addressed-storage)。项目尚未发布，直接采用新格式，不保留旧格式读取器；新格式使用新的开发目录。
+元数据位于 `<root>/<name>/<version>/manifest.json`，制品位于 `<root>/blobs/sha256/<digest>`，运行时导出索引位于 `<root>/images/<image-ID>.json`。参见 [清单格式](../docs/operator-packaging.md#内容寻址存储)。项目尚未发布，直接采用新格式，不保留旧格式读取器；新格式使用新的开发目录。
 
 ## Token 认证发布 API
 
@@ -126,7 +126,7 @@ TLS 两个选项须同时提供，节点 JVM 信任库须信任证书；也可�
 
 ```bash
 (cd dacp-operator-repository && sbt test)
-(cd dacp-operator-executors && sbt test)
+(cd plugins/dacp-plugin-operator-executors && sbt test)
 scripts/test-operator-repository.sh
 ```
 

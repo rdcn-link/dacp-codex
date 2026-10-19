@@ -72,9 +72,11 @@ tls_key: key.pem
 tls_ca: ca.pem
 allowed_uri_prefixes: [dacp://localhost:8815/]
 """
-      val definitions = s"""sql_sources:
+      val definitions = s"""sources:
   warehouse:
-    url: jdbc:h2:mem:config_provider
+    provider: jdbc
+    settings:
+      url: jdbc:h2:mem:config_provider
 datasets:
   directory:
     provider: directory
@@ -138,10 +140,10 @@ datasets:
       val defs = Map(
         "files" -> directory(dir),
         "sales" -> DatasetDefinition("sqldb",Map("connection" -> "warehouse"),Map("/customers" -> Map("table" -> "PRIVATE_CUSTOMERS"))),
-        "mixed" -> DatasetDefinition.mixed(Seq(PublishedItem("/orders",file=Some(dir.resolve("orders.csv"))),
+        "mixed" -> FileDatasets.mixed(Seq(PublishedItem("/orders",file=Some(dir.resolve("orders.csv"))),
           PublishedItem("/customers",sql=Some("warehouse"),table=Some("PRIVATE_CUSTOMERS")))),
         "plugin" -> DatasetDefinition("test-dataset",Map("message" -> "external provider")))
-      val c = config(dir,defs).copy(sqlSources=Map("warehouse" -> SqlConfig(url,Some("sa"),Some(""),Some("PUBLIC"))))
+      val c = config(dir,defs).copy(sources=Map("warehouse" -> SqlConfig.source(SqlConfig(url,Some("sa"),Some(""),Some("PUBLIC")))))
       assert(!defs("sales").toString.contains("warehouse"))
       val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()

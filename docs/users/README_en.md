@@ -128,7 +128,7 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 Execution follows filter → projection → limit. Predicates use public column names and typed literals, with comparisons, boolean logic, membership, and null checks. Filters may reference columns omitted from the output. SQL and Parquet push supported operations into their readers; other handlers use bounded server-side filtering. Reaching the limit stops reading, and bytes views reject these options. Item metadata and exact counts remain unchanged.
 
-See [records query semantics and plugin contracts](../../docs/records-scans.md) for Python/Scala examples, null and type rules, validation, and source-specific optimizations.
+See [records query semantics and plugin contracts](../../docs/records-scans_en.md) for Python/Scala examples, null and type rules, validation, and source-specific optimizations.
 
 ### dacp-shell
 
@@ -146,7 +146,7 @@ SELECT amount FROM 2 WHERE id > 1 LIMIT 10
 SELECT * FROM "/reports/orders" WHERE id IN (1, 2) AND amount IS NOT NULL
 ```
 
-The shell uses SQLGlot to translate a supported SQL subset into the same remote scan request as the SDKs. `FROM` accepts one double-quoted absolute Item path within the current Dataset, or an Item number from the latest `ls` result (for example, `FROM 2`). Numbers follow the latest listing order, including `ls PATH`; out-of-range numbers produce an error. Use `SELECT *` or a list of public columns, optional `WHERE`, and optional `LIMIT`; SQL keywords are case insensitive. Results appear in a bordered table. The `--rows` preview cap still applies: the server receives the smaller of SQL `LIMIT` and the preview cap, or the preview cap when `LIMIT` is omitted. Use `help select` for syntax. Joins, sorting, aggregation, aliases, and subqueries are rejected. See [SQL shell details](../../docs/records-scans.md#sql-in-dacp-shell).
+The shell uses SQLGlot to translate a supported SQL subset into the same remote scan request as the SDKs. `FROM` accepts one double-quoted absolute Item path within the current Dataset, or an Item number from the latest `ls` result (for example, `FROM 2`). Numbers follow the latest listing order, including `ls PATH`; out-of-range numbers produce an error. Use `SELECT *` or a list of public columns, optional `WHERE`, and optional `LIMIT`; SQL keywords are case insensitive. Results appear in a bordered table. The `--rows` preview cap still applies: the server receives the smaller of SQL `LIMIT` and the preview cap, or the preview cap when `LIMIT` is omitted. Use `help select` for syntax. Joins, sorting, aggregation, aliases, and subqueries are rejected. See [SQL shell details](../../docs/records-scans_en.md#sql-in-dacp-shell).
 
 
 ### Help and command examples
@@ -203,13 +203,15 @@ datasets:
       /customers: {sql: warehouse, table: CUSTOMERS}
       /empty: {kind: folder}
 
-sql_sources:
+sources:
   warehouse:
-    url: jdbc:h2:../examples/sql/sales
-    user: sa
-    password: ""
-    schema: PUBLIC
-    tables: [CUSTOMERS]
+    provider: jdbc
+    settings:
+      url: jdbc:h2:../examples/sql/sales
+      user: sa
+      password: ""
+      schema: PUBLIC
+      tables: [CUSTOMERS]
 ```
 
 This is a configuration fragment; merge it with listener, TLS, and URI allowlist settings, and replace example paths and database connections. Relative paths resolve against the server process working directory.
@@ -218,7 +220,7 @@ Directory Datasets expose paths relative to their root, such as `/reports/orders
 
 SQL Dataset `tables` bind public paths to private tables in the selected connection; tables are not automatically exposed. `mixed` retains explicit mappings and mixed-source flexibility. Every Dataset must explicitly specify `provider`.
 
-The default example provides `data1` and `csv_data` (mixed), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](../../examples/sql/README_en.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](../../docs/dataset-providers.md).
+The default example provides `data1` and `csv_data` (mixed), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](../../examples/sql/README_en.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](../../docs/dataset-providers_en.md).
 
 ### Formats and views
 
@@ -242,7 +244,7 @@ Browse ZIP, TAR, and compressed TAR entries through paths such as `/archive/repo
 
 ZIP listings read the directory index. TAR requires a sequential scan, and `.tar.gz` / `.tgz` also requires decompression, so initial listings and reads can be slow for large archives. Reading stages only the requested entry into a temporary file. Nested containers are not expanded; `.bz2`, `.xz`, and `.zst` currently remain ordinary binary data.
 
-See the [technical reference](../../docs/reference_en.md) for format details, Excel behavior, archive limits, and schema rules, and [format extensions](../../docs/format-handlers.md) for third-party handler development.
+See the [technical reference](../../docs/reference_en.md) for format details, Excel behavior, archive limits, and schema rules, and [format extensions](../../docs/format-handlers_en.md) for third-party handler development.
 
 ### Metadata and counting
 
@@ -275,7 +277,7 @@ Further reading:
 
 Start a repository with the starter operators using `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820`, then open `http://localhost:8820/` to search, view, and download operators without signing in. See the repository guide for HTTPS deployment.
 
-Operators can share a dependency environment and a code bundle. The starter operators use thin JARs with `dacp/operator-jvm:1.1`; Python source and wheels are also supported in shared runtime containers. Runtime and code artifacts are stored and cached by SHA-256, so each distinct artifact is downloaded once per node. See [operator packaging](../../docs/operator-packaging.md) and the [Python example](../../examples/operators/python/README_en.md).
+Operators can share a dependency environment and a code bundle. The starter operators use thin JARs with `dacp/operator-jvm:1.1`; Python source and wheels are also supported in shared runtime containers. Runtime and code artifacts are stored and cached by SHA-256, so each distinct artifact is downloaded once per node. See [operator packaging](../../docs/operator-packaging_en.md) and the [Python example](../../examples/operators/python/README_en.md).
 
 
 `run` and `submit` print `Execution time: 1.234 s` after completion, failure or cancellation. This is elapsed time measured by the shell from submission through closing the result stream, including connection, runtime preparation, execution, transfer, display and client cleanup. It excludes heredoc entry time and is not server task CPU time. Multi-task jobs print one total for the whole job.

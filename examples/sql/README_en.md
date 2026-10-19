@@ -38,7 +38,7 @@ with Source.open("dacp://localhost:8815/sales") as ds:
 
 ## PostgreSQL
 
-The PostgreSQL and H2 JDBC drivers are bundled. Replace the private `warehouse` source under `sql_sources` and update its explicit public mappings:
+The PostgreSQL and H2 JDBC drivers are bundled. Replace the private `warehouse` source under `sources` and update its explicit public mappings:
 
 ```yaml
 datasets:
@@ -49,20 +49,22 @@ datasets:
     tables:
       /reports/orders: {table: orders}
       /clients: {table: customers}
-sql_sources:
+sources:
   warehouse:
-    url: jdbc:postgresql://db-host:5432/sales?sslmode=verify-full
-    user_env: DACP_DB_USER
-    password_env: DACP_DB_PASSWORD
-    schema: public
-    tables: [orders, customers]
-    fetch_size: 256
-    query_timeout_seconds: 60
+    provider: jdbc
+    settings:
+      url: jdbc:postgresql://db-host:5432/sales?sslmode=verify-full
+      user_env: DACP_DB_USER
+      password_env: DACP_DB_PASSWORD
+      schema: public
+      tables: [orders, customers]
+      fetch_size: 256
+      query_timeout_seconds: 60
 ```
 
 Set those environment variables before starting the node, and configure the PostgreSQL driver's trusted server CA for `verify-full`. Use a database account with SELECT privileges on exposed tables and schema USAGE. Credentials remain on the server and are never sent to DACP clients. Plain `user` / `password` fields are also accepted; environment fields take precedence and missing referenced variables fail configuration loading. Each private SQL source describes one database schema. Use `provider: mixed` with Item-level `sql` bindings to combine multiple sources if desired.
 
-Use `provider: directory` with `source.root` for automatic file discovery, or configure `sqldb` / `mixed` public Item mappings and private `sql_sources` explicitly. Private sources and tables are not published unless mapped. File mappings use `{file: /private/path.csv}`; SQL mappings use `{sql: warehouse, table: private_table}`. Names and paths visible to the client are independently chosen aliases. Each private SQL source supports:
+Use `provider: directory` with `source.root` for automatic file discovery, or configure `sqldb` / `mixed` public Item mappings and private `sources` explicitly. Private sources and tables are not published unless mapped. File mappings use `{file: /private/path.csv}`; SQL mappings use `{sql: warehouse, table: private_table}`. Names and paths visible to the client are independently chosen aliases. Each private SQL source supports:
 
 | Field | Meaning |
 |---|---|

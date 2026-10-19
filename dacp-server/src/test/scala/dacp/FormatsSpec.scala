@@ -11,6 +11,10 @@ import org.scalatest.funsuite.AnyFunSuite
 import dacp.protocol.Metadata
 
 class FormatsSpec extends AnyFunSuite {
+  private val plugins=new PluginEnvironment()
+  private val Formats=plugins.formats
+  private val Containers=plugins.containers
+
   def workbook(path: Path, multiple: Boolean = false, header: Int = 1, rows: Int = 2): Unit = {
     val book: Workbook = if (path.toString.endsWith(".xls")) new HSSFWorkbook() else new XSSFWorkbook()
     try {
@@ -35,13 +39,13 @@ class FormatsSpec extends AnyFunSuite {
     val dir = Files.createTempDirectory("formats-")
     try {
       val json = dir.resolve("value.json"); Files.writeString(json,"{\"id\":1}\n")
-      assert(Formats.detect(json).id == "json" && Formats.views("json") == Seq("bytes"))
-      assert(Formats.detect(json,FileOptions(format=Some("ndjson"))).id == "ndjson")
+      assert(Formats.detect(ByteSource.local(json)).id == "json" && Formats.views("json") == Seq("bytes"))
+      assert(Formats.detect(ByteSource.local(json),FileOptions(format=Some("ndjson"))).id == "ndjson")
       val csv = dir.resolve("value.CSV"); Files.writeString(csv,"id\n1\n")
-      assert(Formats.detect(csv).id == "csv")
+      assert(Formats.detect(ByteSource.local(csv)).id == "csv")
       val binary = dir.resolve("value.unknown"); Files.write(binary,Array[Byte](0,1,2))
-      assert(Formats.detect(binary).id == "bin" && Formats.detect(binary).count(binary,FileOptions()).isEmpty)
-      assert(Formats.views("sql") == Seq("records","bytes"))
+      assert(Formats.detect(ByteSource.local(binary)).id == "bin" && Formats.detect(ByteSource.local(binary)).count(ByteSource.local(binary),FileOptions()).isEmpty)
+      assert(plugins.views(Item("/table","sql",None,views=Some(Seq("records","bytes")))) == Seq("records","bytes"))
       intercept[IllegalArgumentException](Formats.byId("missing"))
     } finally Data.deleteTree(dir)
   }
@@ -51,11 +55,11 @@ class FormatsSpec extends AnyFunSuite {
     val allocator = new RootAllocator()
     try {
       val file = dir.resolve("new.dacptest"); Files.writeString(file,"id\n1\n2\n")
-      val handler = Formats.detect(file)
+      val handler = Formats.detect(ByteSource.local(file))
       assert(handler.id == "test-format" && Formats.views(handler.id) == Seq("records","bytes"))
-      assert(handler.count(file,FileOptions()).contains(2L))
+      assert(handler.count(ByteSource.local(file),FileOptions()).contains(2L))
       var rows = 0
-      handler.stream(file,FileOptions(),allocator,1,1)(_ => (), root => rows += root.getRowCount, () => ())
+      handler.stream(ByteSource.local(file),FileOptions(),allocator,1,1)(_ => (), root => rows += root.getRowCount, () => ())
       assert(rows == 2)
     } finally { allocator.close(); Data.deleteTree(dir) }
   }
@@ -64,9 +68,9 @@ class FormatsSpec extends AnyFunSuite {
     val dir = Files.createTempDirectory("bad-excel-")
     try {
       val file = dir.resolve("private.xls"); Files.writeString(file,"private invalid contents")
-      val handler = Formats.detect(file)
-      assert(handler.id == "excel" && handler.cheapSchema(file,FileOptions()).isEmpty)
-      val error = intercept[FormatFailure](handler.rows(file,FileOptions()))
+      val handler = Formats.detect(ByteSource.local(file))
+      assert(handler.id == "excel" && handler.cheapSchema(ByteSource.local(file),FileOptions()).isEmpty)
+      val error = intercept[FormatFailure](handler.rows(ByteSource.local(file),FileOptions()))
       assert(error.getMessage == "Invalid Excel workbook.")
     } finally Data.deleteTree(dir)
   }
@@ -93,11 +97,11 @@ datasets:
           - {name: id, type: int64}
           - {name: amount, type: float64}
 """)
-      val binding = DatasetProviders.mixedBindings(Config.load(yaml).datasets("office")).head
+      val binding = DatasetPublication.mixedBindings(Config.load(yaml).datasets("office")).head
       assert(binding.options.format.contains("excel") && binding.options.parameters.get("sheet").contains("Orders"))
       assert(binding.options.parameters("header_row") == Int.box(2))
       assert(binding.options.columns.get.getFields.asScala.map(_.getName).toSeq == Seq("id","amount"))
-      intercept[IllegalArgumentException](ExcelFormat.validateOptions(FileOptions(parameters=Map("header_row" -> Int.box(0)))))
+      intercept[IllegalArgumentException](Formats.byId("excel").validateOptions(FileOptions(parameters=Map("header_row" -> Int.box(0)))))
     } finally Data.deleteTree(dir)
   }
 
@@ -119,32 +123,32 @@ datasets:
       try {
         val file = dir.resolve(s"private.$extension"); workbook(file,header=2)
         val options = FileOptions(parameters=Map("header_row" -> Int.box(2)))
-        assert(Formats.detect(file).id == "excel")
-        val reader = ExcelFormat.rows(file,options)
+        assert(Formats.detect(ByteSource.local(file)).id == "excel")
+        val reader = Formats.byId("excel").rows(ByteSource.local(file),options)
         try {
           assert(reader.names == Seq("id","column_2","id_2","flag","calculated"))
           val rows = reader.iterator.toVector
           assert(rows == Vector(Vector(1L,null,"value",true,2L),Vector(2L,null,"value",true,3L)))
         } finally reader.close()
-        assert(ExcelFormat.count(file,options).contains(2L))
-        val schema = ExcelFormat.schema(file,options,2,1)
+        assert(Formats.byId("excel").count(ByteSource.local(file),options).contains(2L))
+        val schema = Formats.byId("excel").schema(ByteSource.local(file),options,2,1)
         assert(schema.getFields.asScala.map(_.getType.toString).toSeq == Seq("Int(64, true)","Utf8","Utf8","Bool","Int(64, true)"))
         val explicit = new org.apache.arrow.vector.types.pojo.Schema(reader.names.map(name => Records.field(name,"utf8")).asJava)
-        assert(ExcelFormat.schema(file,options.copy(columns=Some(explicit)),1,1) == explicit)
-        assert(ExcelFormat.cheapSchema(file,options).isEmpty && ExcelFormat.cheapCount(file,options).isEmpty)
+        assert(Formats.byId("excel").schema(ByteSource.local(file),options.copy(columns=Some(explicit)),1,1) == explicit)
+        assert(Formats.byId("excel").cheapSchema(ByteSource.local(file),options).isEmpty && Formats.byId("excel").cheapCount(ByteSource.local(file),options).isEmpty)
       } finally Data.deleteTree(dir)
     }
     test(s"$extension requires a sheet selection for multisheet workbooks and supports early close") {
       val dir = Files.createTempDirectory("excel-selection-")
       try {
         val file = dir.resolve(s"private.$extension"); workbook(file,multiple=true,rows=100)
-        assert(intercept[FormatFailure](ExcelFormat.rows(file,FileOptions())).getMessage.contains("multiple sheets"))
-        assert(intercept[FormatFailure](ExcelFormat.rows(file,FileOptions(parameters=Map("sheet" -> "Missing")))).getMessage.contains("not found"))
-        val reader = ExcelFormat.rows(file,FileOptions(parameters=Map("sheet" -> "Orders")))
+        assert(intercept[FormatFailure](Formats.byId("excel").rows(ByteSource.local(file),FileOptions())).getMessage.contains("multiple sheets"))
+        assert(intercept[FormatFailure](Formats.byId("excel").rows(ByteSource.local(file),FileOptions(parameters=Map("sheet" -> "Missing")))).getMessage.contains("not found"))
+        val reader = Formats.byId("excel").rows(ByteSource.local(file),FileOptions(parameters=Map("sheet" -> "Orders")))
         assert(reader.iterator.next().head == 1L)
         reader.close()
         assert(!Thread.getAllStackTraces.keySet().asScala.exists(t => t.isAlive && t.getName == "dacp-excel-reader"))
-        assert(ExcelFormat.count(file,FileOptions(parameters=Map("sheet" -> "Other"))).contains(0L))
+        assert(Formats.byId("excel").count(ByteSource.local(file),FileOptions(parameters=Map("sheet" -> "Other"))).contains(0L))
       } finally Data.deleteTree(dir)
     }
   }
@@ -154,7 +158,7 @@ datasets:
     val allocator = new RootAllocator()
     try {
       val file = dir.resolve("private-workbook.xlsx"); workbook(file,multiple=true)
-      val config = Config("localhost",8815,"localhost",Map("public" -> DatasetDefinition.mixed(Seq(
+      val config = Config("localhost",8815,"localhost",Map("public" -> FileDatasets.mixed(Seq(
         PublishedItem("/orders",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Orders"))),
         PublishedItem("/other",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Other")))))),
         Seq("dacp://localhost:8815/public"),dir,dir,dir,batchSize=1,inferSample=1)

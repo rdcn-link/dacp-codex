@@ -30,14 +30,15 @@ Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs.md)动态提�
 | [dacp-union-server](dacp-union-server/README.md) | 管理一个 Union，邀请节点、轮询健康与容量、调度跨节点 DAG、转发最终结果流 |
 | [Union Web 看板](dacp-union-server/README.md#http-运行看板) | 公开只读展示节点、任务脚本、可缩放 DAG、流量与执行历史 |
 | [dacp-operator-repository](dacp-operator-repository/README.md) | HTTP/HTTPS 算子仓库；公开搜索、版本浏览和下载，管理员通过 CLI 发布 |
-| `dacp-operator-runtime` / `dacp-operator-executors` | 共享算子运行环境、JVM / Python / 容器启动器及原生命令流桥接 |
+| `dacp-operator-runtime` / `plugins/dacp-plugin-operator-executors` | 共享算子运行环境、JVM / Python / 容器启动器及原生命令流桥接 |
 | `dacp-plugin-api` / `dacp-union-protocol` | 插件公开契约和 Union 共享 Flight 传输工具 |
+| [plugins](plugins/README.md) | 内置 Dataset、文件格式、归档、Catalog 和算子启动插件 |
 
 服务端使用 JDK 17 和 Scala 2.13；Python SDK 要求 Python 3.10+。数据浏览不需要 Docker；算子执行需要 Linux 和可访问的 Docker Engine。构建使用 sbt 1.10.x。
 
 ## 开始使用
 
-- 已有服务器：从[连接与浏览](docs/users/README.md#连接与浏览)开始。
+- 已有服务器：从[连接与浏览](docs/users/README.md#浏览与读取)开始。
 - 本机体验：按[单节点部署](docs/administrators/README.md#单节点部署)启动服务。
 - 跨节点演示：运行[双节点 Union 示例](examples/union/README.md)。
 - 自定义计算：阅读[算子编写与发布](docs/operator-authoring.md)。

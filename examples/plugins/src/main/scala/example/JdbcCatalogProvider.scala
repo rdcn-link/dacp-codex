@@ -38,11 +38,11 @@ class JdbcCatalogProvider extends DatasetCatalogProvider {
           val exists=use(db.prepareStatement("SELECT name FROM dacp_datasets WHERE name = ?"));exists.setQueryTimeout(10);exists.setString(1,name)
           if(!use(exists.executeQuery()).next())throw new FileNotFoundException("dataset unavailable")
           val query=use(db.prepareStatement("SELECT item_path, file_path FROM dacp_items WHERE dataset_name = ? ORDER BY item_path"));query.setQueryTimeout(10);query.setString(1,name)
-          val rows=use(query.executeQuery());val result=Vector.newBuilder[PublishedItem]
-          while(rows.next()){check();result+=PublishedItem(rows.getString(1),file=Some(Path.of(rows.getString(2))))}
+          val rows=use(query.executeQuery());val result=Map.newBuilder[String,Map[String,Object]]
+          while(rows.next()){check();result+=(rows.getString(1)->Map[String,Object]("file"->rows.getString(2)))}
           result.result()
         }.get
-        check();context.createDataset(DatasetDefinition.mixed(bindings))
+        check();context.createDataset(DatasetDefinition("mixed",items=bindings))
       }
     }
   }

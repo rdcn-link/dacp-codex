@@ -31,6 +31,6 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository see
 
 On the tested Linux x86_64 build, the shared runtime archive is 116,087,296 bytes and the starter code bundle is 37,090 bytes. Both are stored once per digest, rather than a full archive per operator. Dependency/JDK/architecture changes affect measurements. Versions are immutable and unsupported version aliases are not provided.
 
-See [operator packaging](../docs/operator-packaging.md), the [Scala contribution example](../examples/operators/scala/README_en.md), and the [Python example](../examples/operators/python/README_en.md).
+See [operator packaging](../docs/operator-packaging_en.md), the [Scala contribution example](../examples/operators/scala/README_en.md), and the [Python example](../examples/operators/python/README_en.md).
 
-Outputs use stdout start/data/end frames and create no output dataset. Parquet scratch files exist only in container `/tmp`. See the [stream contract](../docs/operator-streams.md).
+Outputs use stdout start/data/end frames and create no output dataset. Parquet scratch files exist only in container `/tmp`. See the [stream contract](../docs/operator-streams_en.md).

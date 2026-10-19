@@ -16,4 +16,7 @@ max_concurrent_tasks: 4
 union:
   state_directory: ../.union-demo/b
   execution_timeout_seconds: 120
-execution_history_directory: ../.union-demo/b-executions
+execution_store:
+  provider: file
+  settings:
+    directory: ../.union-demo/b-executions

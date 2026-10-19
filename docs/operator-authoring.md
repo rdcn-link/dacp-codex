@@ -1,16 +1,219 @@
-# 编写与发布算子
+# 编写、发布和运行算子
 
-DACP 算子消费命名数据项流，并产生命名输出流。可以发布小型 Scala/Java JAR、Python 源码或 wheel，或完整容器；依赖放入共享运行时镜像。仓库算子可在 NORMAL 或 DEBUG 模式执行；[内嵌源码](operator-source.md)仅允许 DEBUG 模式。
+算子是一个数据处理程序：接收命名的 Item 输入流和一份 JSON 业务参数，处理后返回命名输出流。下面先用一个完整的 Python 示例串起开发过程，再说明 Scala、打包发布和底层协议。
 
-仓库网站允许公开搜索、查看和下载。发布可通过管理员 CLI，或默认启用的 [token 认证 HTTP API](../dacp-operator-repository/README.md#token-认证发布-api)。贡献者可由管理员运行 `publish` / `seed`，也可使用发布 token，通过 `scripts/upload-operator.py` 上传本地生成的算子目录。
+## 先分清输入数据、参数和输出
 
-## 执行契约
+| 内容 | 示例 | 程序如何获取 |
+|---|---|---|
+| 输入端口 | `source` | 从 `/input/manifest.json` 找到对应流文件 |
+| 输入 Item | 当前 Dataset 中的 `/orders` | 框架读取此 Item，以 Arrow IPC 流送入算子，不把源文件路径交给程序 |
+| 输入表示 | `records` | manifest 中的 `representation`；表格按 Arrow 记录批次读取 |
+| 业务参数 | `{"min_amount":20,"factor":2}` | 读取启动参数指定的 JSON 文件，通常是 `/input/params.json` |
+| 输出端口 | `result` | 程序在 stdout 的协议帧中标明端口名称 |
+| 输出表示与格式 | `records` / `arrow` | `start` 帧声明表示、格式和 schema，后续 `data` 帧传记录批次 |
 
-启动器传入 `operator /input /input/params.json`。`/input/manifest.json` 的每个输入条目包含 `port`、`file`、`representation`、`format`，以及可选的 base64 Arrow IPC schema 消息。输入文件为包含 Arrow IPC 流的 FIFO。bytes 视图使用名为 `data` 的单个 binary 列；records 保留原始 Arrow schema。遇到 Arrow EOS 即结束，不等待操作系统 EOF。多个输入须按端口名称字典序消费。
+`--input` 绑定数据，`--params` 传业务设置，两者不能混为一谈。端口名称由算子定义；`source`、`result` 是本文的选择，不是所有算子的固定名称。每个端口承载一个 Item 流，一个程序可以声明多个端口。
 
-stdout 写协议帧，stderr 写诊断。每帧先写两个大端 32 位长度值（JSON 头和载荷），然后写头与载荷字节。每个输出端口依次发送 `start`、零个或多个 `data`、`end`。全部输出的 start 必须先于任何 data。start 声明 `port`、`representation`、`format`；records 还包含 base64 IPC schema。bytes 载荷为原始字节块；records 载荷为一个独立 Arrow IPC 流，内含一个记录批次。每个头上限 64 KiB，载荷上限 8 MiB。非零退出表示失败；已发送结果保留为部分结果，只有成功退出后才报告任务完成。
+`representation` 决定如何读取：`records` 是有类型的表格，`bytes` 是文件或二进制内容。`format` 描述内容格式，例如 `csv`、`parquet`、`text`、`arrow`。同一 CSV Item 可以选择原始 bytes 或解析后的 records；records 的传输编码始终是 Arrow IPC，不是 CSV 文本。**Shell 的 `run` 默认使用 bytes；本文表格算子必须指定 `--view records`。**
 
-输出直接流向客户端或下游任务，没有输出目录、保存的数据集或 `_output.json`。容器根目录和输入只读，私有临时文件放在 `/tmp`。容器禁用网络，并限制内存、PID、临时空间与执行期限，支持取消。依赖必须预置在运行时中。新的科学数据表示须先定义共享契约，不得默默展平结构。
+## 示例目标：筛选订单并增加计算列
+
+完整文件在 [filter_amount/1.0](../examples/operators/python/filter_amount/1.0/filter_amount.py)，包括[定义](../examples/operators/python/filter_amount/1.0/operator.yaml)、[输入数据](../examples/operators/python/filter_amount/1.0/orders.csv)和[作业](../examples/operators/python/filter_amount/1.0/job.yaml)。
+
+输入 CSV：
+
+```csv
+id,amount
+1,12.5
+2,30.0
+3,60.0
+```
+
+本例要求 `id: int64`、`amount: float64`。参数 `min_amount` 决定筛选阈值，`factor` 决定乘数：
+
+```json
+{"min_amount": 20, "factor": 2}
+```
+
+处理规则是保留 `amount >= min_amount`，输出 `id`、`amount` 和新列 `scaled_amount = amount * factor`。因此结果是：
+
+| id | amount | scaled_amount |
+|---|---|---|
+| 2 | 30.0 | 60.0 |
+| 3 | 60.0 | 120.0 |
+
+两个参数都可省略，默认分别为 `0.0` 和 `1.0`；必须是有限数字，拒绝布尔、字符串和未知参数。空 amount 不匹配；没有匹配行时仍输出三列 schema，然后正常结束。计算使用 float64，不是财务定点金额算法。
+
+## 第一步：定义端口
+
+```yaml
+name: filter_amount
+version: '1.0'
+description: Filter amount >= min_amount and append scaled_amount = amount * factor.
+image: dacp/operator-python:1.0
+executor: python
+entrypoint: filter_amount
+artifact: filter_amount.py
+inputs:
+  source:
+    representations: [records]
+    formats: []
+outputs:
+  result:
+    representations: [records]
+    formats: [arrow]
+```
+
+`source` 只接受 records，`formats: []` 表示不限制输入格式；程序仍必须校验列和类型。`result` 输出 records，格式标为 arrow。也可在端口定义中声明 Arrow schema JSON 值，见[端口契约](reference.md#任务执行与算子)。业务参数由程序校验，`params` 不是此定义中的参数 schema。
+
+## 第二步：读取参数和输入批次
+
+启动器向程序传入 `operator /input /input/params.json`。Python 的 `sys.argv[1]` 为 `operator`，`sys.argv[2]` 为输入目录，`sys.argv[3]` 为参数文件。不要把业务 JSON 当成位置参数直接解析。
+
+框架生成的 manifest 类似下面这样；`file` 是框架分配的文件名，不能硬编码：
+
+```json
+[
+  {"port":"source","file":"source.arrow","representation":"records","format":"csv"}
+]
+```
+
+运行时该文件是 FIFO，内容为 Arrow IPC 流，程序可以这样读取：
+
+```python
+params = read_params(Path(sys.argv[3]))
+directory = Path(sys.argv[2])
+manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf-8'))
+item = manifest[0]  # 本例先验证只有一个名为 source 的 records 输入
+with (directory / item['file']).open('rb') as raw:
+    with pa.ipc.open_stream(raw) as reader:
+        for batch in reader:
+            selected = batch.filter(
+                pc.greater_equal(batch.column('amount'), params['min_amount']))
+```
+
+这里的 `read_params`、导入和完整校验均在[完整程序](../examples/operators/python/filter_amount/1.0/filter_amount.py)中。程序按批次处理，不收集完整 Dataset。停止于 Arrow EOS，不等待 FIFO 的操作系统 EOF。多个输入必须按端口名称字典序消费，例如 `left` 再 `right`。
+
+## 第三步：声明输出并发送批次
+
+输出不是 `print(table)` 或直接往 stdout 写 CSV。Python/Scala 算子在 stdout 写协议帧；普通文本日志写 stderr。records 输出的 schema 在开始前确定，本例为：
+
+```python
+OUTPUT_SCHEMA = pa.schema([
+    ('id', pa.int64()),
+    ('amount', pa.float64()),
+    ('scaled_amount', pa.float64()),
+])
+```
+
+完整程序先发送 `start`，再按批次输出 `data`，最后发送 `end`：
+
+```python
+emit('start', representation='records', format='arrow',
+     schema=base64.b64encode(OUTPUT_SCHEMA.serialize().to_pybytes()).decode('ascii'))
+
+# selected 是本批保留下来的行；没有行时跳过 data。
+output = pa.record_batch([
+    selected.column('id'), selected.column('amount'),
+    pc.multiply(selected.column('amount'), params['factor']),
+], schema=OUTPUT_SCHEMA)
+sink = pa.BufferOutputStream()
+with pa.ipc.new_stream(sink, OUTPUT_SCHEMA) as writer:
+    writer.write_batch(output)
+emit('data', sink.getvalue().to_pybytes())
+
+# 所有输入消费、所有批次输出完成后执行一次。
+emit('end')
+```
+
+`emit` 的完整实现在示例文件中。它把头和载荷封装为长度前缀帧，所有帧标记 `port: result`。每个 records data 载荷是一个独立的、恰好包含一个批次的 Arrow IPC 流，不是 JSON 行，也不是把多个 IPC 流简单当作一个流追加。输出批次 schema 必须与 start 一致。
+
+本例先把输入批次切成最多 512 行的小批次，避免生成过大的输出帧。空结果只发送 start/end。框架在程序成功退出并校验全部输出端口结束后，才向客户端报告任务完成；算子自身不发送最终 `complete` 事件。
+
+## 第四步：本地验证，再发布
+
+从仓库根运行本地验证，不需要启动 DACP 或 Docker；Python 环境需已安装 PyArrow：
+
+```bash
+python3 scripts/test-operator-authoring.py
+```
+
+该脚本用普通 Arrow IPC 文件替代 FIFO，验证分批输入、参数、空值、预期结果、输出 schema、空结果和无效参数。它验证算子协议，不代替容器、Flight 和授权集成测试。
+
+构建共享运行环境并发布：
+
+```bash
+docker build -t dacp/operator-python:1.0 examples/operators/python
+(cd dacp-operator-repository && sbt stage)
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish filter_amount@1.0 \
+  --image dacp/operator-python:1.0 --executor python --entrypoint filter_amount \
+  --artifact examples/operators/python/filter_amount/1.0/filter_amount.py \
+  --ports examples/operators/python/filter_amount/1.0/operator.yaml \
+  --root .operator-catalog
+```
+
+依赖预装在运行时镜像，执行时不联网安装。版本不可覆盖；修改已发布代码时发布新版本。
+
+## 第五步：绑定数据并运行
+
+先让 DACP 节点发布示例 CSV。将以下定义合并到节点现有配置中，并把文件路径改为本机绝对路径；监听、TLS、授权等配置仍需完整：
+
+```yaml
+datasets:
+  data1:
+    provider: mixed
+    items:
+      /orders:
+        file: /absolute/path/to/dacp-codex/examples/operators/python/filter_amount/1.0/orders.csv
+        schema: {id: int64, amount: float64}
+remote_operator_library_urls: [http://localhost:8820]
+```
+
+仓库需要通过 HTTP 提供 `.operator-catalog`，启动命令见后文。通过已配置证书的 Shell 连接此 Dataset：
+
+```bash
+dacp-shell dacp://localhost:8815/data1
+```
+
+在 Shell 提示符中输入：
+
+```text
+run filter_amount@1.0 --input source=/orders --view records --params '{"min_amount":20,"factor":2}'
+```
+
+Shell 等待结果，随批次到达显示前面的两行结果，结束后显示执行信息并返回提示符。以下作业表达相同绑定，也适合为多个输入分别选择 view：
+
+```yaml
+job: filter-amount-demo
+tasks:
+  - id: filter
+    title: Filter orders and calculate scaled amounts
+    operator: filter_amount@1.0
+    inputs:
+      source: {uri: 'dacp://localhost:8815/data1/orders', view: records}
+    params: {min_amount: 20, factor: 2}
+outputs:
+  result: {task: filter, port: result}
+```
+
+```text
+submit examples/operators/python/filter_amount/1.0/job.yaml
+```
+
+`id` 用于任务间依赖引用，`title` 用于展示；顶层 `outputs.result` 指定向客户端公开哪个任务端口。所有输出是一次性流，不自动保存到服务器，也不会变成 Dataset。取消消费会取消上游执行；已经显示的数据在后续失败时属于部分结果。
+
+## bytes 输出应该是什么样
+
+文本、压缩文件、图像等可选择 bytes。比如输入原始 UTF-8 `hello\n`，输出大写文本时，逻辑输出为：
+
+```text
+HELLO
+```
+
+对应 start 头为 `{"type":"start","port":"result","representation":"bytes","format":"text"}`；data 的载荷直接是 `b'HELLO\n'`，不再套 Arrow IPC。注意输入 bytes 仍通过 Arrow IPC 的 `data: binary` 列传入，这与输出帧载荷不同。Shell 可增量显示文本，未知二进制显示十六进制；多个块不保证按行或 UTF-8 字符边界划分。
+
+原生 stdin/stdout 程序可使用 [command 执行器](native-commands.md)，由适配器处理协议帧；Python/JVM 执行器则要求程序自己实现协议。已有的[字节恒等 Scala 程序](../examples/operators/scala/src/main/scala/example/ScalaIdentity.scala)和[Python 恒等程序](../examples/operators/python/identity_python/1.0/identity.py)可作为起点。
 
 ## Scala 示例
 
@@ -104,3 +307,29 @@ run scala_identity@1.0 --input source=/reports/orders
 ```
 
 shell 等待并逐块显示结果，不保存输出数据集。另见[流契约](operator-streams.md)与 [DEBUG heredoc 源码](operator-source.md)。
+
+## 上传到远程仓库
+
+公共网站提供搜索、审查和下载；发布使用服务接口或管理员 CLI，网页不提供上传表单。先通过本地 `publish` 生成 `.operator-catalog`，向仓库管理员获取发布 token，并在环境中设置 `DACP_REPOSITORY_PUBLISH_TOKEN`，再运行：
+
+```bash
+python3 scripts/upload-operator.py filter_amount@1.0 \
+  --catalog .operator-catalog --url https://repository.example.org
+```
+
+上传器传输清单及所需运行环境/代码 blob，从环境变量读取认证 token。远程发布要求 HTTPS。也可由管理员在仓库主机运行发布 CLI。见 [token 认证发布](../dacp-operator-repository/README.md#token-认证发布-api)和[源码审查材料](operator-provenance.md)。附上源码、许可证和构建说明有助于评估，但不能单凭这些材料认定算子安全。
+
+## 协议限制与排错
+
+帧布局为两个大端 32 位长度（JSON 头长度、载荷长度），随后是 UTF-8 JSON 头和载荷。头最多 64 KiB，载荷最多 8 MiB。每个端口发送 start、零或多个 data、end；多个输出必须先发送全部 start，再发送任何 data。start 可包含 base64 Arrow IPC schema 消息，records 必须提供。输入 manifest 也可能携带 schema，但实际 reader schema 仍需校验。
+
+常见问题：
+
+- 提示不支持输入表示：检查 `--view records`、端口声明以及 Item 公开的 views。
+- 参数错误：检查 `--params` 是否为 JSON 对象，以及参数类型和拼写；框架不会替程序校验业务参数。
+- 协议解析失败：检查 stdout 是否混入 `print`/日志；所有诊断写 stderr。
+- 输出 schema 不一致：所有批次使用 start 声明的类型、列名和顺序。
+- 程序不结束：输入使用 Arrow stream reader 的 EOS，不要继续读原始 FIFO 等待 EOF。
+- 发送 end 后仍失败：end 只结束一个端口，程序还需正常退出；非零退出表示失败，已显示结果属于部分结果。
+
+容器根和输入只读，临时文件放 `/tmp`；容器禁用网络，并限制内存、PID、临时空间和执行期限。依赖需预置。需要 JAR/源码/wheel 的小型发布时复用共享运行环境；不将算子加载进服务器 JVM。仓库算子可在 NORMAL/DEBUG 执行，内联源码仅允许 DEBUG。多维数组、图像等新表示必须先定义共享契约，不得静默展开为记录。

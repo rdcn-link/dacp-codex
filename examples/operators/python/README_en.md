@@ -21,7 +21,7 @@ The included `pyproject.toml` builds the same source as an installable `identity
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish identity_wheel@1.0 --root .operator-catalog --image dacp/operator-python:1.0 --executor python --entrypoint identity --artifact examples/operators/python/dist/dacp_example_ops-1.0-py3-none-any.whl --ports examples/operators/python/identity_python/1.0/operator.yaml
 ```
 
-Dependencies must already exist in the runtime. The executor installs the wheel offline with `--no-index --no-deps`, then invokes its module. Multiple operators may reference different modules in the same wheel. See [packaging and executor contracts](../../../docs/operator-packaging.md).
+Dependencies must already exist in the runtime. The executor installs the wheel offline with `--no-index --no-deps`, then invokes its module. Multiple operators may reference different modules in the same wheel. See [packaging and executor contracts](../../../docs/operator-packaging_en.md).
 
 For complete source examples, wheel packaging, remote file transfer, administrator publication, and execution instructions, see [Write and upload custom operators](../../../docs/operator-authoring_en.md).
 

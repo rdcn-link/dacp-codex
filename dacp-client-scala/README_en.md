@@ -117,7 +117,7 @@ Using.resource(ds.open("/reports/orders",
 }
 ```
 
-Use an open `ds` inside the Dataset resource scope above. Equality uses `===`, inequality `=!=`, membership `.isin(Seq(...))`, and null checks `.isNull`/`.isNotNull`. The server applies filtering before projection and the global limit; bytes reject query options. See [shared semantics and examples](../docs/records-scans.md).
+Use an open `ds` inside the Dataset resource scope above. Equality uses `===`, inequality `=!=`, membership `.isin(Seq(...))`, and null checks `.isNull`/`.isNotNull`. The server applies filtering before projection and the global limit; bytes reject query options. See [shared semantics and examples](../docs/records-scans_en.md).
 
 ## Streaming jobs
 

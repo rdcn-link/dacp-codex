@@ -2,10 +2,6 @@ scalaVersion := "2.13.16"
 Compile / PB.protoSources += baseDirectory.value / ".." / "proto"
 Compile / PB.targets := Seq(PB.gens.java -> (Compile / sourceManaged).value)
 libraryDependencies ++= Seq(
- "org.apache.commons" % "commons-compress" % "1.28.0",
- "org.apache.poi" % "poi-ooxml" % "5.5.1",
- "com.h2database" % "h2" % "2.3.232",
- "org.postgresql" % "postgresql" % "42.7.8",
  "com.google.protobuf" % "protobuf-java" % "3.25.5",
  "org.apache.arrow" % "flight-core" % "18.3.0",
  "org.apache.arrow" % "arrow-memory-netty" % "18.3.0",
@@ -14,10 +10,6 @@ libraryDependencies ++= Seq(
  "com.github.docker-java" % "docker-java-transport-httpclient5" % "3.4.1",
  "org.yaml" % "snakeyaml" % "2.3",
  "com.fasterxml.jackson.core" % "jackson-databind" % "2.18.2",
- "org.apache.commons" % "commons-csv" % "1.13.0",
- "org.apache.parquet" % "parquet-avro" % "1.15.0",
- "org.apache.hadoop" % "hadoop-common" % "3.4.1",
- "org.apache.hadoop" % "hadoop-mapreduce-client-core" % "3.4.1",
  "org.slf4j" % "slf4j-simple" % "2.0.16",
  "org.scalatest" %% "scalatest" % "3.2.19" % Test)
 Compile / mainClass := Some("dacp.Main")
@@ -35,8 +27,28 @@ dependsOn(pluginApi, operatorRuntime % "test->compile")
 // Compile the standalone contributor example against the same API during contract tests.
 Test / unmanagedSourceDirectories += baseDirectory.value / ".." / "examples" / "plugins" / "src" / "main" / "scala"
 
-lazy val operatorExecutors = RootProject(file("../dacp-operator-executors"))
-dependsOn(operatorExecutors)
+lazy val operatorExecutors = RootProject(file("../plugins/dacp-plugin-operator-executors"))
+dependsOn(operatorExecutors % "runtime->compile;test->compile")
 
 lazy val unionProtocol = RootProject(file("../dacp-union-protocol"))
 dependsOn(unionProtocol)
+
+// Standard distribution bundles plugins at runtime. Core compilation sees only the public API.
+lazy val pluginDatasets = RootProject(file("../plugins/dacp-plugin-datasets"))
+dependsOn(pluginDatasets % "runtime->compile;test->compile")
+lazy val pluginFormatsBasic = RootProject(file("../plugins/dacp-plugin-formats-basic"))
+dependsOn(pluginFormatsBasic % "runtime->compile;test->compile")
+lazy val pluginParquet = RootProject(file("../plugins/dacp-plugin-parquet"))
+dependsOn(pluginParquet % "runtime->compile;test->compile")
+lazy val pluginExcel = RootProject(file("../plugins/dacp-plugin-excel"))
+dependsOn(pluginExcel % "runtime->compile;test->compile")
+lazy val pluginArchives = RootProject(file("../plugins/dacp-plugin-archives"))
+dependsOn(pluginArchives % "runtime->compile;test->compile")
+lazy val pluginCatalogStatic = RootProject(file("../plugins/dacp-plugin-catalog-static"))
+dependsOn(pluginCatalogStatic % "runtime->compile;test->compile")
+
+lazy val pluginMounted = RootProject(file("../plugins/dacp-plugin-mounted"))
+dependsOn(pluginMounted % "runtime->compile;test->compile")
+
+lazy val pluginExecutionFile = RootProject(file("../plugins/dacp-plugin-execution-file"))
+dependsOn(pluginExecutionFile % "runtime->compile;test->compile")

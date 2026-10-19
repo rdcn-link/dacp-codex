@@ -22,7 +22,7 @@ Setup builds the shared `dacp/operator-jvm:1.1` environment and optional complet
 | `format_convert@1.1` | Convert CSV/NDJSON to Parquet; see [parameters](../docs/reference_en.md#format_convert-parameters) |
 | `identity@1.1` | Copy bytes for transfer checks and pipelines |
 
-Both use the same thin Scala JAR and runtime environment. The repository exports the runtime only once. See the [runtime builder](../dacp-operator-runtime/README_en.md), [user-defined Scala example](../examples/operators/scala/README_en.md), [Python example](../examples/operators/python/README_en.md), and [packaging contracts](../docs/operator-packaging.md).
+Both use the same thin Scala JAR and runtime environment. The repository exports the runtime only once. See the [runtime builder](../dacp-operator-runtime/README_en.md), [user-defined Scala example](../examples/operators/scala/README_en.md), [Python example](../examples/operators/python/README_en.md), and [packaging contracts](../docs/operator-packaging_en.md).
 
 ## Publication and execution
 
@@ -57,7 +57,7 @@ operator_cache: /var/lib/dacp/operators
 operator_max_bytes: 8589934592
 ```
 
-Tasks retain references such as `operator: format_convert@1.1`. Resolution checks local definitions/installed images, completed caches, then remote repositories in order. Only manifest HTTP 404 advances to another repository. All remote/cached blobs are verified for size and SHA-256; images use pinned IDs. Blobs are shared across operators and repositories; completed caches work offline. Limits apply per artifact. See [cache layout and limitations](../docs/operator-packaging.md#content-addressed-storage).
+Tasks retain references such as `operator: format_convert@1.1`. Resolution checks local definitions/installed images, completed caches, then remote repositories in order. Only manifest HTTP 404 advances to another repository. All remote/cached blobs are verified for size and SHA-256; images use pinned IDs. Blobs are shared across operators and repositories; completed caches work offline. Limits apply per artifact. See [cache layout and limitations](../docs/operator-packaging_en.md#content-addressed-storage).
 
 ## Public website and HTTP API
 
@@ -75,7 +75,7 @@ Open `http://localhost:8820/`. Anyone can search names, versions, and descriptio
 
 Unknown paths/missing artifacts return 404; unsupported write methods return 405. HEAD supplies Content-Length. Web download links include the original artifact filename after the digest (`/v1/blobs/sha256/DIGEST/FILENAME`); GET and HEAD responses use it in `Content-Disposition`, preserving file extensions. Digest-only URLs are the content-addressed retrieval API. Paths cannot follow symlinks outside the catalog. Eight workers use a bounded queue. Staging directories are excluded from listing. Catalog reads metadata without hashing large blobs.
 
-Metadata lives in `<root>/<name>/<version>/manifest.json`; blobs in `<root>/blobs/sha256/<digest>`; the runtime export index in `<root>/images/<image-ID>.json`. See the [manifest schema](../docs/operator-packaging.md#content-addressed-storage). This unreleased project directly uses the new schema, without old-schema readers. Use a fresh development catalog for the new format.
+Metadata lives in `<root>/<name>/<version>/manifest.json`; blobs in `<root>/blobs/sha256/<digest>`; the runtime export index in `<root>/images/<image-ID>.json`. See the [manifest schema](../docs/operator-packaging_en.md#content-addressed-storage). This unreleased project directly uses the new schema, without old-schema readers. Use a fresh development catalog for the new format.
 
 ## Token-authenticated publication API
 
@@ -126,7 +126,7 @@ Both TLS options are required together. Nodes need a JVM trust store trusting th
 
 ```bash
 (cd dacp-operator-repository && sbt test)
-(cd dacp-operator-executors && sbt test)
+(cd plugins/dacp-plugin-operator-executors && sbt test)
 scripts/test-operator-repository.sh
 ```
 

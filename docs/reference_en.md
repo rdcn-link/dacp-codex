@@ -97,7 +97,7 @@ Excel uses Apache POI 5.5.1 event readers for both XLS and XLSX. Empty headers b
 
 Listings do not parse CSV, NDJSON, or Excel records; their counts remain unknown unless populated at publication. Opening records infers a schema from a bounded sample. Outside optional startup counting, only explicit `count` scans these files; Parquet can obtain its count cheaply from the footer. Excel parsers have a queue of at most 16 rows and stop on close/cancellation; schemas, current batches, individual cells, and POI shared-string dictionaries use additional memory. Large shared-string tables can still require substantial memory. No full worksheet is materialized.
 
-The server extension API is [`FormatHandler`](../dacp-server/src/main/scala/dacp/Formats.scala). Providers implement detection, optional cheap metadata, schema, record reading, explicit counting, and cleanup; file bytes use the shared reader. Add a provider JAR and register its public no-argument class in `META-INF/services/dacp.FormatHandler`, then restart. Format IDs and extension registrations must be unique; `sql` is reserved for the SQL adapter. The core server and SDKs need no format-specific changes. See [handler development](../docs/format-handlers.md).
+The server extension API is [`FormatHandler`](../dacp-plugin-api/src/main/scala/dacp/FormatHandler.scala). Providers implement detection, optional cheap metadata, schema, record reading, explicit counting, and cleanup; file bytes use the shared reader. Add a provider JAR and register its public no-argument class in `META-INF/services/dacp.FormatHandler`, then restart. Format IDs and extension registrations must be unique; `sql` is reserved for the SQL adapter. The core server and SDKs need no format-specific changes. See [handler development](../docs/format-handlers_en.md).
 
 ## Item properties
 
@@ -123,7 +123,7 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 Set `count_file_records_on_startup: true` to count mixed file mappings and initially discovered directory record files once while loading configuration and reuse those counts in ordinary browsing. It defaults to false. Counts are tied to file size and modification time; changes detected during or after counting leave the result unknown. Restarting recounts files. Explicit `count` still reads current content without changing saved metadata. SQL, archive children, and folders are excluded. Invalid record files fail startup when this option is enabled.
 
-`plugin_directory` optionally selects a directory containing plugin and dependency JARs. It is loaded before registry initialization and requires a restart after changes. Reader-specific parameters go under `options`; handlers validate them. See [plugins](plugins.md) for the standalone API and structured-file contracts.
+`plugin_directory` optionally selects a directory containing plugin and dependency JARs. It is loaded before registry initialization and requires a restart after changes. Reader-specific parameters go under `options`; handlers validate them. See [plugins](plugins_en.md) for the standalone API and structured-file contracts.
 
 ## Dataset construction
 
@@ -133,7 +133,7 @@ Built-in providers are `directory`, `sqldb`, and `mixed`. Each Dataset selects o
 
 Directory Datasets do not follow symlinks. Folder metadata and immediate-child listings do not recursively scan ordinary child directories; `list()` discovers all files and archive entries recursively. Optional startup counting scans initial files; later files are discovered without automatic counting. Reader overrides match public paths without renaming files. SQL bindings or absolute file mappings in a directory Dataset are rejected; use mixed for those combinations.
 
-Dataset providers construct datasets, container readers browse archives, and format handlers interpret content. Future providers such as MongoDB can implement their own listing, metadata, and streaming without pretending to be files or SQL tables, or changing the protocol or SDKs. See the [provider development guide](dataset-providers.md).
+Dataset providers construct datasets, container readers browse archives, and format handlers interpret content. Future providers such as MongoDB can implement their own listing, metadata, and streaming without pretending to be files or SQL tables, or changing the protocol or SDKs. See the [provider development guide](dataset-providers_en.md).
 
 ## Task execution and operators
 
@@ -141,11 +141,11 @@ Tasks use named input bindings to specific data items or upstream task ports. Ou
 
 Operator launch arguments are `operator /input /input/params.json`. Inputs are Arrow IPC FIFOs described by `/input/manifest.json`. Stdout carries framed start/data/end events; diagnostics go to stderr. No output directory, output registration, TTL, or result-dataset URI is used. Parquet conversion uses private ephemeral scratch to complete the footer, then streams bytes.
 
-See the [authoring contract](operator-authoring_en.md), [stream contracts](operator-streams.md), and [DEBUG-only heredoc source](operator-source_en.md) for source examples, ports, framing, runtime allowlists, cancellation, and limits.
+See the [authoring contract](operator-authoring_en.md), [stream contracts](operator-streams_en.md), and [DEBUG-only heredoc source](operator-source_en.md) for source examples, ports, framing, runtime allowlists, cancellation, and limits.
 
 Operators resolve from the local directory and installed image first, then completed cached downloads, then remote URLs in configured order. A manifest HTTP 404 tries the next library; other download or validation failures stop execution. Configure `remote_operator_library_urls: [http://library-a:8820, https://library-b:8820]`; an empty list uses only local operators.
 
-Runtime images and operator code are separate content-addressed artifacts. Built-in launch plugins support complete containers, Java/Scala JARs, Python source, and wheels, all within isolated runtime containers. See [operator packaging](operator-packaging.md) for definitions, shared caching, executor registration, and current limitations.
+Runtime images and operator code are separate content-addressed artifacts. Built-in launch plugins support complete containers, Java/Scala JARs, Python source, and wheels, all within isolated runtime containers. See [operator packaging](operator-packaging_en.md) for definitions, shared caching, executor registration, and current limitations.
 
 ### format_convert parameters
 
@@ -194,7 +194,7 @@ Configuration in `examples/server.yaml`:
 | `batch_size` | Maximum rows per batch in file records views |
 | `byte_chunk` | Maximum bytes per binary row in bytes views |
 | `infer_sample` | Number of batches sampled for server-side records schema inference |
-| `sql_sources` | Private JDBC sources (tables are not automatically published): url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
+| `sources` | Private JDBC sources (tables are not automatically published): url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
 | `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | Ordered remote operator library URLs / local immutable version cache / maximum size per artifact in bytes (default 8 GiB) |
 | `local_operator_library` | Local operator library |
 | `task_peers` | Node origins permitted for task dispatch; the local node is always allowed; no central discovery service |

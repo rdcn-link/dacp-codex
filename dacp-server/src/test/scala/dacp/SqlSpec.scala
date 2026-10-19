@@ -72,9 +72,9 @@ class SqlSpec extends AnyFunSuite {
   test("Flight serves SQL records and byte-view IPC alongside directory datasets") { database { conf =>
     val allocator = new RootAllocator()
     val dir = Files.createTempDirectory("sql-files-"); Files.writeString(dir.resolve("x.csv"),"id\n1\n")
-    val config = Config("localhost",8815,"localhost",Map("files" -> DatasetDefinition.mixed(Seq(PublishedItem("/records", file=Some(dir.resolve("x.csv"))))),
-      "db" -> DatasetDefinition.mixed(Seq(PublishedItem("/orders", sql=Some("warehouse"), table=Some("ORDERS")),
-        PublishedItem("/reports/file",file=Some(dir.resolve("x.csv")))))),Seq("dacp://localhost:8815/files","dacp://localhost:8815/db"),dir,dir,dir, batchSize=2,byteChunk=32,sqlSources=Map("warehouse"->conf))
+    val config = Config("localhost",8815,"localhost",Map("files" -> FileDatasets.mixed(Seq(PublishedItem("/records", file=Some(dir.resolve("x.csv"))))),
+      "db" -> FileDatasets.mixed(Seq(PublishedItem("/orders", sql=Some("warehouse"), table=Some("ORDERS")),
+        PublishedItem("/reports/file",file=Some(dir.resolve("x.csv")))))),Seq("dacp://localhost:8815/files","dacp://localhost:8815/db"),dir,dir,dir, batchSize=2,byteChunk=32,sources=Map("warehouse"->SqlConfig.source(conf)))
     val server = FlightServer.builder(allocator,Location.forGrpcInsecure("127.0.0.1",0),new Producer(config,allocator)).build().start()
     val client = FlightClient.builder(allocator,server.getLocation).build()
     try {
@@ -133,7 +133,7 @@ class SqlSpec extends AnyFunSuite {
     val c = DriverManager.getConnection(conf.url,"sa","")
     try { val st = c.createStatement(); try st.execute("CREATE TABLE unsupported (items INTEGER ARRAY)") finally st.close() } finally c.close()
     intercept[IllegalArgumentException](new SqlAdapter(conf,2).describe("UNSUPPORTED"))
-    val old = Config.load(Path.of("../examples/server.yaml")); assert(old.sqlSources.isEmpty && old.datasets.contains("data1"))
+    val old = Config.load(Path.of("../examples/server.yaml")); assert(old.sources.isEmpty && old.datasets.contains("data1"))
     val p = Files.createTempFile("sql-config-",".yaml")
     try {
       Files.writeString(p,"""host: localhost
@@ -142,17 +142,19 @@ tls_cert: cert
 tls_key: key
 tls_ca: ca
 allowed_uri_prefixes: ['dacp://localhost:8815/db']
-sql_sources:
+sources:
   db:
-    url: 'jdbc:h2:mem:config'
-    user: sa
-    schema: PUBLIC
-    tables: [ORDERS]
-    fetch_size: 17
+    provider: jdbc
+    settings:
+      url: 'jdbc:h2:mem:config'
+      user: sa
+      schema: PUBLIC
+      tables: [ORDERS]
+      fetch_size: 17
 """)
       val loaded = Config.load(p)
-      assert(loaded.datasets.isEmpty && loaded.sqlSources("db").fetchSize == 17 && !loaded.hasDataset("db"))
-      intercept[IllegalArgumentException](loaded.copy(datasets=Map("bad/name"->DatasetDefinition.mixed(Seq.empty))))
+      assert(loaded.datasets.isEmpty && SqlConfig.read(loaded.sources("db"),loaded.batchSize).fetchSize == 17 && !loaded.hasDataset("db"))
+      intercept[IllegalArgumentException](loaded.copy(datasets=Map("bad/name"->FileDatasets.mixed(Seq.empty))))
     } finally Files.delete(p)
   }}
 }

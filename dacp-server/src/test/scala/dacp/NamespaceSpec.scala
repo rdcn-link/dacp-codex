@@ -8,6 +8,10 @@ import dacp.protocol.Metadata
 import scala.jdk.CollectionConverters._
 
 class NamespaceSpec extends AnyFunSuite {
+  private val plugins=new PluginEnvironment()
+  private val Formats=plugins.formats
+  private val Containers=plugins.containers
+
   def fixture(test: (Config, Producer) => Unit): Unit = {
     val dir = Files.createTempDirectory("private-storage-")
     val file = dir.resolve("secret-orders.csv")
@@ -15,7 +19,7 @@ class NamespaceSpec extends AnyFunSuite {
     Files.writeString(dir.resolve("unpublished.csv"),"hidden\n1\n")
     val entries = Seq(PublishedItem("/events",file=Some(file)), PublishedItem("/nested/orders",file=Some(file)),
       PublishedItem("/nested/archive/old",file=Some(file)), PublishedItem("/empty",kind="folder"))
-    val config = Config("localhost",8815,"localhost",Map("public"->DatasetDefinition.mixed(entries)),Seq("dacp://localhost:8815/public"),dir,dir,dir)
+    val config = Config("localhost",8815,"localhost",Map("public"->FileDatasets.mixed(entries)),Seq("dacp://localhost:8815/public"),dir,dir,dir)
     val allocator = new RootAllocator()
     try test(config,new Producer(config,allocator))
     finally { allocator.close(); Data.deleteTree(dir) }
@@ -70,15 +74,15 @@ class NamespaceSpec extends AnyFunSuite {
     }
   }}
   test("invalid mappings reject duplicate aliases, data parents, and unknown sources") { fixture { (c,_) =>
-    val data = DatasetProviders.mixedBindings(c.datasets("public")).head
+    val data = DatasetPublication.mixedBindings(c.datasets("public")).head
     intercept[IllegalArgumentException](new NamespaceAdapter(Seq(data,data),c))
     intercept[IllegalArgumentException](new NamespaceAdapter(Seq(data,PublishedItem("/events/child",kind="folder")),c))
     intercept[IllegalArgumentException](PublishedItem("relative",kind="folder"))
     intercept[IllegalArgumentException](new NamespaceAdapter(Seq(PublishedItem("/data",sql=Some("unknown"),table=Some("SECRET"))),c))
   }}
   test("missing private files produce sanitized client errors") { fixture { (c,_) =>
-    val missing = DatasetProviders.mixedBindings(c.datasets("public")).head.file.get.resolveSibling("private-missing.csv")
-    val config = c.copy(datasets=Map("public" -> DatasetDefinition.mixed(Seq(PublishedItem("/published",file=Some(missing))))))
+    val missing = DatasetPublication.mixedBindings(c.datasets("public")).head.file.get.resolveSibling("private-missing.csv")
+    val config = c.copy(datasets=Map("public" -> FileDatasets.mixed(Seq(PublishedItem("/published",file=Some(missing))))))
     val a = new RootAllocator()
     try {
       val p = new Producer(config,a)
@@ -87,7 +91,7 @@ class NamespaceSpec extends AnyFunSuite {
     } finally a.close()
   }}
   test("file statistics preserve zero timestamps; folder statistics remain unknown") { fixture { (c,p) =>
-    val file = DatasetProviders.mixedBindings(c.datasets("public")).head.file.get
+    val file = DatasetPublication.mixedBindings(c.datasets("public")).head.file.get
     Files.setLastModifiedTime(file,java.nio.file.attribute.FileTime.fromMillis(0))
     val all = list(p,"datasets","public").map(i => i.getPath -> i).toMap
     val item = all("/events")
@@ -119,13 +123,13 @@ class NamespaceSpec extends AnyFunSuite {
       val json = dir.resolve("rows.ndjson"); Files.writeString(json,"{\"id\":1}\n\n{\"id\":2}\n")
       val empty = dir.resolve("empty.csv"); Files.writeString(empty,"id\n")
       val binary = dir.resolve("empty.bin"); Files.write(binary,Array.emptyByteArray)
-      def stat(path: Path) = ItemProperties.file(Item("/data",Data.format(path),None),path)
+      def stat(path: Path) = ItemProperties.file(Item("/data",Formats.detect(ByteSource.local(path)).id,None),path,plugins=plugins)
       assert(stat(csv).recordCount.isEmpty)
       assert(stat(json).recordCount.isEmpty)
       assert(stat(empty).recordCount.isEmpty)
-      assert(Formats.detect(csv).count(csv,FileOptions()).contains(2L))
-      assert(Formats.detect(json).count(json,FileOptions()).contains(2L))
-      assert(Formats.detect(empty).count(empty,FileOptions()).contains(0L))
+      assert(Formats.detect(ByteSource.local(csv)).count(ByteSource.local(csv),FileOptions()).contains(2L))
+      assert(Formats.detect(ByteSource.local(json)).count(ByteSource.local(json),FileOptions()).contains(2L))
+      assert(Formats.detect(ByteSource.local(empty)).count(ByteSource.local(empty),FileOptions()).contains(0L))
       assert(stat(binary).totalSizeBytes.contains(0L) && stat(binary).recordCount.isEmpty)
     } finally Data.deleteTree(dir)
   }
@@ -136,11 +140,11 @@ class NamespaceSpec extends AnyFunSuite {
       val csv = dir.resolve("orders.csv"); Files.writeString(csv,"id\n1\n2\n")
       val empty = dir.resolve("empty.csv"); Files.writeString(empty,"id\n")
       val config = Config("localhost",8815,"localhost",Map.empty,Seq.empty,dir,dir,dir)
-      val saved = FileRecordCounts.capture(csv,FileOptions()).get
+      val saved = FileRecordCounts.capture(csv,FileOptions(),plugins).get
       assert(saved.value == 2L)
       val ns = new NamespaceAdapter(Seq(
         PublishedItem("/reports/orders",file=Some(csv),recordCount=Some(saved)),
-        PublishedItem("/empty",file=Some(empty),recordCount=FileRecordCounts.capture(empty,FileOptions()))),config)
+        PublishedItem("/empty",file=Some(empty),recordCount=FileRecordCounts.capture(empty,FileOptions(),plugins))),config)
       assert(ns.list("/reports").head.recordCount.contains(2L))
       assert(ns.describe("/reports/orders").recordCount.contains(2L))
       assert(ns.list().find(_.path == "/empty").get.recordCount.contains(0L))
@@ -152,7 +156,7 @@ class NamespaceSpec extends AnyFunSuite {
       assert(ns.count("/reports/orders").contains(3L))
       assert(ns.list("/reports").head.recordCount.isEmpty)
       val binary = dir.resolve("image.bin"); Files.write(binary,Array[Byte](1,2))
-      assert(FileRecordCounts.capture(binary,FileOptions()).isEmpty)
+      assert(FileRecordCounts.capture(binary,FileOptions(),plugins).isEmpty)
     } finally Data.deleteTree(dir)
   }
   test("example config fills direct file counts at publication without counting container children") {
@@ -182,7 +186,7 @@ datasets:
       /missing: {file: ${dir.resolve("missing.csv")}}
 """
       Files.writeString(yaml,text)
-      assert(DatasetProviders.mixedBindings(Config.load(yaml).datasets("public")).head.recordCount.isEmpty)
+      assert(DatasetPublication.mixedBindings(Config.load(yaml).datasets("public")).head.recordCount.isEmpty)
       Files.writeString(yaml,text + "count_file_records_on_startup: true\n")
       intercept[java.nio.file.NoSuchFileException](Config.load(yaml))
     } finally Data.deleteTree(dir)

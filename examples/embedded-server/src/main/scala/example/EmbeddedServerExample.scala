@@ -26,7 +26,7 @@ object EmbeddedServerExample {
     Runtime.getRuntime.addShutdownHook(hook) // The embedding application chooses whether to install a hook.
     try {
       server.start() // Returns after the listener starts.
-      registry.put("reports",DatasetDefinition.mixed(Seq(PublishedItem("/orders",file=Some(Path.of(args(1)).toAbsolutePath)))))
+      registry.put("reports",DatasetDefinition("mixed",items=Map("/orders"->Map("file"->Path.of(args(1)).toAbsolutePath.toString))))
       println("Published dynamically: dacp://localhost:8815/reports/orders")
       // The application may registry.put(...) / registry.remove(...) while the server runs.
       server.awaitTermination()

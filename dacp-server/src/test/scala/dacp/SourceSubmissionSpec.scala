@@ -10,7 +10,7 @@ import dacp.protocol.Metadata
 class SourceSubmissionSpec extends AnyFunSuite {
   test("NORMAL denies source at both coordinator and direct worker Flight entry points") {
     val allocator=new RootAllocator()
-    val config=Config("localhost",18816,"localhost",Map.empty,Seq("dacp://localhost:18816/data"),Path.of("unused"),Path.of("unused"),Path.of("unused"),executionHistoryDirectory=Some(Files.createTempDirectory("dacp-source-history-")))
+    val config=Config("localhost",18816,"localhost",Map.empty,Seq("dacp://localhost:18816/data"),Path.of("unused"),Path.of("unused"),Path.of("unused"),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(Files.createTempDirectory("dacp-source-history-")).toString))))
     val service=new TaskService(config,allocator,new TaskExecutor(config,allocator))
     val producer=new NoOpFlightProducer {
       override def doExchange(ctx:FlightProducer.CallContext,r:FlightStream,w:FlightProducer.ServerStreamListener):Unit=service.exchange(ctx,r,w)

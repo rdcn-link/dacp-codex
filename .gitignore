@@ -9,7 +9,7 @@ examples/certs/
 examples/output/
 
 .operator-cache/
-/plugins/
+/.dacp-plugins/
 .operator-catalog/
 
 examples/sql/*.mv.db
@@ -32,3 +32,5 @@ examples/sql/*.trace.db
 
 # Generated repository publisher credential
 .publish-token
+
+.dacp-access/

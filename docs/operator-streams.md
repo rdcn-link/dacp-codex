@@ -1,12 +1,12 @@
-# Item-based operator inputs and stream-only outputs
+# 基于 Item 的算子输入与纯流式输出
 
-Status: implemented through Flight DoExchange and the Python shell/SDK and Scala SDK. Current ports support bytes and records. Other scientific representations require explicit contract extensions. Each output port has at most one downstream consumer; use distinct ports for duplication. Consume multiple input ports in lexical order.
+已通过 Flight DoExchange、Python Shell/SDK 和 Scala SDK 实现。当前端口支持 bytes 和 records；其他科学数据表示需要明确扩展契约。每个输出端口最多有一个下游消费者，需要复制时使用独立端口。多个输入端口按名称字典序消费。
 
-## User-facing contract
+## 用户使用契约
 
-Every operator output is a stream. There is no save-to-file option, dataset-result mode, or result-mode selector. The shell and SDK consume streams directly; operators do not publish output datasets or return retained dataset URIs. YAML jobs remain useful for pipelines, with output names identifying connections between streams rather than stored datasets.
+所有算子输出都是流。不提供保存文件选项、结果 Dataset 模式或结果模式选择。Shell 和 SDK 直接消费流；算子不发布输出 Dataset，也不返回持久化 Dataset URI。YAML 作业可描述流水线，其中输出名称表示流之间的连接，而不是已保存的数据集。
 
-Shell usage:
+Shell 用法：
 
 ```text
 run scala_identity@1.0 --input source=/reports/orders
@@ -14,65 +14,65 @@ run format_convert@1.1 --input source=/reports/orders --params '{"compression":"
 submit pipeline.yaml
 ```
 
-These commands are implemented in dacp-shell. No `--result`, file destination, or saved output dataset is required.
+dacp-shell 已实现这些命令。不需要 `--result`、文件目标或已保存的输出 Dataset。
 
-## Operator input and output units
+## 算子输入输出单位
 
-Each operator port accepts or produces one data item, delivered as a stream. An operator may declare multiple named input and output ports. A dataset is a namespace/collection used to locate items; it is not an implicit operator input port or persisted result destination.
+每个算子端口接收或产生一个通过流传输的数据 Item。算子可以声明多个命名输入和输出端口。Dataset 是用于定位 Item 的命名空间或集合，不是隐式输入端口，也不是持久化结果目标。
 
 ```text
 convert:
-  inputs:  source -> one CSV item
-  outputs: result -> one Parquet item stream
+  inputs:  source -> 一个 CSV Item
+  outputs: result -> 一个 Parquet Item 流
 
 join:
-  inputs:  left -> one table item, right -> one table item
-  outputs: result -> one table item stream
+  inputs:  left -> 一个表 Item, right -> 一个表 Item
+  outputs: result -> 一个表 Item 流
 ```
 
-Every port declares its accepted or produced representation and applicable schema/format constraints. A data item may be a table, file, image, structured scientific object, or multidimensional array. Restricting ports to items does not require flattening structures, materializing the item, or fitting it in memory. New representations must have explicit shared contracts before implementation.
+每个端口声明接受或产生的表示，以及适用的 schema/格式约束。Item 可以是表、文件、图像、结构化科学对象或多维数组。以 Item 为单位不要求展开结构、物化整个对象或让它完全放入内存。新表示必须先定义公共契约再实现。
 
-An input binding identifies a specific item, its selected advertised representation, and the operator port receiving it. A pipeline binding identifies a named upstream output port. Reject dataset-only bindings, missing required ports, duplicate bindings, unsupported representations, and schema mismatches explicitly. Do not silently select all dataset items, merge their contents, or invoke the operator repeatedly. A shell item number resolves to a specific path in the current listing before submission.
+输入绑定指定一个 Item、其公开支持的表示和接收端口。流水线绑定指定上游命名输出。明确拒绝仅指定 Dataset、缺少必需端口、重复绑定、不支持的表示及 schema 不匹配。不得隐式选择所有 Item、合并内容或重复调用算子。Shell Item 编号在提交前解析为当前列表中的明确路径。
 
-Dataset-wide work belongs to job orchestration:
+Dataset 范围的处理属于作业编排：
 
-- Map explicitly selected compatible items through independent operator invocations.
-- Combine explicitly selected items by binding each to a declared input port, for example `left` and `right` for a join.
+- 将明确选定的兼容 Item 映射为独立算子调用。
+- 将明确选定的 Item 绑定到声明端口，例如关联的 `left` 和 `right`。
 
-Map must be requested explicitly; it is not inferred from a dataset selection. Its selection, concurrency, ordering, and failure policy need a documented contract before implementation. Multi-item aggregation requires an explicitly designed input representation or port contract rather than an arbitrary dataset parameter.
+Map 必须显式请求，不能从 Dataset 选择推断。实现前需要说明选择、并发、顺序和失败策略。多 Item 聚合需要专门设计的输入表示或端口契约，不能使用任意 Dataset 参数代替。
 
-Outputs follow the same item-level rule. Each named output is an item stream with metadata and content; several output ports do not automatically form a saved dataset. Jobs connect output ports to downstream input ports. Dataset item paths identify sources; output port names identify in-flight results and do not allocate published dataset names.
+输出同样以 Item 为单位。每个命名输出都是带元数据和内容的 Item 流；多个输出不会自动形成持久化 Dataset。作业连接输出和下游输入端口。Dataset Item 路径标识源，输出端口名称标识传输中的结果，不分配公开 Dataset 名称。
 
-## Display and lifetime
+## 显示和生命周期
 
-A stream carries an output name and explicit content metadata: representation, format, and schema where applicable. Records can be shown as tables, text as text, and unrecognized binary content as incremental hex lines. Arrays, images, and grouped scientific objects must preserve their structures through explicitly documented representations; do not silently flatten them into records.
+流携带输出名称和明确的内容元数据：表示、格式及适用的 schema。记录显示为表格，文本按文本显示，未知二进制按增量十六进制行显示。数组、图像和分组科学对象必须通过有文档的表示保留结构，不能静默展开成记录。
 
-`run` is synchronous from the shell user's perspective: after submission, the shell waits for stream metadata and prints content incrementally as batches or chunks arrive, without collecting the full result first. The prompt returns only after all output streams complete successfully, execution fails, or the user interrupts. Waiting for the first result is distinct from successful completion; a stalled request remains subject to its execution timeout.
+从用户角度，`run` 同步执行：提交后等待流元数据，随批次或块到达增量输出，不先收集完整结果。所有输出成功结束、执行失败或用户中断后才返回提示符。首个结果到达不等于执行成功；停滞请求仍受执行超时约束。
 
-Records display column headers once per output and append rows as batches arrive. Text decoding preserves characters across chunk boundaries and writes text incrementally. Binary results use 16-byte hex lines with per-port offsets. Label multiple output streams with their port names and metadata so their content can be distinguished; the Flight envelope carries explicit port labels. Keep display buffering bounded.
+每个 records 输出只显示一次列名，随后按批次追加行。文本解码保留跨块字符。二进制使用每行 16 字节的十六进制表示，偏移量按端口计算。多个输出显示端口名称和元数据；Flight 信封明确标注端口。显示缓存保持有界。
 
-The default consumes and displays the complete stream. A preview limit must be requested explicitly; it is not applied silently to `run`. Ctrl-C cancels the request and its upstream execution, releases resources, and returns to the prompt. Existing browsing preview defaults do not imply a limit for operator execution.
+默认消费并显示完整流。预览限制需要显式指定，不能静默应用于 `run`。Ctrl-C 取消请求及上游执行、释放资源并返回提示符。浏览时的默认预览限制不影响算子执行。
 
-The shell displays results as they arrive. A stream is consumed once; it is not a browsable dataset and cannot be reopened after consumption. Show completion only after successful operator exit and valid stream termination. If an operator fails after emitting data, report that previously displayed data is partial.
+流只消费一次，不是可浏览的 Dataset，消费后不能重新打开。只有算子成功退出且流正常终止后才显示完成。算子输出部分数据后失败时，报告已经显示的数据不完整。
 
-A bounded preview stops consumption and cancels the remaining request rather than continuing computation invisibly. Client disconnects and interruption must propagate cancellation through producers, upstream Flight reads, and operator containers. Slow consumers apply backpressure with bounded buffers. Named outputs share one framed exchange and may interleave.
+有界预览停止消费并取消剩余请求，不在后台继续计算。断开连接和中断必须把取消传递给生产者、上游 Flight 读取和算子容器。慢消费者通过有界缓存施加背压。命名输出共享带帧交换，可能交错到达。
 
-## Internal temporary storage
+## 内部临时存储
 
-No user-visible output file or persisted result dataset is created. Operators or formats may still need bounded temporary scratch storage, for example to finish Parquet metadata. Scratch storage is an implementation detail, cleaned on completion, failure, or cancellation; it is not an alternate result destination. Stream-only delivery does not imply that every format can emit useful bytes immediately.
+不创建用户可见输出文件或持久化结果 Dataset。算子或格式仍可能需要有界临时空间，例如完成 Parquet 元数据。临时空间在成功、失败或取消时清理，不是另一种结果目标。纯流式交付不意味着所有格式都能立即输出有用字节。
 
-## Implemented transport and scheduling limits
+## 传输和调度限制
 
-`OperatorRequest` selects job YAML or an internal task JSON request over Flight DoExchange. Each batch has one binary `data` cell containing a frame: big-endian 32-bit header length, big-endian 32-bit payload length, JSON header, then payload. Headers are limited to 64 KiB and payloads to 8 MiB. Events are `start`, `data`, `end`, and final `complete`. Records starts include an IPC schema; each records data frame contains one independent Arrow IPC stream with exactly one batch. Bytes frames preserve bytes unchanged. Completion follows successful execution and valid termination of every exposed port.
+`OperatorRequest` 通过 Flight DoExchange 选择作业 YAML 或内部任务 JSON。每批有一个 binary `data` 单元，内容为帧：大端 32 位头长度、大端 32 位载荷长度、JSON 头和载荷。头最多 64 KiB，载荷最多 8 MiB。事件为 `start`、`data`、`end` 和最终 `complete`。records 起始事件包含 IPC schema；每个 records 数据帧包含恰好一个批次的独立 Arrow IPC 流。bytes 保持原字节。执行成功且所有公开端口正常终止后发送完成。
 
-Operators receive named inputs through Arrow IPC FIFOs and write frames to stdout. Stderr carries diagnostics. Built-in operators and external executor plugins use the same contracts. Output datasets, output TTLs, legacy output directories, and result-mode selectors have been removed.
+算子通过 Arrow IPC FIFO 接收命名输入，向 stdout 写帧，向 stderr 写诊断。内置算子和外部执行器使用相同契约。没有输出 Dataset、输出 TTL、旧输出目录或结果模式选择器。
 
-Each output has at most one consumer. Multiple input ports must be consumed in lexical order. General pipeline scheduling, fan-out, dataset mapping, retries, checkpoints, and replay are not implemented. New representations require explicit contracts; bytes and records are implemented.
+每个输出最多一个消费者。多个输入按名称字典序消费。尚未实现通用流水线调度、扇出、Dataset 映射、重试、检查点和重放。bytes 和 records 已实现，其他表示需要明确契约。
 
-## Shell preview controls
+## Shell 预览控制
 
-`run ... --preview-rows 20` bounds records per port; `run ... --preview-bytes 4096` bounds bytes per port. `submit pipeline.yaml` accepts the same flags. The first reached limit cancels the entire remaining job, reports the affected port, and does not report successful completion. Without these flags, every result is displayed. Browsing limits do not affect jobs.
+`run ... --preview-rows 20` 限制每端口记录数，`run ... --preview-bytes 4096` 限制每端口字节数。`submit pipeline.yaml` 支持相同参数。首先到达的限制取消整个剩余作业，报告对应端口，不报告执行成功。不指定这些参数时显示所有结果。浏览限制不影响作业。
 
-## SDK resource ownership
+## SDK 资源所有权
 
-Python `Job.run` returns a context-managed `JobStream`. Scala `Job.run` returns an `AutoCloseable` iterator of `OutputEvent`; use `Using.resource`. Both release transport resources on exhaustion or failure; explicitly close on early exit to cancel execution. Scala event byte arrays remain valid after advancing or closing; close record readers created from those arrays separately. See the [Scala SDK](../dacp-client-scala/README_en.md) and [inline-source examples](operator-source_en.md).
+Python `Job.run` 返回支持上下文管理的 `JobStream`。Scala `Job.run` 返回 `AutoCloseable` 的 `OutputEvent` 迭代器，应使用 `Using.resource`。两者在耗尽或失败时释放传输资源；提前退出必须显式关闭以取消执行。Scala 事件字节数组在迭代推进或关闭后仍有效；从数组创建的 records 读取器需要单独关闭。见 [Scala SDK](../dacp-client-scala/README.md) 和 [内联源码示例](operator-source.md)。

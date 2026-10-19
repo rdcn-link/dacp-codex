@@ -23,7 +23,7 @@
 | DACP Server | [管理员指南](administrators/README.md)、[配置和协议参考](reference.md) |
 | Union Server 与 Web 看板 | [Union 手册](../dacp-union-server/README.md)、[协作协议](union.md)、[双节点示例](../examples/union/README.md) |
 | 算子仓库 CLI 与网站 | [仓库手册](../dacp-operator-repository/README.md) |
-| 算子运行时与执行器 | [运行时](../dacp-operator-runtime/README.md)、[执行器](../dacp-operator-executors/README.md) |
+| 算子运行时与执行器 | [运行时](../dacp-operator-runtime/README.md)、[执行器](../plugins/dacp-plugin-operator-executors/README.md) |
 | 插件 API 与 Union 传输工具 | [插件 API](../dacp-plugin-api/README.md)、[Union 协议模块](../dacp-union-protocol/README.md) |
 
 ## 专题参考
@@ -47,3 +47,5 @@
 - [插件工程](../examples/plugins/README.md)和 [SQL 数据发布](../examples/sql/README.md)。
 
 除非文档另行指定，命令从项目根目录执行。服务配置中的相对路径以服务进程工作目录为基准。示例证书、主机名、端口及文件路径用于本地演示，部署时按实际环境配置。各 README 的 `README.md` 为中文，`README_en.md` 为对应英文版。
+
+[用户访问日志](access-logs.md)：JSON Lines 文件、大小轮转、字段及采集。

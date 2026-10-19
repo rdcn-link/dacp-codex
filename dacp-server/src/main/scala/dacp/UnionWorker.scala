@@ -109,7 +109,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         Json.fields(n,Set("union_id"));val id=Json.text(n,"union_id");val policy=grant(id,who)
         val ownReserved=sessions.values.asScala.filter(s=> !s.terminal && s.union==id && s.owner==who).map(_.size).sum
         val result=Json.obj().put("node_identity",tls.identity).put("data_origin",DacpUri.origin(config.uri(""))).put("reserved_tasks",reserved).put("capacity",config.maxConcurrentTasks).put("union_reserved_tasks",ownReserved).put("union_capacity",policy.path("max_concurrent_tasks").asInt).put("started_at_ms",java.lang.management.ManagementFactory.getRuntimeMXBean.getStartTime).put("uptime_ms",java.lang.management.ManagementFactory.getRuntimeMXBean.getUptime).put("observed_at_ms",Json.now)
-        val ids=result.putArray("executors");java.util.ServiceLoader.load(classOf[OperatorExecutor],PluginLoader.classLoader).iterator.asScala.foreach(x=>ids.add(x.id));result
+        val ids=result.putArray("executors");config.plugins.services(classOf[OperatorExecutor]).foreach(x=>ids.add(x.id));result
       case "prepare"=>prepare(n,who).snapshot
       case "start"|"execution_status"|"cancel_execution"=>
         Json.fields(n,Set("execution_id"));val id=Json.text(n,"execution_id")
@@ -189,7 +189,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       val u=DacpUri.parse(Json.text(b,"uri"));val split=u.getPath.drop(1).split("/",2);val path="/"+split(1);val view=Json.text(b,"view")
       val access=cancel.add(config.openDataset(split(0),()=>cancel.active()))
       val meta=access.describe(path)
-      require(meta.kind=="data" && NamespaceAdapter.views(meta).contains(view),"local input view unavailable")
+      require(meta.kind=="data" && config.plugins.views(meta).contains(view),"local input view unavailable")
       val queue=new FrameQueue(cancel)
       StreamProtocol.thread(cancel){
         var root:VectorSchemaRoot=null

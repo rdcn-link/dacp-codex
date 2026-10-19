@@ -28,14 +28,14 @@ class MessageFileHandler extends StructuredFileHandler {
     require(o.parameters.keySet.subsetOf(Set("prefix")),"unknown message reader parameter")
     require(o.parameters.get("prefix").forall(_.isInstanceOf[String]),"prefix must be a string")
   }
-  def openStructure(path: Path, options: FileOptions, context: DatasetContext, check: () => Unit): DatasetAccess = {
+  def openStructure(path: ByteSource, options: FileOptions, context: DatasetContext, check: () => Unit): DatasetAccess = {
     validateOptions(options)
-    new MessageAccess(() => options.parameters.getOrElse("prefix","").toString + java.nio.file.Files.readString(path),check)
+    new MessageAccess(() => options.parameters.getOrElse("prefix","").toString + scala.util.Using.resource(path.open(check))(in=>new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8)),check)
   }
 }
 
 /** Small example only: production handlers should stream large payloads in bounded chunks. */
-class MessageAccess(message: () => String, check: () => Unit) extends DatasetAccess {
+class MessageAccess(message: () => String, check: () => Unit) extends ItemDatasetAccess {
   private val item = Item("/message","text",Some(PluginSchemas.bytes),views=Some(Seq("bytes")))
   private val summarySchema = new org.apache.arrow.vector.types.pojo.Schema(
     java.util.Collections.singletonList(Records.field("characters","int64")))
@@ -51,8 +51,16 @@ class MessageAccess(message: () => String, check: () => Unit) extends DatasetAcc
     else if (path == summary.path) summary
     else throw new java.io.FileNotFoundException("logical item not found")
   }
-  def count(path: String): Option[Long] = { describe(path); if(path == summary.path) Some(1L) else None }
-  def stream(path: String, view: String, allocator: BufferAllocator, listener: ServerStreamListener, ready: () => Unit): Unit = {
+  def openItem(path: String): ItemAccess = {
+    val selected = describe(path)
+    require(selected.kind == "data", "folder has no content stream")
+    new ItemAccess {
+      def count(): Option[Long] = if (path == summary.path) Some(1L) else None
+      def stream(view: String, allocator: BufferAllocator, listener: ServerStreamListener, ready: () => Unit): Unit =
+        emit(path,view,allocator,listener,ready)
+    }
+  }
+  private def emit(path: String, view: String, allocator: BufferAllocator, listener: ServerStreamListener, ready: () => Unit): Unit = {
     val selected = describe(path)
     require(selected.views.exists(_.contains(view)),"unsupported stream view")
     ready()

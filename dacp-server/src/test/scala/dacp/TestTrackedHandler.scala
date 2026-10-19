@@ -12,7 +12,7 @@ object TestTrackedHandler {
 class TestTrackedHandler extends example.MessageFileHandler {
   override val id = "test-tracked"
   override val extensions = Set("tracked")
-  override def openStructure(path: Path, options: FileOptions, context: DatasetContext, check: () => Unit): DatasetAccess = {
+  override def openStructure(path: ByteSource, options: FileOptions, context: DatasetContext, check: () => Unit): DatasetAccess = {
     val delegate = super.openStructure(path,options,context,check)
     TestTrackedHandler.opened.incrementAndGet()
     new DatasetAccess {

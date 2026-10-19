@@ -3,7 +3,9 @@ package dacp
 import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.flight.FlightProducer.ServerStreamListener
 
-/** Public capabilities shared by all providers; storage details stay inside the provider. */
+/** Public capabilities shared by all providers; storage details stay inside the provider.
+  * Implement directly for dataset-scoped access, or extend ItemDatasetAccess for per-object handles.
+  */
 trait DatasetAccess extends DataSetAdapter with AutoCloseable {
   def close(): Unit = ()
   def list(path: String): Seq[Item]
@@ -18,15 +20,14 @@ trait PublishedDataset extends AutoCloseable {
   def open(check: () => Unit): DatasetAccess
 }
 case class DatasetDefinition(provider: String, source: Map[String,Object] = Map.empty,
-                             items: Map[String,Map[String,Object]] = Map.empty,
-                             bindings: Option[Seq[PublishedItem]] = None) {
+                             items: Map[String,Map[String,Object]] = Map.empty) {
   override def toString: String = s"DatasetDefinition($provider,<private settings>)"
 }
-object DatasetDefinition {
-  def mixed(items: Seq[PublishedItem]): DatasetDefinition = DatasetDefinition("mixed",bindings=Some(items))
+case class SourceDefinition(provider:String,settings:Map[String,Object]) {
+  override def toString:String=s"SourceDefinition($provider,<private settings>)"
 }
 /** ServiceLoader extension point; each provider owns parsing and construction of its settings. */
-trait DatasetProvider {
+trait DatasetProvider extends Plugin {
   def id: String
   /** Dataset-level key for logical-path settings; source holds provider-wide parameters. */
   def itemSettingsKey: String = "items"
@@ -38,7 +39,8 @@ trait DatasetContext {
   def inferSample: Int
   def byteChunk: Int
   def countFileRecordsOnStartup: Boolean
-  def sqlSourceNames: Set[String]
-  def publish(items: Seq[PublishedItem]): PublishedDataset
-  def openNamespace(items: Seq[PublishedItem], check: () => Unit): DatasetAccess
+  def plugins: PluginEnvironment
+  def sources: Map[String,SourceDefinition]
+  /** Construct a dataset through an installed provider without referencing its implementation. */
+  def createDataset(definition: DatasetDefinition): PublishedDataset
 }

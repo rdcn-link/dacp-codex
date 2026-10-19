@@ -14,9 +14,11 @@ import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
 /** One Union, explicit placement, direct peer streams and transient executions. */
-final class Coordinator(val settings:Settings) extends AutoCloseable {
+final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvironment]=None) extends AutoCloseable {
   val members=new Members(settings)
-  private[unionserver] val history=new ExecutionHistory(settings.state.resolve("executions"))
+  private val plugins=providedPlugins.getOrElse(new PluginEnvironment(settings.pluginDirectory))
+  private val storeDefinition=settings.executionStore.getOrElse(ExecutionStoreDefinition("file",Map("directory"->settings.state.resolve("executions").toString)))
+  private[unionserver] val history=new ExecutionHistory(plugins.byId(classOf[ExecutionStoreProvider],storeDefinition.provider).open(storeDefinition.settings,false))
   private val remote=members.remote
   private val jobs=new ConcurrentHashMap[String,Execution]()
   private val observed=new ConcurrentHashMap[String,JsonNode]()
@@ -286,6 +288,6 @@ final class Coordinator(val settings:Settings) extends AutoCloseable {
   def close():Unit=if(closed.compareAndSet(false,true)){
     dashboard.foreach(_.close());timer.shutdownNow();jobs.values.asScala.foreach(_.stop("cancelled"));endpoint.close();jobs.values.asScala.foreach(_.release())
     cleanup.shutdown();if(!cleanup.awaitTermination(5,TimeUnit.SECONDS))cleanup.shutdownNow()
-    members.close();history.close();allocator.close()
+    members.close();history.close();if(providedPlugins.isEmpty)plugins.close();allocator.close()
   }
 }

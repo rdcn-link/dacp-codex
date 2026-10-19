@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 base_image="${1:-dacp/operator-jvm:1.1}"
 target_image="${2:-dacp/operator-scala-debug:1.0}"
-(cd dacp-operator-executors && sbt -batch compile)
+(cd plugins/dacp-plugin-operator-executors && sbt -batch compile)
 build_dir=$(mktemp -d "${TMPDIR:-/tmp}/dacp-scala-source-XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT
 mkdir -p "$build_dir/lib"

@@ -16,7 +16,7 @@ Core owns contracts, discovery and lifecycle, transport, authorization, namespac
 | `dacp-server` | Flight service, namespace, coordination and resource lifecycle |
 | `dacp-client`, `dacp-client-scala` | Public client APIs and shell |
 | `dacp-operator-runtime` | JVM operator runtime and built-in implementations |
-| `dacp-operator-executors` | Container launchers and native-command bridge |
+| `plugins/dacp-plugin-operator-executors` | Container launchers and native-command bridge |
 | `dacp-operator-repository` | Immutable publication, public search and downloads |
 | `proto/dacp.proto` | Shared wire messages |
 
@@ -24,15 +24,15 @@ Core owns contracts, discovery and lifecycle, transport, authorization, namespac
 
 - [Authoring guide](../operator-authoring_en.md): complete Scala/Python examples, builds and uploads.
 - [Native commands](../native-commands_en.md): stdin/stdout adapter, executable artifacts and plugin configuration.
-- [Packaging and executors](../operator-packaging.md): shared dependencies, immutable artifacts, repository schema and registration.
-- [Stream contract](../operator-streams.md): named ports, frames, backpressure, cancellation and current scheduling limits.
+- [Packaging and executors](../operator-packaging_en.md): shared dependencies, immutable artifacts, repository schema and registration.
+- [Stream contract](../operator-streams_en.md): named ports, frames, backpressure, cancellation and current scheduling limits.
 - [DEBUG source](../operator-source_en.md): Python/Scala compilation and launch contracts; raw Java source is unsupported.
 
 Operator outputs are transient streams. There is no result-dataset registration, saved-result mode or output TTL. Preserve scientific structures; bytes and records are implemented, while new array/image representations need a shared contract first. General pipeline scheduling and fan-out are not implemented.
 
 ## Extend datasets and formats
 
-See [plugin contribution requirements](../plugins.md), [dataset provider contracts](../dataset-providers.md), [format and container handlers](../format-handlers.md), and [records query semantics](../records-scans.md). The example below illustrates provider implementation, configuration ownership and service registration.
+See [plugin contribution requirements](../plugins_en.md), [dataset provider contracts](../dataset-providers_en.md), [format and container handlers](../format-handlers_en.md), and [records query semantics](../records-scans_en.md). The example below illustrates provider implementation, configuration ownership and service registration.
 
 ### User-defined Dataset providers
 
@@ -53,12 +53,11 @@ class CsvFileProvider extends DatasetProvider {
     require(d.source.keySet.subsetOf(Set("file")),
       "unknown csv-file parameter")
     require(d.source.contains("file"), "csv-file requires source.file")
-    require(d.items.isEmpty && d.bindings.isEmpty,
+    require(d.items.isEmpty,
       "csv-file does not accept item mappings")
     val file = Path.of(d.source("file").toString)
-    context.publish(Seq(PublishedItem(
-      "/records", file = Some(file),
-      options = FileOptions(format = Some("csv"))
+    context.createDataset(DatasetDefinition("mixed", items = Map(
+      "/records" -> Map[String,Object]("file" -> file.toString, "format" -> "csv")
     )))
   }
 }
@@ -89,7 +88,7 @@ datasets:
 
 Clients read `/records` without receiving `source.file`. Plugins needing per-item mappings receive them through `items` by default, or can override `DatasetProvider.itemSettingsKey` to declare their own configuration key; parsed mappings are always available as `definition.items`. `source` can contain nested plugin-specific parameters; the plugin must validate types, required values, and unknown parameters.
 
-Directory providers use `reader_overrides`, SQLDB uses `tables`, and mixed uses `items`. Directory and SQLDB reject `items`. Native backends such as a future MongoDB provider can implement `PublishedDataset` and `DatasetAccess` directly for listing, metadata, counting, and streaming without mapping to files or SQL. See the [provider development guide](../../docs/dataset-providers.md) for interfaces, cancellation, and resource cleanup requirements. MongoDB is not implemented yet.
+Directory providers use `reader_overrides`, SQLDB uses `tables`, and mixed uses `items`. Directory and SQLDB reject `items`. Native backends such as a future MongoDB provider can implement `PublishedDataset` and `DatasetAccess` directly for listing, metadata, counting, and streaming without mapping to files or SQL. See the [provider development guide](../../docs/dataset-providers_en.md) for interfaces, cancellation, and resource cleanup requirements. MongoDB is not implemented yet.
 
 ### File and structured-content plugins
 
@@ -101,7 +100,7 @@ The standalone API lives in [dacp-plugin-api](../../dacp-plugin-api). Runnable c
 
 ## Development and validation
 
-DACP prefers plugins for extension. New dataset backends, file formats, and processing operators should implement public extension contracts and be installed as plugins, without changes to core dispatch. Built-in and community implementations should use the same contracts; plugins own their parameter validation and third-party dependencies, while clients access data through common paths and capabilities. See the [plugin contribution guide](../../docs/plugins.md) for contribution guidance, available mechanisms, and scientific-data extension boundaries.
+DACP prefers plugins for extension. New dataset backends, file formats, and processing operators should implement public extension contracts and be installed as plugins, without changes to core dispatch. Built-in and community implementations should use the same contracts; plugins own their parameter validation and third-party dependencies, while clients access data through common paths and capabilities. See the [plugin contribution guide](../../docs/plugins_en.md) for contribution guidance, available mechanisms, and scientific-data extension boundaries.
 
 Run from the project root:
 
@@ -126,7 +125,7 @@ The protocol is defined in [proto/dacp.proto](../../proto/dacp.proto). Source co
 ## Additional contract and integration checks
 
 ```bash
-(cd dacp-operator-executors && sbt test)
+(cd plugins/dacp-plugin-operator-executors && sbt test)
 (cd dacp-operator-repository && sbt test)
 ```
 
@@ -143,3 +142,7 @@ Publish optional source archives, repository revisions, license declarations/tex
 The [Union protocol](../union_en.md) defines certificate identity, compute authorization, and direct streams. `dacp-union-protocol` provides shared transport helpers; `dacp-server/UnionWorker` reuses plugin data access and operator execution; `dacp-union-server` handles member polling, subjob preparation, and result forwarding. Run `cd dacp-union-server && sbt test` for two-node contracts over real mTLS. Domain analysis operators live in `examples/union/operators`, without core registry changes.
 
 Ordinary Flight requests, Union node subtasks, and global jobs share persistent execution records. For lifecycle, atomic writes, and tests, see [execution history](../execution-history_en.md).
+
+## Bilingual documentation checks
+
+Run `python3 scripts/check-doc-translations.py` from the repository root. Published Markdown uses Chinese in `README.md`/`name.md` and English in `README_en.md`/`name_en.md`. Update complete translations, commands, configuration and links together. The check validates pairing, basic language presence and local document/heading links; it does not replace semantic translation review. Agent instructions and generated build output are excluded.

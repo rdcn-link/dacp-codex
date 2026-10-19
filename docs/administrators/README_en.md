@@ -28,9 +28,9 @@ sbt 'run ../examples/server.yaml'
 
 ## Publishing data and operators
 
-Declare Dataset providers and their parameters in node configuration. Built-in and external providers share the same plugin contracts. See the [technical reference](../reference_en.md), [Dataset providers](../dataset-providers.md), and [SQL example](../../examples/sql/README_en.md) for directory and SQL configuration. Restrict data directories and credentials to the service account.
+Declare Dataset providers and their parameters in node configuration. Built-in and external providers share the same plugin contracts. See the [technical reference](../reference_en.md), [Dataset providers](../dataset-providers_en.md), and [SQL example](../../examples/sql/README_en.md) for directory and SQL configuration. Restrict data directories and credentials to the service account.
 
-Nodes read local operators through `local_operator_library` and search remote repositories through `remote_operator_library_urls`. Remote configuration order affects lookup order. Publish shared runtimes separately from operator code. See [packaging](../operator-packaging.md) and the [executor manual](../../dacp-operator-executors/README_en.md) for execution environments and native commands. Source submission is available only in DEBUG mode; see [source runtimes](../operator-source_en.md).
+Nodes read local operators through `local_operator_library` and search remote repositories through `remote_operator_library_urls`. Remote configuration order affects lookup order. Publish shared runtimes separately from operator code. See [packaging](../operator-packaging_en.md) and the [executor manual](../../plugins/dacp-plugin-operator-executors/README_en.md) for execution environments and native commands. Source submission is available only in DEBUG mode; see [source runtimes](../operator-source_en.md).
 
 ## Certificates and authorization
 

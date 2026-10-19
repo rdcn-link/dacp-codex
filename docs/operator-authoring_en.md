@@ -1,16 +1,219 @@
-# Write and publish operators
+# Write, publish and run an operator
 
-DACP operators consume named data-item streams and produce named output streams. Publish a small Scala/Java JAR, Python source or wheel, or a complete container. Dependencies belong in a shared runtime image. Repository operators run in NORMAL or DEBUG mode; [inline source submission](operator-source_en.md) requires DEBUG.
+An operator is a data-processing program: it receives named Item input streams and JSON business parameters, then returns named output streams. This guide starts with a complete Python workflow, followed by Scala, packaging, publication and the wire contract.
 
-The repository website supports public search, viewing, and downloads. Publication uses the administrator CLI or the default-enabled [token-authenticated HTTP API](../dacp-operator-repository/README_en.md#token-authenticated-publication-api). An administrator can run `publish` / `seed`, or a publisher can use `scripts/upload-operator.py` with a publication token to upload a locally generated catalog.
+## Distinguish data inputs, parameters and outputs
 
-## Execution contract
+| Part | Example | How the program obtains it |
+|---|---|---|
+| Input port | `source` | Find its stream file in `/input/manifest.json` |
+| Input Item | `/orders` in the current Dataset | The framework reads the Item and supplies Arrow IPC; the source filesystem path is not passed to the program |
+| Input representation | `records` | The manifest's `representation`; read typed Arrow record batches |
+| Business parameters | `{"min_amount":20,"factor":2}` | Read the JSON file identified by a launch argument, normally `/input/params.json` |
+| Output port | `result` | Label stdout protocol frames with the port name |
+| Output representation and format | `records` / `arrow` | Declare representation, format and schema in `start`, then send batches in `data` |
 
-The launcher passes `operator /input /input/params.json`. `/input/manifest.json` contains one entry per named input: `port`, `file`, `representation`, `format`, and an optional base64 Arrow IPC schema message. Input files are FIFOs containing Arrow IPC streams. Bytes use a single binary column named `data`; records retain their original Arrow schema. Stop on Arrow EOS, without waiting for OS EOF. Consume multiple inputs in lexical port order.
+`--input` binds data; `--params` supplies business settings. Port names come from the operator definition: `source` and `result` are choices in this guide, not universal fixed names. Each port carries one Item stream; a program may declare several ports.
 
-Stdout carries frames, and stderr carries diagnostics. Each frame contains two big-endian 32-bit lengths (JSON header, payload), followed by header and payload bytes. Each output port emits `start`, zero or more `data`, and `end`. All output starts precede any data. Start headers declare `port`, `representation`, `format`, and a base64 IPC schema for records. Bytes payloads contain raw chunks; a records payload is one self-contained Arrow IPC stream with one batch. Limits are 64 KiB per header and 8 MiB per payload. Exit nonzero to fail the job. Results already emitted remain partial results; completion is reported only after successful exit.
+`representation` determines how content is read: `records` is a typed table; `bytes` is file/binary content. `format` describes content, such as `csv`, `parquet`, `text` or `arrow`. One CSV Item may expose original bytes and parsed records. Records always travel as Arrow IPC, not CSV text. **Shell `run` defaults to bytes; this table operator requires `--view records`.**
 
-Outputs are streamed to clients or downstream tasks, with no output directory, saved dataset, or `_output.json`. Container roots and inputs are read-only; private scratch belongs in `/tmp`. Containers have no network and have memory, PID, temporary-storage, cancellation, and deadline limits. Runtime dependencies must already exist. New scientific representations require explicit shared contracts; do not flatten structures silently.
+## Example: filter orders and add a calculated column
+
+The complete program is [filter_amount.py](../examples/operators/python/filter_amount/1.0/filter_amount.py), accompanied by its [definition](../examples/operators/python/filter_amount/1.0/operator.yaml), [input](../examples/operators/python/filter_amount/1.0/orders.csv) and [job](../examples/operators/python/filter_amount/1.0/job.yaml).
+
+Input CSV:
+
+```csv
+id,amount
+1,12.5
+2,30.0
+3,60.0
+```
+
+The example requires `id: int64` and `amount: float64`. `min_amount` sets the threshold and `factor` sets the multiplier:
+
+```json
+{"min_amount": 20, "factor": 2}
+```
+
+Keep `amount >= min_amount`, then output `id`, `amount` and `scaled_amount = amount * factor`:
+
+| id | amount | scaled_amount |
+|---|---|---|
+| 2 | 30.0 | 60.0 |
+| 3 | 60.0 | 120.0 |
+
+Both parameters are optional, defaulting to `0.0` and `1.0`. Values must be finite numbers; booleans, strings and unknown parameters are rejected. Null amounts do not match. No matching rows still produce the three-column schema and a normal end. Calculations use float64, not fixed-point financial arithmetic.
+
+## Step 1: define the ports
+
+```yaml
+name: filter_amount
+version: '1.0'
+description: Filter amount >= min_amount and append scaled_amount = amount * factor.
+image: dacp/operator-python:1.0
+executor: python
+entrypoint: filter_amount
+artifact: filter_amount.py
+inputs:
+  source:
+    representations: [records]
+    formats: []
+outputs:
+  result:
+    representations: [records]
+    formats: [arrow]
+```
+
+`source` accepts records only. `formats: []` imposes no input-format restriction; the program still validates columns and types. `result` emits records labeled arrow. Port definitions may also contain an Arrow schema JSON value; see [port contracts](reference_en.md#task-execution-and-operators). Business parameters are validated by the program; `params` is not a parameter-schema field in this definition.
+
+## Step 2: read parameters and input batches
+
+The launcher passes `operator /input /input/params.json`. In Python, `sys.argv[1]` is `operator`, `sys.argv[2]` is the input directory, and `sys.argv[3]` is the parameters file. Business JSON is not passed directly as a positional argument.
+
+The framework-generated manifest looks like this. `file` is framework-assigned; do not hardcode it:
+
+```json
+[
+  {"port":"source","file":"source.arrow","representation":"records","format":"csv"}
+]
+```
+
+At runtime the file is a FIFO containing Arrow IPC. Read it as follows:
+
+```python
+params = read_params(Path(sys.argv[3]))
+directory = Path(sys.argv[2])
+manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf-8'))
+item = manifest[0]  # First validate one records input named source in this example.
+with (directory / item['file']).open('rb') as raw:
+    with pa.ipc.open_stream(raw) as reader:
+        for batch in reader:
+            selected = batch.filter(
+                pc.greater_equal(batch.column('amount'), params['min_amount']))
+```
+
+Imports, `read_params` and complete validation are in the [full program](../examples/operators/python/filter_amount/1.0/filter_amount.py). Process batches without collecting the entire Dataset. Stop at Arrow EOS rather than waiting for operating-system FIFO EOF. Consume multiple inputs in lexical port order, for example `left` before `right`.
+
+## Step 3: declare and send the output
+
+Output is not `print(table)` or plain CSV on stdout. Python/Scala operators write protocol frames on stdout and diagnostic text on stderr. Determine the records schema before starting:
+
+```python
+OUTPUT_SCHEMA = pa.schema([
+    ('id', pa.int64()),
+    ('amount', pa.float64()),
+    ('scaled_amount', pa.float64()),
+])
+```
+
+The program sends `start`, batch `data` events and finally `end`:
+
+```python
+emit('start', representation='records', format='arrow',
+     schema=base64.b64encode(OUTPUT_SCHEMA.serialize().to_pybytes()).decode('ascii'))
+
+# selected contains the retained rows in this batch; skip data for empty batches.
+output = pa.record_batch([
+    selected.column('id'), selected.column('amount'),
+    pc.multiply(selected.column('amount'), params['factor']),
+], schema=OUTPUT_SCHEMA)
+sink = pa.BufferOutputStream()
+with pa.ipc.new_stream(sink, OUTPUT_SCHEMA) as writer:
+    writer.write_batch(output)
+emit('data', sink.getvalue().to_pybytes())
+
+# Run once after all input and output batches finish.
+emit('end')
+```
+
+The example file contains the complete `emit` implementation. It prefixes headers and payloads with lengths and labels every frame `port: result`. Each records data payload is one independent Arrow IPC stream containing exactly one batch. It is neither JSON lines nor an arbitrary concatenation of IPC streams treated as one stream. Output batch schemas must match start.
+
+The example slices input batches into at most 512 rows before generating output frames. Empty output sends start/end only. The framework reports successful task completion after the process exits successfully and all ports terminate correctly; the operator does not send the final `complete` event itself.
+
+## Step 4: validate locally, then publish
+
+From the repository root, run the local check without starting DACP or Docker. The Python environment must already contain PyArrow:
+
+```bash
+python3 scripts/test-operator-authoring.py
+```
+
+This script substitutes ordinary Arrow IPC files for FIFOs and checks batches, parameters, nulls, expected results, output schema, empty output and invalid parameters. It validates the operator protocol, not container, Flight or authorization integration.
+
+Build the shared runtime and publish:
+
+```bash
+docker build -t dacp/operator-python:1.0 examples/operators/python
+(cd dacp-operator-repository && sbt stage)
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish filter_amount@1.0 \
+  --image dacp/operator-python:1.0 --executor python --entrypoint filter_amount \
+  --artifact examples/operators/python/filter_amount/1.0/filter_amount.py \
+  --ports examples/operators/python/filter_amount/1.0/operator.yaml \
+  --root .operator-catalog
+```
+
+Dependencies are preinstalled in the runtime, not fetched during execution. Versions are immutable; publish a new version when changing published code.
+
+## Step 5: bind data and run
+
+Publish the example CSV on a DACP node. Merge this fragment into the existing configuration and replace the file path with your absolute path. Listener, TLS and authorization configuration must remain complete:
+
+```yaml
+datasets:
+  data1:
+    provider: mixed
+    items:
+      /orders:
+        file: /absolute/path/to/dacp-codex/examples/operators/python/filter_amount/1.0/orders.csv
+        schema: {id: int64, amount: float64}
+remote_operator_library_urls: [http://localhost:8820]
+```
+
+The repository must serve `.operator-catalog` over HTTP; its launch command is shown below. Connect the certificate-configured shell:
+
+```bash
+dacp-shell dacp://localhost:8815/data1
+```
+
+At the shell prompt:
+
+```text
+run filter_amount@1.0 --input source=/orders --view records --params '{"min_amount":20,"factor":2}'
+```
+
+The shell waits and displays the two result rows as batches arrive, then shows execution information and returns to its prompt. This job expresses the same binding and also allows separate views for multiple inputs:
+
+```yaml
+job: filter-amount-demo
+tasks:
+  - id: filter
+    title: Filter orders and calculate scaled amounts
+    operator: filter_amount@1.0
+    inputs:
+      source: {uri: 'dacp://localhost:8815/data1/orders', view: records}
+    params: {min_amount: 20, factor: 2}
+outputs:
+  result: {task: filter, port: result}
+```
+
+```text
+submit examples/operators/python/filter_amount/1.0/job.yaml
+```
+
+`id` identifies dependency references; `title` describes the task for display. Top-level `outputs.result` exposes a task port to the client. All results are one-shot streams: they are not automatically retained or published as Datasets. Cancelling consumption cancels upstream work. Data already displayed is partial if execution later fails.
+
+## What bytes output looks like
+
+Use bytes for text, compressed files, images and other binary content. For example, uppercasing raw UTF-8 `hello\n` produces:
+
+```text
+HELLO
+```
+
+Its start header is `{"type":"start","port":"result","representation":"bytes","format":"text"}`. Data payloads are directly `b'HELLO\n'`, without another Arrow IPC wrapper. Input bytes still arrive through an Arrow IPC `data: binary` column, which differs from output frame payloads. The shell displays text incrementally and unknown binary as hex. Chunks need not align with lines or UTF-8 characters.
+
+Native stdin/stdout programs can use the [command executor](native-commands_en.md), whose adapter handles frames. Python/JVM executors require the program to implement framing. Existing [Scala bytes identity](../examples/operators/scala/src/main/scala/example/ScalaIdentity.scala) and [Python identity](../examples/operators/python/identity_python/1.0/identity.py) programs provide starting points.
 
 ## Scala example
 
@@ -103,4 +306,30 @@ run identity_python@1.0 --input source=/reports/orders
 run scala_identity@1.0 --input source=/reports/orders
 ```
 
-The shell waits and prints the result incrementally. No output dataset is saved. See [stream contracts](operator-streams.md) and [DEBUG heredoc source](operator-source_en.md).
+The shell waits and prints the result incrementally. No output dataset is saved. See [stream contracts](operator-streams_en.md) and [DEBUG heredoc source](operator-source_en.md).
+
+## Upload to a remote repository
+
+The public website supports search, review and downloads; publication uses the API or administrator CLI, not a web upload form. After local `publish` has generated `.operator-catalog`, obtain a publication token from the repository administrator and set `DACP_REPOSITORY_PUBLISH_TOKEN` in your environment. Then run:
+
+```bash
+python3 scripts/upload-operator.py filter_amount@1.0 \
+  --catalog .operator-catalog --url https://repository.example.org
+```
+
+The uploader transfers the manifest and required runtime/code blobs, authenticating with the environment token. Remote publication requires HTTPS. An administrator may instead run the publication CLI on the repository host. See [token-authenticated publication](../dacp-operator-repository/README_en.md#token-authenticated-publication-api) and [source/review evidence](operator-provenance_en.md). Uploading source, license and build instructions helps reviewers assess the operator; it does not establish safety by itself.
+
+## Protocol limits and troubleshooting
+
+Frames contain two big-endian 32-bit lengths (JSON header and payload), followed by UTF-8 JSON and payload bytes. Headers are limited to 64 KiB and payloads to 8 MiB. Each port emits start, zero or more data events, then end. For multiple outputs, send every start before any data. Start may contain a base64 Arrow IPC schema message; records require it. Input manifests may also include schema, but validate the actual reader schema.
+
+Common problems:
+
+- Unsupported input representation: check `--view records`, port declarations and the Item's advertised views.
+- Parameter errors: `--params` must be a JSON object; check spelling and types. The framework does not validate business parameters for your program.
+- Frame parsing failures: remove `print`/logs from stdout; diagnostics belong on stderr.
+- Schema mismatch: all batches must use the names, order and types declared by start.
+- A program that never finishes: stop on Arrow stream-reader EOS instead of continuing to read the raw FIFO for EOF.
+- Failure after end: end closes one port, but the process must still exit successfully. Nonzero exit means failure and displayed data is partial.
+
+Container roots and inputs are read-only; scratch files belong in `/tmp`. Containers have no network and enforce memory, PID, temporary-storage and execution-time limits. Dependencies must be preinstalled. Reuse shared runtimes for small JAR/source/wheel releases; operators are not loaded into the server JVM. Repository operators run in NORMAL/DEBUG, while inline source requires DEBUG. New array/image representations require shared contracts; never silently flatten them into records.

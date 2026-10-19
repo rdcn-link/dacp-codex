@@ -18,12 +18,12 @@ Dynamic catalogs and application embedding: [DatasetCatalog](dataset-catalogs_en
 
 | Tool | Documentation |
 |---|---|
-| dacp-shell, Python SDK | [User guide](users/README_en.md), [query semantics](records-scans.md) |
+| dacp-shell, Python SDK | [User guide](users/README_en.md), [query semantics](records-scans_en.md) |
 | Scala SDK | [Scala client](../dacp-client-scala/README_en.md) |
 | DACP Server | [Administrator guide](administrators/README_en.md), [configuration and protocol reference](reference_en.md) |
 | Union Server and web dashboard | [Union manual](../dacp-union-server/README_en.md), [collaboration protocol](union_en.md), [two-node example](../examples/union/README_en.md) |
 | Operator repository CLI and website | [Repository manual](../dacp-operator-repository/README_en.md) |
-| Operator runtime and executors | [Runtime](../dacp-operator-runtime/README_en.md), [executors](../dacp-operator-executors/README_en.md) |
+| Operator runtime and executors | [Runtime](../dacp-operator-runtime/README_en.md), [executors](../plugins/dacp-plugin-operator-executors/README_en.md) |
 | Plugin API and Union transport utilities | [Plugin API](../dacp-plugin-api/README_en.md), [Union protocol module](../dacp-union-protocol/README_en.md) |
 
 ## Topic references
@@ -32,12 +32,12 @@ Dynamic catalogs and application embedding: [DatasetCatalog](dataset-catalogs_en
 |---|---|
 | Writing, publishing, and example code | [Scala / Java / Python operators](operator-authoring_en.md), [native commands](native-commands_en.md) |
 | DEBUG source submission | [Source runtimes and heredocs](operator-source_en.md) |
-| Runtimes, artifacts, caches, and frame protocol | [Operator packaging](operator-packaging.md), [stream contract](operator-streams.md) |
+| Runtimes, artifacts, caches, and frame protocol | [Operator packaging](operator-packaging_en.md), [stream contract](operator-streams_en.md) |
 | Source, licenses, build instructions, and SBOM | [Operator review material](operator-provenance_en.md) |
 | Execution records, history queries, and restart semantics | [Execution history](execution-history_en.md) |
-| Plugin discovery and contribution requirements | [Plugin architecture](plugins.md) |
-| Dataset backends, file formats, and structured browsing | [Dataset providers](dataset-providers.md), [format handlers](format-handlers.md) |
-| Filters, projections, SQL shell, and optimization contracts | [Records queries](records-scans.md) |
+| Plugin discovery and contribution requirements | [Plugin architecture](plugins_en.md) |
+| Dataset backends, file formats, and structured browsing | [Dataset providers](dataset-providers_en.md), [format handlers](format-handlers_en.md) |
+| Filters, projections, SQL shell, and optimization contracts | [Records queries](records-scans_en.md) |
 | Data model, read capabilities, and node settings | [Technical reference](reference_en.md) |
 
 ## Runnable examples
@@ -47,3 +47,5 @@ Dynamic catalogs and application embedding: [DatasetCatalog](dataset-catalogs_en
 - [Plugin project](../examples/plugins/README_en.md) and [SQL publication](../examples/sql/README_en.md).
 
 Commands run from the project root unless a document specifies otherwise. Relative paths in service configurations resolve against the service process working directory. Example certificates, hosts, ports, and paths are for local demonstrations; configure deployment values for your environment. Each `README.md` is Chinese, with its English translation in `README_en.md`.
+
+[User access logs](access-logs_en.md): JSON Lines files, size rotation, fields and collection.

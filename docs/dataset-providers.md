@@ -1,16 +1,24 @@
-# Dataset providers
+# Dataset 提供者
 
-A Dataset is a logical namespace. Providers decide how to construct it; clients continue to use public paths, `list`, `open`, and `count`. The implementation is in [DatasetProviders.scala](../dacp-server/src/main/scala/dacp/DatasetProviders.scala).
+Dataset 是逻辑命名空间。提供者决定如何构建它；客户端始终使用公开路径以及 `list`、`open`、`count`。内置后端实现位于 [DatasetPublication.scala](../plugins/dacp-plugin-datasets/src/main/scala/dacp/DatasetPublication.scala)。
 
-## Built-in providers
+## 内置提供者
 
-| Provider | Required source | Mapping key and settings |
+| 提供者 | 必需 source | 映射键与设置 |
 |---|---|---|
-| `directory` | `root`: private filesystem directory | `reader_overrides`: optional reader settings keyed by logical path |
-| `sqldb` | `connection`: private `sql_sources` name | `tables`: public aliases mapped with `{table: PRIVATE_TABLE}` |
-| `mixed` | No source settings | `items`: explicit `{file: ...}`, `{sql: ..., table: ...}`, or `{kind: folder}` |
+| `directory` | `root`：私有文件系统目录 | `reader_overrides`：按逻辑路径指定可选读取设置 |
+| `sqldb` | `connection`：私有 `sources` 中的 JDBC 名称 | `tables`：以 `{table: PRIVATE_TABLE}` 映射公开别名 |
+| `mixed` | 不需要 source 设置 | `items`：显式 `{file: ...}`、`{sql: ..., table: ...}` 或 `{kind: folder}` |
+| `mounted` | 不需要 source 设置 | `mounts`：为每个公开前缀指定嵌套 `dataset` 和可选 `root` |
 
 ```yaml
+sources:
+  warehouse:
+    provider: jdbc
+    settings:
+      url: jdbc:postgresql://localhost/warehouse
+      user_env: WAREHOUSE_USER
+      password_env: WAREHOUSE_PASSWORD
 datasets:
   documents:
     provider: directory
@@ -29,48 +37,58 @@ datasets:
     items:
       /measurements: {file: /private/results.csv}
       /customers: {sql: warehouse, table: PRIVATE_CUSTOMERS}
+  workspace:
+    provider: mounted
+    mounts:
+      /documents:
+        dataset:
+          provider: directory
+          source: {root: /srv/documents}
+        root: /
 ```
 
-Directory roots must exist at startup. Paths are resolved against the server working directory. Root-relative public names reflect the filesystem; all symlinks are ignored, including links pointing inside the root. Unsupported filesystem entries and names that cannot form valid logical paths are skipped. Empty directories are folders. Supported containers expose children and original-file bytes, exactly as in mixed Datasets. Directory `reader_overrides` accept only `format`, `schema`, and handler-owned `options`; they cannot add sources or aliases.
+目录根必须在启动时存在。相对路径基于服务器工作目录解析。公开名称相对于目录根；忽略所有符号链接，包括指向根目录内部的链接。不支持的文件系统条目和不能构成合法逻辑路径的名称会跳过。空目录显示为 folder。容器提供子对象和原文件字节，行为与 mixed Dataset 相同。`reader_overrides` 只接受 `format`、`schema` 和处理器定义的 `options`，不能增加数据源或别名。
 
-Each directory request discovers the relevant paths anew. `list()` walks the root recursively, while `list(path)` reads immediate children of ordinary directories. Metadata for an ordinary folder does not visit descendants. Container directory enumeration retains its own format-specific scanning cost. No watcher or cross-request directory index is required.
+每个 directory 请求重新发现相关路径。`list()` 递归遍历根目录，`list(path)` 读取普通目录的直接子项。普通文件夹元数据不遍历后代。容器目录枚举有格式对应的扫描成本，不需要文件监控器或跨请求索引。
 
-`count_file_records_on_startup: true` captures counts for mixed file mappings and initially discovered directory record files. SQL tables, containers, and archive entries are excluded. Later additions are discovered without counting; changed files lose their saved counts when size or modification time differs. Explicit `count` is independent of saved counts. Startup counting is opt in and may be expensive.
+`count_file_records_on_startup: true` 为 mixed 文件映射和启动时发现的 directory records 文件记录计数；不包括 SQL 表、容器和归档条目。后续新增文件只发现不计数；大小或修改时间变化后，已保存计数失效。显式 `count` 不依赖保存计数。启动计数需要主动开启，可能昂贵。
 
-SQLDB Datasets use one connection but still require public aliases: private table names are never automatically published. Every Dataset must explicitly specify `provider`. Each Dataset has exactly one provider; mixed is the mode for combining independent sources.
+SQLDB 使用一个连接，但仍要求公开别名，不自动发布私有表名。每个 Dataset 必须明确声明唯一 `provider`。mixed 组合文件/JDBC 源；mounted 通过公共 Dataset 契约组合任意提供者，保持子对象能力和结构。挂载前缀必须非根且不能重叠，子根默认为 `/`；嵌套构建深度最多 32 层。
 
-Directory and SQLDB reject `items`; use their provider-specific keys.
+Directory 和 SQLDB 拒绝 `items`，应使用各自映射键。
 
-## Extending construction
+## 扩展构建逻辑
 
-Implement `dacp.DatasetProvider` with a unique lowercase `id` and a public no-argument constructor. Register it in a JAR through:
+实现 `dacp.DatasetProvider`，使用唯一的小写 `id` 和公开无参构造器。在 JAR 中注册：
 
 ```text
 META-INF/services/dacp.DatasetProvider
 ```
 
-The file contains the provider's fully qualified class name, one per line. Put the JAR and its private dependencies in the configured `plugin_directory` and restart. Compile against `dacp-plugin-api` with a `Provided` dependency, not against the server implementation. Duplicate or unknown provider IDs fail configuration loading. New providers own their private `source` and provider-specific mapping settings; the server does not need a new hardcoded Dataset kind.
+文件每行填写一个提供者完整类名。将 JAR 和私有依赖放入 `plugin_directory` 并重启。针对 `dacp-plugin-api` 编译，依赖范围为 `Provided`，不依赖服务器实现。重复或未知 ID 导致配置加载失败。插件自行解释私有 `source` 和映射设置，核心不增加硬编码的 Dataset 类型。
 
-Provider-wide parameters belong in `source`; nested YAML maps and lists retain their Java collection representation. The provider must validate required values, types, and unknown settings. Per-logical-path settings use `items` by default. Override `DatasetProvider.itemSettingsKey` to declare a different mapping key (lowercase letters, digits, and underscores, starting with a letter; `provider` and `source` are reserved). The parser passes that key's contents as `DatasetDefinition.items`; arbitrary dataset-level keys are rejected. See the [complete CSV provider example](developers/README_en.md#user-defined-dataset-providers) for implementation, registration, and parameter configuration.
+提供者级参数放在 `source`，嵌套 YAML 映射和列表保持 Java 集合表示。插件必须校验必需值、类型和未知设置。按逻辑路径配置默认使用 `items`；可覆盖 `DatasetProvider.itemSettingsKey` 指定其他键，名称以字母开头，只含小写字母、数字和下划线，`provider`、`source` 保留。解析器把内容传给 `DatasetDefinition.items`，拒绝其他 Dataset 级键。完整实现、注册和参数配置见 [CSV 提供者示例](developers/README.md#自定义-dataset-provider)。
 
-The lifecycle is:
+生命周期如下：
 
-1. `create(definition, context)` validates private settings and constructs a `PublishedDataset` once per server configuration. It may initialize discovery or publication metadata. Keep credentials and physical identifiers out of logs and public errors; `DatasetDefinition.toString` redacts its settings.
-2. `PublishedDataset.open(check)` creates a request-scoped `DatasetAccess`. The supplied callback aborts discovery when the request is cancelled.
-3. `DatasetAccess` implements recursive listing, immediate-child listing, metadata, exact counting, and stream delivery. Its `stream` receives the allocator, listener, and readiness callback. Honor readiness/cancellation before reading or emitting batches and close resources on success, failure, and cancellation.
+1. `create(definition, context)` 校验私有设置，为服务器配置构建 `PublishedDataset`，可初始化发现或发布元数据。日志和公共错误中不能出现凭据或物理标识；`DatasetDefinition.toString` 隐去设置。
+2. `PublishedDataset.open(check)` 创建请求级 `DatasetAccess`，取消请求时通过回调中止发现。
+3. `DatasetAccess` 实现递归列表、直接子项列表、元数据、精确计数和流式交付。`stream` 接收 allocator、listener 和就绪回调。读写批次前遵守背压与取消，在成功、失败和取消时关闭资源。
 
-Use `Item.views = Some(Seq("records", "bytes"))` to advertise native capabilities independently of file format handlers. Record metadata must include a compatible Arrow schema before the stream starts. The bytes view uses the existing Arrow single-binary-column envelope. Ordinary folders have no views, and folder size, time, and record count remain unknown. Missing resources should throw `FileNotFoundException`; public format failures use a fixed `FormatFailure` message without private details. The server applies URI authorization and sanitizes failures; do not throw transport exceptions containing backend diagnostics.
+用 `Item.views = Some(Seq("records", "bytes"))` 显式声明原生能力，无需依赖文件格式处理器。records 开始前必须有匹配的 Arrow schema。bytes 使用单 binary 列的 Arrow 信封。普通 folder 没有视图，其大小、时间和记录数保持未知。不存在的资源抛 `FileNotFoundException`；格式失败使用固定消息的 `FormatFailure`，不能包含私有信息。核心实施 URI 授权并清理错误，不应抛出包含后端诊断的传输异常。
 
-Native providers can implement streams directly, so MongoDB need not be modeled as a file or JDBC connection. MongoDB is not implemented in this change. The test [TestDatasetProvider](../dacp-server/src/test/scala/dacp/TestDatasetProvider.scala) demonstrates ServiceLoader discovery and native streaming through the unchanged Flight protocol.
+原生提供者可以直接输出流，MongoDB 不必伪装成文件或 JDBC 连接。目前没有内置 MongoDB 实现。[TestDatasetProvider](../dacp-server/src/test/scala/dacp/TestDatasetProvider.scala) 展示 ServiceLoader 发现及通过相同 Flight 协议输出原生流。
 
-Dataset providers, [container readers](format-handlers.md#container-readers), and [format handlers](format-handlers.md) have separate responsibilities: constructing a namespace, browsing embedded containers, and interpreting data content. `mixed` and `sqldb` reuse `NamespaceAdapter`; the directory provider constructs scoped namespaces as filesystem paths are discovered. Task outputs are transient item streams and do not enter the dataset namespace.
+Dataset 提供者、[归档读取器](format-handlers.md#归档读取器)和[格式处理器](format-handlers.md)分别负责构建命名空间、浏览容器和解释内容。mixed/sqldb 复用 `NamespaceAdapter`；directory 按发现的文件系统路径构建请求级命名空间。任务输出是临时 Item 流，不进入 Dataset 命名空间。
 
-`DatasetContext` supplies batch settings and optional namespace publication helpers (`publish`, `openNamespace`), without exposing server implementation classes. Native backends can implement access directly. The server closes each request access handle; implement `PublishedDataset.close` to release provider-level resources at shutdown. Use [PluginChecks](../dacp-plugin-api/src/main/scala/dacp/PluginChecks.scala) in contributor tests, and see the [standalone example](../examples/plugins/README.md).
+`DatasetContext` 提供批次设置、通用 `sources`、当前 `PluginEnvironment` 和 `createDataset`，无需暴露服务器实现。后端插件自行校验源设置。核心关闭请求句柄；`PublishedDataset.close` 释放提供者级资源。贡献者测试可使用 [PluginChecks](../dacp-plugin-api/src/main/scala/dacp/PluginChecks.scala)，另见[独立示例](../examples/plugins/README.md)。
 
-## Records scans
+## 记录扫描
 
-`DatasetAccess.scan` accepts a shared `Scan` request for filtering, projection, and limits. Its default implementation streams records through the common evaluator. Providers may override it for source execution, retaining residual filtering where needed. See [records scan contracts](records-scans.md#plugin-implementation-contract).
+`DatasetAccess.scan` 接收共享 `Scan`，支持过滤、投影和限制。默认通过公共求值器变换 records 流；提供者可下推执行，但必须保留必要的剩余过滤。见[记录扫描契约](records-scans.md#插件实现契约)。
 
-## Dynamic Dataset identities
+## 动态 Dataset 名称
 
-`DatasetProvider` handles one Dataset. To discover the server-level Dataset list from a database or application, use [DatasetCatalog](dataset-catalogs_en.md). Static `datasets` configuration uses the built-in `static` catalog; a configured dynamic catalog owns the list instead. Existing Item browsing and read contracts remain unchanged.
+`DatasetProvider` 处理单个 Dataset。需要从数据库或应用发现服务器级 Dataset 列表时，使用 [DatasetCatalog](dataset-catalogs.md)。静态 `datasets` 使用内置 static catalog；动态 catalog 自行维护列表，Item 浏览和读取契约相同。
+
+逐 Item 对象和游标句柄使用 `ItemDatasetAccess`、`ItemAccess`，见[访问契约](dataset-access.md)。`PublishedItem` 属于内置文件/JDBC 插件，不是原生后端必需的表示。

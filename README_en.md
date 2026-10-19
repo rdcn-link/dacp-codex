@@ -30,14 +30,15 @@ For the data model, transport, trust, and collaboration contracts of DACP (Data 
 | [dacp-union-server](dacp-union-server/README_en.md) | Manages one Union, invites nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
 | [Union web dashboard](dacp-union-server/README_en.md#http-operations-dashboard) | Public read-only view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
 | [dacp-operator-repository](dacp-operator-repository/README_en.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; administrators publish through the CLI |
-| `dacp-operator-runtime` / `dacp-operator-executors` | Shared operator environments, JVM / Python / container launchers, and native-command stream bridging |
+| `dacp-operator-runtime` / `plugins/dacp-plugin-operator-executors` | Shared operator environments, JVM / Python / container launchers, and native-command stream bridging |
 | `dacp-plugin-api` / `dacp-union-protocol` | Public plugin contracts and shared Union Flight transport utilities |
+| [plugins](plugins/README_en.md) | Bundled Dataset, file-format, archive, catalog, and operator launch plugins |
 
 Servers use JDK 17 and Scala 2.13; the Python SDK requires Python 3.10+. Browsing data needs no Docker. Operator execution requires Linux and an accessible Docker Engine. Builds use sbt 1.10.x.
 
 ## Get started
 
-- Existing server: start with [connecting and browsing](docs/users/README_en.md#connecting-and-browsing).
+- Existing server: start with [connecting and browsing](docs/users/README_en.md#browsing-and-reading).
 - Local demonstration: follow [single-node deployment](docs/administrators/README_en.md#single-node-deployment).
 - Distributed demonstration: run the [two-node Union example](examples/union/README_en.md).
 - Custom computation: read [writing and publishing operators](docs/operator-authoring_en.md).

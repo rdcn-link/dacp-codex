@@ -1,6 +1,6 @@
 # Dynamic Dataset catalogs
 
-[中文](dataset-catalogs.md) · [Plugin architecture](plugins.md) · [Embedded server](embedded-server_en.md)
+[中文](dataset-catalogs.md) · [Plugin architecture](plugins_en.md) · [Embedded server](embedded-server_en.md)
 
 `DatasetCatalog` determines which Datasets a server currently publishes; `DatasetProvider` determines how one Dataset accesses its contents. Use catalog plugins when Dataset identities come from a database, business service, or application. Dynamic Items inside one Dataset remain the responsibility of its Dataset provider.
 
@@ -9,7 +9,7 @@
 The default `static` catalog builds Datasets from `datasets` configuration. Configure a dynamic catalog as follows; it cannot coexist with a nonempty `datasets` declaration:
 
 ```yaml
-plugin_directory: ./plugins
+plugin_directory: ./.dacp-plugins
 dataset_catalog:
   provider: example-jdbc-catalog
   source:
@@ -54,7 +54,7 @@ trait DatasetCatalogProvider {
 }
 ```
 
-`DatasetInfo` contains only the public `name`. `CatalogContext.createDataset(definition)` reuses installed Dataset providers; `publish` and `openNamespace` reuse file and SQL mappings. Native backends may implement `PublishedDataset` directly. Do not implicitly flatten scientific arrays, images, or groups into records.
+`DatasetInfo` contains only the public `name`. `CatalogContext.createDataset(definition)` reuses installed Dataset providers; `FileDatasets.mixed` reuses file and SQL mappings. Native backends may implement `PublishedDataset` directly. Do not implicitly flatten scientific arrays, images, or groups into records.
 
 Provide a public no-argument implementation constructor and include this file in the JAR:
 

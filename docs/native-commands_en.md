@@ -57,10 +57,10 @@ No client change or native-specific job syntax is required.
 
 ## Plugin contract and verification
 
-`CommandExecutor` registers in `META-INF/services/dacp.OperatorExecutor` and ships in `dacp-operator-executors`. External launchers use the same registration: compile against `dacp-plugin-api` as Provided, package the service file, put the JAR and private dependencies in `plugin_directory`, then restart the server. `OperatorProgram.configuration` contains the generic executor-owned map; `inputs` and `outputs` map port names to allowed representation sets. Each plugin owns validation. Core only carries these settings and manages resources; it has no command-specific dispatch branch.
+`CommandExecutor` registers in `META-INF/services/dacp.OperatorExecutor` and ships in `plugins/dacp-plugin-operator-executors`. External launchers use the same registration: compile against `dacp-plugin-api` as Provided, package the service file, put the JAR and private dependencies in `plugin_directory`, then restart the server. `OperatorProgram.configuration` contains the generic executor-owned map; `inputs` and `outputs` map port names to allowed representation sets. Each plugin owns validation. Core only carries these settings and manages resources; it has no command-specific dispatch branch.
 
 ```bash
-(cd dacp-operator-executors && sbt test)
+(cd plugins/dacp-plugin-operator-executors && sbt test)
 (cd dacp-operator-repository && sbt test)
 (cd dacp-server && sbt test stage)
 # Requires cc, certificates, Docker access, and dacp/operator-python:1.0:

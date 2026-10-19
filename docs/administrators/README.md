@@ -30,7 +30,7 @@ sbt 'run ../examples/server.yaml'
 
 在节点配置中声明 Dataset provider 与参数。内置及外部 provider 使用相同的插件契约；文件目录、SQL 连接等配置见[技术参考](../reference.md)、[Dataset provider](../dataset-providers.md)和[SQL 示例](../../examples/sql/README.md)。数据目录及凭据应按服务账号设置权限。
 
-节点通过 `local_operator_library` 读取本地算子，通过 `remote_operator_library_urls` 搜索远程仓库。远程配置顺序影响查找顺序。共享运行时与算子代码分别发布；执行环境和原生命令配置见[打包说明](../operator-packaging.md)和[执行器手册](../../dacp-operator-executors/README.md)。源码提交仅在 DEBUG 模式开放，配置见[源码运行时](../operator-source.md)。
+节点通过 `local_operator_library` 读取本地算子，通过 `remote_operator_library_urls` 搜索远程仓库。远程配置顺序影响查找顺序。共享运行时与算子代码分别发布；执行环境和原生命令配置见[打包说明](../operator-packaging.md)和[执行器手册](../../plugins/dacp-plugin-operator-executors/README.md)。源码提交仅在 DEBUG 模式开放，配置见[源码运行时](../operator-source.md)。
 
 ## 证书与授权
 

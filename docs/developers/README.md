@@ -16,7 +16,7 @@
 | `dacp-server` | Flight 服务、命名空间、协调与资源生命周期 |
 | `dacp-client`、`dacp-client-scala` | 客户端 API 与 shell |
 | `dacp-operator-runtime` | JVM 算子运行时及内置实现 |
-| `dacp-operator-executors` | 容器启动器与原生命令桥接器 |
+| `plugins/dacp-plugin-operator-executors` | 容器启动器与原生命令桥接器 |
 | `dacp-operator-repository` | 不可变发布、公开搜索与下载 |
 | `proto/dacp.proto` | 共享线协议消息 |
 
@@ -53,12 +53,11 @@ class CsvFileProvider extends DatasetProvider {
     require(d.source.keySet.subsetOf(Set("file")),
       "unknown csv-file parameter")
     require(d.source.contains("file"), "csv-file requires source.file")
-    require(d.items.isEmpty && d.bindings.isEmpty,
+    require(d.items.isEmpty,
       "csv-file does not accept item mappings")
     val file = Path.of(d.source("file").toString)
-    context.publish(Seq(PublishedItem(
-      "/records", file = Some(file),
-      options = FileOptions(format = Some("csv"))
+    context.createDataset(DatasetDefinition("mixed", items = Map(
+      "/records" -> Map[String,Object]("file" -> file.toString, "format" -> "csv")
     )))
   }
 }
@@ -126,7 +125,7 @@ DACP 优先采用插件机制扩展。新的数据集后端、文件格式和处
 ## 补充契约与联调验证
 
 ```bash
-(cd dacp-operator-executors && sbt test)
+(cd plugins/dacp-plugin-operator-executors && sbt test)
 (cd dacp-operator-repository && sbt test)
 ```
 
@@ -143,3 +142,7 @@ stage 服务端、构建所需运行时并准备示例证书后，使用 Docker 
 [Union 协议](../union.md) 定义证书身份、计算授权和直接流。`dacp-union-protocol` 提供共享传输工具，`dacp-server/UnionWorker` 复用插件数据访问及算子执行器，`dacp-union-server` 负责成员轮询、子任务准备和结果转发。运行 `cd dacp-union-server && sbt test` 验证真实 mTLS 的双节点契约。领域分析算子放在 `examples/union/operators`，不修改核心注册表。
 
 普通 Flight 请求、Union 节点子任务和全局作业共用持久化执行记录。生命周期、原子写入及测试见 [执行记录](../execution-history.md)。
+
+## 中英文文档检查
+
+在仓库根运行 `python3 scripts/check-doc-translations.py`。发布的 Markdown 以 `README.md`/`name.md` 为中文，`README_en.md`/`name_en.md` 为英文。完整译文、命令、配置和链接应一起更新。脚本检查配对、基础语言内容和本地文件/章节链接，不能替代翻译语义审查。工具指令与构建产物不计入发布文档。

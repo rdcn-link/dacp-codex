@@ -1,60 +1,74 @@
-# Contributing plugins
+# 编写插件
 
-DACP is intended to grow through independently contributed plugins. Adding a dataset backend, file format, or other implementation of an established extension point should require installing and configuring a plugin, without editing core registries, rebuilding the server, or changing clients.
+DACP 通过独立贡献的插件扩展。添加已有扩展点的数据集后端、文件格式或其他实现，只需安装和配置插件，不应修改核心注册表、重新构建服务器或修改客户端。
 
-The core owns the common contracts, plugin discovery and lifecycle, Flight transport, authorization, namespace validation, cancellation, and resource management. Plugins own domain behavior, private settings, and third-party backend or parsing dependencies. Built-in implementations should use the same contracts as contributed plugins.
+核心负责公共契约、插件发现与生命周期、Flight 传输、授权、命名空间校验、取消和资源管理。插件负责领域行为、私有配置，以及后端或解析器的第三方依赖。内置实现与外部插件使用相同契约。
 
-## Available extension points
+## 随发行包提供的实现
 
-| Contribution | Current mechanism | Guide |
+内置实现位于 [plugins/](../plugins/README.md)：Dataset 后端、基本格式、Parquet、Excel、归档、静态目录和算子启动器。它们针对独立 API 编译，通过 ServiceLoader 注册；服务器只在运行时和集成测试中引入它们。第三方 JAR 使用同一发现机制。源码目录 `plugins/` 与本地安装目录 `.dacp-plugins/` 不同。
+
+## 已提供的扩展点
+
+| 扩展内容 | 当前机制 | 指南 |
 |---|---|---|
-| Dataset catalog | Implement `DatasetCatalogProvider`; register through Java `ServiceLoader`, or inject a `DatasetCatalog` into `DacpServer` | [Dynamic catalogs](dataset-catalogs_en.md), [embedding](embedded-server_en.md) |
-| Dataset provider | Implement `DatasetProvider`; register through Java `ServiceLoader` | [Dataset providers](dataset-providers.md) |
-| File format handler | Implement `FormatHandler` or `StructuredFileHandler`; register through Java `ServiceLoader` | [Format handlers](format-handlers.md) |
-| Archive reader | Implement `ContainerReader`; register through Java `ServiceLoader` | [Container readers](format-handlers.md#container-readers) |
-| Processing operator | Publish a container, thin JAR, Python source file, or wheel with a shared runtime | [Operator packaging](operator-packaging.md) |
-| Operator launch executor | Implement `OperatorExecutor`; register through Java `ServiceLoader` | [Executor registration](operator-packaging.md#executor-plugins) |
+| Dataset 目录 | 实现 `DatasetCatalogProvider` 并通过 Java `ServiceLoader` 注册，或向 `DacpServer` 注入 `DatasetCatalog` | [动态目录](dataset-catalogs.md)、[嵌入启动](embedded-server.md) |
+| Dataset 提供者 | 实现 `DatasetProvider`，通过 Java `ServiceLoader` 注册 | [Dataset 提供者](dataset-providers.md) |
+| 文件格式处理器 | 实现 `FormatHandler` 或 `StructuredFileHandler`，通过 Java `ServiceLoader` 注册 | [格式处理器](format-handlers.md) |
+| 归档读取器 | 实现 `ContainerReader`，通过 Java `ServiceLoader` 注册 | [归档读取器](format-handlers.md#归档读取器) |
+| 数据处理算子 | 发布完整容器、精简 JAR、Python 源码或 wheel，复用运行环境 | [算子打包](operator-packaging.md) |
+| 算子启动执行器 | 实现 `OperatorExecutor`，通过 Java `ServiceLoader` 注册 | [执行器插件](operator-packaging.md#执行器插件) |
 
-Dataset providers and format handlers currently run inside the JVM server. They must be installed by the server administrator in `plugin_directory` with their private dependency JARs, and loaded on restart. They are not sandboxed or uploaded by clients. Operators execute separately in containers.
+Dataset 提供者和格式处理器运行在服务器 JVM 内。管理员将插件及私有依赖 JAR 安装到 `plugin_directory`，重启后加载。它们不在沙箱中执行，也不由客户端上传。算子在独立容器中执行。
 
-Dataset providers construct logical namespaces and implement listing, metadata, counting, and streaming. File handlers interpret content. Operators perform transformations. A new format should be usable from both directory-backed and mixed datasets without adding a new dataset provider just for that format.
+逐 Item 对象和游标访问、资源所有权、配置以及 MongoDB/S3 扩展边界见 [Dataset/Item 访问契约](dataset-access.md)。
 
-## Contribution contract
+Dataset 提供者构建逻辑命名空间，实现列表、元数据、计数和流式读取。格式处理器解释内容，算子执行转换。新格式应同时适用于 directory 和 mixed Dataset，无需为格式单独添加 Dataset 提供者。
 
-Each plugin should provide:
+## 贡献契约
 
-- A unique identity, registration metadata, installation instructions, and a minimal configuration example.
-- Validation of its own required settings, types, and unknown parameters. Physical paths, credentials, and backend identifiers remain private.
-- Accurate schemas and advertised capabilities. Original-file bytes remain available without changing the source; record counts have a defined meaning and remain unknown when unavailable.
-- Bounded streaming, demand and cancellation handling, and cleanup on success, failure, and interruption. Ordinary browsing must not trigger expensive record scans.
-- Tests covering discovery, configuration, namespace behavior, streaming, counts, cancellation, cleanup, and public errors without private diagnostics, as applicable to the extension.
+每个插件应提供：
 
-Published item paths and views are the client contract. Backend-specific parsing and configuration belong on the server. Introducing a genuinely new content representation may require a shared protocol and SDK change; installing another implementation of an existing representation should not.
+- 唯一标识、注册元数据、安装说明和最小配置示例。
+- 对必需设置、类型和未知参数的校验。物理路径、凭据和后端标识保持私有。
+- 准确的 schema 和能力声明。原文件字节可直接读取且不修改源；记录数含义明确，不可用时保持未知。
+- 有界流处理、背压和取消处理，以及成功、失败和中断时的清理。普通浏览不得触发昂贵的记录扫描。
+- 按扩展类型测试发现、配置、命名空间、流、计数、取消、清理和不泄露私有诊断的公共错误。
 
-## Plugin foundation
+公开 Item 路径和视图构成客户端契约。后端解析和配置留在服务器端。新的内容表示可能需要修改公共协议和 SDK；为已有表示添加另一种实现不应要求这些修改。
 
-The standalone [dacp-plugin-api](../dacp-plugin-api/README.md) module contains the shared contracts, without a dependency on the server implementation. The [example project](../examples/plugins/README.md) demonstrates independent compilation, service registration, native Dataset construction, and direct structured-file child access. `PluginChecks.listing` provides reusable metadata contract checks; the server suite tests end-to-end Flight integration, cancellation, and cleanup.
+## 插件基础设施
 
-Configure `plugin_directory` to load plugin and private dependency JARs before registries initialize. Built-ins and contributed implementations use the same interfaces. Dataset providers receive a `DatasetContext` rather than the server's `Config`. Each handler validates its private YAML `options` map; `format` and `schema` remain common reader settings. Access handles are closed per request, and provider resources are closed on shutdown. Plugins are trusted server code and are not hot-reloaded.
+独立的 [dacp-plugin-api](../dacp-plugin-api/README.md) 包含共享契约，不依赖服务器实现。[示例项目](../examples/plugins/README.md) 展示独立编译、服务注册、原生 Dataset 构建和结构化文件子对象访问。`PluginChecks.listing` 提供可复用的元数据契约检查；服务器测试覆盖 Flight 集成、取消和清理。
 
-Structured files implement `StructuredFileHandler.openStructure` to return logical children and stream them directly, without extraction. Existing ZIP/TAR/GZIP readers use the separately pluggable `ContainerReader` for staged entries. A container registration automatically supplies its file-format entry.
+配置 `plugin_directory`，在注册表初始化前加载插件及私有依赖 JAR。内置与外部实现使用相同接口。Dataset 提供者接收 `DatasetContext`，不依赖服务器的 `Config`。每个处理器自行校验私有 YAML `options`；`format` 和 `schema` 是通用读取设置。每次请求结束关闭访问句柄，服务器关闭时释放提供者资源。插件是可信服务器代码，不支持热加载。
 
-## Scientific data and future extensions
+结构化文件实现 `StructuredFileHandler.openStructure`，返回逻辑子对象并直接输出流，无需提取文件。ZIP/TAR/GZIP 使用独立的 `ContainerReader` 暂存条目；注册归档读取器会自动提供对应格式条目。
 
-NetCDF and FITS parsers are not implemented yet. Contributors can use the structured-file contract for groups, variables, tables, and HDUs, with handler-owned selection parameters. Reuse `folder` for browsable structures and preserve original-file bytes at the file root. Child naming and byte encodings must be documented and deterministic.
+## 科学数据和未来扩展
 
-Current public views remain `records` and `bytes`. New array/image views still require explicit shared schemas, metadata, and selection semantics. Do not silently flatten scientific arrays or invent record counts. Extending the plugin foundation does not imply those representations already exist.
+尚未实现 NetCDF 和 FITS 解析器。贡献者可用结构化文件契约表示组、变量、表和 HDU，并由处理器定义选择参数。可浏览结构使用 `folder`，文件根保留原文件字节。子对象名称和字节编码必须有文档且确定一致。
 
-New extension points should follow the same principle: define a focused shared contract, discover implementations through registration, and keep implementation-specific branches out of core dispatch. Do not introduce an extension abstraction without a concrete contribution or use case. During unreleased development, improve contracts directly and update their users together rather than accumulating compatibility layers.
+当前公共视图是 `records` 和 `bytes`。数组和图像视图仍需明确共享 schema、元数据和选择语义。不得静默把科学数组展开为记录，也不得虚构记录数。插件基础设施的存在不表示这些表示已经实现。
 
-## Records scan optimization
+新的扩展点同样应定义聚焦的公共契约，通过注册发现实现，并避免核心分发中的领域分支。没有具体贡献或用例时不引入抽象。未发布阶段直接改进契约并同步调用方，不累积兼容层。
 
-Dataset providers and file handlers can optimize filter, projection, and limit through the shared `Scan` contract. Every records implementation has a bounded server-side fallback; an optimized implementation must preserve the same null/type semantics and global limit. See [records scan semantics and plugin contracts](records-scans.md).
+## 记录扫描优化
 
-## Write and publish an operator
+Dataset 提供者和格式处理器可通过 `Scan` 优化过滤、投影和限制。所有 records 实现都有有界的服务器端回退；优化必须保留相同的空值、类型语义和全局限制。见 [记录扫描语义和插件契约](records-scans.md)。
 
-See [the operator authoring guide](operator-authoring_en.md) for complete Scala and Python implementations, thin-JAR and wheel builds, administrator publication, remote file transfer, and task submission. The public repository currently supports downloads; publication uses its administrator CLI.
+## 编写和发布算子
 
-Operator launch plugins can additionally implement `OperatorExecutor.sourceCommand` for DEBUG-only inline source. The default rejects source execution. Administrators map runtime references to installed images and executor IDs in `source_runtimes`; both coordinator and worker require `mode: DEBUG`. Compilation runs inside the isolated execution container. See [source operators](operator-source_en.md) for registration, configuration, and examples.
+[算子编写指南](operator-authoring.md) 提供完整 Scala/Python 实现、精简 JAR 和 wheel 构建、管理员发布、远程传输及任务提交。公共仓库支持浏览下载；认证发布通过 API 和管理员 CLI 提供。
 
-The implemented `command` executor adapts ordinary native stdin/stdout programs to one bytes input/output pair. Executor settings use local `executor_config` and repository `execution.config`, passed as `OperatorProgram.configuration`. The program also exposes declared port representations for plugin validation. See [native command registration, configuration and contract tests](native-commands_en.md).
+算子启动插件可实现 `OperatorExecutor.sourceCommand`，用于仅 DEBUG 模式允许的内联源码。默认拒绝源码执行。管理员在 `source_runtimes` 中将运行环境映射到已安装镜像和执行器 ID；协调端和工作端都要求 `mode: DEBUG`。编译在隔离容器中执行。注册、配置和示例见 [源码算子](operator-source.md)。
+
+`command` 执行器将原生 stdin/stdout 程序适配到一对 bytes 输入输出。配置来自本地 `executor_config` 或仓库 `execution.config`，通过 `OperatorProgram.configuration` 传入；程序同时暴露声明的端口表示供插件校验。见 [原生命令注册、配置和契约测试](native-commands.md)。
+
+## 后续自定义能力审查
+
+剩余耦合、优先级和建议接口见 [扩展边界审查](plugin-roadmap.md)。其中的建议与上面已实现的扩展点明确区分。
+
+## 实例环境和执行存储
+
+`PluginEnvironment` 按服务器管理发现和生命周期。通过 `DacpServer.builder().plugins(environment, owned = false)` 注入；应用拥有的环境不会随服务器关闭。插件可覆盖 `initialize(environment)` 和 `close()`。`ExecutionStoreProvider` 在 `META-INF/services/dacp.ExecutionStoreProvider` 注册，配置为 `execution_store: {provider: file, settings: {directory: /var/lib/dacp/executions}}`。存储必须提供原子唯一 `create`、原子替换 `put`、独立副本的 `get`/`records` 及关闭。核心保留状态转换、恢复和稳定的按所有者过滤分页。内置 file 位于 `plugins/dacp-plugin-execution-file`；其他实现不需要修改核心注册表。
