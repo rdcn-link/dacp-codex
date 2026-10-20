@@ -127,3 +127,30 @@ def test_open_uses_advertised_views_for_containers(kind, views, readable):
     else:
         with pytest.raises(ValueError, match='no readable views'):
             ds.open('/archive')
+
+
+def test_dataset_discovery_local_scope_and_cleanup(monkeypatch):
+    import dacp.source as source
+    from dacp import dacp_pb2 as pb
+    calls = []
+    class Client:
+        closed = False
+        def list_flights(self, criteria, options):
+            calls.append(criteria)
+            if criteria == b'local' and len(calls) == 3:
+                raise ValueError('local directory unsupported')
+            return [type('Info', (), {'app_metadata': pb.DataSet(name='orders', uri='dacp://node/orders', title='Orders').SerializeToString()})()]
+        def close(self):
+            self.closed = True
+    clients = []
+    def connect(*args):
+        client = Client()
+        clients.append(client)
+        return client
+    monkeypatch.setattr(source, '_flight_client', connect)
+    assert source.Source.datasets('dacp://node')[0].name == 'orders'
+    assert source.Source.datasets('dacp://node', local_only=True)[0].title == 'Orders'
+    with pytest.raises(ValueError):
+        source.Source.datasets('dacp://union', local_only=True)
+    assert calls == [b'', b'local', b'local']
+    assert all(client.closed for client in clients)

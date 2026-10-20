@@ -1,7 +1,7 @@
 /* DACP execution viewer. G6 owns rendering, layout, grouping and viewport interaction. */
 'use strict';
 window.DacpDag=(()=>{
- const palette=[{stroke:'#5887db',fill:'#f0f5ff'},{stroke:'#16a394',fill:'#eefaf7'},{stroke:'#9b76d3',fill:'#f7f2fc'},{stroke:'#df9a42',fill:'#fff8ed'}];
+ const palette=[{stroke:'#2563eb',fill:'#dbeafe'},{stroke:'#c2410c',fill:'#ffedd5'},{stroke:'#15803d',fill:'#dcfce7'},{stroke:'#9333ea',fill:'#f3e8ff'},{stroke:'#be123c',fill:'#ffe4e6'},{stroke:'#0e7490',fill:'#cffafe'}];
  const states={succeeded:{color:'#168264',fill:'#f0faf5',label:'✓ 已完成'},running:{color:'#2563eb',fill:'#eff6ff',label:'▶ 执行中'},failed:{color:'#cc4560',fill:'#fff3f5',label:'! 执行失败'},cancelled:{color:'#cc4560',fill:'#fff3f5',label:'! 已取消'},expired:{color:'#cc4560',fill:'#fff3f5',label:'! 已超时'},interrupted:{color:'#cc4560',fill:'#fff3f5',label:'! 服务中断'},unknown:{color:'#b68424',fill:'#fff9eb',label:'? 状态未知'}};
  const pending={color:'#94a3b8',fill:'#f8fafc',label:'○ 尚未执行',dash:[5,4]};
  const compact=(text,max)=>Array.from(String(text||'')).length>max?Array.from(String(text)).slice(0,max-1).join('')+'…':String(text||'');
@@ -36,19 +36,19 @@ window.DacpDag=(()=>{
    let source='task:'+binding.task;
    if(!binding.task){
     source='input:'+t.id+':'+binding.port;
-    nodes.push({id:source,combo:groups.get(t.node),data:{kind:'input',title:binding.uri?.split('/').pop()||binding.port,subtitle:'本地输入 · '+binding.port,color:'#7f93ad',fill:'#fff',dash:[]},style:{size:[228,76]}});
-    details.set(source,{title:'本地输入 · '+binding.port,lines:[binding.uri||'', '表示：'+(binding.view||'bytes'),'服务器：'+t.node]});
+    nodes.push({id:source,combo:groups.get(t.node),data:{kind:'input',title:binding.uri?.split('/').pop()||binding.port,subtitle:(binding.remote?'跨节点输入':'本地输入')+' · '+binding.port,color:'#7f93ad',fill:'#fff',dash:[]},style:{size:[228,76]}});
+    details.set(source,{title:(binding.remote?'跨节点输入':'本地输入')+' · '+binding.port,lines:[binding.uri||'', '表示：'+(binding.view||'bytes'),'服务器：'+t.node]});
    }
    edge(source,'task:'+t.id,binding.task?binding.output_port+' → '+binding.port:binding.port,t,'inputs',binding.port);
   }
   if(Object.keys(job.outputs).length){
-   combos.push({id:'client',data:{title:'结果出口',subtitle:'Union → 客户端'},style:{labelText:'结果出口 · Union → 客户端',stroke:'#a3b2c5',fill:'#f5f7fa'}});
-   details.set('client',{title:'流式结果出口',lines:['结果经 Union 转发至提交客户端','这里只展示执行元数据，不消费结果流。']});
+   combos.push({id:'client',data:{title:'结果出口',subtitle:job.output_route||'Union → 客户端'},style:{labelText:'结果出口 · '+(job.output_route||'Union → 客户端'),stroke:'#a3b2c5',fill:'#f5f7fa'}});
+   details.set('client',{title:'流式结果出口',lines:[job.output_route||'结果经 Union 转发至提交客户端','这里只展示执行元数据，不消费结果流。']});
   }
   for(const [label,binding]of Object.entries(job.outputs)){
    const id='output:'+label;
-   nodes.push({id,combo:'client',data:{kind:'output',title:label,subtitle:'Union → 客户端',color:'#6f8ba7',fill:'#fff',dash:[]},style:{size:[228,76]}});
-   details.set(id,{title:'输出 · '+label,lines:[binding.task+'.'+binding.port,'经 Union 转发至提交客户端']});
+   nodes.push({id,combo:'client',data:{kind:'output',title:label,subtitle:job.output_route||'Union → 客户端',color:'#6f8ba7',fill:'#fff',dash:[]},style:{size:[228,76]}});
+   details.set(id,{title:'输出 · '+label,lines:[binding.task+'.'+binding.port,job.output_route||'经 Union 转发至提交客户端']});
    edge('task:'+binding.task,id,binding.port,tasks.get(binding.task),'outputs',binding.port);
   }
   const topology=JSON.stringify({nodes:nodes.map(n=>[n.id,n.combo]),edges:edges.map(e=>[e.id,e.source,e.target]),combos:combos.map(c=>c.id)});
@@ -109,10 +109,10 @@ window.DacpDag=(()=>{
      this.destroyGraph();this.host.replaceChildren();this.job=job.job_id;this.topology=model.topology;this.mode='fit';this.inspect(null);
      this.graph=new G6.Graph({
       container:this.host,width:this.host.clientWidth,height:this.host.clientHeight,animation:false,padding:36,zoomRange:[.15,2.5],data:model.data,
-      layout:{type:'combo-combined',comboPadding:[64,24,24,24],comboSpacing:64,layout:comboId=>({type:'dagre',rankdir:'TB',nodesep:comboId?36:70,ranksep:comboId?70:90})},
-      node:{type:'dacp-task-card',style:{card:d=>d.data,fill:d=>d.data.fill,stroke:d=>d.data.color,lineDash:d=>d.data.dash,lineWidth:d=>d.data.border||1.2,radius:12,shadowColor:'#1e3a5f0c',shadowBlur:10,shadowOffsetY:4,label:false,ports:[{key:'in',placement:'top'},{key:'out',placement:'bottom'},{key:'left',placement:'left'},{key:'right',placement:'right'}],portR:3,portFill:'#fff',portStroke:'#b5c4d6'}},
-      edge:{type:'polyline',style:{sourcePort:'out',targetPort:d=>d.style?.targetPort||'in',router:d=>({type:'shortest-path',enableObstacleAvoidance:true,offset:16,gridSize:10,startDirections:['bottom'],endDirections:[d.style?.targetPort==='left'?'left':'top']}),radius:10,endArrow:true,endArrowSize:7,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#6e829b',labelBackground:true,labelBackgroundFill:'#fff',labelBackgroundRadius:5,labelPadding:[4,7],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
-      combo:{type:'rect',style:{radius:18,padding:[64,24,24,24],lineWidth:1,fillOpacity:.65,labelPlacement:'top-left',labelTextAlign:'left',labelOffsetX:16,labelOffsetY:20,labelFontSize:12,labelFontWeight:600,labelFill:'#526b88',collapsedSize:[268,76]}},
+      layout:{type:'combo-combined',comboPadding:[64,24,24,24],comboSpacing:64,layout:comboId=>({type:'dagre',rankdir:'LR',nodesep:comboId?36:70,ranksep:comboId?70:90})},
+      node:{type:'dacp-task-card',style:{card:d=>d.data,fill:d=>d.data.fill,stroke:d=>d.data.color,lineDash:d=>d.data.dash,lineWidth:d=>d.data.border||1.2,radius:12,shadowColor:'#1e3a5f0c',shadowBlur:10,shadowOffsetY:4,label:false,ports:[{key:'in',placement:'left'},{key:'out',placement:'right'},{key:'left',placement:'left'},{key:'right',placement:'right'}],portR:3,portFill:'#fff',portStroke:'#b5c4d6'}},
+      edge:{type:'polyline',style:{sourcePort:'out',targetPort:d=>d.style?.targetPort||'in',router:d=>({type:'shortest-path',enableObstacleAvoidance:true,offset:16,gridSize:10,startDirections:['right'],endDirections:['left']}),radius:10,endArrow:true,endArrowSize:7,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#6e829b',labelBackground:true,labelBackgroundFill:'#fff',labelBackgroundRadius:5,labelPadding:[4,7],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
+      combo:{type:'rect',style:{radius:18,padding:[64,24,24,24],lineWidth:2,fillOpacity:1,labelPlacement:'top-left',labelTextAlign:'left',labelOffsetX:16,labelOffsetY:20,labelFontSize:12,labelFontWeight:600,labelFill:'#526b88',collapsedSize:[268,76]}},
       behaviors:[{type:'drag-canvas',onFinish:()=>{this.mode='manual';}},{type:'zoom-canvas',sensitivity:.5,onFinish:()=>{this.mode='manual';this.zoomLabel();}},{type:'collapse-expand',enable:event=>event.targetType==='combo',animation:false}],
      });
      for(const type of ['node','edge','combo'])this.graph.on(type+':click',event=>this.inspect(event.target.id));

@@ -81,3 +81,7 @@ object StreamGzip extends ByteStreamOperator {
 所有输入按端口名的字典序逐个读到 Arrow EOS；不要交替读取多个 FIFO。所有输出必须在首次写数据前声明；正常退出自动发送 end，异常退出不发送成功结束。空结果允许没有 data 帧。stdout 保留给协议，普通打印重定向到 stderr。每个 records 批次序列化后最多 8 MiB，大批次应由业务程序切分；bytes 输出自动切为最多 64 KiB。参数校验及有界内存的业务算法由作者负责。SDK 不提供通用 join、广播或流水线调度。
 
 算子仍需 `operator.yaml` 声明运行时、入口、端口和参数，并按[编写指南](../docs/operator-authoring.md)打包上传。SDK 不改变仓库发布接口。
+
+## 同进程 Job
+
+JVM 模板实现 `Operator`，可由执行器在独立共享 JVM 内调用。Python 模板增加 `process(ctx)` 方法；模块可用顶层 `def process(ctx): MyOperator().process(ctx)` 暴露合并入口。上下文和输出由执行器管理，不要在该入口自行创建或关闭另一个上下文。资格、线程安全要求与示例见 [同进程合并执行](../docs/operator-fusion.md)。

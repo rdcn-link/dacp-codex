@@ -1,0 +1,1 @@
+Extract only the existing leftmost C emblem from assets/dacp-logo.png. Preserve the blue arc and purple, turquoise and gold nodes; remove the DACP wordmark. Square transparent favicon, no redesign. Generated using imagegen; downscaled to 128px PNG and multi-resolution ICO.

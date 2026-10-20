@@ -13,7 +13,7 @@ import com.github.dockerjava.api.async.ResultCallback
 
 /** Receives already-authorized named item streams; never creates/publishes an output dataset. */
 class TaskExecutor(config: Config,allocator: BufferAllocator) {
-  def execute(task: Task,inputs: Map[String,FrameSource],emit: OperatorFrame=>Unit,cancel: StreamCancel): Unit = {
+  def execute(task: Task,inputs: Map[String,FrameSource],emit: OperatorFrame=>Unit,cancel: StreamCancel, resolved:Option[ResolvedOperator]=None,onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None): Unit = {
     Jobs.authorizeSource(config,task)
     val dc=DefaultDockerClientConfig.createDefaultConfigBuilder().build()
     val transport=new ApacheDockerHttpClient.Builder().dockerHost(dc.getDockerHost).sslConfig(dc.getSSLConfig).build()
@@ -25,7 +25,7 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
     var callback: ResultCallback.Adapter[Frame]=null
     val stderr=new StringBuilder
     try {
-      val op=task.source match {
+      val op=resolved.getOrElse(task.source match {
         case None=>OperatorLibrary.resolve(config,task.operator,docker)
         case Some(code)=>
           val runtime=config.sourceRuntimes.getOrElse(code.runtime,throw new IllegalArgumentException("source runtime is not configured"))
@@ -34,7 +34,7 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
           val command=config.plugins.byId(classOf[OperatorExecutor],runtime.executor).sourceCommand(OperatorProgram(code.runtime,code.entrypoint,Some(artifact)),"/operator/operator.source")
           val contract=PortContract(Set("bytes","records"),Set.empty,None)
           ResolvedOperator(docker.inspectImageCmd(runtime.image).exec().getId,Some(artifact),Some("/operator/operator.source"),command,inputs.keys.map(_->contract).toMap,Map("result"->contract))
-      }
+      })
       require(inputs.keySet==op.inputs.keySet,"input ports do not match operator declaration")
       val starts=inputs.toVector.sortBy(_._1).map {case(port,source)=>
         val f=source.next().getOrElse(throw new IllegalArgumentException("missing input metadata"));val h=StreamProtocol.header(f)
@@ -51,14 +51,22 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
       }
       Files.write(temporary.resolve("manifest.json"),Data.mapper.writeValueAsBytes(manifest))
       Files.write(temporary.resolve("params.json"),Data.mapper.writeValueAsBytes(task.params))
+      op.command.files.foreach {case(name,bytes)=>
+        require(name.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*"),"invalid runtime resource name")
+        require(!Files.exists(temporary.resolve(name)),"runtime resource shadows input")
+        Files.write(temporary.resolve(name),bytes)
+      }
+      op.command.mounts.keys.foreach(p=>require(p.matches("/operator/[A-Za-z0-9_-][A-Za-z0-9_.-]*"),"invalid runtime mount"))
       val binds=Seq(new Bind(temporary.toAbsolutePath.toString,new Volume("/input"),AccessMode.ro)) ++
         op.artifact.zip(op.artifactPath).map{case(file,path)=>new Bind(file.toAbsolutePath.toString,new Volume(path),AccessMode.ro)}
+      val extraBinds=op.command.mounts.toVector.map{case(path,file)=>new Bind(file.toAbsolutePath.toString,new Volume(path),AccessMode.ro)}
       val scratch=Map("/tmp"->"rw,noexec,nosuid,nodev,size=512m") ++
         (if(op.command.executableScratch) Map("/operator-work"->"rw,exec,nosuid,nodev,size=512m") else Map.empty[String,String])
-      val host=HostConfig.newHostConfig().withBinds(binds.asJava).withNetworkMode("none").withMemory(1024L*1024*1024).withPidsLimit(128L)
+      val host=HostConfig.newHostConfig().withBinds((binds++extraBinds).asJava).withNetworkMode("none").withMemory(1024L*1024*1024).withPidsLimit(128L)
         .withReadonlyRootfs(true).withTmpFs(scratch.asJava)
         .withLogConfig(new LogConfig(LogConfig.LoggingType.NONE))
       val create=docker.createContainerCmd(op.image).withHostConfig(host)
+        .withLabels(Map("dacp.execution_mode"->(if(onEvent.nonEmpty)"shared_process"else "isolated_step"),"dacp.task"->task.id).asJava)
         .withEnv((op.command.environment+("DACP_OPERATOR"->task.operator)).map{case(k,v)=>s"$k=$v"}.toSeq.asJava)
         .withCmd(op.command.arguments.asJava)
       op.command.entrypoint.foreach(e=>create.withEntrypoint(e.asJava))
@@ -108,6 +116,8 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
       var next=OperatorFrames.read(pipe)
       while(next.nonEmpty) {
         cancel.active();val f=next.get;val h=StreamProtocol.header(f);val port=h.path("port").asText
+        if(Set("task_state","task_metric")(h.path("type").asText) && onEvent.nonEmpty)onEvent.get(h)
+        else {
         require(op.outputs.contains(port),"undeclared output port")
         h.path("type").asText match {
           case "start"=>require(!begun(port),"duplicate output start");op.outputs(port).accept(h);begun+=port
@@ -115,7 +125,9 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
           case "end"=>require(begun(port) && !ended(port),"invalid output end");ended+=port
           case _=>throw new IllegalArgumentException("invalid operator output event")
         }
-        emit(f);next=OperatorFrames.read(pipe)
+        emit(f)
+        }
+        next=OperatorFrames.read(pipe)
       }
       while(docker.inspectContainerCmd(container).exec().getState.getRunning){cancel.active();Thread.sleep(25)}
       require(docker.inspectContainerCmd(container).exec().getState.getExitCodeLong==0L,"operator failed: "+stderr.synchronized(stderr.toString))

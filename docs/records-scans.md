@@ -52,7 +52,10 @@ Scala 等于/不等于为 `===`、`=!=`，布尔组合为 `&&`、`||`、一元 `
 配置 `DACP_CA`、`DACP_CERT`、`DACP_KEY` 后连接运行中的服务器：
 
 ```bash
-dacp-shell dacp://localhost:8815/data1
+dacp-shell dacp://localhost:8815
+# shell:
+# datasets
+# use data1
 ```
 
 在 `dacp-shell>` 输入完整单行查询：

@@ -37,6 +37,11 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
     require(in != null, "missing DACP logo")
     try in.readAllBytes() finally in.close()
   }
+  private val favicons=Seq("/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon")).map {case(path,(file,kind))=>
+    val in=getClass.getResourceAsStream("/web/"+file)
+    require(in!=null,"missing favicon")
+    try path->(in.readAllBytes(),kind)finally in.close()
+  }.toMap
   private def headers(exchange: HttpExchange, status: Int, size: Long, contentType: String): Unit = {
     exchange.getResponseHeaders.set("Content-Type", contentType)
     exchange.getResponseHeaders.set("X-Content-Type-Options", "nosniff")
@@ -79,6 +84,10 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
       } else if (uri.getRawQuery != null) reply(exchange, 404, "not found\n")
       else uri.getRawPath match {
         case "/health" => reply(exchange, 200, "ok\n")
+        case route if favicons.contains(route) =>
+          val (bytes,kind)=favicons(route)
+          headers(exchange,200,bytes.length,kind)
+          if(exchange.getRequestMethod!="HEAD")exchange.getResponseBody.write(bytes)
         case "/assets/dacp-logo.png" =>
           headers(exchange, 200, logo.length, "image/png")
           if (exchange.getRequestMethod != "HEAD") exchange.getResponseBody.write(logo)

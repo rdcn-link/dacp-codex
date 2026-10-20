@@ -209,4 +209,4 @@ Server `mode` defaults to `NORMAL`. Inline source requires `DEBUG` at both coord
 
 ## DatasetCatalog
 
-`dataset_catalog` selects a catalog provider and passes private plugin settings through `source`; it cannot coexist with nonempty `datasets`. Omission selects the static catalog. See [dynamic catalogs](dataset-catalogs_en.md) for contracts, JDBC examples, discovery, and authorization. Standard Flight `ListFlights` returns authorized public Dataset URIs without Item contents.
+`dataset_catalog` selects a catalog provider and passes private plugin settings through `source`; it cannot coexist with nonempty `datasets`. Omission selects the static catalog. See [dynamic catalogs](dataset-catalogs_en.md) for contracts, JDBC examples, discovery, and authorization. Standard Flight `ListFlights` returns public Dataset URIs and descriptions without additional data grants without Item contents.

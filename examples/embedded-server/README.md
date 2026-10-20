@@ -17,7 +17,10 @@ bash scripts/certs.sh
 export DACP_CA="$PWD/examples/certs/ca.crt"
 export DACP_CERT="$PWD/examples/certs/client.crt"
 export DACP_KEY="$PWD/examples/certs/client.key"
-dacp-shell dacp://localhost:8815/reports
+dacp-shell dacp://localhost:8815
+# shell:
+# datasets
+# use reports
 ```
 
 在 shell 中使用 `ls /`、`show /orders`。前台示例用 Ctrl+C 停止。示例应用自行安装关闭钩子，嵌入 API 不自动安装。

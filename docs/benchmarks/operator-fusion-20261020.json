@@ -1,0 +1,442 @@
+{
+  "host": "Linux-6.8.0-85-generic-x86_64-with-glibc2.39",
+  "cpu_count": 16,
+  "datasets": {
+    "1000000": {
+      "rows": 1000000,
+      "bytes": 64000000,
+      "sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4"
+    },
+    "4000000": {
+      "rows": 4000000,
+      "bytes": 256000000,
+      "sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154"
+    }
+  },
+  "steps": 3,
+  "repetitions": 3,
+  "methodology": "Same code, image, params, data and client; server operator_fusion_enabled only differs. Alternating order; one warmup per language/mode; wall time includes Flight submission through complete result drain and client SHA-256/row validation. Each row is 64 bytes; CSV text is transported as a byte stream, not Arrow records.",
+  "images": [
+    {
+      "id": "sha256:a51c8aaa05a5f1d325050b813cf0f84d91853434c1c6ab4f3b87afabc11e1d7f",
+      "tags": [
+        "dacp/operator-jvm:1.1"
+      ]
+    },
+    {
+      "id": "sha256:4b380edaef3b5a3f525a63a053b2aaa4e94c8bd89864cf1d7b77b6fed715e5d7",
+      "tags": [
+        "dacp/operator-python:1.0"
+      ]
+    }
+  ],
+  "git_head": "15fe1a5600c4fbc75465822fd879cd2315b08b0a",
+  "working_tree_modified": true,
+  "samples": [
+    {
+      "language": "jvm",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "fused",
+      "repeat": 1,
+      "wall_seconds": 12.600145867967512,
+      "first_data_seconds": 7.580956302001141,
+      "mib_per_second": 4.844003941665905,
+      "containers": 1,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:40:04.304361+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "isolated",
+      "repeat": 1,
+      "wall_seconds": 48.294927515031304,
+      "first_data_seconds": 36.33845795603702,
+      "mib_per_second": 1.2638005560936691,
+      "containers": 3,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:40:16.981098+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "isolated",
+      "repeat": 2,
+      "wall_seconds": 51.8350827510003,
+      "first_data_seconds": 39.67889874102548,
+      "mib_per_second": 1.1774873890564428,
+      "containers": 3,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:41:05.354478+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "fused",
+      "repeat": 2,
+      "wall_seconds": 25.097745309001766,
+      "first_data_seconds": 10.141629651014227,
+      "mib_per_second": 2.431897985199038,
+      "containers": 1,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:41:57.268752+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "fused",
+      "repeat": 3,
+      "wall_seconds": 14.178662605001591,
+      "first_data_seconds": 10.550085182010662,
+      "mib_per_second": 4.304718854687293,
+      "containers": 1,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:42:22.443824+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "isolated",
+      "repeat": 3,
+      "wall_seconds": 37.161332086951006,
+      "first_data_seconds": 20.066296450968366,
+      "mib_per_second": 1.6424372545954065,
+      "containers": 3,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:42:36.701936+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "fused",
+      "repeat": 1,
+      "wall_seconds": 11.17314196395455,
+      "first_data_seconds": 6.2671170109533705,
+      "mib_per_second": 21.850668843877326,
+      "containers": 1,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:43:13.943137+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "isolated",
+      "repeat": 1,
+      "wall_seconds": 60.016351854021195,
+      "first_data_seconds": 17.64866293198429,
+      "mib_per_second": 4.067901787729908,
+      "containers": 3,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:43:25.196653+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "isolated",
+      "repeat": 2,
+      "wall_seconds": 57.28224704100285,
+      "first_data_seconds": 13.744324025989044,
+      "mib_per_second": 4.262064384891243,
+      "containers": 3,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:44:25.294614+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "fused",
+      "repeat": 2,
+      "wall_seconds": 26.272136870014947,
+      "first_data_seconds": 14.206294085015543,
+      "mib_per_second": 9.29275856805709,
+      "containers": 1,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:45:22.662639+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "fused",
+      "repeat": 3,
+      "wall_seconds": 13.74547500803601,
+      "first_data_seconds": 4.04128619201947,
+      "mib_per_second": 17.76152696485703,
+      "containers": 1,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:45:49.015722+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "isolated",
+      "repeat": 3,
+      "wall_seconds": 67.35614252596861,
+      "first_data_seconds": 23.904202298959717,
+      "mib_per_second": 3.624623023889374,
+      "containers": 3,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:46:02.842941+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "fused",
+      "repeat": 1,
+      "wall_seconds": 27.118205339007545,
+      "first_data_seconds": 24.166470465017483,
+      "mib_per_second": 2.250707798948827,
+      "containers": 1,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:50:00.464621+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "isolated",
+      "repeat": 1,
+      "wall_seconds": 35.19576456496725,
+      "first_data_seconds": 24.423857724003028,
+      "mib_per_second": 1.7341619653505826,
+      "containers": 3,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:50:27.660427+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "isolated",
+      "repeat": 2,
+      "wall_seconds": 49.84613775199978,
+      "first_data_seconds": 37.06481547100702,
+      "mib_per_second": 1.224471122590663,
+      "containers": 3,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:51:02.934515+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "fused",
+      "repeat": 2,
+      "wall_seconds": 11.160845855949447,
+      "first_data_seconds": 6.702570042980369,
+      "mib_per_second": 5.468685531344772,
+      "containers": 1,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:51:53.467162+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "fused",
+      "repeat": 3,
+      "wall_seconds": 11.844991224992555,
+      "first_data_seconds": 6.36167451395886,
+      "mib_per_second": 5.152824100132532,
+      "containers": 1,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:52:04.707692+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "isolated",
+      "repeat": 3,
+      "wall_seconds": 40.659807955962606,
+      "first_data_seconds": 27.10971129097743,
+      "mib_per_second": 1.50111767168466,
+      "containers": 3,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:52:16.633127+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "fused",
+      "repeat": 1,
+      "wall_seconds": 17.74208830902353,
+      "first_data_seconds": 10.850194344995543,
+      "mib_per_second": 13.760534878852532,
+      "containers": 1,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:52:57.374079+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "isolated",
+      "repeat": 1,
+      "wall_seconds": 83.03511628095293,
+      "first_data_seconds": 29.583654867950827,
+      "mib_per_second": 2.9402093467773267,
+      "containers": 3,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:53:15.295535+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "isolated",
+      "repeat": 2,
+      "wall_seconds": 90.077908665,
+      "first_data_seconds": 48.22750437702052,
+      "mib_per_second": 2.7103274112186564,
+      "containers": 3,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:54:38.409217+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "fused",
+      "repeat": 2,
+      "wall_seconds": 14.10762317001354,
+      "first_data_seconds": 5.900990019028541,
+      "mib_per_second": 17.30558167437681,
+      "containers": 1,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:56:08.566154+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "fused",
+      "repeat": 3,
+      "wall_seconds": 14.926428456034046,
+      "first_data_seconds": 8.108897495025303,
+      "mib_per_second": 16.356265379834085,
+      "containers": 1,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:56:22.755263+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 4000000,
+      "input_bytes": 256000000,
+      "mode": "isolated",
+      "repeat": 3,
+      "wall_seconds": 62.80082522297744,
+      "first_data_seconds": 20.724092493997887,
+      "mib_per_second": 3.8875384858903788,
+      "containers": 3,
+      "output_sha256": "1459944cd9e7aece43ac8d06727bd9134e6437d4b8dec3e389a7c62a12c39154",
+      "started_at": "2026-10-20T06:56:37.763840+00:00"
+    }
+  ],
+  "warmups": [
+    {
+      "language": "jvm",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "fused",
+      "repeat": 0,
+      "wall_seconds": 13.189619463053532,
+      "first_data_seconds": 8.353376376035158,
+      "mib_per_second": 4.627514570907093,
+      "containers": 1,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:39:05.428598+00:00"
+    },
+    {
+      "language": "jvm",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "isolated",
+      "repeat": 0,
+      "wall_seconds": 45.481160571973305,
+      "first_data_seconds": 33.34653340000659,
+      "mib_per_second": 1.341987659998533,
+      "containers": 3,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:39:18.746321+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "fused",
+      "repeat": 0,
+      "wall_seconds": 19.256348319002427,
+      "first_data_seconds": 12.003758338978514,
+      "mib_per_second": 3.1696121839346705,
+      "containers": 1,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:48:50.866357+00:00"
+    },
+    {
+      "language": "python",
+      "rows": 1000000,
+      "input_bytes": 64000000,
+      "mode": "isolated",
+      "repeat": 0,
+      "wall_seconds": 50.168378289963584,
+      "first_data_seconds": 38.141887225967366,
+      "mib_per_second": 1.2166061238262182,
+      "containers": 3,
+      "output_sha256": "1ca3450348f20657c293d1072eb7809c1d5c768f192740814c3e1b799efde9b4",
+      "started_at": "2026-10-20T06:49:10.201402+00:00"
+    }
+  ],
+  "run_directories": [
+    "examples/output/fusion-benchmark-20261020-r3",
+    "examples/output/fusion-benchmark-python-20261020"
+  ],
+  "note": "Successful measured samples only. JVM and Python were run separately. Warmups are excluded. Shared host; no CPU isolation or cache eviction. Three lightweight CSV-text byte-stream transformations, not an Arrow record-stream benchmark.",
+  "summary": [
+    {
+      "language": "jvm",
+      "rows": 1000000,
+      "fused": 14.178662605001591,
+      "isolated": 48.294927515031304,
+      "speedup": 3.4061694576183115,
+      "reduction_percent": 70.64150763951633
+    },
+    {
+      "language": "jvm",
+      "rows": 4000000,
+      "fused": 13.74547500803601,
+      "isolated": 60.016351854021195,
+      "speedup": 4.366262484121783,
+      "reduction_percent": 77.09711673000491
+    },
+    {
+      "language": "python",
+      "rows": 1000000,
+      "fused": 11.844991224992555,
+      "isolated": 40.659807955962606,
+      "speedup": 3.432658343399335,
+      "reduction_percent": 70.86805909702893
+    },
+    {
+      "language": "python",
+      "rows": 4000000,
+      "fused": 14.926428456034046,
+      "isolated": 83.03511628095293,
+      "speedup": 5.56295945312931,
+      "reduction_percent": 82.02395670100609
+    }
+  ]
+}

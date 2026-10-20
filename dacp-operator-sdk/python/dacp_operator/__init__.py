@@ -11,7 +11,7 @@ import pyarrow as pa
 
 
 class OperatorContext:
-    def __init__(self, args=None, output=None):
+    def __init__(self, args=None, output=None, input_streams=None, emit=None):
         args = sys.argv[1:] if args is None else args
         if len(args) != 3 or args[0] != 'operator':
             raise ValueError('expected operator INPUT PARAMS')
@@ -36,12 +36,15 @@ class OperatorContext:
         self._closed = False
         self._finished = False
         self._resources = ExitStack()
+        self._input_streams = input_streams or {}
+        self._emit = emit
         self._output = sys.stdout.buffer if output is None else output
-        self._redirect = redirect_stdout(sys.stderr)
+        self._redirect = redirect_stdout(sys.stderr) if emit is None else None
 
     def __enter__(self):
         self._active()
-        self._redirect.__enter__()
+        if self._redirect is not None:
+            self._redirect.__enter__()
         return self
 
     def __exit__(self, kind, value, traceback):
@@ -59,7 +62,8 @@ class OperatorContext:
                 self._resources.close()
             finally:
                 self._closed = True
-                self._redirect.__exit__(kind, value, traceback)
+                if self._redirect is not None:
+                    self._redirect.__exit__(kind, value, traceback)
 
     def _active(self):
         if self._closed or self._finished:
@@ -67,9 +71,13 @@ class OperatorContext:
 
     def _frame(self, port, kind, payload=b'', **metadata):
         self._active()
-        header = json.dumps(dict(type=kind, port=port, **metadata)).encode('utf-8')
+        event = dict(type=kind, port=port, **metadata)
+        header = json.dumps(event).encode('utf-8')
         if len(header) > 65536 or len(payload) > 8 * 1024 * 1024:
             raise ValueError('frame exceeds limits; split large record batches')
+        if self._emit is not None:
+            self._emit(event, payload)
+            return
         self._output.write(struct.pack('>II', len(header), len(payload)) + header + payload)
         self._output.flush()
 
@@ -122,7 +130,7 @@ class _Input:
             filename = self._entry['file']
             if not filename or Path(filename).name != filename or filename in ('.', '..'):
                 raise ValueError('invalid input filename')
-            self._raw = ctx._resources.enter_context((ctx.directory / filename).open('rb'))
+            self._raw = ctx._resources.enter_context(ctx._input_streams[self.name] if self.name in ctx._input_streams else (ctx.directory / filename).open('rb'))
             self._reader = ctx._resources.enter_context(pa.ipc.open_stream(self._raw))
             if self.representation == 'bytes' and self._reader.schema != pa.schema([('data', pa.binary())]):
                 raise ValueError('invalid bytes schema')
@@ -193,11 +201,14 @@ class BytesOperator:
     def transform(self, chunk, params):
         raise NotImplementedError
 
+    def process(self, ctx):
+        output = ctx.bytes_output('result', self.output_format)
+        for chunk in ctx.input('source').bytes():
+            output.write(self.transform(chunk, ctx.params))
+
     def main(self):
         with OperatorContext() as ctx:
-            output = ctx.bytes_output('result', self.output_format)
-            for chunk in ctx.input('source').bytes():
-                output.write(self.transform(chunk, ctx.params))
+            self.process(ctx)
 
 
 class RecordsOperator:
@@ -207,11 +218,14 @@ class RecordsOperator:
     def transform(self, batch, params):
         raise NotImplementedError
 
+    def process(self, ctx):
+        source = ctx.input('source')
+        output = ctx.records_output('result', self.output_schema(source.schema, ctx.params))
+        for batch in source.records():
+            result = self.transform(batch, ctx.params)
+            if result is not None:
+                output.write(result)
+
     def main(self):
         with OperatorContext() as ctx:
-            source = ctx.input('source')
-            output = ctx.records_output('result', self.output_schema(source.schema, ctx.params))
-            for batch in source.records():
-                result = self.transform(batch, ctx.params)
-                if result is not None:
-                    output.write(result)
+            self.process(ctx)

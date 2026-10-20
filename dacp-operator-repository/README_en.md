@@ -24,6 +24,10 @@ Setup builds the shared `dacp/operator-jvm:1.1` environment and optional complet
 
 Both use the same thin Scala JAR and runtime environment. The repository exports the runtime only once. See the [runtime builder](../dacp-operator-runtime/README_en.md), [user-defined Scala example](../examples/operators/scala/README_en.md), [Python example](../examples/operators/python/README_en.md), and [packaging contracts](../docs/operator-packaging_en.md).
 
+## Common operator collections
+
+The project also provides [100 common Python operators](../examples/operators/common/README_en.md) and [100 common Scala operators](../examples/operators/common-scala/README_en.md), covering text, JSON, CSV, encoding and digests. The Python collection also includes Arrow record-batch operators. Each collection shares one small code bundle and runtime, publishing operators individually through the token-authenticated HTTP API. They are not imported by default during `setup`. The guides provide parameters, input/output examples, size limits, build and publication instructions.
+
 ## Publication and execution
 
 ```bash

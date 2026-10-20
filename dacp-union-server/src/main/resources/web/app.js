@@ -13,11 +13,11 @@ function empty(body,columns,text){const row=el('tr');cell(row,text,'empty').colS
 async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error('状态请求失败 ('+r.status+')');return r.json();}
 function renderMembers(members,now){
  const body=$('members');body.replaceChildren();$('member-count').textContent=members.length+' 个成员';
- if(!members.length)return empty(body,9,'暂无成员。在 Union Server 上邀请节点，再由节点管理员批准。');
+ if(!members.length)return empty(body,10,'暂无成员。在 Union Server 上邀请节点，再由节点管理员批准。');
  for(const m of members){const row=el('tr'),title=el('div',m.url,'mono'),identity=el('div',short(m.identity),'muted mono');identity.title=m.identity;title.append(identity);cell(row,title);cell(row,badge(m.state));
   const stale=!m.observed_at_ms||now-m.observed_at_ms>Math.max(snapshot.poll_interval_ms*3,5000),s=m.status;
   cell(row,m.state==='approved'&&s&&!stale?el('span','可达','badge good'):el('span',stale?'观测过期':m.state==='unknown'?'不可达 / 未知':'尚未获准','badge warn'));
-  cell(row,s?s.reserved_tasks+' / '+s.capacity:'—');cell(row,s?s.union_reserved_tasks+' / '+s.union_capacity:'—');cell(row,s&&s.executors?s.executors.join(', '):'—');cell(row,s?time(s.started_at_ms):'—');cell(row,s&&s.uptime_ms!==undefined?duration(s.uptime_ms):'—');cell(row,time(m.observed_at_ms));body.append(row);
+  cell(row,s?s.reserved_tasks+' / '+s.capacity:'—');cell(row,s?s.union_reserved_tasks+' / '+s.union_capacity:'—');cell(row,s&&s.executors?s.executors.join(', '):'—');cell(row,s?time(s.started_at_ms):'—');cell(row,s&&s.uptime_ms!==undefined?duration(s.uptime_ms):'—');cell(row,time(m.observed_at_ms));const directory=el('a','查看数据集','job-link');directory.href='/members/'+encodeURIComponent(m.identity)+'/datasets';directory.target='_blank';directory.rel='noopener';cell(row,directory);body.append(row);
  }
 }
 function renderJobs(){

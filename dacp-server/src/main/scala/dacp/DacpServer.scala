@@ -13,6 +13,10 @@ final class DacpServer private(config:Config) extends AutoCloseable {
   private var union:Option[UnionWorker]=None
   private var flight:FlightServer=null
 
+  private var dashboard:NodeDashboard=null
+  private var startedAt=0L
+  def webPort:Option[Int]=synchronized {Option(dashboard).map(_.port)}
+
   def start():DacpServer=synchronized {
     require(state=="built","server can only be started once")
     try {
@@ -24,7 +28,9 @@ final class DacpServer private(config:Config) extends AutoCloseable {
       union=config.union.map(s=>new UnionWorker(config,s,allocator))
       flight=dacp.union.Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),new Producer(config,allocator,Some(tasks),union)),new dacp.union.Tls(config.cert,config.key,config.ca))
         .maxInboundMessageSize(dacp.union.Rpc.MaxMessage).build()
-      flight.start();union.foreach(_.start());state="started"
+      flight.start();union.foreach(_.start());startedAt=System.currentTimeMillis()
+      if(config.web.enabled){dashboard=new NodeDashboard(config,flight.getPort,startedAt,()=>union.toVector.flatMap(_.executionSnapshots));dashboard.start()}
+      state="started"
       val log=org.slf4j.LoggerFactory.getLogger("dacp.Main")
       log.debug(s"remote_operator_library_urls (${config.remoteOperatorLibraryUrls.size}):")
       config.remoteOperatorLibraryUrls.zipWithIndex.foreach {case(url,index)=>log.debug(s"  [$index] $url")}
@@ -42,7 +48,7 @@ final class DacpServer private(config:Config) extends AutoCloseable {
     if(state!="closed") {
       state="closed"
       var failure:Throwable=null
-      val resources=union.toSeq++Option(tasks).toSeq++Option(flight).toSeq++Seq(config)++Option(allocator).toSeq
+      val resources=Option(dashboard).toSeq++union.toSeq++Option(tasks).toSeq++Option(flight).toSeq++Seq(config)++Option(allocator).toSeq
       resources.foreach(r=>try r.close()catch{case NonFatal(e)=>if(failure==null)failure=e else failure.addSuppressed(e)})
       if(failure!=null)throw failure
     }

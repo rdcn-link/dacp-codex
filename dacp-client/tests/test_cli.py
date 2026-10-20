@@ -57,7 +57,9 @@ def browser(monkeypatch):
     ds = FakeDataset()
     monkeypatch.setattr(cli.Source, 'open', lambda *a, **kw: ds)
     output = io.StringIO()
-    b = cli.Browser('dacp://localhost/data1', rows=3, byte_limit=32, stdout=output)
+    monkeypatch.setattr(cli.Source, 'datasets', lambda *a, **kw: [])
+    b = cli.Browser('dacp://localhost', rows=3, byte_limit=32, stdout=output)
+    b.onecmd('use data1')
     yield b, ds, output
     b.close()
 
@@ -84,7 +86,7 @@ def test_failed_switch_keeps_existing_connection(browser, monkeypatch):
     b, ds, out = browser
     bad = FakeDataset(broken=True)
     monkeypatch.setattr(cli.Source, 'open', lambda *a, **kw: bad)
-    b.onecmd('connect dacp://other/data2')
+    b.onecmd('use data2')
     assert b.dataset is ds and not ds.closed
     assert bad.closed
     assert 'Error: The operation failed.' in out.getvalue()
@@ -126,8 +128,10 @@ def test_byte_preview_limit(browser):
 def test_main_closes_connection_at_eof(monkeypatch):
     ds = FakeDataset()
     monkeypatch.setattr(cli.Source, 'open', lambda *a, **kw: ds)
-    monkeypatch.setattr('builtins.input', lambda *a: (_ for _ in ()).throw(EOFError()))
-    assert cli.main(['dacp://localhost/data1']) == 0
+    monkeypatch.setattr(cli.Source, 'datasets', lambda *a, **kw: [])
+    commands = iter(['use data1', 'quit'])
+    monkeypatch.setattr('builtins.input', lambda *a: next(commands))
+    assert cli.main(['dacp://localhost']) == 0
     assert ds.closed
 
 
@@ -443,3 +447,49 @@ def test_binary_preview_counts_bytes_and_has_offsets(browser, monkeypatch):
     b.print_job('dacp://localhost','job: test',30,preview_bytes=18)
     assert '[x] 00000010  10 11' in out.getvalue()
     assert '12 13' not in out.getvalue() and stream.closed
+
+
+def test_datasets_and_directory_only_startup(monkeypatch):
+    from dacp.source import DatasetInfo
+    calls = []
+    entries = [DatasetInfo('orders', 'dacp://node:8815/orders', 'Orders', '公开目录')]
+    def datasets(url, **credentials):
+        calls.append((url, credentials))
+        return entries
+    monkeypatch.setattr(cli.Source, 'datasets', datasets)
+    monkeypatch.setattr(cli.Source, 'open', lambda *a, **kw: (_ for _ in ()).throw(AssertionError('directory must not open data')))
+    output = io.StringIO()
+    b = cli.Browser('dacp://node:8815', credentials={'cert_chain':b'cert'}, stdout=output)
+    try:
+        assert b.dataset is None
+        b.onecmd('datasets')
+        assert 'orders' in output.getvalue() and '公开目录' in output.getvalue()
+        b.onecmd('datasets dacp://node:8815')
+        assert 'datasets accepts no arguments' in output.getvalue()
+        assert calls[-1][0] == 'dacp://node:8815' and calls[-1][1]['cert_chain'] == b'cert'
+        assert calls[-1][1]['local_only'] is True
+        b.onecmd('ls')
+        assert 'select a Dataset first' in output.getvalue()
+        ds = FakeDataset()
+        monkeypatch.setattr(cli.Source, 'open', lambda *a, **kw: ds)
+        b.onecmd('use orders')
+        assert b.dataset is ds
+    finally:
+        b.close()
+
+
+@pytest.mark.parametrize('uri', ['dacp://localhost/data1', 'dacp://localhost/data1/item'])
+def test_startup_rejects_dataset_addresses(uri):
+    with pytest.raises(ValueError, match='dacp-server address'):
+        cli.Browser(uri)
+
+
+def test_connect_requires_server_and_resets_selection(browser):
+    b, ds, out = browser
+    b.onecmd('connect dacp://other/data2')
+    assert b.dataset is ds and not ds.closed
+    b.onecmd('connect dacp://other:8815')
+    assert b.dataset is None and ds.closed
+    for command in ('ls', 'count', 'show', 'select', 'run'):
+        b.onecmd(command)
+    assert out.getvalue().count('select a Dataset first') == 5

@@ -28,6 +28,8 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
   private def port():Int={val s=new java.net.ServerSocket(0);try s.getLocalPort finally s.close()}
   private def eventually(check: => Boolean,clue: => String="condition"):Unit={val end=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(15);while(!check && System.nanoTime()<end)Thread.sleep(50);assert(check,clue)}
   private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=20,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false) {
+    @volatile var catalogVisible=true
+    @volatile var catalogFailure=false
     val allocator=new RootAllocator()
     val dir=Files.createTempDirectory(root,"fixture-")
     val inputA=Array.fill[Byte](300000)(65.toByte);val inputB="local-B".getBytes
@@ -35,10 +37,10 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val as=NodeUnionSettings(dir.resolve("a-state"),30,30)
     val bs=NodeUnionSettings(dir.resolve("b-state"),30,30)
     def config(name:String):Config={
-      val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin")))))
+      val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin"))))).copy(metadata=DatasetMetadata("Node "+name,"公开数据说明",Seq("demo")))
       val c=Config("localhost",port(),"localhost",if(dynamicCatalog)Map.empty else Map("data"->definition),Seq.empty,root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve(s"$name-executions")).toString))))
       if(dynamicCatalog)c.installCatalog(new DatasetCatalog {
-        def list():Seq[DatasetInfo]=Seq(DatasetInfo("data"))
+        def list():Seq[DatasetInfo]={if(catalogFailure)throw new IllegalStateException("catalog unavailable");if(catalogVisible)Seq(DatasetInfo("data",definition.metadata))else Seq.empty}
         def open(name:String):PublishedDataset={require(name=="data");c.createDataset(definition)}
       })
       c
@@ -94,6 +96,26 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
   private def http(port:Int,path:String,method:String="GET"):java.net.http.HttpResponse[String]={
     val builder=java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"http://127.0.0.1:$port$path")).timeout(java.time.Duration.ofSeconds(5))
     java.net.http.HttpClient.newHttpClient().send(builder.method(method,java.net.http.HttpRequest.BodyPublishers.noBody()).build(),java.net.http.HttpResponse.BodyHandlers.ofString())
+  }
+  test("website reads only a selected member online; Union exposes no Flight directory") {
+    val webPort=port();val f=new Fixture(dynamicCatalog=true,web=Some(WebSettings(port=webPort)))
+    try {
+      assert(f.stranger.catalog(DacpUri.origin(f.ca.uri(""))).size==1)
+      intercept[FlightRuntimeException](f.stranger.catalog(f.settings.publicUrl))
+      val id=f.x.members.all.head.path("identity").asText
+      val path=s"/members/$id/datasets"
+      val first=http(webPort,path)
+      assert(first.statusCode()==200 && first.body().contains("公开数据说明"))
+      assert(first.headers().firstValue("Cache-Control").get()=="no-store")
+      f.catalogVisible=false
+      assert(http(webPort,path).body().contains("该节点暂无数据集"))
+      f.catalogVisible=true;f.catalogFailure=true
+      assert(http(webPort,path).statusCode()==503)
+      f.catalogFailure=false
+      assert(http(webPort,path).body().contains("公开数据说明"))
+      assert(http(webPort,"/members/"+("0"*64)+"/datasets").statusCode()==404)
+      assert(http(webPort,"/api/datasets").statusCode()==404)
+    }finally f.close()
   }
   test("HTTP dashboard observes Flight executions without claiming outputs and closes its listener") {
     val webPort=port();val f=new Fixture(web=Some(WebSettings(port=webPort)))

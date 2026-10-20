@@ -24,6 +24,10 @@ curl http://localhost:8820/v1/operators
 
 两者共享薄 Scala JAR 和运行时环境，仓库只导出一次运行时。详见 [运行时构建](../dacp-operator-runtime/README.md)、[用户自定义 Scala 示例](../examples/operators/scala/README.md)、[Python 示例](../examples/operators/python/README.md) 和 [打包契约](../docs/operator-packaging.md)。
 
+## 常用算子集
+
+项目另提供 [100 个 Python 常用算子](../examples/operators/common/README.md) 和 [100 个 Scala 常用算子](../examples/operators/common-scala/README.md)，覆盖文本、JSON、CSV、编码与摘要；Python 集合还提供 Arrow 记录批算子。每个集合共享一个小型代码包和运行环境，通过带令牌的 HTTP API 逐个发布，不默认随 `setup` 导入。指南包含各算子的参数、输入输出示例、大小限制、构建与发布方法。
+
 ## 发布与执行
 
 ```bash

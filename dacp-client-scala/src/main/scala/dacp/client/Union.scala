@@ -8,6 +8,7 @@ import org.apache.arrow.vector.ipc.{ArrowStreamReader,ReadChannel}
 import org.apache.arrow.vector.ipc.message.MessageSerializer
 import org.apache.arrow.vector.types.pojo.Schema
 import scala.collection.mutable
+import scala.jdk.CollectionConverters._
 
 /** Results and events use independent Flight streams over mTLS. */
 final class Union(url:String,cert:Path,key:Path,ca:Path,timeoutSeconds:Long=1800) extends AutoCloseable {

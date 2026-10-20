@@ -9,6 +9,14 @@ case class Task(id: String, inputs: Map[String,InputBinding], operator: String, 
 case class JobPlan(tasks: Vector[Task], outputs: Map[String,(String,String)])
 case class SourceOperator(runtime: String, source: String, entrypoint: String = "Main")
 object Jobs {
+  /** Contracting node regions must not turn an acyclic task graph into a cycle. */
+  def canGroupByNode(plan:JobPlan,nodes:Map[String,String]):Boolean={
+    val edges=plan.tasks.flatMap(t=>t.inputs.values.flatMap(_.task).map(p=>nodes(p)->nodes(t.id))).filter(e=>e._1!=e._2).distinct
+    var left=nodes.values.toSet;var done=Set.empty[String]
+    while(left.nonEmpty){val ready=left.filter(n=>edges.filter(_._2==n).forall(e=>done(e._1)));if(ready.isEmpty)return false;done++=ready;left--=ready}
+    true
+  }
+
   def authorizeSource(config: Config, task: Task): Unit =
     require(task.source.isEmpty || config.debug, "FORBIDDEN: source submission requires DEBUG mode")
   def source(value: Object): SourceOperator = {

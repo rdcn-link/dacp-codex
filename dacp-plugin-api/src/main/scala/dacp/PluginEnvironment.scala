@@ -66,15 +66,21 @@ final class PluginEnvironment(directory: Option[Path] = None,
     require(raw.get("provider").exists(_.isInstanceOf[String]),"dataset provider is required")
     val provider=raw("provider").toString
     val key=byId(classOf[DatasetProvider],provider).itemSettingsKey
-    require(key.matches("[a-z][a-z0-9_]*") && !Set("provider","source")(key),"invalid dataset settings key")
-    require(raw.keySet.subsetOf(Set("provider","source",key)),"unknown dataset setting")
+    require(key.matches("[a-z][a-z0-9_]*") && !Set("provider","source","metadata")(key),"invalid dataset settings key")
+    require(raw.keySet.subsetOf(Set("provider","source","metadata",key)),"unknown dataset setting")
     def mapping(v:Object):Map[String,Object]=v match {
       case m:java.util.Map[_,_]=>m.asScala.map{case(k:String,value)=>k->value.asInstanceOf[Object];case _=>throw new IllegalArgumentException("settings keys must be strings")}.toMap
       case _=>throw new IllegalArgumentException("settings must be mappings")
     }
     val source=raw.get("source").map(mapping).getOrElse(Map.empty)
     val items=raw.get(key).map(mapping).getOrElse(Map.empty).map{case(path,value)=>path->mapping(value)}
-    DatasetDefinition(provider,source,items)
+    val metadata=raw.get("metadata").map { value=>
+      val m=mapping(value);require(m.keySet.subsetOf(Set("title","description","tags")),"unknown public dataset metadata")
+      def text(key:String)=m.get(key).map { v=>require(v.isInstanceOf[String],"dataset metadata text must be a string");v.toString }.getOrElse("")
+      val tags=m.get("tags").map {case values:java.util.List[_]=>values.asScala.map { v=>require(v.isInstanceOf[String],"dataset tags must be strings");v.toString }.toVector;case _=>throw new IllegalArgumentException("dataset tags must be a list")}.getOrElse(Vector.empty)
+      DatasetMetadata(text("title"),text("description"),tags)
+    }.getOrElse(DatasetMetadata())
+    DatasetDefinition(provider,source,items,metadata)
   }
   def close():Unit=synchronized {
     if(!closed){

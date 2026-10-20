@@ -77,9 +77,9 @@ example.JdbcCatalogProvider
 - 已取得的租约须保持有效，即使目录记录之后被删除或刷新。文件或数据库本身消失仍可能导致读取失败；这不是内容快照或持久结果保证。
 - 覆盖带 `check` 参数的重载，在查询循环和耗时步骤中检查取消；数据读取仍遵守现有背压和取消契约。
 - 服务器关闭目录实例。目录仅释放自己拥有的资源；用户注入的共享连接池由用户管理。
-- 动态发现不增加权限。服务器先校验访问 URI 的授权，再打开指定数据集；目录发现只展示允许访问整个 Dataset 的名称。只有 Item 级权限的客户端仍可访问获准的已知 Item，但不会因此看到整个 Dataset 目录。
+- 目录信息无需额外的数据或 Union 执行授权，仍使用 Flight mTLS。数据读取继续先校验 URI 授权，再打开指定数据集。
 
-目录发现使用标准 Flight `ListFlights`，当前只接受空 criteria。每条 `FlightInfo` 的 descriptor 是 `datasets/<name>`，`app_metadata` 为现有 `DataSet` protobuf 消息，只含公开 URI，不包含 Item 内容。读取已知 Dataset 的 Python/Scala SDK 用法不变。
+目录发现使用标准 Flight `ListFlights`，默认使用空 criteria；dacp-server 还接受 `local` criteria，供仅连接节点的 Shell 使用。每条 `FlightInfo.app_metadata` 为 `DataSet` protobuf，包含公开名称、URI 和显式描述，不包含 Item 内容。公开描述、Shell 和 Union Web 按节点查看目录见[数据集目录](dataset-directory.md)。
 
 在项目根目录使用 Python 的标准 Flight 接口列举数据集：
 

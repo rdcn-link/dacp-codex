@@ -20,7 +20,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
                   remoteOperatorLibraryUrls: Seq[String] = Seq.empty, operatorCache: Path = Path.of(".operator-cache"),
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
                   sources: Map[String, SourceDefinition] = Map.empty, countFileRecordsOnStartup: Boolean = false, debug: Boolean = false, sourceRuntimes: Map[String, SourceRuntime] = Map.empty, union: Option[NodeUnionSettings] = None, executionStore: Option[ExecutionStoreDefinition] = None,
-                  datasetCatalog: Option[DatasetCatalogDefinition] = None, catalogOverride: Option[DatasetCatalog] = None, pluginEnvironment: Option[PluginEnvironment] = None, pluginDirectory: Option[Path] = None, ownsPluginEnvironment:Boolean=false, accessLogDirectory:Option[Path]=None, accessLogMaxBytes:Long=64L*1024*1024) extends CatalogContext with AutoCloseable {
+                  datasetCatalog: Option[DatasetCatalogDefinition] = None, catalogOverride: Option[DatasetCatalog] = None, pluginEnvironment: Option[PluginEnvironment] = None, pluginDirectory: Option[Path] = None, ownsPluginEnvironment:Boolean=false, accessLogDirectory:Option[Path]=None, accessLogMaxBytes:Long=64L*1024*1024, operatorFusionEnabled:Boolean=true, web:NodeWebSettings=NodeWebSettings()) extends CatalogContext with AutoCloseable {
   private var suppliedPlugins=pluginEnvironment
   private var ownsPlugins=ownsPluginEnvironment || pluginEnvironment.isEmpty
   private[dacp] def installPlugins(value:PluginEnvironment,owned:Boolean):Unit=synchronized {require(activePlugins==null && !closed.get(),"plugins must be supplied before initialization");suppliedPlugins=Some(value);ownsPlugins=owned}
@@ -114,8 +114,8 @@ object Config {
     val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala finally in.close()
     val settings = Set("host", "port", "public_host", "datasets", "sources", "allowed_uri_prefixes",
       "tls_cert", "tls_key", "tls_ca", "batch_size", "byte_chunk", "infer_sample",
-      "local_operator_library", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
-      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "mode", "source_runtimes", "union", "execution_store", "dataset_catalog", "access_log")
+      "operator_fusion_enabled", "local_operator_library", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
+      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "mode", "source_runtimes", "union", "execution_store", "dataset_catalog", "access_log", "web")
     require(m.keySet.subsetOf(settings), "unknown server setting")
     val environment=providedPlugins.getOrElse(new PluginEnvironment(m.get("plugin_directory").map(v=>Path.of(v.toString))))
     try {
@@ -149,13 +149,14 @@ object Config {
     }.toMap).getOrElse(Map.empty[String,SourceRuntime])
     val access=m.get("access_log").map(_.asInstanceOf[java.util.Map[String,Object]].asScala.toMap).getOrElse(Map.empty[String,Object])
     require(access.keySet.subsetOf(Set("directory","max_bytes")),"unknown access_log setting")
+    val web=NodeWebSettings.read(m.get("web"))
     val config = Config(str("host"), n("port",8815), str("public_host"), definitions,
       m("allowed_uri_prefixes").asInstanceOf[java.util.List[String]].asScala.toSeq,
       Path.of(str("tls_cert")), Path.of(str("tls_key")), Path.of(str("tls_ca")), n("batch_size",1024), n("byte_chunk",65536), n("infer_sample",4),
       Path.of(m.get("local_operator_library").map(_.toString).getOrElse("../operators")), strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), strings("remote_operator_library_urls"),
       Path.of(m.get("operator_cache").map(_.toString).getOrElse(".operator-cache")),
       m.get("operator_max_bytes").map(_.toString.toLong).getOrElse(8L * 1024 * 1024 * 1024), sources,
-      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), mode=="DEBUG", runtimes, m.get("union").map(v=>NodeUnionSettings.read(Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),m.get("execution_store").map {v=>val raw=v.asInstanceOf[java.util.Map[String,Object]].asScala;require(raw.keySet==Set("provider","settings"),"execution_store requires provider and settings");ExecutionStoreDefinition(raw("provider").toString,raw("settings").asInstanceOf[java.util.Map[String,Object]].asScala.toMap)},catalogDefinition,catalogOverride,Some(environment),ownsPluginEnvironment=providedPlugins.isEmpty || ownsProvidedPlugins,accessLogDirectory=access.get("directory").map(v=>Path.of(v.toString)),accessLogMaxBytes=access.get("max_bytes").map(_.toString.toLong).getOrElse(64L*1024*1024))
+      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), mode=="DEBUG", runtimes, m.get("union").map(v=>NodeUnionSettings.read(Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),m.get("execution_store").map {v=>val raw=v.asInstanceOf[java.util.Map[String,Object]].asScala;require(raw.keySet==Set("provider","settings"),"execution_store requires provider and settings");ExecutionStoreDefinition(raw("provider").toString,raw("settings").asInstanceOf[java.util.Map[String,Object]].asScala.toMap)},catalogDefinition,catalogOverride,Some(environment),ownsPluginEnvironment=providedPlugins.isEmpty || ownsProvidedPlugins,accessLogDirectory=access.get("directory").map(v=>Path.of(v.toString)),accessLogMaxBytes=access.get("max_bytes").map(_.toString.toLong).getOrElse(64L*1024*1024),operatorFusionEnabled=m.get("operator_fusion_enabled").map { value=>require(value.isInstanceOf[java.lang.Boolean],"operator_fusion_enabled must be a boolean");value.asInstanceOf[java.lang.Boolean].booleanValue }.getOrElse(true),web=web)
     try {config.initializeDatasets();config} catch {case scala.util.control.NonFatal(t)=>try config.close() catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)};throw t}
     }catch{case scala.util.control.NonFatal(t)=>if(providedPlugins.isEmpty || ownsProvidedPlugins)try environment.close()catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)};throw t}
   }
@@ -242,13 +243,11 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     val audit=config.accessLog.begin("list_flights");val listener=AccessLogging.results(audit,raw)
     try {
     def check():Unit=if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()
-    require(criteria.getExpression.isEmpty,"dataset discovery does not accept criteria")
+    require(criteria.getExpression.isEmpty || java.util.Arrays.equals(criteria.getExpression,"local".getBytes(java.nio.charset.StandardCharsets.UTF_8)),"unsupported dataset directory criteria")
     config.datasetInfos(()=>check()).foreach { info=>
       check()
-      if(scala.util.Try(config.authorize(info.name,"")).isSuccess) {
-        val meta=Metadata.DataSet.newBuilder().setUri(config.uri(info.name)).build()
-        listener.onNext(new FlightInfo(PluginSchemas.bytes,FlightDescriptor.path("datasets",info.name),java.util.Collections.emptyList[FlightEndpoint](),-1,-1,false,org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,meta.toByteArray))
-      }
+      val meta=DatasetDiscovery.metadata(config,info)
+      listener.onNext(DatasetDiscovery.flight(meta,FlightDescriptor.path("datasets",info.name)))
     }
     listener.onCompleted()
   }catch{case scala.util.control.NonFatal(t)=>listener.onError(fail(t))}

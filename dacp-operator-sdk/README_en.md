@@ -81,3 +81,7 @@ Multiport authors can also use `ctx.input(name).byteStream()` and `ctx.bytesOutp
 Consume inputs one at a time in lexical port-name order through Arrow EOS; do not alternate between FIFOs. Declare all outputs before the first data write. Successful exit automatically sends end events; failure sends no successful end. Empty outputs may have no data frames. stdout is reserved for the protocol; ordinary prints are redirected to stderr. Each serialized records batch must fit within 8 MiB; business code must split larger batches. Bytes output is automatically chunked to at most 64 KiB. Authors own parameter validation and bounded-memory business algorithms. The SDK does not provide general joins, broadcasting or pipeline scheduling.
 
 Operators still need `operator.yaml` declaring runtime, entry point, ports and parameters, and must be packaged and uploaded as described in the [authoring guide](../docs/operator-authoring_en.md). The SDK does not change the repository publishing API.
+
+## In-process Jobs
+
+JVM templates implement `Operator` and can be invoked inside an isolated shared JVM. Python templates provide `process(ctx)`; modules can expose fusion through `def process(ctx): MyOperator().process(ctx)`. The executor owns context and output lifecycle; do not create or close another context in that entrypoint. See [operator fusion](../docs/operator-fusion_en.md) for eligibility, thread-safety requirements and examples.

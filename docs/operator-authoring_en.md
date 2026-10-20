@@ -212,7 +212,10 @@ remote_operator_library_urls: [http://localhost:8820]
 The repository must serve `.operator-catalog` over HTTP; its launch command is shown below. Connect the certificate-configured shell:
 
 ```bash
-dacp-shell dacp://localhost:8815/data1
+dacp-shell dacp://localhost:8815
+# shell:
+# datasets
+# use data1
 ```
 
 At the shell prompt:

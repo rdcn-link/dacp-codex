@@ -58,6 +58,21 @@ class ByteStreamSpec extends AnyFunSuite {
       assert(frames(out).forall(_.data.length<=65536));assert(ends(out))
     }
   }
+  test("large Arrow reads never probe available on non-seekable inputs") {
+    val input=Array.tabulate[Byte](300000)(i=>(i%251).toByte)
+    fixture(Seq(input)){(args,out)=>
+      val raw=new ByteArrayInputStream(Files.readAllBytes(Path.of(args(1)).resolve("0.arrow"))) {
+        override def available():Int=throw new IOException("Illegal seek")
+      }
+      val op=new ByteStreamOperator {
+        def transform(in:InputStream,target:OutputStream,params:JsonNode):Unit={in.transferTo(target);()}
+      }
+      val emitted=scala.collection.mutable.ArrayBuffer.empty[OperatorFrame]
+      OperatorRunner.runStreams(Path.of(args(1)),Path.of(args(2)),Map("source"->raw),f=>emitted+=f)(op.process)
+      assert(emitted.flatMap(_.data).toArray.sameElements(input))
+      assert(new ObjectMapper().readTree(emitted.last.metadata).path("type").asText=="end")
+    }
+  }
   test("standard Java gzip library can close its stream without closing protocol stdout") {
     val input="中文字符跨块也可以压缩".getBytes("UTF-8")
     fixture(input.grouped(2).toSeq){(args,out)=>

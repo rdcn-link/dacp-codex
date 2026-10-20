@@ -160,7 +160,7 @@ datasets:
         }
         val info = client.getInfo(FlightDescriptor.path("datasets","plugin","/message"))
         val stream = client.getStream(info.getEndpoints.get(0).getTicket)
-        try { assert(stream.next()); assert(new String(stream.getRoot.getVector(0).asInstanceOf[VarBinaryVector].get(0),"UTF-8") == "external provider") } finally stream.close()
+        try { assert(stream.next()); assert(new String(stream.getRoot.getVector(0).asInstanceOf[VarBinaryVector].get(0),"UTF-8") == "external provider"); assert(!stream.next()) } finally stream.close()
       } finally { client.close(); server.close() }
     } finally { db.close(); allocator.close(); Data.deleteTree(dir) }
   }

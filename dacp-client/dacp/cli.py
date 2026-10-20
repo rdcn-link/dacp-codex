@@ -39,23 +39,23 @@ class Browser(cmd.Cmd):
 
     def connect(self, uri):
         u = urlsplit(uri)
-        if not u.path.strip('/') or '/' in u.path.strip('/'):
-            raise ValueError('connect expects dacp://host[:port]/dataset (not an item URI)')
-        candidate = Source.open(uri, **self.credentials)
-        try:
-            items = candidate.list()
-        except BaseException:
-            candidate.close()
-            raise
+        if (u.scheme != 'dacp' or not u.hostname or u.username is not None
+                or u.query or u.fragment or u.path not in ('', '/')
+                or u.port is not None and not 0 < u.port <= 65535):
+            raise ValueError('expected dacp-server address: dacp://host[:port]; select a dataset with use NAME')
+        origin = urlunsplit((u.scheme, u.netloc, '', '', ''))
+        entries = Source.datasets(origin, local_only=True, **self.credentials)
         old = self.dataset
-        self.dataset, self.items = candidate, items
-        self.uri = uri
+        self.dataset, self.items, self.uri = None, [], origin
         if old is not None:
             old.close()
-        self.write(f'Connected: {uri} ({len(items)} items)')
+        self.write(f'Connected: {origin} ({len(entries)} datasets); select one with use NAME')
 
     def onecmd(self, line):
         try:
+            command, _, _ = self.parseline(line)
+            if self.dataset is None and command in ('ls', 'count', 'show', 'select', 'run'):
+                raise ValueError('select a Dataset first with use NAME; use datasets to list choices')
             return super().onecmd(line)
         except Exception as error:
             self.write(f'Error: {user_message(error)}')
@@ -76,32 +76,59 @@ class Browser(cmd.Cmd):
         super().do_help(arg)
         if not arg.strip():
             self.write("Examples (replace paths with items in your Dataset):")
-            self.write("  ls /\n  show /reports/orders records")
+            self.write("  datasets\n  use data1\n  ls /\n  show /reports/orders records")
             self.write('  SELECT id, amount FROM "/reports/orders" WHERE amount > 10 LIMIT 5')
             self.write("  run identity@1.1 --input source=/reports/orders")
             self.write("  submit examples/convert.yaml")
             self.write("Use help COMMAND for more examples, e.g. help run or help submit.")
 
     def do_connect(self, arg):
-        """connect URI: switch to another server/dataset; preserve connection on failure.
+        """connect URI: connect to a dacp-server address; clear dataset selection on success.
 
         Example:
-          connect dacp://localhost:8815/data1
+          connect dacp://localhost:8815
         """
         self.connect(arg.strip())
+
+    def do_datasets(self, arg):
+        """datasets: list public datasets on the connected dacp-server.
+
+        Example:
+          datasets
+        Uses this shell's server and existing TLS credentials; accepts no arguments.
+        Directory access requires no data-access grant.
+        """
+        if arg.strip():
+            raise ValueError('datasets accepts no arguments; it uses the connected server')
+        u = urlsplit(self.uri)
+        origin = urlunsplit((u.scheme, u.netloc, '', '', ''))
+        entries = Source.datasets(origin, local_only=True, **self.credentials)
+        self.table(('Dataset', 'Title', 'Description', 'URI'),
+                   [(m.name, m.title, m.description, m.uri) for m in entries])
 
     def do_use(self, arg):
         """use DATASET: select a dataset on the current server.
 
         Example:
           use documents
-        Dataset names are supplied by the server administrator; there is no discovery command.
+        Use datasets to discover names on this server.
         """
         name = arg.strip()
         if not name or '/' in name or name in ('.', '..'):
             raise ValueError('expected one dataset name')
         u = urlsplit(self.uri)
-        self.connect(urlunsplit((u.scheme, u.netloc, '/' + quote(name, safe=''), '', '')))
+        uri = urlunsplit((u.scheme, u.netloc, '/' + quote(name, safe=''), '', ''))
+        candidate = Source.open(uri, **self.credentials)
+        try:
+            items = candidate.list()
+        except BaseException:
+            candidate.close()
+            raise
+        old = self.dataset
+        self.dataset, self.items, self.uri = candidate, items, uri
+        if old is not None:
+            old.close()
+        self.write(f'Using: {uri} ({len(items)} items)')
 
     def table(self, headers, rows, numeric=(), folders=(), path_column=0):
         """Render sanitized cells; ANSI styling is applied after width calculation."""
@@ -319,7 +346,7 @@ class Browser(cmd.Cmd):
           END
 
         Use --input for each named port. ITEM is a path, latest ls number, or full Item URI.
-        Optional: --params-file FILE, --timeout SECONDS, --coordinator dacp://host:port.
+        Optional: --params-file FILE, --timeout SECONDS.
         Installed operator IDs work in NORMAL mode; native_uppercase requires publishing the native example.
         No preview limit applies by default. Job results are streams, with no saved Dataset.
         Execution time is printed after completion, failure or cancellation.
@@ -344,7 +371,6 @@ class Browser(cmd.Cmd):
         parser.add_argument('--view', choices=('bytes','records'), default='bytes')
         parser.add_argument('--params', default='{}')
         parser.add_argument('--params-file')
-        parser.add_argument('--coordinator')
         parser.add_argument('--timeout', type=positive, default=3600)
         parser.add_argument('--preview-rows', type=positive)
         parser.add_argument('--preview-bytes', type=positive)
@@ -385,7 +411,7 @@ class Browser(cmd.Cmd):
                 return
         job = {'job':'shell', 'tasks':[{'id':'run','operator':operator,'inputs':inputs,'params':params}]}
         u = urlsplit(self.uri)
-        coordinator = options.coordinator or urlunsplit((u.scheme,u.netloc,'','',''))
+        coordinator = urlunsplit((u.scheme,u.netloc,'','',''))
         self.print_job(coordinator, json.dumps(job), options.timeout, **({"preview_rows":options.preview_rows,"preview_bytes":options.preview_bytes} if options.preview_rows or options.preview_bytes else {}))
 
     def do_submit(self, arg):
@@ -538,7 +564,7 @@ def positive(value):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='dacp-shell', description='Interactive DACP dataset shell (mTLS).')
-    parser.add_argument('uri', help='dacp://host[:port]/dataset')
+    parser.add_argument('uri', help='dacp-server address: dacp://host[:port] (then use DATASET)')
     parser.add_argument('--ca', type=Path, help='CA certificate; defaults to DACP_CA')
     parser.add_argument('--cert', type=Path, help='client certificate; defaults to DACP_CERT')
     parser.add_argument('--key', type=Path, help='client key; defaults to DACP_KEY')

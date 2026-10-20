@@ -17,7 +17,10 @@ In another terminal, connect from the project root:
 export DACP_CA="$PWD/examples/certs/ca.crt"
 export DACP_CERT="$PWD/examples/certs/client.crt"
 export DACP_KEY="$PWD/examples/certs/client.key"
-dacp-shell dacp://localhost:8815/reports
+dacp-shell dacp://localhost:8815
+# shell:
+# datasets
+# use reports
 ```
 
 Use `ls /` and `show /orders` in the shell. Stop the foreground example with Ctrl+C. The example application installs its own shutdown hook; the embedded API does not install one automatically.

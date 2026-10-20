@@ -11,6 +11,7 @@ final class ContainerExecutor extends OperatorExecutor {
   }
 }
 final class JvmExecutor extends OperatorExecutor {
+  override def groupCommand(group:dacp.OperatorGroup):Option[OperatorCommand]=JvmGroup.command(group)
   val id = "jvm"
   override def sourceCommand(p: OperatorProgram, path: String): OperatorCommand = {
     require(p.entrypoint.matches("[A-Za-z_$][A-Za-z0-9_.$]*"),"JVM entrypoint must be a main class")
@@ -37,6 +38,7 @@ finally loader.close()
   }
 }
 final class PythonExecutor extends OperatorExecutor {
+  override def groupCommand(group:dacp.OperatorGroup):Option[OperatorCommand]=PythonGroup.command(group)
   val id = "python"
   override def sourceCommand(p: OperatorProgram, path: String): OperatorCommand =
     OperatorCommand(Some(Vector("/usr/local/bin/python","-c",PythonSource.launcher,path)),arguments=Vector.empty,

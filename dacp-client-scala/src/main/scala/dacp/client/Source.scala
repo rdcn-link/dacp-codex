@@ -35,6 +35,14 @@ final case class Item(path: String, format: String, schema: Option[Schema], kind
   def lastModifiedTime: Option[Instant] = lastModifiedTimeMs.map(Instant.ofEpochMilli)
 }
 
+final case class DatasetInfo(name:String,uri:String,title:String,description:String,tags:Seq[String],nodeIdentity:String,observedAtMs:Long)
+object DatasetInfo {
+  private[client] def fromFlight(info:FlightInfo):DatasetInfo={
+    val m=Metadata.DataSet.parseFrom(info.getAppMetadata)
+    DatasetInfo(m.getName,m.getUri,m.getTitle,m.getDescription,m.getTagsList.asScala.toVector,m.getNodeIdentity,m.getObservedAtMs)
+  }
+}
+
 object Source {
   private[client] def parse(value: String): (URI, String, Option[String]) = {
     val u = new URI(value)
@@ -52,6 +60,21 @@ object Source {
     val (u, name, item) = parse(uri)
     require(item.isEmpty, "use Source.openItem for an item URI")
     require(timeoutSeconds > 0, "timeoutSeconds must be positive")
+    val (client,allocator)=connection(u,tls)
+    new Dataset(client,allocator,name,timeoutSeconds)
+  }
+
+  /** Public metadata only. Accepts either a DACP node origin or a Union origin. */
+  def datasets(origin:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=30):Seq[DatasetInfo]={
+    val u=new URI(origin)
+    require(u.getScheme=="dacp" && u.getHost!=null && u.getUserInfo==null && u.getQuery==null && u.getFragment==null &&
+      (u.getPath==null || u.getPath.isEmpty || u.getPath=="/") && (u.getPort == -1 || u.getPort>0 && u.getPort<=65535) && timeoutSeconds>0,"expected DACP origin and positive timeout")
+    val (client,allocator)=connection(u,tls)
+    try DacpErrors.protect(client.listFlights(Criteria.ALL,CallOptions.timeout(timeoutSeconds,TimeUnit.SECONDS)).asScala.map(DatasetInfo.fromFlight).toVector)
+    finally Resources.closeAll(Seq(client,allocator))
+  }
+
+  private def connection(u:URI,tls:TlsConfig):(FlightClient,RootAllocator)={
     def credential(value: Option[Path], env: String): Option[Path] = value.orElse(sys.env.get(env).map(Path.of(_)))
     val ca = credential(tls.ca, "DACP_CA")
     val cert = credential(tls.cert, "DACP_CERT")
@@ -65,7 +88,7 @@ object Source {
         cert.foreach(p => builder.clientCertificate(use(Files.newInputStream(p)), use(Files.newInputStream(key.get))))
         builder.build()
       }.get
-      new Dataset(client, allocator, name, timeoutSeconds)
+      (client,allocator)
     } catch { case t: Throwable => allocator.close(); throw DacpErrors.translate(t) }
   }
 

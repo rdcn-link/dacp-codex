@@ -40,7 +40,7 @@ class Site(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
         if path == '/api/overview':
-            data = dict(union_id='browser-test', flight_uri='dacp://localhost:19860', at_ms=int(time.time()*1000), poll_interval_ms=500, retention_seconds=86400, job_count=1, active_jobs=0, succeeded_jobs=1, members=[], jobs=[self.job])
+            data = dict(union_id='browser-test', flight_uri='dacp://localhost:19860', at_ms=int(time.time()*1000), poll_interval_ms=500, retention_seconds=86400, job_count=1, active_jobs=0, succeeded_jobs=1, members=[dict(url='dacp://localhost:18861',identity='a'*64,state='approved',observed_at_ms=int(time.time()*1000))], jobs=[self.job])
         elif path == '/api/jobs/g6-browser-test':
             data = self.job
         else:
@@ -81,12 +81,29 @@ def main():
             page.on('console', lambda m: violations.append(m.text) if m.type == 'error' else None)
             page.on('request', lambda r: requests.append(r.url))
             page.goto(origin)
-            page.locator('.job-link').first.click()
+            directory = page.locator('#members .job-link')
+            assert directory.inner_text() == '查看数据集'
+            assert directory.get_attribute('href') == '/members/' + 'a'*64 + '/datasets'
+            styles = page.evaluate("""() => ['#members .job-link','#jobs .job-link'].map(selector=>{
+              const s=getComputedStyle(document.querySelector(selector));
+              return [s.color,s.fontFamily,s.fontSize,s.textDecorationLine];
+            })""")
+            assert styles[0] == styles[1]
+            page.locator('#jobs .job-link').first.click()
             page.wait_for_function('() => dagViewer.ready')
             page.evaluate('dagViewer.pending')
             assert page.locator('#dag canvas').count() >= 1
             assert page.locator('#dag-error').is_hidden()
             assert page.evaluate('dagViewer.graph.getComboData().length') == 4
+            # All dependencies flow left to right, within and across server groups.
+            assert page.evaluate('''() => {
+              const g=dagViewer.graph;
+              return g.getEdgeData().every(e=>g.getElementPosition(e.source)[0]<g.getElementPosition(e.target)[0]);
+            }''')
+            assert page.evaluate('''() => {
+              const groups=dagViewer.graph.getComboData().filter(c=>c.id.startsWith('server:'));
+              return new Set(groups.map(c=>c.style.fill)).size===groups.length;
+            }''')
             # The server groups must not overlap, even with two parallel branches on B.
             assert page.evaluate('''() => {
               const boxes=dagViewer.graph.getComboData().map(c=>dagViewer.graph.getElementRenderBounds(c.id));

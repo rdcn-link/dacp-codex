@@ -45,13 +45,19 @@ abstract class RecordsOperator extends Operator {
   }
 }
 object OperatorRunner {
+  def runStreams(directory:Path,params:Path,inputs:Map[String,InputStream],emit:OperatorFrame=>Unit)(process:OperatorContext=>Unit):Unit={
+    val ctx=new OperatorContext(directory,params,OutputStream.nullOutputStream(),inputs,Some(emit))
+    try {Console.withOut(System.err){process(ctx)};ctx.finish()}finally ctx.close()
+  }
   def run(args:Array[String],out:OutputStream=System.out)(process:OperatorContext=>Unit):Unit={
     require(args.length==3 && args(0)=="operator","expected operator INPUT PARAMS")
     val ctx=new OperatorContext(Path.of(args(1)),Path.of(args(2)),out)
     try {Console.withOut(System.err){process(ctx)};ctx.finish()}finally ctx.close()
   }
 }
-final class OperatorContext(directory:Path,paramsFile:Path,out:OutputStream) extends AutoCloseable {
+final class OperatorContext(directory:Path,paramsFile:Path,out:OutputStream,
+                            inputStreams:Map[String,InputStream]=Map.empty,
+                            emit:Option[OperatorFrame=>Unit]=None) extends AutoCloseable {
   private val mapper=new ObjectMapper()
   val params:JsonNode=mapper.readTree(Files.readAllBytes(paramsFile))
   require(params!=null && params.isObject,"params must be a JSON object")
@@ -73,7 +79,8 @@ final class OperatorContext(directory:Path,paramsFile:Path,out:OutputStream) ext
   private def frame(kind:String,port:String,data:Array[Byte]=Array.emptyByteArray,repr:String="",format:String="",schema:Option[Schema]=None):Unit={
     active();val h=mapper.createObjectNode().put("type",kind).put("port",port)
     if(kind=="start") {h.put("representation",repr).put("format",format);schema.foreach(s=>h.put("schema",java.util.Base64.getEncoder.encodeToString(s.serializeAsMessage())))}
-    OperatorFrames.write(out,OperatorFrame(mapper.writeValueAsBytes(h),data))
+    val event=OperatorFrame(mapper.writeValueAsBytes(h),data)
+    emit match {case Some(send)=>send(event);case None=>OperatorFrames.write(out,event)}
   }
   def input(name:String):Input={active();require(names.contains(name),"unknown input port");opened.getOrElseUpdate(name,new Input(name,entries.find(_.path("port").asText==name).get))}
   private def output(name:String,repr:String,format:String,schema:Option[Schema]):Output={
@@ -95,7 +102,11 @@ final class OperatorContext(directory:Path,paramsFile:Path,out:OutputStream) ext
       if(reader==null){
         val relative=Path.of(entry.path("file").asText)
         require(!relative.isAbsolute && relative.getNameCount==1 && relative.toString!=".." && relative.toString!=".","invalid input filename")
-        val raw=Files.newInputStream(directory.resolve(relative))
+        // Arrow's Channels adapter probes available() for large reads. JDK file
+        // channels implement that probe with seek(), which is invalid for FIFOs.
+        val raw=new java.io.FilterInputStream(inputStreams.getOrElse(name,Files.newInputStream(directory.resolve(relative)))) {
+          override def available():Int=0
+        }
         try {reader=new ArrowStreamReader(raw,allocator);reader.getVectorSchemaRoot}catch{case t:Throwable=>if(reader!=null)reader.close()else raw.close();throw t}
         if(representation=="bytes")require(reader.getVectorSchemaRoot.getSchema==PluginSchemas.bytes,"invalid bytes schema")
       };reader

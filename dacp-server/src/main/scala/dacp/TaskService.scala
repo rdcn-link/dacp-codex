@@ -58,6 +58,9 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         }
         val ports=n.path("ports").elements.asScala.map(_.asText).toVector
         require(ports.nonEmpty && ports.distinct.size==ports.size,"invalid worker ports")
+        val inputMetadata=dacp.union.Json.obj();val savedInputs=inputMetadata.putObject("inputs")
+        ports.foreach(p=>savedInputs.putObject(p).put("uri",sources.head))
+        record.update("running",inputMetadata)
         require(n.path("params").isObject,"params must be a mapping")
         val inline=if(n.path("operator").isObject)Some(Jobs.source(Data.mapper.convertValue(n.path("operator"),classOf[java.util.LinkedHashMap[String,Object]])))else None
         require(inline.isEmpty || config.debug,"FORBIDDEN: source submission requires DEBUG mode")
@@ -135,6 +138,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     plan.tasks.foreach { t=>val entry=tasks.addObject().put("id",t.id).put("operator",t.source.map(code=>"inline:"+code.runtime).getOrElse(t.operator));t.title.foreach(entry.put("title",_)) }
     record.update("running",details)
     plan.tasks.foreach(Jobs.authorizeSource(config,_))
+    record.update("running",dacp.union.Json.obj().put("job_yaml",yaml))
     val local=DacpUri.origin(config.uri(""));val allowed=config.taskPeers.map(DacpUri.node).toSet+local
     var targets=Map.empty[String,String];var provenance=Map.empty[String,Vector[String]]
     val edges=plan.tasks.flatMap(t=>t.inputs.toVector.flatMap{case(port,b)=>b.task.map(up=>(up,b.port,t.id,port))})
@@ -149,6 +153,52 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
       val target=t.node.map(DacpUri.node).getOrElse(anchor.uri.map(DacpUri.origin).getOrElse(targets(anchor.task.get)))
       require(allowed(target),"FORBIDDEN: task target not in task_peers");targets+=t.id->target
     }
+    if(targets.values.toSet.size==1 && targets.values.head!=local){
+      record.update("running",dacp.union.Json.obj().put("execution_mode","delegated_job").put("target",targets.values.head))
+      peerJob(targets.values.head,yaml,emit,c);return
+    }
+    if(targets.values.toSet==Set(local)) {
+      OperatorGroups.prepare(config,plan) match {
+        case Right(group)=>
+          require(permits.tryAcquire(),"node task capacity reached")
+          try {
+            record.update("running",dacp.union.Json.obj().put("execution_mode","shared_process").put("runtime_image",group.operator.image).put("step_count",plan.tasks.size))
+            val children=plan.tasks.map { t=>t.id->config.executionHistory.begin("job_task",metadata=dacp.union.Json.obj().put("parent_execution_id",record.id).put("task_id",t.id).put("operator",t.operator).put("execution_mode","shared_process"),state="waiting_inputs") }.toMap
+            val counters=new java.util.concurrent.ConcurrentHashMap[String,UnionPortMetrics]()
+            val completed=java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+            def onEvent(h:com.fasterxml.jackson.databind.JsonNode):Unit={
+              val id=h.path("task").asText;require(children.contains(id),"unknown group task")
+              if(h.path("type").asText=="task_state"){
+                val state=h.path("state").asText;require(Set("running","succeeded")(state),"invalid group state")
+                val detail=dacp.union.Json.obj().put("runtime_pid",h.path("runtime_pid").asLong);val ports=detail.putObject("ports");counters.asScala.filter(_._1.startsWith(id+"/")).foreach{case(k,v)=>ports.set[com.fasterxml.jackson.databind.JsonNode](k.stripPrefix(id+"/"),v.snapshot)}
+                children(id).update(state,detail);if(state=="succeeded")completed.add(id)
+              }else counters.computeIfAbsent(id+"/"+h.path("direction").asText+"/"+h.path("port").asText,_=>new UnionPortMetrics(allocator)).summary(h)
+            }
+            val external=plan.tasks.flatMap(t=>t.inputs.toVector.sortBy(_._1).collect{case(port,b)if b.uri.nonEmpty=>(t.id,port)}).zipWithIndex.map{case(pair,i)=>s"i$i"->pair}.toMap
+            val inputs=scala.collection.mutable.Map.empty[String,FrameSource]
+            try {
+              group.inputs.foreach {case(port,b)=>
+                val raw=source(b,c);val (task,name)=external(port)
+                inputs(port)=new FrameSource {
+                  def next():Option[OperatorFrame]={val f=raw.next();f.foreach(x=>counters.computeIfAbsent(task+"/inputs/"+name,_=>new UnionPortMetrics(allocator)).observe(x,remote=false));f}
+                  def close():Unit=raw.close()
+                }
+              }
+              executor.execute(group.task,inputs.toMap,f=>{
+              val port=StreamProtocol.header(f).path("port").asText;val (task,label)=group.outputs(port)
+              emit(StreamProtocol.rename(f,label,task))
+            },c,Some(group.operator),Some(onEvent))
+            }
+            catch{case t:Throwable=>
+              val reason=c.cause(t) match {case _:java.util.concurrent.TimeoutException=>"expired";case _:java.util.concurrent.CancellationException=>"cancelled";case _=>"failed"}
+              children.foreach{case(id,r)=>if(!completed.contains(id))r.update(reason,message=Some(Option(t.getMessage).getOrElse("group failed")))};throw t
+            }
+            finally inputs.values.foreach(_.close())
+          }finally permits.release()
+          return
+        case Left(reason)=>record.update("running",dacp.union.Json.obj().put("execution_mode","isolated_steps").put("fusion_reason",reason))
+      }
+    }else record.update("running",dacp.union.Json.obj().put("execution_mode","isolated_steps").put("fusion_reason","different_nodes"))
     require(targets.values.count(_==local)<=config.maxConcurrentTasks,"pipeline needs more local task slots; increase max_concurrent_tasks")
     val terminal=new FrameQueue(c)
     val threads=plan.tasks.map{t=>StreamProtocol.thread(c){
@@ -169,6 +219,22 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     }}
     val completion=StreamProtocol.thread(c){threads.foreach(join(_,c));terminal.end()}
     var next=terminal.next();while(next.nonEmpty){emit(next.get);next=terminal.next()};join(completion,c)
+  }
+  private def peerJob(node:String,yaml:String,emit:OperatorFrame=>Unit,c:StreamCancel):Unit={
+    val client=c.add(NodeConnection.open(config,allocator,node))
+    val request=Metadata.OperatorRequest.newBuilder().setJobYaml(yaml).build()
+    val exchange=c.add(client.doExchange(FlightDescriptor.command(request.toByteArray)))
+    val root=VectorSchemaRoot.create(PluginSchemas.bytes,allocator)
+    try {
+      exchange.getWriter.start(root);exchange.getWriter.completed()
+      var complete=false
+      while(exchange.getReader.next()){
+        c.active();require(!complete,"events after completion")
+        val f=StreamProtocol.receive(exchange.getReader.getRoot)
+        if(StreamProtocol.header(f).path("type").asText=="complete")complete=true else emit(f)
+      }
+      require(complete,"worker job stream truncated")
+    }finally{root.close();exchange.close();client.close()}
   }
   private def peer(node:String,t:Task,sources:Vector[String],inputs:Map[String,FrameSource],emit:OperatorFrame=>Unit,c:StreamCancel,parentExecutionId:String):Unit={
     val client=c.add(NodeConnection.open(config,allocator,node))

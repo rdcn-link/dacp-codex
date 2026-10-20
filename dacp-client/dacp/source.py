@@ -48,7 +48,41 @@ class Item:
         return (datetime.fromtimestamp(self.last_modified_time_ms / 1000, timezone.utc)
                 if self.last_modified_time_ms is not None else None)
 
+@dataclass(frozen=True)
+class DatasetInfo:
+    name: str
+    uri: str
+    title: str = ""
+    description: str = ""
+    tags: tuple = ()
+    node_identity: str = ""
+    observed_at_ms: int = 0
+
+
+def _dataset_infos(client, timeout=30, *, local_only=False):
+    entries = []
+    for info in client.list_flights(criteria=b'local' if local_only else b'', options=flight.FlightCallOptions(timeout=timeout)):
+        m = pb.DataSet.FromString(info.app_metadata)
+        entries.append(DatasetInfo(m.name, m.uri, m.title, m.description, tuple(m.tags),
+                                   m.node_identity, m.observed_at_ms))
+    return entries
+
+
 class Source:
+    @staticmethod
+    @public_errors
+    def datasets(url, *, tls_root_certs=None, cert_chain=None, private_key=None, timeout=30, local_only=False):
+        """Read public metadata from dacp-server."""
+        u = urlsplit(url)
+        if (u.scheme != "dacp" or not u.hostname or u.username is not None or u.query or u.fragment
+                or u.path not in ("", "/") or u.port is not None and not 0 < u.port <= 65535 or timeout <= 0):
+            raise ValueError("expected dacp://host[:port] origin and positive timeout")
+        client = _flight_client(u, tls_root_certs, cert_chain, private_key)
+        try:
+            return _dataset_infos(client, timeout, local_only=local_only)
+        finally:
+            client.close()
+
     @staticmethod
     def open(uri, *, tls_root_certs=None, cert_chain=None, private_key=None):
         u = urlsplit(uri)

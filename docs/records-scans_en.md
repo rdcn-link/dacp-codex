@@ -52,7 +52,10 @@ Scala equality and inequality builders are `===` and `=!=`; boolean builders are
 Start the shell against a running DACP server (with `DACP_CA`, `DACP_CERT`, and `DACP_KEY` configured):
 
 ```bash
-dacp-shell dacp://localhost:8815/data1
+dacp-shell dacp://localhost:8815
+# shell:
+# datasets
+# use data1
 ```
 
 Enter a complete single-line query at `dacp-shell>`:

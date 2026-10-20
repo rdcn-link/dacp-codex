@@ -49,3 +49,8 @@
 除非文档另行指定，命令从项目根目录执行。服务配置中的相对路径以服务进程工作目录为基准。示例证书、主机名、端口及文件路径用于本地演示，部署时按实际环境配置。各 README 的 `README.md` 为中文，`README_en.md` 为对应英文版。
 
 [用户访问日志](access-logs.md)：JSON Lines 文件、大小轮转、字段及采集。
+
+[数据集目录](dataset-directory.md)：节点公开描述、Union Web 按节点查看目录和 Shell `datasets`。
+[同进程执行实测](operator-fusion-benchmark.md)：100 万与 400 万行的策略对比。
+
+[节点 Web 看板](node-web.md)：默认 HTTP 服务、配置开关及 G6 任务 DAG。

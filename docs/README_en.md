@@ -49,3 +49,8 @@ Dynamic catalogs and application embedding: [DatasetCatalog](dataset-catalogs_en
 Commands run from the project root unless a document specifies otherwise. Relative paths in service configurations resolve against the service process working directory. Example certificates, hosts, ports, and paths are for local demonstrations; configure deployment values for your environment. Each `README.md` is Chinese, with its English translation in `README_en.md`.
 
 [User access logs](access-logs_en.md): JSON Lines files, size rotation, fields and collection.
+
+[Dataset directories](dataset-directory_en.md): public node descriptions, per-member browsing on the Union website and shell `datasets`.
+[Shared-process measurements](operator-fusion-benchmark_en.md): strategy comparisons with one million and four million rows.
+
+[Node web dashboard](node-web_en.md): default HTTP service, configuration, and G6 execution DAGs.

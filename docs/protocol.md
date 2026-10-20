@@ -14,7 +14,7 @@ DACP（Data Access and Collaboration Protocol，数据访问与协作协议）�
 
 | 用途 | 当前传输 |
 |---|---|
-| Dataset 目录发现 | Flight `ListFlights`，返回授权的公开 Dataset URI；目录可由插件动态提供 |
+| Dataset 目录发现 | Flight `ListFlights`，返回公开 Dataset URI 及描述，不额外要求数据授权；目录可由插件动态提供 |
 | 浏览、元数据与数据读取 | Arrow Flight；具体消息见技术参考和 protobuf 定义 |
 | 普通节点作业执行 | Flight `DoExchange`，交换控制消息与结果流 |
 | Union 邀请、审批、成员、状态和作业控制 | Flight `DoAction`，使用 `dacp.union.` 动作前缀及 JSON 消息 |

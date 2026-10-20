@@ -9,9 +9,11 @@ Compile / mainClass := Some("dacp.repository.Main")
 fork := true
 enablePlugins(JavaAppPackaging)
 
-// Package the shared project logo into both websites.
+// Package the full logo and compact C favicons.
 Compile / resourceGenerators += Def.task {
-  val output = (Compile / resourceManaged).value / "web" / "dacp-logo.png"
-  IO.copyFile(baseDirectory.value.getParentFile / "assets" / "dacp-logo.png", output)
-  Seq(output)
+  Seq("dacp-logo.png", "dacp-favicon.png", "dacp-favicon.ico").map { name =>
+    val output = (Compile / resourceManaged).value / "web" / name
+    IO.copyFile(baseDirectory.value.getParentFile / "assets" / name, output)
+    output
+  }
 }.taskValue

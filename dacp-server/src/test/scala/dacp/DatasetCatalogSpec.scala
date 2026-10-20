@@ -29,20 +29,56 @@ class DatasetCatalogSpec extends AnyFunSuite {
       assert(names().isEmpty)
       sql.execute("INSERT INTO dacp_datasets VALUES ('public'), ('private')")
       insert.setString(1,"public");insert.setString(2,file.toString);insert.executeUpdate()
-      assert(names()==Seq("public"))
+      assert(names()==Seq("private","public"))
       val info=client.getInfo(FlightDescriptor.path("datasets","public","/records"))
       val stream=client.getStream(info.getEndpoints.get(0).getTicket)
-      try assert(stream.next())finally stream.close()
+      try {assert(stream.next());assert(!stream.next())}finally stream.close()
       intercept[FlightRuntimeException](client.getInfo(FlightDescriptor.path("datasets","private")))
       val lease=c.openDataset("public")
       sql.execute("DELETE FROM dacp_datasets WHERE name='public'")
-      assert(names().isEmpty)
+      assert(names()==Seq("private"))
       assert(lease.count("/records").contains(2L));lease.close();lease.close()
       val missing=intercept[FlightRuntimeException](client.getInfo(FlightDescriptor.path("datasets","public")))
       assert(missing.status.code()==FlightStatusCode.NOT_FOUND)
       sql.execute("DROP TABLE dacp_datasets")
       intercept[FlightRuntimeException](names()) // Backend failure must not masquerade as an empty catalog.
     }finally {client.close();server.close();c.close();allocator.close();insert.close();sql.close();db.close();Data.deleteTree(dir)}
+  }
+  test("public descriptions are discoverable without data authorization or opening the backend") {
+    val dir=Files.createTempDirectory("public-catalog-")
+    var entries=Seq(DatasetInfo("restricted",DatasetMetadata("Orders","公开数据说明",Seq("sales"))))
+    val cat=new DatasetCatalog {
+      def list():Seq[DatasetInfo]=entries
+      def open(name:String):PublishedDataset=throw new AssertionError("discovery must not open data")
+    }
+    val c=config(dir,instance=Some(cat));val allocator=new RootAllocator()
+    val server=FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator)).build().start()
+    val client=FlightClient.builder(allocator,server.getLocation).build()
+    try {
+      val info=client.listFlights(Criteria.ALL).iterator().next()
+      assert(client.listFlights(new Criteria("local".getBytes)).iterator().next().getDescriptor==info.getDescriptor)
+      val meta=dacp.protocol.Metadata.DataSet.parseFrom(info.getAppMetadata)
+      assert(meta.getName=="restricted" && meta.getTitle=="Orders" && meta.getDescription=="公开数据说明")
+      assert(meta.getTagsList.asScala.toVector==Vector("sales") && meta.getItemsCount==0)
+      assert(meta.getUri==c.uri("restricted"))
+      val denied=intercept[FlightRuntimeException](client.getInfo(FlightDescriptor.path("datasets","restricted")))
+      assert(denied.status.code()==FlightStatusCode.UNAUTHORIZED)
+      entries=Seq.empty
+      assert(!client.listFlights(Criteria.ALL).iterator().hasNext)
+      assert(!client.listFlights(new Criteria("local".getBytes)).iterator().hasNext)
+      intercept[FlightRuntimeException](client.listFlights(new Criteria("search".getBytes)).iterator().hasNext)
+    }finally {client.close();server.close();c.close();allocator.close();Data.deleteTree(dir)}
+  }
+  test("static catalogs publish only explicitly configured public metadata") {
+    val dir=Files.createTempDirectory("static-metadata-");val path=dir.resolve("node.yaml")
+    val base="host: localhost\npublic_host: localhost\ntls_cert: cert\ntls_key: key\ntls_ca: ca\nallowed_uri_prefixes: []\n"
+    try {
+      Files.writeString(path,base+"datasets:\n  orders:\n    provider: mixed\n    metadata: {title: Orders, description: Public description, tags: [sales]}\n    items: {}\n")
+      val c=Config.load(path)
+      try assert(c.datasetInfos()==Seq(DatasetInfo("orders",DatasetMetadata("Orders","Public description",Seq("sales")))))finally c.close()
+      Files.writeString(path,base+"datasets: {orders: {provider: mixed, metadata: {credentials: secret}, items: {}}}\n")
+      intercept[IllegalArgumentException](Config.load(path))
+    }finally Data.deleteTree(dir)
   }
   test("catalog identity checks, cancellation and ownership apply to directly supplied catalogs") {
     val dir=Files.createTempDirectory("catalog-contract-");val closed=new AtomicInteger();val leases=new AtomicInteger()

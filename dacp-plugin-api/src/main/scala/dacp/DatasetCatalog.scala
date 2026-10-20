@@ -1,7 +1,11 @@
 package dacp
 
-/** Public identity only; backend locations and credentials must remain private. */
-case class DatasetInfo(name:String)
+/** Public discovery metadata. Never include storage locations, credentials or private settings. */
+case class DatasetMetadata(title:String="",description:String="",tags:Seq[String]=Seq.empty) {
+  require(title!=null && title.length<=1024 && description!=null && description.length<=32768,"invalid dataset description")
+  require(tags!=null && tags.size<=64 && tags.forall(t=>t!=null && t.nonEmpty && t.length<=256),"invalid dataset tags")
+}
+case class DatasetInfo(name:String,metadata:DatasetMetadata=DatasetMetadata())
 object DatasetNames {
   def validate(name:String):Unit=require(name!=null && name.nonEmpty && !name.contains("/") && !name.contains("\\") && name!="." && name!=".." && !name.exists(_.isControl),"invalid dataset name")
 }

@@ -13,7 +13,16 @@ message Item {
   optional int64 total_size_bytes = 7; // Content bytes; absent if unknown, zero is known empty.
   optional int64 record_count = 8; // Exact logical record count; absent if unknown/not applicable.
 }
-message DataSet { string uri = 1; repeated Item items = 2; }
+message DataSet {
+  string uri = 1;
+  repeated Item items = 2;
+  string name = 3;
+  string title = 4;
+  string description = 5;
+  repeated string tags = 6;
+  string node_identity = 7; // Set by the Union for provenance.
+  int64 observed_at_ms = 8;
+}
 enum ErrorCode { UNKNOWN = 0; NOT_FOUND = 1; FORBIDDEN = 2; SCHEMA_CONFLICT = 3; INVALID_ARGUMENT = 4; }
 message Error { ErrorCode code = 1; string message = 2; }
 message Ticket { string dataset = 1; string item = 2; string view = 3; Scan scan = 4; }

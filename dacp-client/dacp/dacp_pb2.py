@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\ndacp.proto\x12\rdacp.protocol\"\xf5\x01\n\x04Item\x12\x0c\n\x04path\x18\x01 \x01(\t\x12\x0e\n\x06\x66ormat\x18\x02 \x01(\t\x12\x14\n\x0c\x61rrow_schema\x18\x03 \x01(\x0c\x12\x0c\n\x04kind\x18\x04 \x01(\t\x12\r\n\x05views\x18\x05 \x03(\t\x12\"\n\x15last_modified_time_ms\x18\x06 \x01(\x03H\x00\x88\x01\x01\x12\x1d\n\x10total_size_bytes\x18\x07 \x01(\x03H\x01\x88\x01\x01\x12\x19\n\x0crecord_count\x18\x08 \x01(\x03H\x02\x88\x01\x01\x42\x18\n\x16_last_modified_time_msB\x13\n\x11_total_size_bytesB\x0f\n\r_record_count\":\n\x07\x44\x61taSet\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12\"\n\x05items\x18\x02 \x03(\x0b\x32\x13.dacp.protocol.Item\"@\n\x05\x45rror\x12&\n\x04\x63ode\x18\x01 \x01(\x0e\x32\x18.dacp.protocol.ErrorCode\x12\x0f\n\x07message\x18\x02 \x01(\t\"X\n\x06Ticket\x12\x0f\n\x07\x64\x61taset\x18\x01 \x01(\t\x12\x0c\n\x04item\x18\x02 \x01(\t\x12\x0c\n\x04view\x18\x03 \x01(\t\x12!\n\x04scan\x18\x04 \x01(\x0b\x32\x13.dacp.protocol.Scan\"E\n\x0fOperatorRequest\x12\x12\n\x08job_yaml\x18\x01 \x01(\tH\x00\x12\x13\n\ttask_json\x18\x02 \x01(\x0cH\x00\x42\t\n\x07request\"&\n\x07Literal\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"{\n\tPredicate\x12\n\n\x02op\x18\x01 \x01(\t\x12\x0e\n\x06\x63olumn\x18\x02 \x01(\t\x12&\n\x06values\x18\x03 \x03(\x0b\x32\x16.dacp.protocol.Literal\x12*\n\x08\x63hildren\x18\x04 \x03(\x0b\x32\x18.dacp.protocol.Predicate\"\xa4\x01\n\x04Scan\x12+\n\tpredicate\x18\x01 \x01(\x0b\x32\x18.dacp.protocol.Predicate\x12\x32\n\nprojection\x18\x02 \x01(\x0b\x32\x1e.dacp.protocol.Scan.Projection\x12\x12\n\x05limit\x18\x03 \x01(\x03H\x00\x88\x01\x01\x1a\x1d\n\nProjection\x12\x0f\n\x07\x63olumns\x18\x01 \x03(\tB\x08\n\x06_limit*a\n\tErrorCode\x12\x0b\n\x07UNKNOWN\x10\x00\x12\r\n\tNOT_FOUND\x10\x01\x12\r\n\tFORBIDDEN\x10\x02\x12\x13\n\x0fSCHEMA_CONFLICT\x10\x03\x12\x14\n\x10INVALID_ARGUMENT\x10\x04\x42\nB\x08Metadatab\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\ndacp.proto\x12\rdacp.protocol\"\xf5\x01\n\x04Item\x12\x0c\n\x04path\x18\x01 \x01(\t\x12\x0e\n\x06\x66ormat\x18\x02 \x01(\t\x12\x14\n\x0c\x61rrow_schema\x18\x03 \x01(\x0c\x12\x0c\n\x04kind\x18\x04 \x01(\t\x12\r\n\x05views\x18\x05 \x03(\t\x12\"\n\x15last_modified_time_ms\x18\x06 \x01(\x03H\x00\x88\x01\x01\x12\x1d\n\x10total_size_bytes\x18\x07 \x01(\x03H\x01\x88\x01\x01\x12\x19\n\x0crecord_count\x18\x08 \x01(\x03H\x02\x88\x01\x01\x42\x18\n\x16_last_modified_time_msB\x13\n\x11_total_size_bytesB\x0f\n\r_record_count\"\xa9\x01\n\x07\x44\x61taSet\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12\"\n\x05items\x18\x02 \x03(\x0b\x32\x13.dacp.protocol.Item\x12\x0c\n\x04name\x18\x03 \x01(\t\x12\r\n\x05title\x18\x04 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x05 \x01(\t\x12\x0c\n\x04tags\x18\x06 \x03(\t\x12\x15\n\rnode_identity\x18\x07 \x01(\t\x12\x16\n\x0eobserved_at_ms\x18\x08 \x01(\x03\"@\n\x05\x45rror\x12&\n\x04\x63ode\x18\x01 \x01(\x0e\x32\x18.dacp.protocol.ErrorCode\x12\x0f\n\x07message\x18\x02 \x01(\t\"X\n\x06Ticket\x12\x0f\n\x07\x64\x61taset\x18\x01 \x01(\t\x12\x0c\n\x04item\x18\x02 \x01(\t\x12\x0c\n\x04view\x18\x03 \x01(\t\x12!\n\x04scan\x18\x04 \x01(\x0b\x32\x13.dacp.protocol.Scan\"E\n\x0fOperatorRequest\x12\x12\n\x08job_yaml\x18\x01 \x01(\tH\x00\x12\x13\n\ttask_json\x18\x02 \x01(\x0cH\x00\x42\t\n\x07request\"&\n\x07Literal\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"{\n\tPredicate\x12\n\n\x02op\x18\x01 \x01(\t\x12\x0e\n\x06\x63olumn\x18\x02 \x01(\t\x12&\n\x06values\x18\x03 \x03(\x0b\x32\x16.dacp.protocol.Literal\x12*\n\x08\x63hildren\x18\x04 \x03(\x0b\x32\x18.dacp.protocol.Predicate\"\xa4\x01\n\x04Scan\x12+\n\tpredicate\x18\x01 \x01(\x0b\x32\x18.dacp.protocol.Predicate\x12\x32\n\nprojection\x18\x02 \x01(\x0b\x32\x1e.dacp.protocol.Scan.Projection\x12\x12\n\x05limit\x18\x03 \x01(\x03H\x00\x88\x01\x01\x1a\x1d\n\nProjection\x12\x0f\n\x07\x63olumns\x18\x01 \x03(\tB\x08\n\x06_limit*a\n\tErrorCode\x12\x0b\n\x07UNKNOWN\x10\x00\x12\r\n\tNOT_FOUND\x10\x01\x12\r\n\tFORBIDDEN\x10\x02\x12\x13\n\x0fSCHEMA_CONFLICT\x10\x03\x12\x14\n\x10INVALID_ARGUMENT\x10\x04\x42\nB\x08Metadatab\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,24 +32,24 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'dacp_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'B\010Metadata'
-  _globals['_ERRORCODE']._serialized_start=896
-  _globals['_ERRORCODE']._serialized_end=993
+  _globals['_ERRORCODE']._serialized_start=1008
+  _globals['_ERRORCODE']._serialized_end=1105
   _globals['_ITEM']._serialized_start=30
   _globals['_ITEM']._serialized_end=275
-  _globals['_DATASET']._serialized_start=277
-  _globals['_DATASET']._serialized_end=335
-  _globals['_ERROR']._serialized_start=337
-  _globals['_ERROR']._serialized_end=401
-  _globals['_TICKET']._serialized_start=403
-  _globals['_TICKET']._serialized_end=491
-  _globals['_OPERATORREQUEST']._serialized_start=493
-  _globals['_OPERATORREQUEST']._serialized_end=562
-  _globals['_LITERAL']._serialized_start=564
-  _globals['_LITERAL']._serialized_end=602
-  _globals['_PREDICATE']._serialized_start=604
-  _globals['_PREDICATE']._serialized_end=727
-  _globals['_SCAN']._serialized_start=730
-  _globals['_SCAN']._serialized_end=894
-  _globals['_SCAN_PROJECTION']._serialized_start=855
-  _globals['_SCAN_PROJECTION']._serialized_end=884
+  _globals['_DATASET']._serialized_start=278
+  _globals['_DATASET']._serialized_end=447
+  _globals['_ERROR']._serialized_start=449
+  _globals['_ERROR']._serialized_end=513
+  _globals['_TICKET']._serialized_start=515
+  _globals['_TICKET']._serialized_end=603
+  _globals['_OPERATORREQUEST']._serialized_start=605
+  _globals['_OPERATORREQUEST']._serialized_end=674
+  _globals['_LITERAL']._serialized_start=676
+  _globals['_LITERAL']._serialized_end=714
+  _globals['_PREDICATE']._serialized_start=716
+  _globals['_PREDICATE']._serialized_end=839
+  _globals['_SCAN']._serialized_start=842
+  _globals['_SCAN']._serialized_end=1006
+  _globals['_SCAN_PROJECTION']._serialized_start=967
+  _globals['_SCAN_PROJECTION']._serialized_end=996
 # @@protoc_insertion_point(module_scope)

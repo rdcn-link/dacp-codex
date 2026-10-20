@@ -94,6 +94,9 @@ final class Remote(tls:Tls) extends AutoCloseable {
       new Connection(FlightGrpcUtils.createFlightClient(allocator,channel),peer)
     })
   }
+  /** Public catalog discovery uses transport trust only, without Union execution grants. */
+  def catalog(origin:String,pin:Option[String]=None,timeout:Long=5):Vector[FlightInfo]=
+    connection(origin,pin).client.listFlights(Criteria.ALL,CallOptions.timeout(timeout,TimeUnit.SECONDS)).asScala.toVector
   def peer(origin:String,pin:Option[String]=None):String=Option(connection(origin,pin).peer.get()).getOrElse(throw new IllegalStateException("no verified server identity"))
   def action(origin:String,name:String,body:JsonNode=Json.obj(),pin:Option[String]=None,timeout:Long=30):JsonNode={
     require(timeout>0)

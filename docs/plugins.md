@@ -72,3 +72,7 @@ Dataset 提供者和格式处理器可通过 `Scan` 优化过滤、投影和限�
 ## 实例环境和执行存储
 
 `PluginEnvironment` 按服务器管理发现和生命周期。通过 `DacpServer.builder().plugins(environment, owned = false)` 注入；应用拥有的环境不会随服务器关闭。插件可覆盖 `initialize(environment)` 和 `close()`。`ExecutionStoreProvider` 在 `META-INF/services/dacp.ExecutionStoreProvider` 注册，配置为 `execution_store: {provider: file, settings: {directory: /var/lib/dacp/executions}}`。存储必须提供原子唯一 `create`、原子替换 `put`、独立副本的 `get`/`records` 及关闭。核心保留状态转换、恢复和稳定的按所有者过滤分页。内置 file 位于 `plugins/dacp-plugin-execution-file`；其他实现不需要修改核心注册表。
+
+## 同进程算子合并
+
+`OperatorExecutor.groupCommand` 是已实现的可选扩展点；JVM SDK 算子和显式提供 `process(ctx)` 的 Python 算子可在同节点、同环境下合并运行。资格、注册契约、示例和限制见 [同进程合并执行](operator-fusion.md)。

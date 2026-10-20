@@ -67,8 +67,10 @@ def test_shell_hides_transport_and_unknown_errors(monkeypatch, capsys):
         def list(self):
             raise flight.FlightUnavailableError('grpc private server')
         def close(self): pass
-    monkeypatch.setattr(cli.Source, 'open', lambda *a, **kw: Dataset())
-    assert cli.main(['dacp://host/public']) == 1
+    def unavailable(*a, **kw):
+        raise flight.FlightUnavailableError('grpc private server')
+    monkeypatch.setattr(cli.Source, 'datasets', unavailable)
+    assert cli.main(['dacp://host']) == 1
     output = capsys.readouterr().out
     assert output.startswith('Error: Cannot reach the DACP server.')
     assert 'grpc' not in output and 'private' not in output

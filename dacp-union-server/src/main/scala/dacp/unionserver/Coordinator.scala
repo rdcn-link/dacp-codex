@@ -19,6 +19,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   private val plugins=providedPlugins.getOrElse(new PluginEnvironment(settings.pluginDirectory))
   private val storeDefinition=settings.executionStore.getOrElse(ExecutionStoreDefinition("file",Map("directory"->settings.state.resolve("executions").toString)))
   private[unionserver] val history=new ExecutionHistory(plugins.byId(classOf[ExecutionStoreProvider],storeDefinition.provider).open(storeDefinition.settings,false))
+  private[unionserver] val datasets=new MemberDatasets(members)
   private val remote=members.remote
   private val jobs=new ConcurrentHashMap[String,Execution]()
   private val observed=new ConcurrentHashMap[String,JsonNode]()
@@ -168,7 +169,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       }
     }
     private def definition(n:JsonNode):JsonNode={
-      val body=Json.obj().put("union_id",members.unionId).put("execution_id",id);val tasks=body.putArray("tasks")
+      val body=Json.obj().put("union_id",members.unionId).put("execution_id",id).put("allow_fusion",Jobs.canGroupByNode(plan,placements.map{case(task,node)=>task->identity(node)}));val tasks=body.putArray("tasks")
       plan.tasks.filter(t=>identity(placements(t.id))==identity(n)).foreach { t=>
         val j=tasks.addObject().put("id",t.id).put("operator",t.operator)
         t.title.foreach(j.put("title",_))

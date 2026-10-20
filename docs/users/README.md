@@ -34,7 +34,7 @@ cd dacp-server
 sbt run
 ```
 
-默认服务地址为 `localhost:8815`，配置见 [examples/server.yaml](../../examples/server.yaml)。启动日志会列出已发布的 Dataset 名称和 URI；当前没有数据集发现接口，连接时需要使用已知 URI。
+默认服务地址为 `localhost:8815`，配置见 [examples/server.yaml](../../examples/server.yaml)。可先连接服务器根地址，在 Shell 中使用无参数 `datasets` 列出目录，再选择数据集。节点发布本地目录，Union Web 按指定成员查看目录；见[数据集目录](../dataset-directory.md)。
 
 在另一个终端中，从项目根目录连接：
 
@@ -42,7 +42,10 @@ sbt run
 export DACP_CA="$PWD/examples/certs/ca.crt"
 export DACP_CERT="$PWD/examples/certs/client.crt"
 export DACP_KEY="$PWD/examples/certs/client.key"
-.venv/bin/dacp-shell dacp://localhost:8815/data1
+.venv/bin/dacp-shell dacp://localhost:8815
+# shell:
+# datasets
+# use data1
 ```
 
 进入 shell 后：

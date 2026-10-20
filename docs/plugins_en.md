@@ -72,3 +72,7 @@ See [the extension-boundary review](plugin-roadmap_en.md) ([中文](plugin-roadm
 ## Instance environments and execution storage
 
 `PluginEnvironment` owns discovery and lifecycle per server. Inject it through `DacpServer.builder().plugins(environment, owned = false)`; caller-owned environments survive server shutdown. Service implementations may override `initialize(environment)` and `close()`. Register `ExecutionStoreProvider` in `META-INF/services/dacp.ExecutionStoreProvider`; configure `execution_store: {provider: file, settings: {directory: /var/lib/dacp/executions}}`. Stores must implement atomic unique `create`, atomic replacement `put`, detached `get`/`records`, and closure. Core retains state transitions, recovery and stable owner-filtered pagination. Built-in `file` lives in `plugins/dacp-plugin-execution-file`; alternative stores require no core registry changes.
+
+## In-process operator fusion
+
+`OperatorExecutor.groupCommand` is an implemented optional extension point. JVM SDK operators and Python operators explicitly exposing `process(ctx)` can share a process on the same node and environment. See [operator fusion](operator-fusion_en.md) for eligibility, registration contracts, examples and limits.

@@ -34,7 +34,7 @@ cd dacp-server
 sbt run
 ```
 
-The default server listens on `localhost:8815`; its configuration is [examples/server.yaml](../../examples/server.yaml). Startup logs list the published Dataset names and URIs. There is currently no dataset discovery endpoint, so connections require a known URI.
+The default server listens on `localhost:8815`; its configuration is [examples/server.yaml](../../examples/server.yaml). Connect to the server origin and use the argument-free shell command `datasets` to list its directory before selecting a Dataset. Nodes publish local directories; the Union website displays the directory of a selected member. See [dataset directories](../dataset-directory_en.md).
 
 In another terminal, connect from the project root:
 
@@ -42,7 +42,10 @@ In another terminal, connect from the project root:
 export DACP_CA="$PWD/examples/certs/ca.crt"
 export DACP_CERT="$PWD/examples/certs/client.crt"
 export DACP_KEY="$PWD/examples/certs/client.key"
-.venv/bin/dacp-shell dacp://localhost:8815/data1
+.venv/bin/dacp-shell dacp://localhost:8815
+# shell:
+# datasets
+# use data1
 ```
 
 Inside the shell:

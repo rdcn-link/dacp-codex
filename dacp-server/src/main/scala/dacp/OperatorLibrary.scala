@@ -9,7 +9,7 @@ import org.yaml.snakeyaml.Yaml
 import scala.jdk.CollectionConverters._
 
 case class SourceRuntime(image: String, executor: String)
-case class ResolvedOperator(image: String, artifact: Option[Path], artifactPath: Option[String], command: OperatorCommand, inputs: Map[String,PortContract], outputs: Map[String,PortContract])
+case class ResolvedOperator(image: String, artifact: Option[Path], artifactPath: Option[String], command: OperatorCommand, inputs: Map[String,PortContract], outputs: Map[String,PortContract], executor:String="", program:Option[OperatorProgram]=None)
 
 /** Immutable operator metadata plus globally shared, content-addressed runtime/code artifacts. */
 object OperatorLibrary {
@@ -51,9 +51,10 @@ object OperatorLibrary {
     require(configuration.isObject, "executor_config must be a mapping")
     val settings = Data.mapper.convertValue(configuration,classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap
     val inputs = OperatorPorts.read(ports.path("inputs")); val outputs = OperatorPorts.read(ports.path("outputs"))
-    val command = config.plugins.byId(classOf[OperatorExecutor],executor).command( OperatorProgram(reference, entrypoint, artifact, settings,
-      inputs.map { case (k,v) => k -> v.representations }, outputs.map { case (k,v) => k -> v.representations }), target)
-    ResolvedOperator(image, artifact, target, command, inputs, outputs)
+    val program=OperatorProgram(reference,entrypoint,artifact,settings,
+      inputs.map { case(k,v)=>k->v.representations },outputs.map { case(k,v)=>k->v.representations })
+    val command=config.plugins.byId(classOf[OperatorExecutor],executor).command(program,target)
+    ResolvedOperator(image,artifact,target,command,inputs,outputs,executor,Some(program))
   }
   def resolve(config: Config, reference: String, docker: DockerClient): ResolvedOperator = synchronized {
     val p = reference.split("@",-1)

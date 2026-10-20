@@ -30,6 +30,13 @@ private[dacp] final class UnionPortMetrics(allocator:BufferAllocator) {
       if(records){val r=new ArrowStreamReader(new java.io.ByteArrayInputStream(f.data),allocator);try {require(r.loadNextBatch(),"missing records");rows.addAndGet(r.getVectorSchemaRoot.getRowCount)}finally r.close()}
     }
   }
+  def summary(h:JsonNode,remote:Boolean=false):Unit={
+    last.set(Json.now)
+    if(h.path("phase").asText=="start")records=h.path("representation").asText=="records"
+    val count=h.path("payload_bytes").asLong;require(count>=0,"invalid group metric")
+    bytes.addAndGet(count);if(remote)remoteBytes.addAndGet(count)
+    if(h.has("records"))rows.addAndGet(h.path("records").asLong)
+  }
   def snapshot:JsonNode={val n=Json.obj().put("payload_bytes",bytes.get).put("remote_payload_bytes",remoteBytes.get).put("last_activity_ms",last.get);if(records)n.put("records",rows.get);n}
 }
 
@@ -61,7 +68,8 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     }
   }
   private def prepare(body:JsonNode,who:String):Session=synchronized {
-    Json.fields(body,Set("union_id","execution_id","tasks"))
+    Json.fields(body,Set("union_id","execution_id","tasks"),Set("allow_fusion"))
+    require(!body.has("allow_fusion") || body.path("allow_fusion").isBoolean,"allow_fusion must be boolean")
     val union=Json.id(Json.text(body,"union_id"));val id=Json.id(Json.text(body,"execution_id"));val policy=grant(union,who)
     val tasks=Json.array(body,"tasks");require(tasks.nonEmpty && tasks.size<=64,"invalid task count")
     require(tasks.map(t=>Json.text(t,"id")).distinct.size==tasks.size,"duplicate task")
@@ -90,7 +98,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     val own=sessions.values.asScala.filter(s=> !s.terminal && s.owner==who && s.union==union).map(_.size).sum
     if(reserved+tasks.size>config.maxConcurrentTasks || own+tasks.size>policy.path("max_concurrent_tasks").asInt)throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
     if(!config.taskSlots.tryAcquire(tasks.size))throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
-    try {val s=new Session(id,union,who,tasks);sessions.put(id,s);s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(tasks.size);throw t}
+    try {val s=new Session(id,union,who,tasks,body.path("allow_fusion").asBoolean(false));sessions.put(id,s);s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(tasks.size);throw t}
   }
   private def find(id:String,who:String,owner:Boolean=true):Session={
     val s=Option(sessions.get(Json.id(id))).getOrElse(throw UnionFailure(NOT_FOUND,"execution unavailable"))
@@ -139,12 +147,13 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     val queue=new FrameQueue(c);private val claimed=new AtomicBoolean();val delivered=new AtomicBoolean()
     def claim(who:String):Unit={if(who!=consumer)denied("output consumer denied");if(!claimed.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"output already consumed")}
   }
-  private final class Session(val id:String,val union:String,val owner:String,definitions:Vector[JsonNode]) {
+  private final class Session(val id:String,val union:String,val owner:String,definitions:Vector[JsonNode],allowFusion:Boolean) {
     val size=definitions.size
     val created=Json.now
     val cancel=new StreamCancel(timeoutSeconds=settings.executionTimeoutSeconds)
     @volatile private var state="prepared"
     private val historyRecord=config.executionHistory.begin("union_execution",metadata=Json.obj().put("execution_id",id).put("union_id",union).put("owner",owner).put("node",DacpUri.origin(config.uri(""))),state="prepared")
+    historyRecord.update("prepared",{val n=Json.obj();n.set[JsonNode]("task_definitions",Json.mapper.valueToTree[JsonNode](definitions.asJava));n})
     private val taskRecords=definitions.map { t=>
       val metadata=Json.obj().put("execution_id",id).put("parent_record_id",historyRecord.id).put("union_id",union).put("owner",owner).put("node",DacpUri.origin(config.uri(""))).put("task_id",t.path("id").asText).put("operator",t.path("operator").asText)
       if(t.has("title"))metadata.put("title",t.path("title").asText)
@@ -220,9 +229,69 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       def finish():Unit={require(ended,"input not fully consumed");require(source.next().isEmpty,"events after input end")}
       def close():Unit=source.close()
     }
-    def start():Unit={
+    @volatile private var runtimePid=0L
+    @volatile private var executionMode="isolated_steps"
+    @volatile private var fusionReason="not_planned"
+    private def grouped():Option[(PreparedOperatorGroup,Map[String,(String,String,JsonNode)],Map[String,(String,String)])]={
+      if(!allowFusion){fusionReason="node_partition_not_fusible";return None}
+      if(runner.nonEmpty || definitions.size<2){fusionReason="single_step_or_test_runner";return None}
+      val external=scala.collection.mutable.Map.empty[String,(String,String,JsonNode)]
+      val tasks=definitions.map { t=>
+        val id=t.path("id").asText
+        val bindings=t.path("inputs").fields.asScala.map { e=>
+          val b=e.getValue
+          val binding=if(b.has("uri") || b.has("origin")){
+            val marker=config.uri("union","/"+id+"_"+e.getKey);external(marker)=(id,e.getKey,b);InputBinding(uri=Some(marker))
+          }else InputBinding(task=Some(b.path("task").asText),port=b.path("port").asText)
+          e.getKey->binding
+        }.toMap
+        Task(id,bindings,t.path("operator").asText,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),title=Option(t.get("title")).map(_.asText))
+      }
+      val connected=definitions.flatMap(t=>t.path("outputs").fields.asScala.filter(_.getValue.asText!=tls.identity).map(e=>(t.path("id").asText,e.getKey))).zipWithIndex.map{case(pair,i)=>s"p$i"->pair}.toMap
+      OperatorGroups.prepare(config,JobPlan(tasks,connected)) match {
+        case Left(reason)=>fusionReason=reason;None
+        case Right(group)=>executionMode="shared_process";fusionReason="compatible";Some((group,external.toMap,connected))
+      }
+    }
+    private def startGrouped(group:PreparedOperatorGroup,external:Map[String,(String,String,JsonNode)],selected:Map[String,(String,String)]):Unit={
+      StreamProtocol.thread(cancel){
+        try {
+          val inputs=group.inputs.map {case(port,binding)=>
+            val (task,name,b)=external(binding.uri.get)
+            val src=if(b.has("uri"))localInput(b)else remoteInput(b)
+            port->new TrackedInput(src,task,name,b.has("origin"))
+          }
+          def event(h:JsonNode):Unit={
+            val id=h.path("task").asText;require(taskRecords.contains(id),"unknown group task")
+            if(h.path("type").asText=="task_state"){
+              val value=h.path("state").asText;require(Set("running","succeeded")(value),"invalid task state")
+              runtimePid=h.path("runtime_pid").asLong
+              states.put(id,value);taskRecords(id).update(value,snapshot)
+            }else {
+              val direction=h.path("direction").asText;val port=h.path("port").asText
+              val remote=direction=="outputs" && outputs.get((id,port)).exists(_.consumer!=tls.identity)
+              metrics.computeIfAbsent(s"$id/$direction/$port",_=>new UnionPortMetrics(allocator)).summary(h,remote)
+            }
+          }
+          try {
+            executor.execute(group.task,inputs,f=>{
+              val name=StreamProtocol.header(f).path("port").asText
+              val (_,label)=group.outputs(name);val pair=selected(label)
+              outputs(pair).queue.put(StreamProtocol.rename(f,pair._2))
+            },cancel,Some(group.operator),Some(event))
+            inputs.values.foreach(_.finish())
+            outputs.values.foreach(_.queue.end())
+            synchronized{if(!terminal){state="succeeded";finished=Json.now;historyRecord.update(state,snapshot);releaseSlots()}}
+          }finally inputs.values.foreach(_.close())
+        }catch{case t:Throwable=>stop("failed",Some(Option(t.getMessage).getOrElse(t.getClass.getSimpleName)));throw t}
+      }
+    }
+    private[dacp] def executionSnapshots:Vector[JsonNode]=sessions.values.asScala.toVector.map(_.snapshot)
+  def start():Unit={
       if(!started.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"execution already started")
+      val group=try grouped()catch{case t:Throwable=>stop("failed",Some(Option(t.getMessage).getOrElse("group planning failed")));throw t}
       synchronized {require(state=="prepared","execution cannot start");state="running";historyRecord.update(state,snapshot)}
+      group.foreach{case(plan,external,selected)=>startGrouped(plan,external,selected);return}
       val threads=definitions.map { t=>StreamProtocol.thread(cancel){
         val taskId=t.path("id").asText
         try {
@@ -259,7 +328,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       }
     }
     def snapshot:JsonNode={
-      val n=Json.obj().put("execution_id",id).put("union_id",union).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished)
+      val n=Json.obj().put("execution_id",id).put("union_id",union).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished).put("execution_mode",executionMode).put("fusion_reason",fusionReason).put("runtime_pid",runtimePid)
       val ts=n.putObject("tasks");states.asScala.toSeq.sortBy(_._1).foreach{case(k,v)=>ts.put(k,v)}
       val ms=n.putObject("ports");metrics.asScala.toSeq.sortBy(_._1).foreach{case(k,v)=>ms.set[JsonNode](k,v.snapshot)};n
     }
@@ -272,6 +341,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     }
     def close():Unit=cancel.close()
   }
+  private[dacp] def executionSnapshots:Vector[JsonNode]=sessions.values.asScala.toVector.map(_.snapshot)
   def start():Unit={
     monitor.scheduleWithFixedDelay(new Runnable{def run():Unit=sessions.values.asScala.foreach{s=>
       s.check();if(s.terminal && Json.now-s.finished>settings.retentionSeconds*1000){sessions.remove(s.id,s);s.close()}
