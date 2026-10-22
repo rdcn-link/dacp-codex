@@ -8,6 +8,7 @@ Each dacp-server starts a public, read-only HTTP dashboard by default. It binds 
 web:
   enabled: true
   host: 0.0.0.0
+  public_host: node-a.example.org
   port: 19861
 ```
 
@@ -26,6 +27,8 @@ Union subjobs display the definitions and steps assigned to this node. External 
 
 Node status and the selected execution refresh every 2 seconds. Dataset directories are read on page load or manual refresh. The dashboard does not open Items, run operators, cancel jobs, or consume result streams.
 
-The page publicly exposes execution metadata and stored scripts and task parameters. Use it where this information may be public, configure its bind address, or disable it. Flight mTLS, data authorization, and execution authorization retain their existing rules. Responses use `Cache-Control: no-store`; static resources require no external network access.
+The page publicly exposes execution metadata and stored scripts and task parameters. Use it where this information may be public, configure its bind address, or disable it. Flight retains mTLS; published datasets are public by default, while execution retains its separate authorization rules. Responses use `Cache-Control: no-store`; static resources require no external network access.
 
 Union provides per-member dataset pages on its website, with no directory Flight API or aggregate of all members; see [dataset directories](dataset-directory_en.md).
+
+`web.public_host` is the browser-facing dashboard hostname and defaults to the node `public_host`; it is separate from the bind address `web.host`. Only after HTTP starts successfully does the node report `web_enabled: true` and `web_url`, including its actual port, through Flight `node_status`. The Union member table links to that address, shows “未启用” when Web is disabled, and an unknown state when node status is unavailable.

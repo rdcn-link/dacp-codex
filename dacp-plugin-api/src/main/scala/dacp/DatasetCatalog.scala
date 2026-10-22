@@ -1,11 +1,19 @@
 package dacp
 
-/** Public discovery metadata. Never include storage locations, credentials or private settings. */
-case class DatasetMetadata(title:String="",description:String="",tags:Seq[String]=Seq.empty) {
-  require(title!=null && title.length<=1024 && description!=null && description.length<=32768,"invalid dataset description")
-  require(tags!=null && tags.size<=64 && tags.forall(t=>t!=null && t.nonEmpty && t.length<=256),"invalid dataset tags")
+/** Public, user-defined JSON object text. Never include credentials or storage settings. */
+object DatasetDescriptions {
+  private val reader=new com.fasterxml.jackson.databind.ObjectMapper().reader()
+    .`with`(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+  def validate(value:String):Unit={
+    require(value!=null && value.length<=32768,"dataset description must be JSON object text of at most 32768 characters")
+    val node=try reader.readTree(value)
+      catch {case scala.util.control.NonFatal(_)=>throw new IllegalArgumentException("dataset description must be valid JSON object text")}
+    require(node!=null && node.isObject,"dataset description must be a JSON object")
+  }
 }
-case class DatasetInfo(name:String,metadata:DatasetMetadata=DatasetMetadata())
+case class DatasetInfo(name:String,description:String="{}") {
+  DatasetDescriptions.validate(description)
+}
 object DatasetNames {
   def validate(name:String):Unit=require(name!=null && name.nonEmpty && !name.contains("/") && !name.contains("\\") && name!="." && name!=".." && !name.exists(_.isControl),"invalid dataset name")
 }

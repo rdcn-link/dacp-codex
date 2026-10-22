@@ -2,11 +2,17 @@
 host: 0.0.0.0
 public_host: localhost
 port: 8815
+# Public anonymous read-only S3 endpoint; independent of Flight mTLS.
+s3:
+  enabled: true
+  host: 0.0.0.0
+  port: 10815
 # Count directly published record files once; browsing does not scan records.
 count_file_records_on_startup: true
 datasets:
   data1:
     provider: mixed
+    description: '{"summary":"Example records, files and archives","owner":{"team":"DACP"}}'
     items:
       /events: {file: ../examples/data/events.json, format: ndjson}
       /reports/orders: {file: ../examples/data/nested/orders.csv}
@@ -27,12 +33,6 @@ datasets:
       root: ../examples/data
     reader_overrides:
       /events.json: {format: ndjson}
-allowed_uri_prefixes:
-  - dacp://localhost:8815/data1
-  - dacp://localhost:8815/documents
-  - dacp://localhost:8815/csv_data
-  - dacp://localhost:8815/s1
-  - dacp://localhost:8815/s2
 tls_cert: ../examples/certs/server.crt
 tls_key: ../examples/certs/server.key
 tls_ca: ../examples/certs/ca.crt

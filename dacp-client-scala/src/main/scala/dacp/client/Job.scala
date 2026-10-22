@@ -16,7 +16,7 @@ import scala.util.Using
 
 /** Payloads are owned byte arrays, valid after advancing or closing the stream. */
 final case class OutputEvent(kind:String, port:String, task:Option[String], representation:Option[String],
-  format:Option[String], schema:Option[Schema], data:Array[Byte]) {
+  format:Option[String], schema:Option[Schema], data:Array[Byte], executionId:Option[String]=None) {
   /** Record payload contains one independent IPC stream. Caller closes this reader. */
   def records(allocator:org.apache.arrow.memory.BufferAllocator):ArrowStreamReader = {
     require(kind=="data" && representation.contains("records"),"event is not record data")
@@ -25,12 +25,18 @@ final case class OutputEvent(kind:String, port:String, task:Option[String], repr
 }
 
 object Job {
-  def run(node:String, yaml:String, tls:TlsConfig=TlsConfig(), timeoutSeconds:Long=3600):JobStream = {
+  def run(node:String, yaml:String, tls:TlsConfig=TlsConfig(), timeoutSeconds:Long=3600, executionPolicy:com.fasterxml.jackson.databind.JsonNode=JobStream.mapper.createObjectNode(),
+    onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None, replayFrom:Option[String]=None):JobStream = {
     val u=new URI(node)
     require(u.getScheme=="dacp" && u.getHost!=null && u.getUserInfo==null && u.getQuery==null && u.getFragment==null &&
       Set("", "/")(Option(u.getPath).getOrElse("")) && (u.getPort == -1 || u.getPort>0 && u.getPort<=65535),"expected node origin dacp://host[:port]")
     require(timeoutSeconds>0,"timeoutSeconds must be positive")
-    val request=Metadata.OperatorRequest.newBuilder().setJobYaml(yaml).build().toByteArray
+    require(executionPolicy.isObject,"executionPolicy must be an object")
+    val builder=Metadata.OperatorRequest.newBuilder().setJobYaml(yaml).setRetryAware(onRetry.nonEmpty)
+
+    if(replayFrom.isEmpty || executionPolicy.size()>0)builder.setExecutionPolicyJson(com.google.protobuf.ByteString.copyFromUtf8(executionPolicy.toString))
+    replayFrom.foreach(builder.setReplayFrom)
+    val request=builder.build().toByteArray
     require(request.length<=1024*1024,"control request exceeds 1 MiB")
     def credential(p:Option[Path],env:String)=p.orElse(sys.env.get(env).map(Path.of(_)))
     val ca=credential(tls.ca,"DACP_CA");val cert=credential(tls.cert,"DACP_CERT");val key=credential(tls.key,"DACP_KEY")
@@ -44,26 +50,30 @@ object Job {
         cert.foreach(p=>builder.clientCertificate(use(Files.newInputStream(p)),use(Files.newInputStream(key.get))))
         builder.build()
       }.get
-      open(client,allocator,request,timeoutSeconds)
+      open(client,allocator,request,timeoutSeconds,onRetry)
     } catch {case t:Throwable=>if(client!=null)try client.close()catch{case _:Throwable=>()};allocator.close();throw DacpErrors.translate(t)}
   }
-  private[client] def open(client:FlightClient, allocator:RootAllocator,request:Array[Byte],timeout:Long):JobStream = {
+  def replay(node:String,executionId:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=3600,
+    onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None):JobStream =
+    run(node,"",tls,timeoutSeconds,onRetry=onRetry,replayFrom=Some(executionId))
+  private[client] def open(client:FlightClient, allocator:RootAllocator,request:Array[Byte],timeout:Long,onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None):JobStream = {
     val exchange=client.doExchange(FlightDescriptor.command(request),CallOptions.timeout(timeout,TimeUnit.SECONDS))
     val root=VectorSchemaRoot.create(JobStream.envelope,allocator)
-    try {exchange.getWriter.start(root);exchange.getWriter.completed();new JobStream(client,allocator,exchange,root)}
+    try {exchange.getWriter.start(root);exchange.getWriter.completed();new JobStream(client,allocator,exchange,root,onRetry)}
     catch {case t:Throwable=>try exchange.close()finally root.close();throw t}
   }
 }
 
 object JobStream {
   private[client] val envelope=Schema.fromJSON("""{"fields":[{"name":"data","nullable":true,"type":{"name":"binary"},"children":[]}]}""")
-  private val mapper=new com.fasterxml.jackson.databind.ObjectMapper()
+  private[client] val mapper=new com.fasterxml.jackson.databind.ObjectMapper()
 }
 /** Single-consumer, closable iterator. Use scala.util.Using.resource, including on early exit. */
 final class JobStream private[client](client:FlightClient,allocator:RootAllocator,
-  exchange:FlightClient.ExchangeReaderWriter,root:VectorSchemaRoot) extends Iterator[OutputEvent] with AutoCloseable {
+  exchange:FlightClient.ExchangeReaderWriter,root:VectorSchemaRoot,onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None) extends Iterator[OutputEvent] with AutoCloseable {
   private case class Port(representation:String, format:String, schema:Option[Schema],var ended:Boolean=false)
   private val ports=mutable.Map.empty[String,Port]
+  var executionId:Option[String]=None
   private var pending:Option[OutputEvent]=None
   private var complete=false
   private var closed=false
@@ -84,7 +94,12 @@ final class JobStream private[client](client:FlightClient,allocator:RootAllocato
       require(h>0 && h<=65536 && n>=0 && n<=8*1024*1024 && raw.length.toLong==8L+h+n,"invalid frame lengths")
       val header=new Array[Byte](h);in.readFully(header);val data=new Array[Byte](n);in.readFully(data)
       val meta=JobStream.mapper.readTree(header);val kind=meta.path("type").asText;val port=meta.path("port").asText
+      executionId=Option(meta.get("execution_id")).map(_.asText).orElse(executionId)
       kind match {
+        case "execution"=>require(executionId.nonEmpty && ports.isEmpty,"invalid execution metadata")
+        case "attempt_failed"=>
+          require(onRetry.nonEmpty,"retry notification requires onRetry callback")
+          onRetry.get(meta);ports.clear();return hasNext
         case "start"=>
           val repr=meta.path("representation").asText
           require(port.nonEmpty && !ports.contains(port) && Set("bytes","records")(repr),"invalid output start")
@@ -103,7 +118,7 @@ final class JobStream private[client](client:FlightClient,allocator:RootAllocato
         case _=>throw new IllegalArgumentException("unknown output event")
       }
       val state=ports.get(port)
-      pending=Some(OutputEvent(kind,port,Option(meta.get("task")).map(_.asText),state.map(_.representation),state.map(_.format),state.flatMap(_.schema),data))
+      pending=Some(OutputEvent(kind,port,Option(meta.get("task")).map(_.asText),state.map(_.representation),state.map(_.format),state.flatMap(_.schema),data,executionId))
       true
     } catch {case t:Throwable=>try close()catch{case cleanup:Throwable=>t.addSuppressed(cleanup)};throw DacpErrors.translate(t)}
   }

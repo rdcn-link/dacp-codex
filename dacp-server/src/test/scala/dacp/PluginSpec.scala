@@ -23,8 +23,7 @@ class PluginSpec extends AnyFunSuite {
       "files" -> FileDatasets.mixed(Seq(
         PublishedItem("/science",file=Some(dir.resolve("private.message")),options=FileOptions(parameters=Map("prefix" -> "hello "))),
         PublishedItem("/archive",file=Some(dir.resolve("private.testpack"))))),
-      "directory" -> DatasetDefinition("directory",Map("root" -> dir.toString))),
-      Seq("dacp://localhost:8815/"),dir,dir,dir)
+      "directory" -> DatasetDefinition("directory",Map("root" -> dir.toString))),dir,dir,dir)
     val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator)).build().start()
     val client = FlightClient.builder(allocator,server.getLocation).build()
     def read(ds: String, path: String): String = {
@@ -46,8 +45,11 @@ class PluginSpec extends AnyFunSuite {
       assert(read("files","/science") == "native child")
       assert(read("directory","/private.message/message") == "native child")
       assert(read("files","/archive/nested/entry.csv") == "id\n1\n2\n")
+      assert(read("native","/summary") == "{\"characters\":14}\n")
+      assert(read("files","/science/summary") == "{\"characters\":18}\n")
       // A native records source whose format is unknown to the core format registry.
       val nativeInfo = client.getInfo(FlightDescriptor.path("datasets","native","/summary"))
+      assert(Metadata.Item.parseFrom(nativeInfo.getAppMetadata).getViewsList.asScala.toSeq == Seq("records","bytes"))
       val nativeStream = client.getStream(nativeInfo.getEndpoints.get(0).getTicket)
       try {
         assert(nativeStream.next())
@@ -90,7 +92,7 @@ class PluginSpec extends AnyFunSuite {
     val dir = Files.createTempDirectory("plugin-lifecycle-")
     try {
       val file = dir.resolve("private.tracked"); Files.writeString(file,"message")
-      val c = Config("localhost",8815,"localhost",Map.empty,Seq.empty,dir,dir,dir)
+      val c = Config("localhost",8815,"localhost",Map.empty,dir,dir,dir)
       var cancel = false
       val ns = new NamespaceAdapter(Seq(PublishedItem("/science",file=Some(file))),c,
         () => if(cancel) throw new java.util.concurrent.CancellationException())

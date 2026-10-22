@@ -16,12 +16,12 @@ private[unionserver] final class MemberDatasets(members:Members) {
       check();require(f.getAppMetadata.length<=256*1024,"catalog entry too large")
       val m=Metadata.DataSet.parseFrom(f.getAppMetadata)
       DatasetNames.validate(m.getName)
-      DatasetMetadata(m.getTitle,m.getDescription,m.getTagsList.asScala.toVector)
+      DatasetDescriptions.validate(m.getDescription)
       val uri=new java.net.URI(m.getUri)
       require(m.getUri==new java.net.URI("dacp",null,uri.getHost,uri.getPort,"/"+m.getName,null,null).toASCIIString && DacpUri.origin(m.getUri)==origin,"catalog URI outside member namespace")
       // Whitelist public metadata; do not aggregate Item listings or unknown fields.
-      Metadata.DataSet.newBuilder().setName(m.getName).setUri(m.getUri).setTitle(m.getTitle)
-        .setDescription(m.getDescription).addAllTags(m.getTagsList).setNodeIdentity(id).setObservedAtMs(System.currentTimeMillis()).build()
+      Metadata.DataSet.newBuilder().setName(m.getName).setUri(m.getUri)
+        .setDescription(m.getDescription).setNodeIdentity(id).setObservedAtMs(System.currentTimeMillis()).build()
     }.sortBy(_.getName)
     require(entries.map(_.getName).distinct.size==entries.size,"duplicate dataset name")
     entries

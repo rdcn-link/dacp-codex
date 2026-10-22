@@ -10,6 +10,10 @@ For the data model, transport, trust, and collaboration contracts of DACP (Data 
 
 [DatasetCatalog plugins](docs/dataset-catalogs_en.md) can supply Dataset identities dynamically; Scala/JVM applications can host nodes through the [DacpServer API](docs/embedded-server_en.md).
 
+Nodes also expose an [S3-compatible read-only service](docs/s3-service_en.md) by default, allowing S3 clients to list dataset buckets and download Item byte streams.
+
+Official website module: [dacp-website](dacp-website/README_en.md), providing an English project overview, online documentation by role, and software downloads.
+
 ## Read by role
 
 | Reader | Entry point | Main topics |
@@ -43,4 +47,4 @@ Servers use JDK 17 and Scala 2.13; the Python SDK requires Python 3.10+. Browsin
 - Distributed demonstration: run the [two-node Union example](examples/union/README_en.md).
 - Custom computation: read [writing and publishing operators](docs/operator-authoring_en.md).
 
-Data access and task execution use Flight mTLS; the operator repository and read-only dashboard use HTTP/HTTPS. Union CA trust, client allowlists, and node compute approval are configured separately. Each operator runs in its own container. Outputs are not registered as Datasets. Servers persist execution metadata, while result contents are delivered through single-consumption streams.
+Data access and task execution use Flight mTLS; the operator repository and read-only dashboard use HTTP/HTTPS. Union CA trust, client allowlists, and node compute approval are configured separately. Operators use isolated runtime environments; eligible node subjobs share one process. See [in-process operator fusion](docs/operator-fusion_en.md). Outputs are not registered as Datasets. Servers persist execution metadata, while result contents are delivered through single-consumption streams.

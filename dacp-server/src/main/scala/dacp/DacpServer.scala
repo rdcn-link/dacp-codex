@@ -13,6 +13,8 @@ final class DacpServer private(config:Config) extends AutoCloseable {
   private var union:Option[UnionWorker]=None
   private var flight:FlightServer=null
 
+  private var s3:S3Service=null
+  def s3Port:Option[Int]=synchronized {Option(s3).map(_.port)}
   private var dashboard:NodeDashboard=null
   private var startedAt=0L
   def webPort:Option[Int]=synchronized {Option(dashboard).map(_.port)}
@@ -29,7 +31,8 @@ final class DacpServer private(config:Config) extends AutoCloseable {
       flight=dacp.union.Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),new Producer(config,allocator,Some(tasks),union)),new dacp.union.Tls(config.cert,config.key,config.ca))
         .maxInboundMessageSize(dacp.union.Rpc.MaxMessage).build()
       flight.start();union.foreach(_.start());startedAt=System.currentTimeMillis()
-      if(config.web.enabled){dashboard=new NodeDashboard(config,flight.getPort,startedAt,()=>union.toVector.flatMap(_.executionSnapshots));dashboard.start()}
+      if(config.web.enabled){dashboard=new NodeDashboard(config,flight.getPort,startedAt,()=>union.toVector.flatMap(_.executionSnapshots));dashboard.start();config.runningWebUrl=Some(dashboard.publicUrl)}
+      if(config.s3.enabled){s3=new S3Service(config,flight.getPort,allocator);s3.start()}
       state="started"
       val log=org.slf4j.LoggerFactory.getLogger("dacp.Main")
       log.debug(s"remote_operator_library_urls (${config.remoteOperatorLibraryUrls.size}):")
@@ -47,8 +50,9 @@ final class DacpServer private(config:Config) extends AutoCloseable {
   def close():Unit=synchronized {
     if(state!="closed") {
       state="closed"
+      config.runningWebUrl=None
       var failure:Throwable=null
-      val resources=Option(dashboard).toSeq++union.toSeq++Option(tasks).toSeq++Option(flight).toSeq++Seq(config)++Option(allocator).toSeq
+      val resources=Option(s3).toSeq++Option(dashboard).toSeq++union.toSeq++Option(tasks).toSeq++Option(flight).toSeq++Seq(config)++Option(allocator).toSeq
       resources.foreach(r=>try r.close()catch{case NonFatal(e)=>if(failure==null)failure=e else failure.addSuppressed(e)})
       if(failure!=null)throw failure
     }

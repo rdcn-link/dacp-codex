@@ -21,7 +21,7 @@ mkdir -p plugins
 cp examples/plugins/target/scala-2.13/dacp-example-plugins_2.13-0.1.0-SNAPSHOT.jar plugins/
 ```
 
-Add this fragment to a complete server configuration (including listener, TLS, and URI allowlist settings). Relative paths resolve against the server working directory; this example starts from `dacp-server/`:
+Add this fragment to a complete server configuration (including listener and TLS settings). Relative paths resolve against the server working directory; this example starts from `dacp-server/`:
 
 ```yaml
 plugin_directory: ../.dacp-plugins
@@ -36,9 +36,6 @@ datasets:
       /document:
         file: /private/example.message
         options: {prefix: "Preview: "}
-allowed_uri_prefixes:
-  - dacp://localhost:8815/greeting
-  - dacp://localhost:8815/files
 ```
 
 Restart the staged server with that configuration. No launcher edits, server rebuild for the plugin, or client changes are needed. The `stage` command above builds the server initially; subsequent plugin changes only require rebuilding the plugin JAR and restarting the server.
@@ -58,3 +55,5 @@ Registration files live in `src/main/resources/META-INF/services/`. File and str
 The server's [PluginSpec](../../dacp-server/src/test/scala/dacp/PluginSpec.scala) compiles this source into its tests and exercises it over Flight, alongside registered archive plugins and lifecycle checks. Run `PluginChecks.listing(access)` in your own tests to check recursive listing, immediate children, paths, and metadata. Add format-specific streaming, bounded-memory, error, cancellation, and resource-release tests.
 
 The dynamic catalog example `example.JdbcCatalogProvider` registers through `META-INF/services/dacp.DatasetCatalogProvider`, queries database registry tables, and constructs Datasets on demand. After building this project, install its JAR and the JDBC driver in the plugin directory. See the [DatasetCatalog guide](../../docs/dataset-catalogs_en.md) for configuration and table definitions.
+
+Once published by a node, `/summary` also receives an automatic JSONL `bytes` view. With `message: hello`, its bytes are `{"characters":5}` followed by a newline; the plugin still implements only records. See the [common view rules](../../docs/dataset-access_en.md#common-jsonl-bytes-view).

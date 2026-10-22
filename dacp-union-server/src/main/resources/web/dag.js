@@ -2,7 +2,7 @@
 'use strict';
 window.DacpDag=(()=>{
  const palette=[{stroke:'#2563eb',fill:'#dbeafe'},{stroke:'#c2410c',fill:'#ffedd5'},{stroke:'#15803d',fill:'#dcfce7'},{stroke:'#9333ea',fill:'#f3e8ff'},{stroke:'#be123c',fill:'#ffe4e6'},{stroke:'#0e7490',fill:'#cffafe'}];
- const states={succeeded:{color:'#168264',fill:'#f0faf5',label:'✓ 已完成'},running:{color:'#2563eb',fill:'#eff6ff',label:'▶ 执行中'},failed:{color:'#cc4560',fill:'#fff3f5',label:'! 执行失败'},cancelled:{color:'#cc4560',fill:'#fff3f5',label:'! 已取消'},expired:{color:'#cc4560',fill:'#fff3f5',label:'! 已超时'},interrupted:{color:'#cc4560',fill:'#fff3f5',label:'! 服务中断'},unknown:{color:'#b68424',fill:'#fff9eb',label:'? 状态未知'}};
+ const states={skipped:{color:'#94a3b8',fill:'#f1f5f9',label:'↷ 已跳过'},replaying:{color:'#7c3aed',fill:'#f5f3ff',label:'↻ 重放中'},succeeded:{color:'#168264',fill:'#f0faf5',label:'✓ 已完成'},running:{color:'#2563eb',fill:'#eff6ff',label:'▶ 执行中'},failed:{color:'#cc4560',fill:'#fff3f5',label:'! 执行失败'},cancelled:{color:'#cc4560',fill:'#fff3f5',label:'! 已取消'},expired:{color:'#cc4560',fill:'#fff3f5',label:'! 已超时'},interrupted:{color:'#cc4560',fill:'#fff3f5',label:'! 服务中断'},unknown:{color:'#b68424',fill:'#fff9eb',label:'? 状态未知'}};
  const pending={color:'#94a3b8',fill:'#f8fafc',label:'○ 尚未执行',dash:[5,4]};
  const compact=(text,max)=>Array.from(String(text||'')).length>max?Array.from(String(text)).slice(0,max-1).join('')+'…':String(text||'');
  function buildData(job,previous,fmt){
@@ -30,7 +30,7 @@ window.DacpDag=(()=>{
    const state=states[t.state]||{...pending,label:pending.label+' · '+(fmt.labels[t.state]||t.state||'等待')};
    const incoming=aggregate(t,'inputs'),outgoing=aggregate(t,'outputs'),observed=job.nodes[t.node_identity]?.observed_at_ms;
    nodes.push({id:'task:'+t.id,combo:groups.get(t.node),data:{kind:'task',title:t.title||t.id,subtitle:t.operator,stateLabel:state.label,border:t.state==='running'?2:1.2,color:state.color,fill:state.fill,dash:state.dash||[],incoming,outgoing},style:{size:[268,150]}});
-   details.set('task:'+t.id,{title:t.title||t.id,lines:['任务 ID：'+t.id,'算子：'+t.operator,'服务器：'+t.node,'状态：'+(fmt.labels[t.state]||t.state),'输入负载：'+incoming,'输出负载：'+outgoing,'最近观测：'+fmt.time(observed)]});
+   details.set('task:'+t.id,{title:t.title||t.id,lines:['任务 ID：'+t.id,'算子：'+t.operator,'服务器：'+t.node,'状态：'+(fmt.labels[t.state]||t.state),...(t.replayed?['本次使用已物化结果重放']:[]),'输入负载：'+incoming,'输出负载：'+outgoing,'最近观测：'+fmt.time(observed)]});
   }
   for(const t of job.tasks)for(const binding of t.inputs){
    let source='task:'+binding.task;
@@ -54,6 +54,24 @@ window.DacpDag=(()=>{
   const topology=JSON.stringify({nodes:nodes.map(n=>[n.id,n.combo]),edges:edges.map(e=>[e.id,e.source,e.target]),combos:combos.map(c=>c.id)});
   return {data:{nodes,edges,combos},details,topology};
  }
+ // Swimlanes share global dependency columns; each server occupies a distinct row.
+ function swimlane(data,vertical){
+  const ranks=new Map(data.nodes.map(n=>[n.id,0])),remaining=new Map(data.nodes.map(n=>[n.id,0])),next=new Map(data.nodes.map(n=>[n.id,[]]));
+  for(const e of data.edges){remaining.set(e.target,remaining.get(e.target)+1);next.get(e.source).push(e.target);}
+  const queue=data.nodes.filter(n=>remaining.get(n.id)===0).map(n=>n.id);
+  for(let i=0;i<queue.length;i++)for(const target of next.get(queue[i])){ranks.set(target,Math.max(ranks.get(target),ranks.get(queue[i])+1));remaining.set(target,remaining.get(target)-1);if(!remaining.get(target))queue.push(target);}
+  const maxRank=Math.max(0,...ranks.values());let top=0;
+  for(const combo of data.combos){
+   const columns=new Map(),members=data.nodes.filter(n=>n.combo===combo.id);
+   for(const n of members){const rank=ranks.get(n.id),slot=columns.get(rank)||0;columns.set(rank,slot+1);n.style={...n.style,x:vertical?top+170+slot*310:rank*400,y:vertical?rank*280:top+140+slot*190};}
+   const left=Math.min(...members.map(n=>n.style.x-n.style.size[0]/2)),right=Math.max(...members.map(n=>n.style.x+n.style.size[0]/2));
+   if(vertical){
+    const minY=Math.min(...members.map(n=>n.style.y-n.style.size[1]/2)),maxY=Math.max(...members.map(n=>n.style.y+n.style.size[1]/2));
+    combo.style.padding=[minY+145,30,maxRank*280+105-maxY,30];
+   }else combo.style.padding=[64,maxRank*400+158-right,30,left+158];
+   top+=Math.max(1,...columns.values())*(vertical?310:190)+110;
+  }
+ }
  function registerCard(){
   class TaskCard extends G6.Rect {
    render(attributes=this.parsedAttributes,container){
@@ -76,7 +94,9 @@ window.DacpDag=(()=>{
  let registered=false;
  class Viewer {
   constructor(host){
-   this.host=host;this.graph=null;this.ready=false;this.job=null;this.topology=null;this.details=new Map();this.inspected=null;this.pending=Promise.resolve();this.mode='fit';
+   this.host=host;this.graph=null;this.ready=false;this.job=null;this.topology=null;this.details=new Map();this.inspected=null;this.pending=Promise.resolve();this.mode='fit';this.layoutMode='dependency';this.direction='horizontal';
+   document.querySelectorAll('[data-dag-layout]').forEach(button=>button.addEventListener('click',()=>this.setLayout('layout',button.dataset.dagLayout)));
+   document.querySelectorAll('[data-dag-direction]').forEach(button=>button.addEventListener('click',()=>this.setLayout('direction',button.dataset.dagDirection)));
    const button=(id,fn)=>document.getElementById(id).addEventListener('click',()=>this.action(fn));
    button('dag-zoom-in',async()=>{this.mode='manual';await this.graph.zoomTo(Math.min(2.5,this.graph.getZoom()*1.2),false);});
    button('dag-zoom-out',async()=>{this.mode='manual';await this.graph.zoomTo(Math.max(.15,this.graph.getZoom()/1.2),false);});
@@ -85,6 +105,16 @@ window.DacpDag=(()=>{
    button('dag-expand',async()=>{for(const combo of this.graph.getComboData())if(combo.style?.collapsed)await this.graph.expandElement(combo.id,{animation:false});await this.fit();});
    this.resize=new ResizeObserver(()=>{if(this.graph&&this.host.clientWidth&&this.host.clientHeight)this.action(async()=>{this.graph.resize(this.host.clientWidth,this.host.clientHeight);if(this.mode==='fit')await this.fit();});});
    this.resize.observe(host);
+  }
+  setLayout(control,value){
+   const field=control==='layout'?'layoutMode':'direction',values=control==='layout'?['dependency','swimlane']:['horizontal','vertical'];
+   if(!values.includes(value)||this[field]===value)return;
+   this[field]=value;
+   document.querySelectorAll('[data-dag-layout]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.dagLayout===this.layoutMode)));
+   document.querySelectorAll('[data-dag-direction]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.dagDirection===this.direction)));
+   document.getElementById('dag-expand').disabled=this.layoutMode==='swimlane';
+   document.getElementById('dag-layout-hint').textContent=this.layoutMode==='swimlane'?(this.direction==='vertical'?'按服务器分列 · 流程从上向下':'按服务器分行 · 流程从左向右')+' · 拖动平移 / 滚轮缩放':'拖动画布平移 · 滚轮缩放 · 双击分组折叠';
+   if(this.lastRequest)this.update(...this.lastRequest).catch(error=>{const box=document.getElementById('dag-error');box.textContent='拓扑图布局失败：'+error.message;box.hidden=false;});
   }
   action(fn){
    this.pending=this.pending.catch(()=>{}).then(async()=>{if(this.graph){await fn();this.zoomLabel();}}).catch(error=>{const box=document.getElementById('dag-error');box.textContent='拓扑图操作失败：'+error.message;box.hidden=false;});return this.pending;
@@ -98,22 +128,25 @@ window.DacpDag=(()=>{
    for(const line of info.lines){const row=document.createElement('span');row.textContent=line;box.append(row);}
   }
   update(job,previous,fmt){
-   const model=buildData(job,previous,fmt);
+   this.lastRequest=[job,previous,fmt];
+   const layout=this.layoutMode,vertical=this.direction==='vertical',layoutKey=layout+':'+this.direction,model=buildData(job,previous,fmt);
+   if(layout==='swimlane')swimlane(model.data,vertical);
+   if(vertical)for(const edge of model.data.edges)edge.style.targetPort='in';
    // Serialize viewport operations and refreshes; a slow render must finish before the next update.
    const work=this.pending.catch(()=>{}).then(async()=>{
     if(!window.G6)throw new Error('G6 图组件未加载');
     if(!registered){registerCard();registered=true;}
     this.details=model.details;
-    const rebuild=!this.ready||this.job!==job.job_id||this.topology!==model.topology;
+    const rebuild=!this.ready||this.job!==job.job_id||this.topology!==model.topology||this.renderedLayout!==layoutKey;
     if(rebuild){
-     this.destroyGraph();this.host.replaceChildren();this.job=job.job_id;this.topology=model.topology;this.mode='fit';this.inspect(null);
+     this.destroyGraph();this.renderedLayout=layoutKey;document.getElementById('dag-error').hidden=true;this.host.replaceChildren();this.job=job.job_id;this.topology=model.topology;this.mode='fit';this.inspect(null);
      this.graph=new G6.Graph({
       container:this.host,width:this.host.clientWidth,height:this.host.clientHeight,animation:false,padding:36,zoomRange:[.15,2.5],data:model.data,
-      layout:{type:'combo-combined',comboPadding:[64,24,24,24],comboSpacing:64,layout:comboId=>({type:'dagre',rankdir:'LR',nodesep:comboId?36:70,ranksep:comboId?70:90})},
-      node:{type:'dacp-task-card',style:{card:d=>d.data,fill:d=>d.data.fill,stroke:d=>d.data.color,lineDash:d=>d.data.dash,lineWidth:d=>d.data.border||1.2,radius:12,shadowColor:'#1e3a5f0c',shadowBlur:10,shadowOffsetY:4,label:false,ports:[{key:'in',placement:'left'},{key:'out',placement:'right'},{key:'left',placement:'left'},{key:'right',placement:'right'}],portR:3,portFill:'#fff',portStroke:'#b5c4d6'}},
-      edge:{type:'polyline',style:{sourcePort:'out',targetPort:d=>d.style?.targetPort||'in',router:d=>({type:'shortest-path',enableObstacleAvoidance:true,offset:16,gridSize:10,startDirections:['right'],endDirections:['left']}),radius:10,endArrow:true,endArrowSize:7,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#6e829b',labelBackground:true,labelBackgroundFill:'#fff',labelBackgroundRadius:5,labelPadding:[4,7],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
-      combo:{type:'rect',style:{radius:18,padding:[64,24,24,24],lineWidth:2,fillOpacity:1,labelPlacement:'top-left',labelTextAlign:'left',labelOffsetX:16,labelOffsetY:20,labelFontSize:12,labelFontWeight:600,labelFill:'#526b88',collapsedSize:[268,76]}},
-      behaviors:[{type:'drag-canvas',onFinish:()=>{this.mode='manual';}},{type:'zoom-canvas',sensitivity:.5,onFinish:()=>{this.mode='manual';this.zoomLabel();}},{type:'collapse-expand',enable:event=>event.targetType==='combo',animation:false}],
+      layout:layout==='swimlane'?undefined:{type:'combo-combined',comboPadding:[64,24,24,24],comboSpacing:64,layout:comboId=>({type:'dagre',rankdir:vertical?'TB':'LR',nodesep:comboId?36:70,ranksep:comboId?70:90})},
+      node:{type:'dacp-task-card',style:{card:d=>d.data,fill:d=>d.data.fill,stroke:d=>d.data.color,lineDash:d=>d.data.dash,lineWidth:d=>d.data.border||1.2,radius:12,shadowColor:'#1e3a5f0c',shadowBlur:10,shadowOffsetY:4,label:false,ports:[{key:'in',placement:vertical?'top':'left'},{key:'out',placement:vertical?'bottom':'right'},{key:'left',placement:'left'},{key:'right',placement:'right'}],portR:3,portFill:'#fff',portStroke:'#b5c4d6'}},
+      edge:{type:'polyline',style:{sourcePort:'out',targetPort:d=>d.style?.targetPort||'in',router:d=>({type:'shortest-path',enableObstacleAvoidance:true,offset:16,gridSize:10,startDirections:[vertical?'bottom':'right'],endDirections:[vertical?'top':'left']}),radius:10,endArrow:true,endArrowSize:7,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#6e829b',labelBackground:true,labelBackgroundFill:'#fff',labelBackgroundRadius:5,labelPadding:[4,7],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
+      combo:{type:'rect',style:{radius:18,padding:d=>d.style?.padding||[64,24,24,24],lineWidth:2,fillOpacity:1,labelPlacement:'top-left',labelTextAlign:'left',labelOffsetX:16,labelOffsetY:20,labelFontSize:12,labelFontWeight:600,labelFill:'#526b88',collapsedSize:[268,76]}},
+      behaviors:[{type:'drag-canvas',onFinish:()=>{this.mode='manual';}},{type:'zoom-canvas',sensitivity:.5,onFinish:()=>{this.mode='manual';this.zoomLabel();}},{type:'collapse-expand',enable:event=>layout!=='swimlane'&&event.targetType==='combo',animation:false}],
      });
      for(const type of ['node','edge','combo'])this.graph.on(type+':click',event=>this.inspect(event.target.id));
      this.graph.on('canvas:click',()=>this.inspect(null));

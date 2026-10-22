@@ -14,7 +14,7 @@
 | `dacp-plugin-catalog-static` | `DatasetCatalogProvider`：`static` | 无额外依赖 |
 | `dacp-plugin-operator-executors` | `OperatorExecutor`：`container`、`jvm`、`python`、`command` | 无额外依赖 |
 | `dacp-plugin-mounted` | `DatasetProvider`：`mounted`；通用命名空间组合 | 无额外依赖 |
-| `dacp-plugin-execution-file` | `ExecutionStoreProvider`：`file`；原子执行元数据文件 | 无额外依赖 |
+| `dacp-plugin-execution-file` | `ExecutionStoreProvider`、`MaterializationStoreProvider`：`file`；原子执行元数据、带配额/过期/完整性校验的输出物化 | 无额外依赖 |
 
 文件、JDBC 与 mixed 在同一 Dataset 插件中共享别名和目录实现；格式读取器独立打包，Dataset 插件不依赖 POI、Parquet 或归档实现类。JSON 默认提供原始 bytes；NDJSON 提供 records。算子程序与共享运行时仍位于 `operators/`、`examples/operators/` 和 `dacp-operator-runtime/`，它们在容器中执行，不是加载进服务器的插件。
 
@@ -48,3 +48,5 @@ datasets:
 `dacp-plugin-api` 提供契约、通用 Arrow 扫描与记录工具、发现和资源工具；`dacp-server` 保留 Flight、授权、请求与任务生命周期。核心 `sources` 只保存 provider/settings；Dataset 插件校验 JDBC 设置并实现连接、查询和类型映射。没有为 MongoDB、S3、NetCDF 或 FITS 提供生产实现。
 
 新增现有扩展点的插件只需注册、安装和配置，无需修改核心或客户端。接口和示例见[插件指南](../docs/plugins.md)、[Dataset/Item 访问](../docs/dataset-access.md)、[独立贡献示例](../examples/plugins/README.md)和[执行器说明](dacp-plugin-operator-executors/README.md)。
+
+[输出物化配置与插件契约](../docs/materialization.md)。

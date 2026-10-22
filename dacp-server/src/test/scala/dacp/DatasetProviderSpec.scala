@@ -12,7 +12,7 @@ import scala.jdk.CollectionConverters._
 
 class DatasetProviderSpec extends AnyFunSuite {
   private def config(dir: Path, definitions: Map[String,DatasetDefinition], counts: Boolean = false): Config =
-    Config("localhost",8815,"localhost",definitions,Seq("dacp://localhost:8815/"),dir,dir,dir,countFileRecordsOnStartup=counts)
+    Config("localhost",8815,"localhost",definitions,dir,dir,dir,countFileRecordsOnStartup=counts)
   private def directory(root: Path, overrides: Map[String,Map[String,Object]] = Map.empty): DatasetDefinition =
     DatasetDefinition("directory",Map("root" -> root.toString),overrides)
   private def zip(path: Path): Unit = {
@@ -70,7 +70,6 @@ public_host: localhost
 tls_cert: cert.pem
 tls_key: key.pem
 tls_ca: ca.pem
-allowed_uri_prefixes: [dacp://localhost:8815/]
 """
       val definitions = s"""sources:
   warehouse:

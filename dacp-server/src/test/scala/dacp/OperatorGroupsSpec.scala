@@ -6,12 +6,12 @@ import org.scalatest.funsuite.AnyFunSuite
 class OperatorGroupsSpec extends AnyFunSuite {
   private def task(id:String,input:InputBinding)=Task(id,Map("source"->input),"copy@1",new java.util.LinkedHashMap[String,Object]())
   private val plan=JobPlan(Vector(task("a",InputBinding(uri=Some("dacp://localhost:8815/data/item"))),task("b",InputBinding(task=Some("a")))),Map("result"->("b","result")))
-  private def config=Config("localhost",8815,"localhost",Map.empty,Seq.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"))
+  private def config=Config("localhost",8815,"localhost",Map.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"))
   private val port=PortContract(Set("bytes"),Set.empty,None)
   private def op(image:String="sha256:"+"a"*64,executor:String="container",environment:Map[String,String]=Map.empty)=ResolvedOperator(image,None,None,OperatorCommand(environment=environment),Map("source"->port),Map("result"->port),executor,Some(OperatorProgram("copy@1","",None)))
   test("configuration reads a strict boolean fusion switch") {
     val file=java.nio.file.Files.createTempFile("fusion-config-", ".yaml")
-    val base="host: localhost\npublic_host: localhost\ntls_cert: cert\ntls_key: key\ntls_ca: ca\nallowed_uri_prefixes: []\n"
+    val base="host: localhost\npublic_host: localhost\ntls_cert: cert\ntls_key: key\ntls_ca: ca\n"
     try {
       for(value<-Seq("true","false")){
         java.nio.file.Files.writeString(file,base+s"operator_fusion_enabled: $value\n")

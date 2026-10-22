@@ -34,3 +34,5 @@
 `OperatorCommand.executableScratch` 可请求 `/operator-work` 上限 512 MiB 的可执行 tmpfs，用于原生制品的私有执行副本；普通 `/tmp` 保持不可执行。资源生命周期由服务器管理。
 
 `PluginEnvironment` 按应用/服务器管理发现、注入实现和生命周期。`ByteSource` 解耦格式读取与本地路径。`ExecutionStore`/`ExecutionStoreProvider` 定义执行元数据持久化。注册和配置见[插件指南](../docs/plugins.md)。
+
+- `MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask`、`MaterializedChunks`：任务输出原子提交、租约、不透明帧块及重放完整性，见[物化契约](../docs/materialization.md)。

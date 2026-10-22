@@ -51,8 +51,20 @@ class Union:
     def members(self):
         return self._action('members')
 
-    def submit(self, job_yaml):
-        result = self._action('submit', {'job_yaml': job_yaml})
+    def submit(self, job_yaml, *, execution_policy=None):
+        body = {'job_yaml': job_yaml}
+        if execution_policy is not None:
+            if not isinstance(execution_policy, dict):
+                raise ValueError('execution_policy must be a JSON object')
+            body['execution_policy'] = execution_policy
+        result = self._action('submit', body)
+        return UnionExecution(self, result['job_id'])
+
+    def replay(self, job_id, *, tasks=None):
+        body = {'job_id': job_id}
+        if tasks is not None:
+            body['tasks'] = list(tasks)
+        result = self._action('replay_job', body)
         return UnionExecution(self, result['job_id'])
 
 
@@ -86,6 +98,9 @@ class UnionExecution:
     def __exit__(self, *args):
         self.close()
 
+    def replay(self, *, tasks=None):
+        return self.union.replay(self.job_id, tasks=tasks)
+
     def status(self):
         return self.union._action('job_status', {'job_id': self.job_id})
 
@@ -116,14 +131,21 @@ class UnionExecution:
             self._streams.discard(reader)
             reader.cancel()
 
-    def results(self):
+    def results(self, *, on_retry=None):
         """Yield start/data/end/complete; records data also includes a PyArrow batch.
+
+        With automatic retries, on_retry is required and must discard partial results.
 
         Close this iterator on early exit, or use the execution as a context manager.
         """
         if self.closed:
             raise ValueError('execution is closed')
-        reader = self.union._stream('results', {'job_id': self.job_id})
+        if on_retry is not None and not callable(on_retry):
+            raise ValueError('on_retry must be callable')
+        body = {'job_id': self.job_id}
+        if on_retry is not None:
+            body['retry_aware'] = True
+        reader = self.union._stream('results', body)
         self._streams.add(reader)
         ports = {}
         values = _values(reader, 'data')
@@ -137,6 +159,12 @@ class UnionExecution:
                 event = json.loads(raw[8:8+header_size])
                 event['data'] = raw[8+header_size:]
                 kind, port = event.get('type'), event.get('port')
+                if kind == 'attempt_failed':
+                    if on_retry is None:
+                        raise RuntimeError('retry requires an on_retry callback')
+                    on_retry(event)
+                    ports.clear()
+                    continue
                 if kind == 'error':
                     raise RuntimeError(event.get('message', 'Union execution failed'))
                 if kind == 'complete':

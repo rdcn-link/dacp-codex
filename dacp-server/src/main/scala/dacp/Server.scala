@@ -12,7 +12,7 @@ import org.apache.arrow.vector.types.pojo.Schema
 import dacp.protocol.Metadata
 import org.yaml.snakeyaml.Yaml
 
-case class Config(host: String, port: Int, publicHost: String, datasets: Map[String, DatasetDefinition], prefixes: Seq[String],
+case class Config(host: String, port: Int, publicHost: String, datasets: Map[String, DatasetDefinition],
                   cert: Path, key: Path, ca: Path, batchSize: Int = 1024, byteChunk: Int = 65536,
                   inferSample: Int = 4, localOperatorLibrary: Path = Path.of("../operators"),
                   taskPeers: Seq[String] = Seq.empty,
@@ -20,7 +20,9 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
                   remoteOperatorLibraryUrls: Seq[String] = Seq.empty, operatorCache: Path = Path.of(".operator-cache"),
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
                   sources: Map[String, SourceDefinition] = Map.empty, countFileRecordsOnStartup: Boolean = false, debug: Boolean = false, sourceRuntimes: Map[String, SourceRuntime] = Map.empty, union: Option[NodeUnionSettings] = None, executionStore: Option[ExecutionStoreDefinition] = None,
-                  datasetCatalog: Option[DatasetCatalogDefinition] = None, catalogOverride: Option[DatasetCatalog] = None, pluginEnvironment: Option[PluginEnvironment] = None, pluginDirectory: Option[Path] = None, ownsPluginEnvironment:Boolean=false, accessLogDirectory:Option[Path]=None, accessLogMaxBytes:Long=64L*1024*1024, operatorFusionEnabled:Boolean=true, web:NodeWebSettings=NodeWebSettings()) extends CatalogContext with AutoCloseable {
+                  datasetCatalog: Option[DatasetCatalogDefinition] = None, catalogOverride: Option[DatasetCatalog] = None, pluginEnvironment: Option[PluginEnvironment] = None, pluginDirectory: Option[Path] = None, ownsPluginEnvironment:Boolean=false, accessLogDirectory:Option[Path]=None, accessLogMaxBytes:Long=64L*1024*1024, operatorFusionEnabled:Boolean=true, web:NodeWebSettings=NodeWebSettings(), materializationStore:Option[MaterializationStoreDefinition]=None, executionTimeoutSeconds:Long=1800, s3:S3Settings=S3Settings()) extends CatalogContext with AutoCloseable {
+  require(executionTimeoutSeconds>0 && executionTimeoutSeconds<=86400,"invalid execution_timeout_seconds")
+  @volatile private[dacp] var runningWebUrl:Option[String]=None
   private var suppliedPlugins=pluginEnvironment
   private var ownsPlugins=ownsPluginEnvironment || pluginEnvironment.isEmpty
   private[dacp] def installPlugins(value:PluginEnvironment,owned:Boolean):Unit=synchronized {require(activePlugins==null && !closed.get(),"plugins must be supplied before initialization");suppliedPlugins=Some(value);ownsPlugins=owned}
@@ -36,6 +38,11 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
     require(!closed.get(),"configuration is closed")
     if(accessLogger==null)accessLogger=new AccessLog(accessLogDirectory.getOrElse(Path.of(".dacp-access",port.toString)),accessLogMaxBytes)
     accessLogger
+  }
+  private val materializationStores=scala.collection.mutable.Map.empty[MaterializationStoreDefinition,MaterializationStore]
+  private[dacp] def openMaterialization(d:MaterializationStoreDefinition):MaterializationStore=synchronized {
+    require(!closed.get(),"configuration is closed")
+    materializationStores.getOrElseUpdate(d,plugins.byId(classOf[MaterializationStoreProvider],d.provider).open(d.settings))
   }
   private var historyStore:ExecutionHistory=null
   def executionHistory:ExecutionHistory=synchronized {
@@ -56,7 +63,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
   }
   def close():Unit=if(closed.compareAndSet(false,true)) {
     var failure:Throwable=null
-    val owned=synchronized {Option(activeCatalog).orElse(suppliedCatalog).toSeq++Option(historyStore).toSeq++Option(accessLogger).toSeq++(if(ownsPlugins)Option(activePlugins).orElse(suppliedPlugins).toSeq else Seq.empty)}
+    val owned=synchronized {Option(activeCatalog).orElse(suppliedCatalog).toSeq++Option(historyStore).toSeq++materializationStores.values.toSeq++Option(accessLogger).toSeq++(if(ownsPlugins)Option(activePlugins).orElse(suppliedPlugins).toSeq else Seq.empty)}
     owned.foreach(p=>try p.close() catch{case scala.util.control.NonFatal(e)=>if(failure==null)failure=e else failure.addSuppressed(e)})
     if(failure!=null)throw failure
   }
@@ -72,14 +79,14 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
   def initializeDatasets(): Unit = { catalog; () }
   def datasetInfos(check:()=>Unit=()=>()):Seq[DatasetInfo]={
     val result=catalog.list(check).toVector
-    result.foreach(i=>DatasetNames.validate(i.name))
+    result.foreach { i=>DatasetNames.validate(i.name);DatasetDescriptions.validate(i.description) }
     require(result.map(_.name).distinct.size==result.size,"duplicate dataset name")
     result.sortBy(_.name)
   }
   def openDataset(name:String,check:()=>Unit=()=>()):DatasetAccess={
     DatasetNames.validate(name);check()
     val lease=try catalog.open(name,check) catch{case _:java.io.FileNotFoundException=>throw new DatasetNotFound}
-    val access=try {check();lease.open(check)}catch{case scala.util.control.NonFatal(t)=>try lease.close() catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)};throw t}
+    val access=try {check();ItemByteViews.wrap(lease.open(check),i=>plugins.views(i),byteChunk)}catch{case scala.util.control.NonFatal(t)=>try lease.close() catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)};throw t}
     new DatasetAccess {
       private val ended=new AtomicBoolean()
       def list():Seq[Item]=access.list()
@@ -101,21 +108,17 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
   require(operatorMaxBytes > 0, "operator_max_bytes must be positive")
   require(batchSize > 0 && byteChunk > 0 && inferSample > 0 && maxConcurrentTasks > 0)
   def uri(ds: String, item: String = ""): String = new URI("dacp", null, publicHost, port, "/" + ds + item, null, null).toASCIIString
-  def authorize(ds: String, item: String): Unit = {
-    val candidate = uri(ds, item)
-    // Connection identity comes from mandatory mTLS. This node-wide allowlist is URI-segment bounded.
-    require(prefixes.exists { p => val clean = p.stripSuffix("/"); candidate == clean || candidate.startsWith(clean + "/") }, "FORBIDDEN: URI prefix denied")
-  }
+
 }
 object Config {
   def load(path: Path, catalogOverride:Option[DatasetCatalog]=None,providedPlugins:Option[PluginEnvironment]=None,ownsProvidedPlugins:Boolean=false): Config = {
     val in = Files.newInputStream(path)
     val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
     val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala finally in.close()
-    val settings = Set("host", "port", "public_host", "datasets", "sources", "allowed_uri_prefixes",
+    val settings = Set("host", "port", "public_host", "datasets", "sources",
       "tls_cert", "tls_key", "tls_ca", "batch_size", "byte_chunk", "infer_sample",
       "operator_fusion_enabled", "local_operator_library", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
-      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "mode", "source_runtimes", "union", "execution_store", "dataset_catalog", "access_log", "web")
+      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "mode", "source_runtimes", "union", "execution_store", "dataset_catalog", "access_log", "web", "s3", "materialization_store", "execution_timeout_seconds")
     require(m.keySet.subsetOf(settings), "unknown server setting")
     val environment=providedPlugins.getOrElse(new PluginEnvironment(m.get("plugin_directory").map(v=>Path.of(v.toString))))
     try {
@@ -151,12 +154,15 @@ object Config {
     require(access.keySet.subsetOf(Set("directory","max_bytes")),"unknown access_log setting")
     val web=NodeWebSettings.read(m.get("web"))
     val config = Config(str("host"), n("port",8815), str("public_host"), definitions,
-      m("allowed_uri_prefixes").asInstanceOf[java.util.List[String]].asScala.toSeq,
       Path.of(str("tls_cert")), Path.of(str("tls_key")), Path.of(str("tls_ca")), n("batch_size",1024), n("byte_chunk",65536), n("infer_sample",4),
       Path.of(m.get("local_operator_library").map(_.toString).getOrElse("../operators")), strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), strings("remote_operator_library_urls"),
       Path.of(m.get("operator_cache").map(_.toString).getOrElse(".operator-cache")),
       m.get("operator_max_bytes").map(_.toString.toLong).getOrElse(8L * 1024 * 1024 * 1024), sources,
-      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), mode=="DEBUG", runtimes, m.get("union").map(v=>NodeUnionSettings.read(Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),m.get("execution_store").map {v=>val raw=v.asInstanceOf[java.util.Map[String,Object]].asScala;require(raw.keySet==Set("provider","settings"),"execution_store requires provider and settings");ExecutionStoreDefinition(raw("provider").toString,raw("settings").asInstanceOf[java.util.Map[String,Object]].asScala.toMap)},catalogDefinition,catalogOverride,Some(environment),ownsPluginEnvironment=providedPlugins.isEmpty || ownsProvidedPlugins,accessLogDirectory=access.get("directory").map(v=>Path.of(v.toString)),accessLogMaxBytes=access.get("max_bytes").map(_.toString.toLong).getOrElse(64L*1024*1024),operatorFusionEnabled=m.get("operator_fusion_enabled").map { value=>require(value.isInstanceOf[java.lang.Boolean],"operator_fusion_enabled must be a boolean");value.asInstanceOf[java.lang.Boolean].booleanValue }.getOrElse(true),web=web)
+      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), mode=="DEBUG", runtimes, m.get("union").map(v=>NodeUnionSettings.read(Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),m.get("execution_store").map {v=>val raw=v.asInstanceOf[java.util.Map[String,Object]].asScala;require(raw.keySet==Set("provider","settings"),"execution_store requires provider and settings");ExecutionStoreDefinition(raw("provider").toString,raw("settings").asInstanceOf[java.util.Map[String,Object]].asScala.toMap)},catalogDefinition,catalogOverride,Some(environment),ownsPluginEnvironment=providedPlugins.isEmpty || ownsProvidedPlugins,accessLogDirectory=access.get("directory").map(v=>Path.of(v.toString)),accessLogMaxBytes=access.get("max_bytes").map(_.toString.toLong).getOrElse(64L*1024*1024),operatorFusionEnabled=m.get("operator_fusion_enabled").map { value=>require(value.isInstanceOf[java.lang.Boolean],"operator_fusion_enabled must be a boolean");value.asInstanceOf[java.lang.Boolean].booleanValue }.getOrElse(true),web=web,s3=S3Settings.read(m.get("s3")),executionTimeoutSeconds=m.get("execution_timeout_seconds").map(v=>dacp.union.Json.number(Data.mapper.createObjectNode().set[com.fasterxml.jackson.databind.JsonNode]("timeout",Data.mapper.valueToTree(v)),"timeout",1,86400)).getOrElse(1800L),materializationStore=m.get("materialization_store").map { v=>
+        val n=Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v)
+        dacp.union.Json.fields(n,Set("provider","settings"));require(n.path("settings").isObject,"materialization settings must be object")
+        MaterializationStoreDefinition(dacp.union.Json.text(n,"provider"),Data.mapper.convertValue(n.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap)
+      })
     try {config.initializeDatasets();config} catch {case scala.util.control.NonFatal(t)=>try config.close() catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)};throw t}
     }catch{case scala.util.control.NonFatal(t)=>if(providedPlugins.isEmpty || ownsProvidedPlugins)try environment.close()catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)};throw t}
   }
@@ -171,7 +177,6 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
   }
   private def adapter(ds: String, item: String, ctx: FlightProducer.CallContext): DatasetAccess = {
     def active(): Unit = if (ctx.isCancelled) throw new java.util.concurrent.CancellationException()
-    config.authorize(ds,item)
     config.openDataset(ds,() => active())
   }
 
@@ -220,10 +225,9 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
       new FlightInfo(PluginSchemas.bytes, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,
         org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,metadata.toByteArray)
     } else if (p.size == 2 || p.size == 4) {
-      val meta = Metadata.DataSet.newBuilder().setUri(config.uri(ds))
-      // Permit item-specific prefixes while keeping list itself restricted by the dataset prefix.
-      (if (p.size == 4) a.list(item) else a.list()).filter(i =>
-        scala.util.Try(config.authorize(ds,i.path)).isSuccess).foreach { i =>
+      val publicInfo=config.datasetInfos(()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()).find(_.name==ds).getOrElse(throw new DatasetNotFound)
+      val meta = DatasetDiscovery.metadata(config,publicInfo).toBuilder
+      (if (p.size == 4) a.list(item) else a.list()).foreach { i =>
         meta.addItems(itemMetadata(i))
       }
       new FlightInfo(PluginSchemas.bytes, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,meta.build.toByteArray)

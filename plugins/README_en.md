@@ -14,7 +14,7 @@ All bundled extension implementations live here. Plugins depend on `dacp-plugin-
 | `dacp-plugin-catalog-static` | `DatasetCatalogProvider`: `static` | No additional dependencies |
 | `dacp-plugin-operator-executors` | `OperatorExecutor`: `container`, `jvm`, `python`, `command` | No additional dependencies |
 | `dacp-plugin-mounted` | `DatasetProvider`: `mounted`; generic namespace composition | No additional dependencies |
-| `dacp-plugin-execution-file` | `ExecutionStoreProvider`: `file`; atomic execution metadata files | No additional dependencies |
+| `dacp-plugin-execution-file` | `ExecutionStoreProvider`, `MaterializationStoreProvider`: `file`; atomic execution metadata and output materialization with quotas, expiry, and integrity validation | No additional dependencies |
 
 File, JDBC, and mixed providers share alias and directory implementation in one Dataset plugin. Format readers are packaged independently; the Dataset plugin does not depend on POI, Parquet, or archive implementation classes. JSON provides original bytes by default; NDJSON provides records. Operator programs and shared runtimes remain in `operators/`, `examples/operators/`, and `dacp-operator-runtime/`; they execute in containers rather than loading into the server as plugins.
 
@@ -48,3 +48,5 @@ datasets:
 `dacp-plugin-api` supplies contracts, generic Arrow scans and record utilities, discovery, and resource utilities. `dacp-server` retains Flight, authorization, and request/task lifecycles. Core `sources` entries contain only provider/settings; the Dataset plugin validates JDBC settings and implements connections, queries and type mapping. Production MongoDB, S3, NetCDF, and FITS implementations are not provided.
 
 Adding a plugin for an existing extension point requires only registration, installation, and configuration, without core or client changes. See [the plugin guide](../docs/plugins_en.md), [Dataset/Item access](../docs/dataset-access_en.md), [independent contributor examples](../examples/plugins/README_en.md), and [executor documentation](dacp-plugin-operator-executors/README_en.md).
+
+[Output materialization configuration and plugin contracts](../docs/materialization_en.md).

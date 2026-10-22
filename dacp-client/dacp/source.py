@@ -52,9 +52,7 @@ class Item:
 class DatasetInfo:
     name: str
     uri: str
-    title: str = ""
-    description: str = ""
-    tags: tuple = ()
+    description: str = "{}"
     node_identity: str = ""
     observed_at_ms: int = 0
 
@@ -63,7 +61,7 @@ def _dataset_infos(client, timeout=30, *, local_only=False):
     entries = []
     for info in client.list_flights(criteria=b'local' if local_only else b'', options=flight.FlightCallOptions(timeout=timeout)):
         m = pb.DataSet.FromString(info.app_metadata)
-        entries.append(DatasetInfo(m.name, m.uri, m.title, m.description, tuple(m.tags),
+        entries.append(DatasetInfo(m.name, m.uri, m.description,
                                    m.node_identity, m.observed_at_ms))
     return entries
 

@@ -1,7 +1,7 @@
 package dacp
 
-import java.nio.file.{Files,Path,StandardOpenOption}
-import java.nio.channels.FileChannel
+import java.nio.file.{Files,Path}
+import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 import java.util.UUID
@@ -12,13 +12,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 final class AccessLog(directory:Path,maxBytes:Long) extends AutoCloseable {
   require(maxBytes>0,"access_log.max_bytes must be positive")
   Files.createDirectories(directory)
-  private var channel:FileChannel=null
+  private var channel:FileOutputStream=null
   private var size=0L
   private var closed=false
   private def rotate():Unit={
     if(channel!=null)channel.close()
     val name="access-"+Instant.now().toEpochMilli+"-"+UUID.randomUUID().toString+".jsonl"
-    channel=FileChannel.open(directory.resolve(name),StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE)
+    val path=Files.createFile(directory.resolve(name))
+    channel=new FileOutputStream(path.toFile)
     size=0
   }
   def append(event:ObjectNode):Unit=synchronized {
@@ -27,9 +28,10 @@ final class AccessLog(directory:Path,maxBytes:Long) extends AutoCloseable {
     if(channel==null || (size>0 && size+bytes.length>maxBytes))rotate()
     val interrupted=Thread.interrupted()
     try {
-      val buffer=java.nio.ByteBuffer.wrap(bytes)
-      while(buffer.hasRemaining)channel.write(buffer)
-      channel.force(false)
+      // FileOutputStream does not close the shared file descriptor on thread interruption.
+      // A cancelled RPC must not poison logging for every subsequent request.
+      channel.write(bytes)
+      channel.getFD.sync()
       size+=bytes.length
     }finally if(interrupted)Thread.currentThread().interrupt()
   }

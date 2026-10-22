@@ -8,8 +8,6 @@ datasets:
     items:
       /orders: {file: ../examples/data/nested/orders.csv}
 # Whole-node prefixes permit this demonstration pipeline.
-allowed_uri_prefixes:
-  - dacp://localhost:8816/
 task_peers:
   - dacp://localhost:8815
 task_input_prefixes:

@@ -32,7 +32,7 @@ def main():
             target=d/'operators'/name/'1';target.mkdir(parents=True)
             (target/'operator.yaml').write_text(json.dumps(dict(name=name,version='1',image=image,executor=executor,entrypoint=entry,artifact=str(artifact),inputs={'source':dict(representations=['bytes'],formats=[])},outputs={'result':dict(representations=['bytes'],formats=['text'])})))
         cert=ROOT/'examples/certs'
-        config=dict(host='127.0.0.1',public_host='localhost',port=port,datasets={'data':dict(provider='mixed',items={'/message':dict(file=str(d/'message.txt'))})},allowed_uri_prefixes=[origin+'/data'],tls_cert=str(cert/'node-a.crt'),tls_key=str(cert/'node-a.key'),tls_ca=str(cert/'ca.crt'),local_operator_library=str(d/'operators'),max_concurrent_tasks=4,execution_store=dict(provider='file',settings=dict(directory=str(d/'history'))),access_log=dict(directory=str(d/'access')))
+        config=dict(host='127.0.0.1',public_host='localhost',port=port,datasets={'data':dict(provider='mixed',items={'/message':dict(file=str(d/'message.txt'))})},tls_cert=str(cert/'node-a.crt'),tls_key=str(cert/'node-a.key'),tls_ca=str(cert/'ca.crt'),local_operator_library=str(d/'operators'),max_concurrent_tasks=4,execution_store=dict(provider='file',settings=dict(directory=str(d/'history'))),access_log=dict(directory=str(d/'access')))
         # Access log settings are optional; use the server defaults without assuming a shape.
         config.pop('access_log')
         (d/'node.yaml').write_text(json.dumps(config))

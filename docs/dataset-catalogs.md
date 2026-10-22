@@ -18,7 +18,7 @@ dataset_catalog:
     password_env: DACP_CATALOG_PASSWORD
 ```
 
-以上是独立示例插件 `example.JdbcCatalogProvider` 的参数，完整配置还需要监听地址、TLS 和 `allowed_uri_prefixes` 等常规节点设置。`source` 由插件解释和校验；核心不包含 JDBC 专用的目录分支。示例源码位于 [JdbcCatalogProvider.scala](../examples/plugins/src/main/scala/example/JdbcCatalogProvider.scala)。构建和安装方式见[插件示例](../examples/plugins/README.md)。将 JDBC 驱动及其依赖随插件安装到 `plugin_directory`，例如 PostgreSQL JDBC 驱动；目录表连接与普通 SQL 数据访问配置相互独立。
+以上是独立示例插件 `example.JdbcCatalogProvider` 的参数，完整配置还需要监听地址和 TLS 等常规节点设置。`source` 由插件解释和校验；核心不包含 JDBC 专用的目录分支。示例源码位于 [JdbcCatalogProvider.scala](../examples/plugins/src/main/scala/example/JdbcCatalogProvider.scala)。构建和安装方式见[插件示例](../examples/plugins/README.md)。将 JDBC 驱动及其依赖随插件安装到 `plugin_directory`，例如 PostgreSQL JDBC 驱动；目录表连接与普通 SQL 数据访问配置相互独立。
 
 示例查询以下登记表；表的创建和数据维护由业务系统负责，插件不会自动建表：
 
@@ -77,9 +77,9 @@ example.JdbcCatalogProvider
 - 已取得的租约须保持有效，即使目录记录之后被删除或刷新。文件或数据库本身消失仍可能导致读取失败；这不是内容快照或持久结果保证。
 - 覆盖带 `check` 参数的重载，在查询循环和耗时步骤中检查取消；数据读取仍遵守现有背压和取消契约。
 - 服务器关闭目录实例。目录仅释放自己拥有的资源；用户注入的共享连接池由用户管理。
-- 目录信息无需额外的数据或 Union 执行授权，仍使用 Flight mTLS。数据读取继续先校验 URI 授权，再打开指定数据集。
+- 目录信息无需额外的数据或 Union 执行授权，仍使用 Flight mTLS。已发布的数据集默认允许读取，仍验证命名空间和资源路径。
 
-目录发现使用标准 Flight `ListFlights`，默认使用空 criteria；dacp-server 还接受 `local` criteria，供仅连接节点的 Shell 使用。每条 `FlightInfo.app_metadata` 为 `DataSet` protobuf，包含公开名称、URI 和显式描述，不包含 Item 内容。公开描述、Shell 和 Union Web 按节点查看目录见[数据集目录](dataset-directory.md)。
+目录发现使用标准 Flight `ListFlights`，默认使用空 criteria；dacp-server 还接受 `local` criteria，供仅连接节点的 Shell 使用。每条 `FlightInfo.app_metadata` 为 `DataSet` protobuf，包含公开名称、URI 和包含用户自定义 JSON 对象字符串的 `description`，不包含 Item 内容。公开描述、Shell 和 Union Web 按节点查看目录见[数据集目录](dataset-directory.md)。
 
 在项目根目录使用 Python 的标准 Flight 接口列举数据集：
 
@@ -99,4 +99,4 @@ with flight.FlightClient(
 
 ## 契约测试
 
-运行 `(cd dacp-server && sbt test)`。`DatasetCatalogSpec` 使用 ServiceLoader 加载独立 JDBC 示例，通过真实 Flight 验证增删目录、数据读取、授权、后端故障和租约保留；同时验证无效名称、重复名称、取消、初始化失败及关闭次数。插件作者应覆盖同类场景，并验证自己的缓存、数据库事务与连接池资源管理。
+运行 `(cd dacp-server && sbt test)`。`DatasetCatalogSpec` 使用 ServiceLoader 加载独立 JDBC 示例，通过真实 Flight 验证增删目录、数据读取、公开访问、后端故障和租约保留；同时验证无效名称、重复名称、取消、初始化失败及关闭次数。插件作者应覆盖同类场景，并验证自己的缓存、数据库事务与连接池资源管理。

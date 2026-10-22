@@ -452,7 +452,7 @@ def test_binary_preview_counts_bytes_and_has_offsets(browser, monkeypatch):
 def test_datasets_and_directory_only_startup(monkeypatch):
     from dacp.source import DatasetInfo
     calls = []
-    entries = [DatasetInfo('orders', 'dacp://node:8815/orders', 'Orders', '公开目录')]
+    entries = [DatasetInfo('orders', 'dacp://node:8815/orders', '{"summary":"公开目录"}'), DatasetInfo('other', 'dacp://node:8815/other')]
     def datasets(url, **credentials):
         calls.append((url, credentials))
         return entries
@@ -493,3 +493,49 @@ def test_connect_requires_server_and_resets_selection(browser):
     for command in ('ls', 'count', 'show', 'select', 'run'):
         b.onecmd(command)
     assert out.getvalue().count('select a Dataset first') == 5
+
+
+@pytest.mark.parametrize('startup', [True, False])
+def test_sole_dataset_is_selected_automatically(monkeypatch, startup):
+    from dacp.source import DatasetInfo
+    ds=FakeDataset();calls=[];out=io.StringIO()
+    monkeypatch.setattr(cli.Source,'datasets',lambda *a,**kw: [] if a[0]=='dacp://empty' else [DatasetInfo('sales data','dacp://untrusted/redirect')])
+    def open_dataset(uri,**credentials):
+        calls.append((uri,credentials));return ds
+    monkeypatch.setattr(cli.Source,'open',open_dataset)
+    b=cli.Browser('dacp://node:8815' if startup else 'dacp://empty',credentials={'cert_chain':b'cert'},stdout=out)
+    try:
+        if not startup:b.onecmd('connect dacp://node:8815')
+        assert b.dataset is ds and b.uri=='dacp://node:8815/sales%20data'
+        assert calls==[('dacp://node:8815/sales%20data',{'cert_chain':b'cert'})]
+        assert b.items and 'Automatically using:' in out.getvalue()
+        b.onecmd('ls /');assert 'Error:' not in out.getvalue()
+    finally:b.close()
+    assert ds.closed
+
+
+def test_failed_automatic_selection_preserves_existing_dataset(browser,monkeypatch):
+    from dacp.source import DatasetInfo
+    b,old,out=browser;bad=FakeDataset(broken=True)
+    monkeypatch.setattr(cli.Source,'datasets',lambda *a,**kw:[DatasetInfo('new','dacp://other/new')])
+    monkeypatch.setattr(cli.Source,'open',lambda *a,**kw:bad)
+    b.onecmd('connect dacp://other')
+    assert b.dataset is old and b.uri=='dacp://localhost/data1' and not old.closed
+    assert bad.closed and 'Error:' in out.getvalue()
+
+
+def test_submit_policy_and_replay_use_bound_server(browser, monkeypatch, tmp_path):
+    import json
+    b, ds, out = browser
+    job = tmp_path / 'workflow.yaml'
+    policy = tmp_path / 'policy.json'
+    job.write_text('job: example')
+    policy.write_text('{"max_retries":2,"timeout_seconds":120}')
+    calls = []
+    monkeypatch.setattr(b, 'print_job', lambda *args, **options: calls.append((args, options)))
+    b.onecmd(f'submit {job} --policy {policy}')
+    assert calls[0][0][:2] == ('dacp://localhost', 'job: example')
+    assert calls[0][1]['execution_policy'] == {'max_retries': 2, 'timeout_seconds': 120}
+    b.onecmd('replay execution1')
+    assert calls[1][0][:2] == ('dacp://localhost', '')
+    assert calls[1][1]['replay_from'] == 'execution1'

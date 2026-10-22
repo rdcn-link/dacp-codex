@@ -4,7 +4,7 @@
 
 `dacp-union-server` is an independent Scala module. One process maintains one persistent Union, invites independently running DACP nodes, and actively polls status and capacity. X can schedule computation only after local node approval. Nodes do not register with X or send heartbeats.
 
-Client C submits Jobs to X over Arrow Flight mTLS, subscribes to status events, and incrementally reads final output. B pulls intermediate streams directly from A; final streams return through X to C. Outputs create neither Datasets nor saved files.
+Client C submits Jobs to X over Arrow Flight mTLS, subscribes to status events, and incrementally reads final output. B pulls intermediate streams directly from A; final streams return through X to C. Outputs create no Datasets and stream directly by default. An independent execution policy can materialize selected output streams on their producing node for explicit replay.
 
 ## Build and run
 
@@ -111,6 +111,12 @@ scala.util.Using.resource(union.submit(java.nio.file.Files.readString(
 union.close()
 ```
 
+## Execution policy and replay
+
+Pass a separate JSON object as `union.submit(script, execution_policy=policy)` in Python or `union.submit(script, policy)` in Scala. `materialization` controls workflow permission, default mode, and per-task output overrides. Streaming is the default; `allowed: false` rejects every materialization request. Nodes must configure `union.materialization_store` before accepting materialization or replay.
+
+After termination, `union.replay(job_id, tasks=['ta'])` creates a new execution that reuses committed `ta` outputs and reruns necessary downstream steps. Omitting `tasks` selects available eligible materialized steps. Final results can also be replayed; automatic retry is opt-in through `max_retries`. Only the source owner can request replay, with current node authorization. Policies and source execution links persist in history. See [configuration, JSON examples, Scala calls, and plugin contracts](../docs/materialization_en.md).
+
 ## Execution semantics and limitations
 
 X validates the DAG and groups tasks by explicit node. Insufficient capacity produces `waiting_resources`; every node is prepared before any starts. A capacity race during preparation rejects the job and cleans up prepared nodes without automatic retry. Union and ordinary Flight tasks share the node execution capacity. Each node must reserve all its subjob tasks simultaneously. A job allows at most 1024 input and connected output ports in total. Each task allows at most 32 inputs and 32 connected outputs. A job allows at most 64 tasks, X allows 64 active jobs, and each node and X retain at most 4096 execution records.
@@ -119,7 +125,9 @@ States are `queued`, `waiting_resources`, `preparing`, `running`, `succeeded`, `
 
 Snapshots include node Task states and per-input/output cumulative `payload_bytes`, `remote_payload_bytes`, and `last_activity_ms`; records streams also report `records`. Counters measure payloads, excluding Flight/gRPC/TLS overhead. Sending and receiving are counted separately. The status channel is independent of output queues.
 
-Membership and execution records persist; running sessions and results are in memory. Restart does not recover jobs; nodes clean up by their own timeout if X crashes. Inline source submission, fan-out, automatic retries, checkpoints, result replay, and automatic placement optimization are unavailable. Existing Flight `Job.run` retains its own execution path; Union uses separate interfaces. X uses 128 Flight executor threads: leave room for control requests alongside long connections and set concurrency according to resources.
+Membership and execution records persist; running sessions remain in memory and outputs persist only when explicitly materialized. Restart does not automatically recover jobs; nodes clean up by their own timeout if X crashes. Inline source submission, fan-out, internal operator checkpoints and automatic placement optimization are unavailable. Explicit replay creates a new execution from committed outputs. Existing Flight `Job.run` retains its own execution path; Union uses separate interfaces. X uses 128 Flight executor threads: leave room for control requests alongside long connections and set concurrency according to resources.
+
+Top-level `max_retries` (0–10, default 0) bounds execution retries. Results remain incremental; consumers must provide a retry callback to discard prior partial output. Materialization is optional. `timeout_seconds` covers resource waits and all attempts and cannot exceed the server limit. See [execution policy](../docs/materialization_en.md).
 
 ## Developer interfaces
 
@@ -127,7 +135,8 @@ All Action types have the `dacp.union.` prefix. Requests and single responses ar
 
 | Interface | Type | JSON request or Ticket |
 | --- | --- | --- |
-| Submit | `DoAction submit` | `{"job_yaml":"..."}` |
+| Submit | `DoAction submit` | `{"job_yaml":"...","execution_policy":{}}` (policy optional) |
+| Replay | `DoAction replay_job` | `{"job_id":"ID","tasks":["ta"]}` (`tasks` optional) |
 | Status / cancel | `DoAction job_status` / `cancel_job` | `{"job_id":"ID"}` |
 | Member status | `DoAction members` | `{}` |
 | Results | `DoGet` | `{"type":"dacp.union.results","job_id":"ID"}` |

@@ -11,7 +11,7 @@ class StaticDatasetCatalogProvider extends DatasetCatalogProvider {
     catch {case scala.util.control.NonFatal(t)=>built.values.foreach(p=>try p.close() catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)});throw t}
     val datasets=built.toMap
     new DatasetCatalog {
-      def list():Seq[DatasetInfo]=datasets.keys.toSeq.sorted.map(name=>DatasetInfo(name,context.configuredDatasets(name).metadata))
+      def list():Seq[DatasetInfo]=datasets.keys.toSeq.sorted.map(name=>DatasetInfo(name,context.configuredDatasets(name).description))
       def open(name:String):PublishedDataset={
         val underlying=datasets.getOrElse(name,throw new FileNotFoundException("dataset unavailable"))
         new PublishedDataset {def open(check:()=>Unit):DatasetAccess=underlying.open(check)}

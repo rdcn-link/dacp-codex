@@ -22,8 +22,8 @@ def main():
             port = sock.getsockname()[1]
         origin = f'dacp://localhost:{port}'
         config = dict(host='127.0.0.1', public_host='localhost', port=port,
-            datasets={'data': {'provider':'mixed','items':{'/input': {'file': str(ROOT/'examples/union/sales.csv')}}}},
-            allowed_uri_prefixes=[origin+'/data'], tls_cert=str(ROOT/'examples/certs/node-a.crt'),
+            datasets={'data': {'provider':'mixed','items':{'/input': {'file': str(ROOT/'examples/union/data/east_observations.csv')}}}},
+            tls_cert=str(ROOT/'examples/certs/node-a.crt'),
             tls_key=str(ROOT/'examples/certs/node-a.key'), tls_ca=str(ROOT/'examples/certs/ca.crt'),
             mode='DEBUG',source_runtimes={'python@1.0': {'executor':'python','image':'dacp/operator-python:1.0'}},
             max_concurrent_tasks=4,execution_store=dict(provider='file',settings=dict(directory=str(state/'executions'))))

@@ -1,17 +1,17 @@
-job: regional-revenue
+job: eastern-station-temperature-anomalies
 tasks:
-  - id: ta
-    title: 汇总本地商品销量
+  - id: daily
+    title: 质控过滤并计算站点每日气温统计
     node: dacp://localhost:18861
-    operator: quantity_sum@1.0
+    operator: daily_temperature_stats@1.0
     inputs:
-      source: {uri: 'dacp://localhost:18861/data/sales', view: bytes}
-  - id: tb
-    title: 融合价格计算商品收入
+      source: {uri: 'dacp://localhost:18861/climate/observations', view: records}
+  - id: anomalies
+    title: 融合站点气候基准并计算气温距平
     node: dacp://localhost:18862
-    operator: revenue_join@1.0
+    operator: station_temperature_anomaly@1.0
     inputs:
-      quantities: {task: ta, port: result}
-      prices: {uri: 'dacp://localhost:18862/data/prices', view: bytes}
+      baselines: {uri: 'dacp://localhost:18862/climate/station_baselines', view: records}
+      statistics: {task: daily, port: result}
 outputs:
-  revenue: {task: tb, port: result}
+  temperature_anomalies: {task: anomalies, port: result}

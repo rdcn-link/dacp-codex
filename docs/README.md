@@ -54,3 +54,7 @@
 [同进程执行实测](operator-fusion-benchmark.md)：100 万与 400 万行的策略对比。
 
 [节点 Web 看板](node-web.md)：默认 HTTP 服务、配置开关及 G6 任务 DAG。
+
+官方网站的构建、部署和软件下载发布：[dacp-website](../dacp-website/README.md)。网站仅提供英文内容。
+
+[S3 兼容读取](s3-service.md)：节点启动时公开 dataset bucket 与 Item object，支持匿名只读下载。

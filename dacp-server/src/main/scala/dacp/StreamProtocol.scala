@@ -39,10 +39,17 @@ final class StreamCancel(check: () => Boolean = () => false, timeoutSeconds: Lon
   private val failure=new AtomicReference[Throwable]()
   private val resources=new java.util.concurrent.ConcurrentLinkedDeque[AutoCloseable]()
   private val deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(timeoutSeconds)
-  def active(): Unit = {
-    if(check() || Thread.currentThread().isInterrupted) fail(new CancellationException("stream cancelled"))
-    if(System.nanoTime()>deadline) fail(new java.util.concurrent.TimeoutException("job timed out"))
+  /** Inspect a parent scope without treating interruption of a child worker as parent cancellation. */
+  private[dacp] def checkState():Unit={
     Option(failure.get()).foreach(throw _)
+    if(check())fail(new CancellationException("stream cancelled"))
+    if(System.nanoTime()>deadline)fail(new java.util.concurrent.TimeoutException("job timed out"))
+    Option(failure.get()).foreach(throw _)
+  }
+  def active(): Unit = {
+    Option(failure.get()).foreach(throw _)
+    if(Thread.currentThread().isInterrupted)fail(new CancellationException("stream cancelled"))
+    checkState()
   }
   def add[T <: AutoCloseable](r: T): T = {resources.push(r);if(failure.get()!=null) try r.close() catch{case _:Throwable=>()};r}
   def cause(t: Throwable): Throwable = Option(failure.get()).getOrElse(t)

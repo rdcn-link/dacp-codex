@@ -34,3 +34,5 @@ Operator `OperatorProgram.configuration` carries plugin-owned `executor_config`;
 `OperatorCommand.executableScratch` requests a bounded 512 MiB executable tmpfs at `/operator-work` for private native artifact copies; ordinary `/tmp` remains non-executable. The server manages its resource lifecycle.
 
 `PluginEnvironment` scopes discovery, injected implementations and lifecycle to one application/server. `ByteSource` decouples format readers from local paths. `ExecutionStore`/`ExecutionStoreProvider` define execution metadata persistence. Registration and configuration are documented in [plugins](../docs/plugins_en.md).
+
+- `MaterializationStoreProvider`, `MaterializationStore`, `MaterializationWriter`, `MaterializedTask`, `MaterializedChunks`: atomic task-output commit, leases, opaque frame chunks, and replay integrity; see [materialization contracts](../docs/materialization_en.md).

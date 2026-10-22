@@ -34,7 +34,8 @@ class Client:
         self.writer = SimpleNamespace(begin=lambda schema: None, done_writing=lambda: None, close=lambda: None)
     def do_exchange(self, descriptor, options):
         self.calls += 1
-        assert pb.OperatorRequest.FromString(descriptor.command).job_yaml == 'job: demo'
+        self.request = pb.OperatorRequest.FromString(descriptor.command)
+        assert self.request.job_yaml == getattr(self, 'expected_yaml', 'job: demo')
         return self.writer, self.reader
     def close(self): self.closed = True
 
@@ -76,3 +77,42 @@ def test_bad_stream_closes_without_retry(monkeypatch, events):
 @pytest.mark.parametrize('node', ['https://node','dacp://node/data','dacp://user:secret@node','dacp://node?token=x'])
 def test_job_requires_origin(node):
     with pytest.raises(ValueError): Job.run(node, 'job: demo')
+
+
+def test_retry_callback_resets_partial_output_and_exposes_execution(monkeypatch):
+    start = dict(type='start', port='result', representation='bytes', format='text', execution_id='job1')
+    client = setup(monkeypatch, [chunk(start), chunk(dict(type='data', port='result'), b'partial'),
+        chunk(dict(type='attempt_failed', port='', retry_count=1)), chunk(start),
+        chunk(dict(type='data', port='result'), b'final'), chunk(dict(type='end', port='result')), chunk(dict(type='complete'))])
+    output = bytearray()
+    seen = []
+    def retry(event):
+        seen.append(event['retry_count'])
+        output.clear()
+    with Job.run('dacp://node-a', 'job: demo', execution_policy={'max_retries': 1}, on_retry=retry) as stream:
+        for event in stream:
+            if event['type'] == 'data': output.extend(event['data'])
+        assert stream.execution_id == 'job1'
+    assert output == b'final' and seen == [1] and client.closed
+
+
+def test_retry_callback_error_cancels_stream(monkeypatch):
+    client = setup(monkeypatch, [chunk(dict(type='attempt_failed', port='', retry_count=1))])
+    def retry(event): raise RuntimeError('abort')
+    with pytest.raises(RuntimeError, match='abort'):
+        list(Job.run('dacp://node-a', 'job: demo', on_retry=retry))
+    assert client.reader.cancelled and client.closed
+
+
+def test_policy_and_replay_are_separate_flight_fields(monkeypatch):
+    client = setup(monkeypatch, [chunk(dict(type='execution', port='', execution_id='job1')), chunk(dict(type='complete'))])
+    with Job.run('dacp://node-a', 'job: demo', execution_policy={'max_retries': 2, 'timeout_seconds': 120}, on_retry=lambda e: None) as stream:
+        list(stream)
+        assert stream.execution_id == 'job1'
+    assert json.loads(client.request.execution_policy_json) == {'max_retries': 2, 'timeout_seconds': 120}
+    assert client.request.retry_aware
+    client = setup(monkeypatch, [chunk(dict(type='complete'))])
+    client.expected_yaml = ''
+    with Job.replay('dacp://node-a', 'job1', on_retry=lambda e: None) as stream:
+        list(stream)
+    assert client.request.replay_from == 'job1' and not client.request.execution_policy_json

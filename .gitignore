@@ -11,6 +11,7 @@ examples/output/
 .operator-cache/
 /.dacp-plugins/
 .operator-catalog/
+.operator-backups/
 
 examples/sql/*.mv.db
 examples/sql/*.trace.db

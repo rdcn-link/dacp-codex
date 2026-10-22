@@ -34,7 +34,7 @@ cd dacp-server
 sbt run
 ```
 
-默认服务地址为 `localhost:8815`，配置见 [examples/server.yaml](../../examples/server.yaml)。可先连接服务器根地址，在 Shell 中使用无参数 `datasets` 列出目录，再选择数据集。节点发布本地目录，Union Web 按指定成员查看目录；见[数据集目录](../dataset-directory.md)。
+默认服务地址为 `localhost:8815`，配置见 [examples/server.yaml](../../examples/server.yaml)。可先连接服务器根地址，在 Shell 中使用无参数 `datasets` 列出目录，再选择数据集；目标服务器只有一个数据集时会自动选中。节点发布本地目录，Union Web 按指定成员查看目录；见[数据集目录](../dataset-directory.md)。
 
 在另一个终端中，从项目根目录连接：
 
@@ -217,7 +217,7 @@ sources:
       tables: [CUSTOMERS]
 ```
 
-这是配置片段，需与监听地址、TLS 和 URI 白名单合并，并替换示例路径及数据库连接。相对路径以服务进程工作目录为基准。
+这是配置片段，需与监听地址和 TLS合并，并替换示例路径及数据库连接。相对路径以服务进程工作目录为基准。
 
 目录 Dataset 将根目录内的相对路径作为公开逻辑路径，例如 `/reports/orders.csv`；空目录也是 folder，受支持的归档可继续浏览。后续列举会反映文件新增、删除和修改。根目录保持私有，所有符号链接均忽略；不会访问根目录之外的数据。目录的 `reader_overrides` 是可选读取选项覆盖，支持格式、工作表、表头行和 schema，不用于重命名或额外添加来源。
 
@@ -259,7 +259,7 @@ Item 可携带修改时间、字节大小和精确记录数。未知值与 `0` �
 
 ## 数据协作与任务
 
-DACP 通过 YAML DAG 组织任务。协调节点解析依赖，默认将任务放在第一个输入所在节点，也可显式指定执行节点；各节点通过 mTLS Flight DoExchange 协作。每个子任务使用独立 Docker 容器，命名端口消费数据项流，输出直接流向客户端或下游任务，不保存输出数据集。
+DACP 通过 YAML DAG 组织任务。协调节点解析依赖，默认将任务放在第一个输入所在节点，也可显式指定执行节点；各节点通过 mTLS Flight DoExchange 协作。符合[合并执行条件](../operator-fusion.md)的节点子作业共享一个容器和进程，其余任务独立执行；命名端口消费数据项流，输出直接流向客户端或下游任务，不保存输出数据集。
 
 运行任务还需要 Linux、`mkfifo` 和可访问的 Docker Engine。从项目根目录构建转换算子，再启动服务；若快速开始的服务仍在运行，先将其停止：
 
@@ -287,9 +287,9 @@ sbt 'run ../examples/server.yaml'
 
 ## 安全与运行边界
 
-所有连接强制 mTLS，并通过 URI 前缀白名单授权。公开元数据、ticket 和数据服务错误隐藏私有存储绑定；数据内容仍包含源数据自身的字段和值。Python 的 `DacpError` 和 Scala 的 `DacpException` 提供错误码和可读消息，shell 显示简洁提示。
+所有 Flight 连接强制 mTLS。已发布的数据集及其 Items 默认可浏览和读取，无需额外的 URI 白名单。公开元数据、ticket 和数据服务错误隐藏私有存储绑定；数据内容仍包含源数据自身的字段和值。Python 的 `DacpError` 和 Scala 的 `DacpException` 提供错误码和可读消息，shell 显示简洁提示。
 
-当前白名单在节点级生效，不按证书主体划分权限。读取失败后从头重开，不支持流内重试、checkpoint 或恢复。任务输出仅为实时流，客户端须消费或取消；不提供保存的结果 URI，重启不恢复任务。完整配置和协议说明见 [技术参考](../../docs/reference.md#协议与配置)。
+未发布的物理文件和数据库表不会自动公开。读取失败后从头重开，不支持流内重试、checkpoint 或恢复。任务输出仅为实时流，客户端须消费或取消；不提供保存的结果 URI，重启不恢复任务。完整配置和协议说明见 [技术参考](../../docs/reference.md#协议与配置)。
 
 DEBUG 模式下可通过 `run --runtime python@1.0 --input source=/orders <<END` 输入 heredoc 源码；不支持 `--source` 或 `--code`。服务端默认为 NORMAL，并在协调与执行节点拒绝源码任务。配置、Python/Scala 示例与插件契约见[源码算子](../../docs/operator-source.md)。
 
@@ -325,3 +325,7 @@ docker image ls
 通过 [Union 服务器](../../dacp-union-server/README.md) 提交显式节点 DAG、订阅执行状态和流量，并读取最终流。节点邀请和审批、Python 与 Scala 用法见模块文档；[双节点示例](../../examples/union/README.md) 演示本地销量汇总与跨节点价格融合。
 
 DACP 与 Union 默认持久化全部执行记录；Union 看板支持重启后的历史查询。本地查询命令及保存目录见 [执行记录](../execution-history.md)。
+
+## 执行策略、重试与重放
+
+单机 DACP Server 的多步骤任务和 Union 协作任务均支持独立的执行策略 JSON：`max_retries`、`timeout_seconds` 和 `materialization`。Shell 用 `submit workflow.yaml --policy policy.json` 提交，并可用 `replay EXECUTION_ID` 从有效的物化边界重放。Python 与 Scala 客户端须通过显式重试回调清空上一轮部分结果；关闭结果流可取消任务。配置、完整调用示例与成功确认规则见[执行策略、输出物化与重放](../materialization.md)。

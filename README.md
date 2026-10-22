@@ -10,6 +10,10 @@ DACP（Data Access and Collaboration Protocol，数据访问与协作协议）�
 
 Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs.md)动态提供；Scala/JVM 应用可通过 [DacpServer API](docs/embedded-server.md)直接启动节点。
 
+节点默认提供 [S3 兼容只读服务](docs/s3-service.md)，可使用 S3 客户端列举 dataset bucket 并下载 Item 字节流。
+
+官方网站模块：[dacp-website](dacp-website/README.md)，提供英文项目介绍、按角色分类的在线文档和软件下载。
+
 ## 按角色阅读
 
 | 读者 | 入口 | 主要内容 |
@@ -43,4 +47,4 @@ Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs.md)动态提�
 - 跨节点演示：运行[双节点 Union 示例](examples/union/README.md)。
 - 自定义计算：阅读[算子编写与发布](docs/operator-authoring.md)。
 
-数据访问与任务执行使用 Flight mTLS，算子仓库与只读看板使用 HTTP/HTTPS。Union 的 CA 信任、客户端白名单和节点计算审批分别配置。每个算子在独立容器内运行，输出不注册为 Dataset；服务器持久化执行元数据，结果内容只通过一次性流交付。
+数据访问与任务执行使用 Flight mTLS，算子仓库与只读看板使用 HTTP/HTTPS。Union 的 CA 信任、客户端白名单和节点计算审批分别配置。算子使用隔离的运行环境；符合条件的节点子作业会合并到同一进程执行，见[算子合并执行](docs/operator-fusion.md)。输出不注册为 Dataset；服务器持久化执行元数据，结果内容只通过一次性流交付。

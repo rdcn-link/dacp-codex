@@ -21,7 +21,7 @@ mkdir -p plugins
 cp examples/plugins/target/scala-2.13/dacp-example-plugins_2.13-0.1.0-SNAPSHOT.jar plugins/
 ```
 
-将以下片段加入完整服务器配置（还需配置监听、TLS 和 URI 白名单）。相对路径基于服务器工作目录解析；本示例从 `dacp-server/` 启动：
+将以下片段加入完整服务器配置（还需配置监听和 TLS）。相对路径基于服务器工作目录解析；本示例从 `dacp-server/` 启动：
 
 ```yaml
 plugin_directory: ../.dacp-plugins
@@ -36,9 +36,6 @@ datasets:
       /document:
         file: /private/example.message
         options: {prefix: "Preview: "}
-allowed_uri_prefixes:
-  - dacp://localhost:8815/greeting
-  - dacp://localhost:8815/files
 ```
 
 使用该配置重启已通过 stage 构建的服务器，无需修改启动器、为插件重新构建服务器或修改客户端。上述 `stage` 命令用于首次构建服务器；后续插件变更只需重建插件 JAR 并重启服务器。
@@ -58,3 +55,5 @@ with Source.open("dacp://localhost:8815/files") as ds:
 服务器的 [PluginSpec](../../dacp-server/src/test/scala/dacp/PluginSpec.scala) 将这些源码编译进测试，并通过 Flight 验证，同时覆盖已注册的归档插件与生命周期检查。自己的测试可以运行 `PluginChecks.listing(access)`，检查递归列表、直接子项、路径与元数据。还应添加格式特定的流式处理、有界内存、错误、取消和资源释放测试。
 
 动态目录示例 `example.JdbcCatalogProvider` 通过 `META-INF/services/dacp.DatasetCatalogProvider` 注册，查询数据库登记表并按需构建 Dataset。构建本工程后将 JAR 与 JDBC 驱动放到插件目录；配置及表结构见 [DatasetCatalog 指南](../../docs/dataset-catalogs.md)。
+
+节点发布后，`/summary` 还自动提供 JSONL `bytes` 视图。例如配置 `message: hello` 时，其字节内容为 `{"characters":5}` 加一个换行符；插件仍只实现 records。参见[通用视图规则](../../docs/dataset-access.md#通用-jsonl-bytes-视图)。

@@ -1,9 +1,9 @@
 'use strict';
 const $=id=>document.getElementById(id), terminal=new Set(['succeeded','failed','cancelled','expired','interrupted']);
-const labels={interrupted:'服务中断',approved:'已批准',pending:'待批准',invited:'已邀请',revoked:'已撤销',rejected:'已拒绝',unknown:'未知',queued:'排队',waiting:'等待',waiting_resources:'等待资源',waiting_inputs:'等待输入',prepared:'已准备',preparing:'准备中',running:'运行中',succeeded:'成功',failed:'失败',cancelled:'已取消',expired:'已超时'};
+const labels={retrying:'重试中',replaying:'重放中',skipped:'已跳过',interrupted:'服务中断',approved:'已批准',pending:'待批准',invited:'已邀请',revoked:'已撤销',rejected:'已拒绝',unknown:'未知',queued:'排队',waiting:'等待',waiting_resources:'等待资源',waiting_inputs:'等待输入',prepared:'已准备',preparing:'准备中',running:'运行中',succeeded:'成功',failed:'失败',cancelled:'已取消',expired:'已超时'};
 let snapshot=null,selected=null,busy=false,historyOffset=0,previous=new Map();
 function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
-const badge=s=>el('span',labels[s]||s||'未知','badge '+(['succeeded','approved'].includes(s)?'good':['failed','revoked','rejected'].includes(s)?'bad':['running','preparing','prepared','waiting_inputs'].includes(s)?'busy':'warn'));
+const badge=s=>el('span',labels[s]||s||'未知','badge '+(['succeeded','approved'].includes(s)?'good':['failed','revoked','rejected'].includes(s)?'bad':['running','preparing','prepared','waiting_inputs','retrying','replaying'].includes(s)?'busy':'warn'));
 const short=id=>id?id.slice(0,12)+(id.length>12?'…':''):'—';
 const time=ms=>ms?new Date(ms).toLocaleString('zh-CN',{hour12:false}):'尚未观测';
 const duration=ms=>ms<1000?ms+' ms':ms<60000?(ms/1000).toFixed(1)+' s':(ms/60000).toFixed(1)+' min';
@@ -13,11 +13,14 @@ function empty(body,columns,text){const row=el('tr');cell(row,text,'empty').colS
 async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error('状态请求失败 ('+r.status+')');return r.json();}
 function renderMembers(members,now){
  const body=$('members');body.replaceChildren();$('member-count').textContent=members.length+' 个成员';
- if(!members.length)return empty(body,10,'暂无成员。在 Union Server 上邀请节点，再由节点管理员批准。');
+ if(!members.length)return empty(body,11,'暂无成员。在 Union Server 上邀请节点，再由节点管理员批准。');
  for(const m of members){const row=el('tr'),title=el('div',m.url,'mono'),identity=el('div',short(m.identity),'muted mono');identity.title=m.identity;title.append(identity);cell(row,title);cell(row,badge(m.state));
   const stale=!m.observed_at_ms||now-m.observed_at_ms>Math.max(snapshot.poll_interval_ms*3,5000),s=m.status;
   cell(row,m.state==='approved'&&s&&!stale?el('span','可达','badge good'):el('span',stale?'观测过期':m.state==='unknown'?'不可达 / 未知':'尚未获准','badge warn'));
-  cell(row,s?s.reserved_tasks+' / '+s.capacity:'—');cell(row,s?s.union_reserved_tasks+' / '+s.union_capacity:'—');cell(row,s&&s.executors?s.executors.join(', '):'—');cell(row,s?time(s.started_at_ms):'—');cell(row,s&&s.uptime_ms!==undefined?duration(s.uptime_ms):'—');cell(row,time(m.observed_at_ms));const directory=el('a','查看数据集','job-link');directory.href='/members/'+encodeURIComponent(m.identity)+'/datasets';directory.target='_blank';directory.rel='noopener';cell(row,directory);body.append(row);
+  cell(row,s?s.reserved_tasks+' / '+s.capacity:'—');cell(row,s?s.union_reserved_tasks+' / '+s.union_capacity:'—');cell(row,s&&s.executors?s.executors.join(', '):'—');cell(row,s?time(s.started_at_ms):'—');cell(row,s&&s.uptime_ms!==undefined?duration(s.uptime_ms):'—');cell(row,time(m.observed_at_ms));const directory=el('a','查看数据集','job-link member-datasets-link');directory.href='/members/'+encodeURIComponent(m.identity)+'/datasets';directory.target='_blank';directory.rel='noopener';cell(row,directory);
+  let web=el('span',s?'未启用':'—','muted');
+  if(s&&s.web_enabled&&s.web_url){try{const url=new URL(s.web_url);if(['http:','https:'].includes(url.protocol)&&!url.username&&!url.password){web=el('a',s.web_url,'job-link member-web-link');web.href=url.href;web.target='_blank';web.rel='noopener';web.title=stale?'上次观测的 Web 地址':'打开节点 Web 看板';}}catch(_){web=el('span','无效地址','muted');}}
+  cell(row,web);body.append(row);
  }
 }
 function renderJobs(){
@@ -33,8 +36,8 @@ async function renderDag(j){
  catch(e){$('dag-error').textContent='拓扑图绘制失败：'+e.message;$('dag-error').hidden=false;}
 }
 async function renderDetail(j){
- $('detail').hidden=false;$('job-script').textContent=j.job_yaml||'此历史记录未保存任务脚本';await renderDag(j);if(selected!==j.job_id)return;
- $('detail').hidden=false;$('job-title').textContent=j.job_id;$('job-meta').textContent=(labels[j.state]||j.state)+' · 已用 '+duration(j.elapsed_ms)+' · 提交于 '+time(j.created_at_ms)+(j.finished_at_ms?' · 结束于 '+time(j.finished_at_ms):'');
+ $('detail').hidden=false;$('job-script').textContent=j.job_yaml||'此历史记录未保存任务脚本';$('job-policy').textContent=JSON.stringify({execution_policy:j.execution_policy||{},effective_execution_policy:j.effective_execution_policy||{},max_retries:j.max_retries||0,retry_count:j.retry_count||0,replay_of:j.replay_of||null,attempts:j.attempts||[]},null,2);await renderDag(j);if(selected!==j.job_id)return;
+ $('detail').hidden=false;$('job-title').textContent=j.job_id;$('job-meta').textContent=(labels[j.state]||j.state)+' · 重试 '+(j.retry_count||0)+' / '+(j.max_retries||0)+' · 已用 '+duration(j.elapsed_ms)+' · 提交于 '+time(j.created_at_ms)+(j.finished_at_ms?' · 结束于 '+time(j.finished_at_ms):'');
  $('job-message').hidden=!j.message;$('job-message').textContent=j.message||'';$('events').replaceChildren(...(j.events||[]).map(e=>el('span',(labels[e.state]||e.state)+' · '+time(e.at_ms)+'  →  ')));
  const tasks=$('tasks');tasks.replaceChildren();
  for(const t of j.tasks){const card=el('article',undefined,'task'),head=el('div',undefined,'task-head');head.append(el('strong',t.title||t.id),badge(t.state));card.append(head,el('p',t.id+' · '+t.operator,'mono'),el('p',t.node,'muted mono'));const inputs=el('div',undefined,'dependency');for(const b of t.inputs)inputs.append(el('div',b.task?b.task+'.'+b.output_port+' → '+t.id+'.'+b.port:b.uri+' → '+t.id+'.'+b.port));card.append(inputs);tasks.append(card);}

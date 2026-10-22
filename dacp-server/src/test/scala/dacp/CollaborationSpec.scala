@@ -5,7 +5,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.apache.arrow.memory.RootAllocator
 
 class CollaborationSpec extends AnyFunSuite {
-  def config = Config("localhost",18815,"localhost",Map.empty,Seq("dacp://localhost:18815/data"),Path.of("unused"),Path.of("unused"),Path.of("unused"))
+  def config = Config("localhost",18815,"localhost",Map.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"))
   val yaml="""job: inline
     |tasks:
     | - id: first

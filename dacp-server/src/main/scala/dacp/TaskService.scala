@@ -14,7 +14,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
   private val active=java.util.concurrent.ConcurrentHashMap.newKeySet[StreamCancel]()
   private def join(t:Thread,c:StreamCancel):Unit={while(t.isAlive){c.active();t.join(50)};c.active()}
   def exchange(ctx: FlightProducer.CallContext,reader: FlightStream,writer: FlightProducer.ServerStreamListener): Unit = {
-    val cancel=new StreamCancel(()=>ctx.isCancelled || writer.isCancelled)
+    val cancel=new StreamCancel(()=>ctx.isCancelled || writer.isCancelled,config.executionTimeoutSeconds)
     active.add(cancel)
     val root=VectorSchemaRoot.create(PluginSchemas.bytes,allocator)
     var acquired:Semaphore=null
@@ -33,12 +33,44 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
       val bytes=reader.getDescriptor.getCommand
       require(bytes.length<=1024*1024,"request exceeds 1 MiB")
       val request=Metadata.OperatorRequest.parseFrom(bytes)
+      require(request.hasJobYaml || (request.getExecutionPolicyJson.isEmpty && !request.getRetryAware && request.getReplayFrom.isEmpty),"worker requests cannot contain job policy")
       writer.start(root)
       def emit(f:OperatorFrame):Unit={metric("outputs",f);StreamProtocol.send(writer,root,f,cancel)}
       if(request.hasJobYaml) {
         require(jobs.tryAcquire(),"job capacity reached");acquired=jobs
         record.update("running",dacp.union.Json.obj().put("request_type","job"))
-        coordinate(request.getJobYaml,emit,cancel,record)
+        val replay=Option(request.getReplayFrom).filter(_.nonEmpty)
+        val previous=replay.map { id=>
+          val h=config.executionHistory.get(id).getOrElse(throw new IllegalArgumentException("unknown execution"))
+          require(h.path("owner").asText==owner,"FORBIDDEN: execution owner differs")
+          require(Set("succeeded","failed","cancelled","expired","interrupted")(h.path("state").asText),"execution is still active")
+          require(h.path("request_type").asText=="job","only jobs can be replayed");h
+        }
+        val yaml=previous.map(_.path("job_yaml").asText).getOrElse(request.getJobYaml)
+        require(previous.isEmpty || request.getJobYaml.isEmpty,"replay uses original job definition")
+        val raw=if(!request.getExecutionPolicyJson.isEmpty)Data.mapper.readTree(request.getExecutionPolicyJson.toByteArray)
+          else previous.map(_.path("execution_policy")).getOrElse(dacp.union.Json.obj())
+        val plan=Jobs.parse(yaml);val policy=ExecutionPolicy.parse(raw,plan)
+        val timeout=policy.timeoutSeconds.getOrElse(config.executionTimeoutSeconds)
+        require(timeout<=config.executionTimeoutSeconds,"timeout_seconds exceeds server limit")
+        require(policy.maxRetries==0 || request.getRetryAware,"automatic retries require a retry-aware client callback")
+        val scoped=new StreamCancel(()=>{cancel.checkState();false},timeout);cancel.add(scoped)
+        val detail=dacp.union.Json.obj().put("job_yaml",yaml).put("execution_mode","isolated_steps")
+        detail.set[com.fasterxml.jackson.databind.JsonNode]("execution_policy",policy.submitted)
+        val effective=policy.effective.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();effective.put("timeout_seconds",timeout)
+        detail.set[com.fasterxml.jackson.databind.JsonNode]("effective_execution_policy",effective);replay.foreach(detail.put("replay_of",_));record.update("running",detail)
+        def result(f:OperatorFrame):Unit={val h=StreamProtocol.header(f).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();h.put("execution_id",record.id);emit(OperatorFrame(Data.mapper.writeValueAsBytes(h),f.data))}
+        val accepted=dacp.union.Json.obj().put("type","execution").put("port","").put("execution_id",record.id)
+        emit(OperatorFrame(Data.mapper.writeValueAsBytes(accepted)))
+        if(raw.size()>0 || replay.nonEmpty){
+          plan.tasks.foreach { t=>
+            Jobs.authorizeSource(config,t)
+            require(t.node.forall(DacpUri.node(_)==DacpUri.origin(config.uri(""))),"execution policy on DACP Server requires local tasks; use Union for cross-node execution")
+            t.inputs.values.flatMap(_.uri).foreach(uri=>require(config.taskInputPrefixes.isEmpty || config.taskInputPrefixes.exists(DacpUri.within(uri,_)),"FORBIDDEN: task input URI prefix denied"))
+          }
+          val tasks=detail.putArray("tasks");plan.tasks.foreach(t=>{val entry=tasks.addObject().put("id",t.id).put("operator",t.operator);t.title.foreach(entry.put("title",_))});record.update("running",detail)
+          new LocalJobExecution(config,executor,source,allocator).run(plan,policy,owner,record,replay,result,scoped)
+        }else coordinate(yaml,result,scoped,record)
       } else if(request.hasTaskJson) {
         require(permits.tryAcquire(),"node task capacity reached");acquired=permits
         val n=Data.mapper.readTree(request.getTaskJson.toByteArray)
@@ -51,10 +83,9 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         record.update("running",details)
         val sources=n.path("sources").elements.asScala.map(_.asText).toVector
         require(sources.nonEmpty,"source item provenance required")
-        val prefixes=if(config.taskInputPrefixes.nonEmpty) config.taskInputPrefixes else config.prefixes
         sources.foreach{uri=>
           val u=DacpUri.parse(uri);require(u.getPath.stripPrefix("/").split("/",2).length==2,"input must be an item")
-          require(prefixes.exists(DacpUri.within(uri,_)),"FORBIDDEN: task input URI prefix denied")
+          require(config.taskInputPrefixes.isEmpty || config.taskInputPrefixes.exists(DacpUri.within(uri,_)),"FORBIDDEN: task input URI prefix denied")
         }
         val ports=n.path("ports").elements.asScala.map(_.asText).toVector
         require(ports.nonEmpty && ports.distinct.size==ports.size,"invalid worker ports")
@@ -105,7 +136,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
       } finally {cancel.close();monitor.interrupt();if(acquired!=null)acquired.release();active.remove(cancel);root.close()}
     }
   }
-  private def source(binding:InputBinding,c:StreamCancel): FrameSource = {
+  protected def source(binding:InputBinding,c:StreamCancel): FrameSource = {
     val uri=binding.uri.get;val u=DacpUri.parse(uri);val split=u.getPath.stripPrefix("/").split("/",2)
     val client=c.add(NodeConnection.open(config,allocator,uri))
     val info=client.getInfo(FlightDescriptor.path("datasets",split(0),"/"+split(1)))

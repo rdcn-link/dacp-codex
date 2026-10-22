@@ -11,7 +11,7 @@ object EmbeddedServerExample {
   def main(args:Array[String]):Unit={
     require(args.length==2,"arguments: CERTIFICATE_DIRECTORY CSV_FILE")
     val certificates=Path.of(args(0)).toAbsolutePath
-    val config=Config("127.0.0.1",8815,"localhost",Map.empty,Seq("dacp://localhost:8815/"),
+    val config=Config("127.0.0.1",8815,"localhost",Map.empty,
       certificates.resolve("server.crt"),certificates.resolve("server.key"),certificates.resolve("ca.crt"))
     val registry=new ConcurrentHashMap[String,DatasetDefinition]()
     val catalog=new DatasetCatalog {

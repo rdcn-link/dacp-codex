@@ -16,6 +16,7 @@ A job contains tasks. A task's `id` identifies dependency references; its `title
 |---|---|
 | Dataset discovery | Flight `ListFlights` returns public Dataset URIs and descriptions without additional data grants; plugins can supply a dynamic catalog |
 | Browsing, metadata, and reading | Arrow Flight; see the technical reference and protobuf definitions for messages |
+| S3-compatible object reads | Separate HTTP endpoint, anonymous and read-only; datasets map to buckets and bytes Items to objects; see the [S3 service](s3-service_en.md) |
 | Ordinary node job execution | Flight `DoExchange` carrying control messages and result streams |
 | Union invitations, approval, members, status, and job control | Flight `DoAction` with the `dacp.union.` action prefix and JSON messages |
 | Union final results and inter-node stream reads | Flight `DoGet` with the corresponding tickets |
@@ -26,7 +27,7 @@ The shared Union transport module limits JSON messages to 1 MiB. For exact actio
 
 ## Identity, trust, and authorization
 
-Flight uses mTLS. Clients verify the server's CA chain and connection identity; servers verify client certificates. A server calling another node also acts as a client. A valid certificate establishes verifiable identity, not automatic permission to read data or execute tasks.
+Flight uses mTLS. Clients verify the server's CA chain and connection identity; servers verify client certificates. A server calling another node also acts as a client. Published datasets are readable by authenticated clients by default; a valid certificate does not automatically grant task execution permission.
 
 Union identifies callers using the SHA-256 fingerprint of the TLS-verified leaf certificate and can pin remote certificates. Access to Union follows its authorization configuration. Each node independently approves Union invitations and local computation permissions, which can restrict data scope, operators, and resources. Self-declared identity in a JSON request cannot override certificate identity or authorization.
 
@@ -47,3 +48,7 @@ Nodes and Union persist execution metadata; Union also records job scripts and s
 ## Implementation and extensions
 
 Core owns public contracts, transport, authorization, namespaces, and resource management. Plugins extend data backends, formats, structured browsing, and executors. Changes to representations or wire contracts must update shared interfaces, servers, Python/Scala clients, tests, and bilingual documentation together. See the [plugin architecture](plugins_en.md) for implemented and planned extension boundaries.
+
+### Single-node job execution policies
+
+Flight `DoExchange` accepts `execution_policy_json` (JSON bytes), `retry_aware` (boolean), and `replay_from` (original execution ID) alongside job YAML in `OperatorRequest`. For replay, leave `job_yaml` empty; the server restores the original job and policy and checks the submitting identity and valid materialized outputs. Worker-step requests reject these job-level fields. Result streams begin with `execution` metadata exposing the execution ID. Before retrying, `attempt_failed` lets the client callback clear provisional results before receiving fresh `start/data/end` events. A `complete` event must still be followed by successful Flight end-of-stream. Disconnecting or closing the stream cancels execution. See [execution policies](materialization_en.md).

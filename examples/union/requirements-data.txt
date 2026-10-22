@@ -1,0 +1,2 @@
+# Generation/inspection only. Not a DACP server or operator runtime dependency.
+netCDF4==1.7.4

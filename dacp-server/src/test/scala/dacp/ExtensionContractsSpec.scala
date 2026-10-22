@@ -42,9 +42,25 @@ class ExtensionContractsSpec extends AnyFunSuite {
       assert(paths.forall(Files.size(_)<=200))
     }finally Data.deleteTree(dir)
   }
+  test("cancelled request threads cannot close the shared access log") {
+    val dir=Files.createTempDirectory("access-interrupt-")
+    val log=new AccessLog(dir,1024*1024)
+    val error=new java.util.concurrent.atomic.AtomicReference[Throwable]()
+    val worker=new Thread(()=>try {
+      Thread.currentThread().interrupt()
+      log.append(Data.mapper.createObjectNode().put("request",1))
+      assert(Thread.currentThread().isInterrupted)
+    }catch{case t:Throwable=>error.set(t)})
+    try {
+      worker.start();worker.join();assert(error.get()==null)
+      log.append(Data.mapper.createObjectNode().put("request",2))
+      log.close()
+      val files=Files.list(dir);try assert(files.iterator.asScala.flatMap(p=>Files.readAllLines(p).asScala).size==2)finally files.close()
+    }finally {log.close();Data.deleteTree(dir)}
+  }
   test("mounted provider preserves child namespaces and native capabilities") {
     val dir=Files.createTempDirectory("mounted-contract-");val plugins=new PluginEnvironment()
-    val config=Config("localhost",18818,"localhost",Map.empty,Seq.empty,dir,dir,dir,pluginEnvironment=Some(plugins))
+    val config=Config("localhost",18818,"localhost",Map.empty,dir,dir,dir,pluginEnvironment=Some(plugins))
     try {
       Files.writeString(dir.resolve("a.csv"),"id\n1\n")
       val child=Map[String,Object]("provider"->"directory","source"->Map[String,Object]("root"->dir.toString).asJava).asJava
@@ -54,10 +70,10 @@ class ExtensionContractsSpec extends AnyFunSuite {
       }finally published.close()
     }finally {config.close();plugins.close();Data.deleteTree(dir)}
   }
-  test("access logs record successful, missing and denied metadata without private paths") {
+  test("access logs record successful and missing metadata without private paths") {
     val dir=Files.createTempDirectory("access-flight-contract-")
     val allocator=new org.apache.arrow.memory.RootAllocator()
-    val config=Config("localhost",18819,"localhost",Map("public"->FileDatasets.mixed(Seq(PublishedItem("/visible",file=Some(dir.resolve("private-secret.csv")))))),Seq("dacp://localhost:18819/public"),dir,dir,dir,accessLogDirectory=Some(dir.resolve("logs")))
+    val config=Config("localhost",18819,"localhost",Map("public"->FileDatasets.mixed(Seq(PublishedItem("/visible",file=Some(dir.resolve("private-secret.csv")))))),dir,dir,dir,accessLogDirectory=Some(dir.resolve("logs")))
     try {
       Files.writeString(dir.resolve("private-secret.csv"),"id\n1\n")
       val producer=new Producer(config,allocator)
@@ -68,7 +84,7 @@ class ExtensionContractsSpec extends AnyFunSuite {
       config.close()
       val files=Files.list(dir.resolve("logs"));val text=try files.iterator.asScala.map(p=>Files.readString(p)).mkString finally files.close()
       val entries=text.linesIterator.map(Data.mapper.readTree).toVector
-      assert(entries.size==3 && entries.map(_.path("status").asText).toSet==Set("completed","failed","denied"))
+      assert(entries.size==3 && entries.map(_.path("status").asText).toSet==Set("completed","failed"))
       assert(!text.contains("private-secret") && !text.contains(dir.toString))
     }finally {config.close();allocator.close();Data.deleteTree(dir)}
   }

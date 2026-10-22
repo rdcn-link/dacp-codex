@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix='dacp-repository-example-check-') as tem
  (base/'table.csv').write_text('id,amount\n1,12.5\n2,30.0\n')
  config=dict(host='127.0.0.1',public_host='localhost',port=port,
   datasets=dict(data=dict(provider='mixed',items={'/input':dict(file=str(base/'input.txt')),'/table':dict(file=str(base/'table.csv'))})),
-  allowed_uri_prefixes=[node+'/data'],local_operator_library=str(base/'no-local-operators'),
+  local_operator_library=str(base/'no-local-operators'),
   remote_operator_library_urls=['http://localhost:8820'],operator_cache=str(base/'cache'),
   tls_cert=str(ROOT/'examples/certs/server.crt'),tls_key=str(ROOT/'examples/certs/server.key'),tls_ca=str(ROOT/'examples/certs/ca.crt'))
  (base/'config.json').write_text(json.dumps(config))

@@ -6,3 +6,7 @@
 .brand-logo{display:block;width:120px;height:auto;flex-shrink:0}
 
 .dag-inspect{display:flex;flex-wrap:wrap;gap:6px 22px;padding:14px 18px;border-top:1px solid #e3eaf1;background:#f9fbfd;font-size:11px;color:#60778f;min-height:48px;overflow-wrap:anywhere}.dag-inspect strong{flex-basis:100%;color:#29415c;font-size:13px}.dag-inspect span{max-width:100%;white-space:pre-wrap}.dag-workspace>.notice{margin:12px}.dag-tools{flex-wrap:wrap}
+
+.dag-toolbar{flex-wrap:wrap}.dag-layouts{display:flex;gap:3px;padding:3px;background:#edf2f8;border-radius:9px}.dag-layouts button{border:0;background:transparent;padding:6px 12px;font-size:12px;white-space:nowrap;border-radius:6px}.dag-layouts button[aria-pressed="true"]{background:#2563eb;color:#fff;box-shadow:0 2px 5px #2563eb30}.dag-layouts button:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+
+.dag-layout-control{display:flex;align-items:center;gap:8px}.dag-layout-control>span{font-size:11px;color:#61778a;white-space:nowrap}

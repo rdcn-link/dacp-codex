@@ -57,11 +57,11 @@ private[unionserver] final class Dashboard(settings:WebSettings,coordinator:Coor
         case None=>error(e,404,"member not found")
         case Some(entries)=>
           def escape(s:String)=s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;")
-          val rows=entries.map(m=>"<tr><td>"+escape(m.getName)+"</td><td>"+escape(m.getTitle)+"</td><td>"+escape(m.getDescription)+"</td><td>"+escape(m.getTagsList.toString)+"</td><td>"+escape(m.getUri)+"</td></tr>").mkString
+          val rows=entries.map(m=>"<tr><td>"+escape(m.getName)+"</td><td>"+"<pre>"+escape(m.getDescription)+"</pre>"+"</td><td>"+escape(m.getUri)+"</td></tr>").mkString
           val node=coordinator.members.all.find(_.path("identity").asText==identity).map(_.path("url").asText).getOrElse(identity)
           val input=getClass.getResourceAsStream("/web/datasets.html")
           val template=try new String(input.readAllBytes(),UTF_8)finally input.close()
-          val table=if(entries.isEmpty)"<tr><td colspan=\"5\">该节点暂无数据集</td></tr>"else rows
+          val table=if(entries.isEmpty)"<tr><td colspan=\"3\">该节点暂无数据集</td></tr>"else rows
           val page=template.replace("{{node}}",escape(node)).replace("{{identity}}",escape(identity)).replace("{{rows}}",table)
           send(e,200,page.getBytes(UTF_8),"text/html; charset=utf-8")
       }

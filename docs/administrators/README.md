@@ -51,3 +51,5 @@ Union 维护一个 Union，主动邀请独立节点并轮询状态。成员加�
 使用前台进程的 Ctrl+C 或发送 SIGTERM 停机。重启不会恢复中断的结果流。算子镜像可通过 `docker image ls` 检查；本地运行时配置与仓库制品是不同资源。日志中的 DEBUG 级别与允许源码提交的 DEBUG 运行模式分别配置。
 
 节点默认同时开启只读 HTTP 看板，端口为 Flight 端口加 1000；可通过 `web.enabled: false` 关闭。配置和 DAG 展示见[节点 Web 看板](../node-web.md)。
+
+节点默认同时启用 [S3 兼容读取服务](../s3-service.md)，端口为 Flight 端口加 2000；它公开下载 bytes Item，独立于 Flight mTLS。可通过 `s3: {enabled: false}` 关闭。

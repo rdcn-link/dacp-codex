@@ -84,7 +84,6 @@ public_host: localhost
 tls_cert: cert.pem
 tls_key: key.pem
 tls_ca: ca.pem
-allowed_uri_prefixes: [dacp://localhost:8815/office]
 datasets:
   office:
     provider: mixed
@@ -109,7 +108,7 @@ datasets:
     val dir = Files.createTempDirectory("listing-cost-")
     try {
       val file = dir.resolve("private.csv"); Files.writeString(file,"id,note\n1,\"unterminated")
-      val config = Config("localhost",8815,"localhost",Map.empty,Seq.empty,dir,dir,dir)
+      val config = Config("localhost",8815,"localhost",Map.empty,dir,dir,dir)
       val adapter = new NamespaceAdapter(Seq(PublishedItem("/orders",file=Some(file))),config)
       val metadata = adapter.list().head
       assert(metadata.format == "csv" && metadata.recordCount.isEmpty && metadata.schema.isEmpty)
@@ -160,8 +159,7 @@ datasets:
       val file = dir.resolve("private-workbook.xlsx"); workbook(file,multiple=true)
       val config = Config("localhost",8815,"localhost",Map("public" -> FileDatasets.mixed(Seq(
         PublishedItem("/orders",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Orders"))),
-        PublishedItem("/other",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Other")))))),
-        Seq("dacp://localhost:8815/public"),dir,dir,dir,batchSize=1,inferSample=1)
+        PublishedItem("/other",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Other")))))),dir,dir,dir,batchSize=1,inferSample=1)
       val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(config,allocator)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()
       try {

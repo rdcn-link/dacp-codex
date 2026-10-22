@@ -11,9 +11,9 @@ import scala.jdk.CollectionConverters._
 
 class DatasetCatalogSpec extends AnyFunSuite {
   private def config(dir:Path,catalog:Option[DatasetCatalogDefinition]=None,instance:Option[DatasetCatalog]=None)=
-    Config("localhost",8815,"localhost",Map.empty,Seq("dacp://localhost:8815/public"),dir,dir,dir,datasetCatalog=catalog,catalogOverride=instance)
+    Config("localhost",8815,"localhost",Map.empty,dir,dir,dir,datasetCatalog=catalog,catalogOverride=instance)
 
-  test("registered JDBC catalog discovers additions and removals through Flight; leases survive removal and authorization still applies") {
+  test("registered JDBC catalog discovers additions and removals through Flight; leases survive removal and all published datasets are readable") {
     val dir=Files.createTempDirectory("dynamic-catalog-");val url="jdbc:h2:mem:catalog"+java.util.UUID.randomUUID.toString
     val db=DriverManager.getConnection(url);val sql=db.createStatement()
     sql.execute("CREATE TABLE dacp_datasets(name VARCHAR PRIMARY KEY)")
@@ -33,7 +33,9 @@ class DatasetCatalogSpec extends AnyFunSuite {
       val info=client.getInfo(FlightDescriptor.path("datasets","public","/records"))
       val stream=client.getStream(info.getEndpoints.get(0).getTicket)
       try {assert(stream.next());assert(!stream.next())}finally stream.close()
-      intercept[FlightRuntimeException](client.getInfo(FlightDescriptor.path("datasets","private")))
+      assert(dacp.protocol.Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets","private")).getAppMetadata).getItemsCount==0)
+      val dataset=dacp.protocol.Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets","public")).getAppMetadata)
+      assert(dataset.getName=="public" && dataset.getDescription=="{}")
       val lease=c.openDataset("public")
       sql.execute("DELETE FROM dacp_datasets WHERE name='public'")
       assert(names()==Seq("private"))
@@ -44,9 +46,9 @@ class DatasetCatalogSpec extends AnyFunSuite {
       intercept[FlightRuntimeException](names()) // Backend failure must not masquerade as an empty catalog.
     }finally {client.close();server.close();c.close();allocator.close();insert.close();sql.close();db.close();Data.deleteTree(dir)}
   }
-  test("public descriptions are discoverable without data authorization or opening the backend") {
+  test("public descriptions are discoverable without opening the backend") {
     val dir=Files.createTempDirectory("public-catalog-")
-    var entries=Seq(DatasetInfo("restricted",DatasetMetadata("Orders","公开数据说明",Seq("sales"))))
+    var entries=Seq(DatasetInfo("restricted","""{"summary":"公开数据说明","owner":{"team":"sales"},"fields":["id","amount"]}"""))
     val cat=new DatasetCatalog {
       def list():Seq[DatasetInfo]=entries
       def open(name:String):PublishedDataset=throw new AssertionError("discovery must not open data")
@@ -58,26 +60,32 @@ class DatasetCatalogSpec extends AnyFunSuite {
       val info=client.listFlights(Criteria.ALL).iterator().next()
       assert(client.listFlights(new Criteria("local".getBytes)).iterator().next().getDescriptor==info.getDescriptor)
       val meta=dacp.protocol.Metadata.DataSet.parseFrom(info.getAppMetadata)
-      assert(meta.getName=="restricted" && meta.getTitle=="Orders" && meta.getDescription=="公开数据说明")
-      assert(meta.getTagsList.asScala.toVector==Vector("sales") && meta.getItemsCount==0)
+      assert(meta.getName=="restricted" && meta.getDescription==entries.head.description)
+      assert(meta.getItemsCount==0 && !meta.getAllFields.keySet.asScala.exists(f=>Set("title","tags")(f.getName)))
       assert(meta.getUri==c.uri("restricted"))
-      val denied=intercept[FlightRuntimeException](client.getInfo(FlightDescriptor.path("datasets","restricted")))
-      assert(denied.status.code()==FlightStatusCode.UNAUTHORIZED)
       entries=Seq.empty
       assert(!client.listFlights(Criteria.ALL).iterator().hasNext)
       assert(!client.listFlights(new Criteria("local".getBytes)).iterator().hasNext)
       intercept[FlightRuntimeException](client.listFlights(new Criteria("search".getBytes)).iterator().hasNext)
     }finally {client.close();server.close();c.close();allocator.close();Data.deleteTree(dir)}
   }
-  test("static catalogs publish only explicitly configured public metadata") {
-    val dir=Files.createTempDirectory("static-metadata-");val path=dir.resolve("node.yaml")
-    val base="host: localhost\npublic_host: localhost\ntls_cert: cert\ntls_key: key\ntls_ca: ca\nallowed_uri_prefixes: []\n"
+  test("static descriptions are JSON object strings; removed fields and invalid descriptions fail configuration") {
+    val dir=Files.createTempDirectory("static-description-");val path=dir.resolve("node.yaml")
+    val base="host: localhost\npublic_host: localhost\ntls_cert: cert\ntls_key: key\ntls_ca: ca\n"
+    val description="""{"summary":"Orders","owner":{"team":"sales"},"fields":["id","amount"],"public":true}"""
     try {
-      Files.writeString(path,base+"datasets:\n  orders:\n    provider: mixed\n    metadata: {title: Orders, description: Public description, tags: [sales]}\n    items: {}\n")
+      Files.writeString(path,base+"datasets:\n  orders:\n    provider: mixed\n    description: '"+description+"'\n    items: {}\n")
       val c=Config.load(path)
-      try assert(c.datasetInfos()==Seq(DatasetInfo("orders",DatasetMetadata("Orders","Public description",Seq("sales")))))finally c.close()
-      Files.writeString(path,base+"datasets: {orders: {provider: mixed, metadata: {credentials: secret}, items: {}}}\n")
-      intercept[IllegalArgumentException](Config.load(path))
+      try assert(c.datasetInfos()==Seq(DatasetInfo("orders",description)))finally c.close()
+      for(setting<-Seq("metadata: {}","title: Orders","tags: [sales]","description: {}","description: ''","description: 'plain text'","description: '[]'","description: 'null'","description: '{} {}'")) {
+        Files.writeString(path,base+"datasets:\n  orders:\n    provider: mixed\n    "+setting+"\n    items: {}\n")
+        intercept[IllegalArgumentException](Config.load(path))
+      }
+      for(invalid<-Seq(null,"", "not JSON","[]","null","1","{} {}","{\"a\":\""+("x"*32768)+"\"}")) {
+        intercept[IllegalArgumentException](DatasetInfo("invalid",invalid))
+      }
+      assert(DatasetInfo("default").description=="{}")
+      intercept[IllegalArgumentException](DatasetDefinition("mixed",description="[]"))
     }finally Data.deleteTree(dir)
   }
   test("catalog identity checks, cancellation and ownership apply to directly supplied catalogs") {
@@ -104,7 +112,7 @@ class DatasetCatalogSpec extends AnyFunSuite {
   test("catalog configuration rejects unknown providers, invalid fields and simultaneous static declarations") {
     val dir=Files.createTempDirectory("catalog-settings-")
     val file=dir.resolve("server.yaml")
-    val base="host: localhost\npublic_host: localhost\ntls_cert: cert\ntls_key: key\ntls_ca: ca\nallowed_uri_prefixes: []\n"
+    val base="host: localhost\npublic_host: localhost\ntls_cert: cert\ntls_key: key\ntls_ca: ca\n"
     try {
       for(text<-Seq("dataset_catalog: {provider: missing}","dataset_catalog: {provider: static, unexpected: true}","dataset_catalog: {provider: static}\ndatasets: {public: {provider: mixed, items: {}}}")) {
         Files.writeString(file,base+text);intercept[IllegalArgumentException](Config.load(file))

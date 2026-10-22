@@ -34,7 +34,7 @@ cd dacp-server
 sbt run
 ```
 
-The default server listens on `localhost:8815`; its configuration is [examples/server.yaml](../../examples/server.yaml). Connect to the server origin and use the argument-free shell command `datasets` to list its directory before selecting a Dataset. Nodes publish local directories; the Union website displays the directory of a selected member. See [dataset directories](../dataset-directory_en.md).
+The default server listens on `localhost:8815`; its configuration is [examples/server.yaml](../../examples/server.yaml). Connect to the server origin and use the argument-free shell command `datasets` to list its directory before selecting a Dataset; a sole Dataset is selected automatically. Nodes publish local directories; the Union website displays the directory of a selected member. See [dataset directories](../dataset-directory_en.md).
 
 In another terminal, connect from the project root:
 
@@ -217,7 +217,7 @@ sources:
       tables: [CUSTOMERS]
 ```
 
-This is a configuration fragment; merge it with listener, TLS, and URI allowlist settings, and replace example paths and database connections. Relative paths resolve against the server process working directory.
+This is a configuration fragment; merge it with listener and TLS settings, and replace example paths and database connections. Relative paths resolve against the server process working directory.
 
 Directory Datasets expose paths relative to their root, such as `/reports/orders.csv`. Empty directories are folders, and supported archives can be browsed further. Subsequent listings reflect additions, deletions, and changes. The root stays private, all symbolic links are ignored, and access remains confined to the root. Optional directory `reader_overrides` override reader format, sheet, header row, and schema; they do not rename paths or add other sources.
 
@@ -259,7 +259,7 @@ Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Save
 
 ## Collaboration and tasks
 
-DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and places each task on the node hosting its first input unless an execution node is specified. Nodes collaborate through mTLS Flight DoExchange. Each subtask uses a separate Docker container; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
+DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and places each task on the node hosting its first input unless an execution node is specified. Nodes collaborate through mTLS Flight DoExchange. Eligible node subjobs [share one container and process](../operator-fusion_en.md), while other tasks execute independently; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
 
 Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, build the conversion operator and start the server. Stop the quick-start server first if it is still running:
 
@@ -287,9 +287,9 @@ Operators can share a dependency environment and a code bundle. The starter oper
 
 ## Security and operating limits
 
-All connections require mTLS and URI prefix authorization. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
+All Flight connections require mTLS. Published datasets and their Items are browsable and readable by default, without an additional URI allowlist. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
 
-Allowlists currently apply at node level, without permissions grouped by certificate subject. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and tasks are not restored after restart. See the [technical reference](../../docs/reference_en.md#protocol-and-configuration) for full configuration and protocol details.
+Unpublished physical files and database tables are not automatically exposed. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and tasks are not restored after restart. See the [technical reference](../../docs/reference_en.md#protocol-and-configuration) for full configuration and protocol details.
 
 In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`; `--source` and `--code` are unsupported. Servers default to NORMAL and reject source tasks at both coordinator and execution nodes. See [source operators](../../docs/operator-source_en.md) for configuration, Python/Scala examples, and the plugin contract.
 
@@ -325,3 +325,7 @@ Publish optional source archives, repository revisions, license declarations/tex
 Submit explicit-placement DAGs through the [Union server](../../dacp-union-server/README_en.md), subscribe to execution status and traffic, and read final streams. Module documentation covers invitation, approval, Python, and Scala usage; the [two-node example](../../examples/union/README_en.md) combines local sales aggregation with cross-node price analysis.
 
 DACP and Union persist all execution records by default; the Union dashboard can query history after restart. For local query commands and storage directories, see [execution history](../execution-history_en.md).
+
+## Execution policies, retries, and replay
+
+Both single-node DACP Server multi-step jobs and Union collaborative jobs accept a separate execution-policy JSON with `max_retries`, `timeout_seconds`, and `materialization`. Use `submit workflow.yaml --policy policy.json` in the shell and `replay EXECUTION_ID` to replay from valid materialized boundaries. Python and Scala clients must explicitly supply a retry callback to clear the preceding attempt's partial results; closing the result stream cancels execution. See [execution policy, output materialization, and replay](../materialization_en.md) for configuration, complete calls, and success confirmation rules.

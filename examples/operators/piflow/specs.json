@@ -1,0 +1,1450 @@
+{
+  "select_field": {
+    "class": "SelectField",
+    "description": "Select named record columns in order, incrementally by Arrow batch. Params: columnNames (comma-separated string).",
+    "params": {
+      "columnNames": "station_id,temperature"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "select_field"
+  },
+  "drop_field": {
+    "class": "DropField",
+    "description": "Remove record columns incrementally. Params: columnNames (comma-separated string); absent names ignored.",
+    "params": {
+      "columnNames": "quality"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "drop_field"
+  },
+  "convert_schema": {
+    "class": "ConvertSchema",
+    "description": "Rename columns; does not cast data types. Params: schema, e.g. station_id->station,temperature->air_c.",
+    "params": {
+      "schema": "station_id->station,temperature->air_c"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "convert_schema"
+  },
+  "distinct": {
+    "class": "Distinct",
+    "description": "Deduplicate records across Arrow batches; retains the first row per key. Params: optional columnNames; empty means all columns. Key-state limit: 128 MiB.",
+    "params": {
+      "columnNames": "station_id"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming_with_bounded_state",
+    "test": "distinct"
+  },
+  "add_uuid_stop": {
+    "class": "AddUUIDStop",
+    "description": "Prepend a distinct 32-character hexadecimal UUID per row. Params: column (new column name).",
+    "params": {
+      "column": "uuid"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "add_uuid_stop"
+  },
+  "filter": {
+    "class": "Filter",
+    "description": "Filter Arrow batches by a SQLite SQL predicate (not Spark SQL). Params: condition, e.g. quality = 0 AND temperature >= 12. Scalar columns only.",
+    "params": {
+      "condition": "quality = 0 AND temperature >= 12"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "filter",
+    "dialect": "SQLite"
+  },
+  "fork": {
+    "class": "Fork",
+    "description": "Duplicate each input batch to two fixed ports, left and right. No params. Adaptation: explicit ports replace PiFlow dynamic outports.",
+    "params": {},
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "left": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      },
+      "right": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "fork"
+  },
+  "column_check": {
+    "class": "ColumnCheck",
+    "description": "Validate full ordered column names against a reference and return left input. Params: none. Inputs: left, right. Left-input buffering limit: 128 MiB. Does not check physical units.",
+    "params": {},
+    "inputs": {
+      "left": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      },
+      "right": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "column_check"
+  },
+  "consistency_check": {
+    "class": "ConsistencyCheck",
+    "description": "Left-join reference keys; prepend flagField=0 for matches, 1 otherwise. Params: flagField, correlationColumn (comma-separated). Duplicate reference keys retain join multiplicity. 128 MiB input limit each.",
+    "params": {
+      "flagField": "flag",
+      "correlationColumn": "station_id"
+    },
+    "inputs": {
+      "left": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      },
+      "right": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "consistency_check"
+  },
+  "merge": {
+    "class": "Merge",
+    "description": "Stream left records followed by right records, retaining duplicates. Identical ordered schemas required. No params. Fixed ports replace dynamic inports.",
+    "params": {},
+    "inputs": {
+      "left": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      },
+      "right": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "merge"
+  },
+  "subtract": {
+    "class": "Subtract",
+    "description": "EXCEPT DISTINCT over whole rows: return unique left rows absent from right. Nulls compare equal for this set operation. No params. 128 MiB input limit each.",
+    "params": {},
+    "inputs": {
+      "left": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      },
+      "right": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "subtract"
+  },
+  "join": {
+    "class": "Join",
+    "description": "Key-based inner/left/right/full_outer record join. Params: joinMode, correlationColumn. Colliding right non-key columns receive _right suffix. 128 MiB per input.",
+    "params": {
+      "joinMode": "left",
+      "correlationColumn": "station_id"
+    },
+    "inputs": {
+      "left": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      },
+      "right": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "join"
+  },
+  "add_day_id": {
+    "class": "AddDayID",
+    "description": "Spark EcoFlow: sort year/month/day/hour; add id and day_id. Params: partitionNum string. Inputs materialized, max 128 MiB / one million rows.",
+    "params": {
+      "partitionNum": "1"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "add_day_id",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "route": {
+    "class": "Route",
+    "description": "Route by SQLite condition. Outputs: result (all rows), matched, unmatched (including SQL null predicates). Fixed ports replace dynamic PiFlow routing.",
+    "params": {
+      "condition": "quality = 0 AND temperature >= 12"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      },
+      "matched": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      },
+      "unmatched": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "route",
+    "dialect": "SQLite"
+  },
+  "execute_sql_stop": {
+    "class": "ExecuteSQLStop",
+    "description": "Read-only SQLite SQL over a named input relation (not Spark SQL). Params: sql, viewName. Scalar inputs, max 128 MiB. Output types inferred; empty computed columns have null type.",
+    "params": {
+      "viewName": "observations",
+      "sql": "SELECT station_id,AVG(temperature) AS mean_c FROM observations GROUP BY station_id"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "execute_sql_stop",
+    "dialect": "SQLite"
+  },
+  "csv_save": {
+    "class": "CsvSave",
+    "description": "Serialize record batches as a UTF-8 CSV byte stream. Params: header (bool, default true), delimiter (one character, default comma). No destination path or file side effect.",
+    "params": {
+      "header": true,
+      "delimiter": ","
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "bytes"
+        ],
+        "formats": [
+          "csv"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "csv_save"
+  },
+  "csv_parser": {
+    "class": "CsvParser",
+    "description": "Stream UTF-8 CSV bytes to Arrow string columns. Params: header (bool, default true), delimiter (one character), schema (names for headerless input). No csvPath; quoted fields supported. No type inference.",
+    "params": {
+      "header": true,
+      "delimiter": ","
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "bytes"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "csv_parser"
+  },
+  "csv_string_parser": {
+    "class": "CsvStringParser",
+    "description": "Parse headerless UTF-8 CSV text bytes to string records. Params: delimiter, schema; absent schema generates _0, _1, etc. Input stream replaces PiFlow string property.",
+    "params": {
+      "delimiter": ";",
+      "schema": "station,temp"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "bytes"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "csv_string_parser"
+  },
+  "add_day_state": {
+    "class": "AddDayState",
+    "description": "EcoFlow sunrise/sunset day/night classifier using longitude, latitude and day_id (day-of-year); hour uses Beijing time. Params: longitude, latitude as strings. Spark batch, 128 MiB input limit.",
+    "params": {
+      "longitude": "120",
+      "latitude": "0"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "add_day_state",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "table_show": {
+    "class": "TableShow",
+    "description": "Return table columns/expressions for client display. Params: showField (SQLite projection, default *). No chart rendering. Scalar columns, bounded 128 MiB.",
+    "params": {
+      "showField": "station_id,temperature"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "table_show",
+    "dialect": "SQLite",
+    "uses_sql": true
+  },
+  "single_field_threshold_clean": {
+    "class": "SingleFieldThresholdClean",
+    "description": "EcoFlow inclusive field thresholds with an additional Spark SQL condition; replace invalid values with flagValue. Params: fields,maxValue,minValue,flagValue,additionalCondition (strings). Spark may coerce affected column types.",
+    "params": {
+      "fields": "temperature",
+      "maxValue": "60",
+      "minValue": "-90",
+      "flagValue": "-9999",
+      "additionalCondition": "quality = 0"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "single_field_threshold_clean",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "histogram": {
+    "class": "Histogram",
+    "description": "Produce grouped histogram data as records, not an image. Params: abscissa, customizedProperties mapping columns to COUNT/SUM/AVG/MAX/MIN. SQLite aggregates, scalar columns, 128 MiB.",
+    "params": {
+      "abscissa": "station_id",
+      "customizedProperties": {
+        "temperature": "AVG"
+      }
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "histogram",
+    "dialect": "SQLite",
+    "uses_sql": true
+  },
+  "line_chart": {
+    "class": "LineChart",
+    "description": "Produce grouped line-chart data as records, not an image. Params: abscissa, customizedProperties mapping columns to COUNT/SUM/AVG/MAX/MIN. SQLite aggregates, scalar columns, 128 MiB.",
+    "params": {
+      "abscissa": "station_id",
+      "customizedProperties": {
+        "temperature": "AVG"
+      }
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "line_chart",
+    "dialect": "SQLite",
+    "uses_sql": true
+  },
+  "batch_field_threshold_clean": {
+    "class": "BatchFieldThresholdClean",
+    "description": "EcoFlow inclusive threshold cleaning. left: records to clean; right: field,min_value,max_value,flag_value threshold records. No params. Fixes upstream Row-to-string field matching; field names must match exactly. Spark may coerce affected column types.",
+    "params": {},
+    "inputs": {
+      "left": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      },
+      "right": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "batch_field_threshold_clean",
+    "upstream_ports": {
+      "left": "MasterTablePort",
+      "right": "ThresholdTablePort"
+    },
+    "executor": "jvm"
+  },
+  "pie_chart": {
+    "class": "PieChart",
+    "description": "Grouped pie-chart data as records, not an image. Params: dimension,indicator,indicatorOption COUNT/SUM/AVG/MAX/MIN. SQLite scalar aggregates, bounded 128 MiB. Output indicator_ACTION column.",
+    "params": {
+      "dimension": "station_id",
+      "indicator": "temperature",
+      "indicatorOption": "AVG"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "pie_chart",
+    "dialect": "SQLite",
+    "uses_sql": true
+  },
+  "scatter_plot_chart": {
+    "class": "ScatterPlotChart",
+    "description": "Scatter-plot records, not an image. Params: legend column, customizedProperties mapping dimension column to unique integer order. Select legend and ordered dimensions; sort by legend then first dimension. SQLite scalar columns, bounded128MiB.",
+    "params": {
+      "legend": "station_id",
+      "customizedProperties": {
+        "temperature": 0,
+        "quality": 1
+      }
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "scatter_plot_chart",
+    "dialect": "SQLite",
+    "uses_sql": true
+  },
+  "custom_view": {
+    "class": "CustomView",
+    "description": "Custom view exported as UTF-8 CSV byte stream with a header. Replaces upstream HDFS visualization file with an output stream; no params, no rendering.",
+    "params": {},
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "bytes"
+        ],
+        "formats": [
+          "csv"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "custom_view"
+  },
+  "mdv_g": {
+    "class": "MDV_G",
+    "description": "EcoFlow MDV sliding-window interpolation at the same hour on neighboring days, excluding current day. Requires day_id,hour. Params fields,mdv_num (positive odd string),qualityControlMarkerValue (integer string).",
+    "params": {
+      "fields": "value",
+      "mdv_num": "3",
+      "qualityControlMarkerValue": "-9999"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "mdv_g",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "mdv_i": {
+    "class": "MDV_I",
+    "description": "EcoFlow fixed-window MDV interpolation grouped by ceiling(day_id/mdv_num),hour. Preserves original zero contribution of flagged values to the group mean. Adds zone; fixes multiple-field replacement. Params fields,mdv_num positive string,qualityControlMarkerValue integer string.",
+    "params": {
+      "fields": "value",
+      "mdv_num": "3",
+      "qualityControlMarkerValue": "-9999"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "mdv_i",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "front_and_back_values_are_valid": {
+    "class": "FrontAndBackValuesAreValid",
+    "description": "EcoFlow same-hour interpolation using valid preceding and following days. Requires day_id,hour. Params fields and qualityControlMarkerValue integer string; fixes upstream ignored marker.",
+    "params": {
+      "fields": "value",
+      "qualityControlMarkerValue": "-1"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "front_and_back_values_are_valid",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "current_and_post_value_interpolation": {
+    "class": "CurrentAndPostValueInterpolation",
+    "description": "Interpolate two consecutive missing same-hour daily observations between valid endpoints. Requires year,month,day,hour. Params fields,qualityControlMarkerValue string. Fixes ignored marker and upstream absolute-difference error to support decreasing series.",
+    "params": {
+      "fields": "value",
+      "qualityControlMarkerValue": "-1"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "current_and_post_value_interpolation",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "wpl_correction": {
+    "class": "WplCorrection",
+    "description": "EcoFlow WPL flux correction, preserves original conversions and five-decimal string output Fc,Le,Hs. All params are column-name strings. co2_Avg in mg/m3,h2o_Avg in g/m3,rho_a_Avg in kg/m3,Ts_Avg in Celsius. Requires non-null numeric columns.",
+    "params": {
+      "Fc": "Fc",
+      "Le": "Le",
+      "Hs": "Hs",
+      "co2_Avg": "co2_Avg",
+      "h2o_Avg": "h2o_Avg",
+      "Ts_Avg": "Ts_Avg",
+      "rho_a_Avg": "rho_a_Avg"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "wpl_correction",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "dr_coordinate_rotation": {
+    "class": "DRCoordinateRotation",
+    "description": "EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm.",
+    "params": {
+      "Fc": "Fc",
+      "Le": "Le",
+      "Hs": "Hs",
+      "u_star": "u_star",
+      "cov_Uz_Uz": "cov_Uz_Uz",
+      "cov_Uz_Ux": "cov_Uz_Ux",
+      "cov_Uz_Uy": "cov_Uz_Uy",
+      "cov_Uz_co2": "cov_Uz_co2",
+      "cov_Uz_h2o": "cov_Uz_h2o",
+      "cov_Uz_Ts": "cov_Uz_Ts",
+      "cov_Ux_Ux": "cov_Ux_Ux",
+      "cov_Ux_Uy": "cov_Ux_Uy",
+      "cov_Ux_co2": "cov_Ux_co2",
+      "cov_Ux_h2o": "cov_Ux_h2o",
+      "cov_Ux_Ts": "cov_Ux_Ts",
+      "cov_Uy_Uy": "cov_Uy_Uy",
+      "cov_Uy_co2": "cov_Uy_co2",
+      "cov_Uy_h2o": "cov_Uy_h2o",
+      "cov_Uy_Ts": "cov_Uy_Ts",
+      "Ux_Avg": "Ux_Avg",
+      "Uy_Avg": "Uy_Avg",
+      "Uz_Avg": "Uz_Avg"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "dr_coordinate_rotation",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "pf_coordinate_rotation": {
+    "class": "PFCoordinateRotation",
+    "description": "EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star.",
+    "params": {
+      "Fc": "Fc",
+      "Le": "Le",
+      "Hs": "Hs",
+      "u_star": "u_star",
+      "cov_Uz_Uz": "cov_Uz_Uz",
+      "cov_Uz_Ux": "cov_Uz_Ux",
+      "cov_Uz_Uy": "cov_Uz_Uy",
+      "cov_Uz_co2": "cov_Uz_co2",
+      "cov_Uz_h2o": "cov_Uz_h2o",
+      "cov_Uz_Ts": "cov_Uz_Ts",
+      "cov_Ux_Ux": "cov_Ux_Ux",
+      "cov_Ux_Uy": "cov_Ux_Uy",
+      "cov_Ux_co2": "cov_Ux_co2",
+      "cov_Ux_h2o": "cov_Ux_h2o",
+      "cov_Ux_Ts": "cov_Ux_Ts",
+      "cov_Uy_Uy": "cov_Uy_Uy",
+      "cov_Uy_co2": "cov_Uy_co2",
+      "cov_Uy_h2o": "cov_Uy_h2o",
+      "cov_Uy_Ts": "cov_Uy_Ts",
+      "Ux_Avg": "Ux_Avg",
+      "Uy_Avg": "Uy_Avg",
+      "Uz_Avg": "Uz_Avg"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "pf_coordinate_rotation",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "wild_spot_culling_mdv_i": {
+    "class": "WildSpotCullingMDV_I",
+    "description": "EcoFlow outlier removal in fixed windows ceiling(id/mdv_num). Requires id. Params fields (one column),mdv_num positive string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream ignored statistic.",
+    "params": {
+      "fields": "value",
+      "mdv_num": "5",
+      "multiple": "1",
+      "statisticalType": "stddev",
+      "flagValue": "-9999"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "wild_spot_culling_mdv_i",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "wild_spot_culling_mdv_g": {
+    "class": "WildSpotCullingMDV_G",
+    "description": "EcoFlow outlier removal from neighboring id windows, excluding current row. One field per step. Requires id; params fields,mdv_num positive odd string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream SQL syntax and undefined contrast_flag.",
+    "params": {
+      "fields": "value",
+      "mdv_num": "5",
+      "multiple": "1",
+      "statisticalType": "stddev",
+      "flagValue": "-9999"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "wild_spot_culling_mdv_g",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "storage_item_ec": {
+    "class": "StorageItemEC",
+    "description": "EcoFlow EC CO2 storage correction for 30-minute observations sorted by day_id,hour. Params Fc,co2_Avg column names,para_H height metres string,flagValue numeric string. Adds id; retains upstream missing/large-jump condition.",
+    "params": {
+      "Fc": "Fc",
+      "co2_Avg": "co2_Avg",
+      "para_H": "18",
+      "flagValue": "-9999"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "storage_item_ec",
+    "upstream_ports": {
+      "source": "Default"
+    },
+    "executor": "jvm"
+  },
+  "rainfall_data_culling": {
+    "class": "RainfallDataCulling",
+    "description": "EcoFlow rainfall quality control: flag selected flux columns at rainy timestamps and following 30 minutes. left=flux,right=meteorology; both require year,month,day,hour. Params fields,rainFallField,flagValue integer string. Upstream drops flux rows whose rainfall is null or unmatched.",
+    "params": {
+      "fields": "Fc",
+      "rainFallField": "rain",
+      "flagValue": "-9999"
+    },
+    "inputs": {
+      "left": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      },
+      "right": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "rainfall_data_culling",
+    "upstream_ports": {
+      "left": "fluxCbsPort",
+      "right": "metroCbsPort"
+    },
+    "executor": "jvm"
+  },
+  "storage_item_pm_hs": {
+    "class": "StorageItemPM_Hs",
+    "description": "EcoFlow seven-layer sensible heat profile storage correction. left flux,right meteorology; date columns year,month,day,hour. Params Hs,rho_a_Avg column names,equipmentHeightDifference seven metre heights,everyTaFields seven temperature columns,time_interval positive seconds string. Fixes ignored density column name.",
+    "params": {
+      "Hs": "Hs",
+      "rho_a_Avg": "density",
+      "equipmentHeightDifference": "1,1,1,1,1,1,1",
+      "everyTaFields": "t1,t2,t3,t4,t5,t6,t7",
+      "time_interval": "1800"
+    },
+    "inputs": {
+      "left": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      },
+      "right": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "storage_item_pm_hs",
+    "upstream_ports": {
+      "left": "fluxCbsPort",
+      "right": "metroCbsPort"
+    },
+    "executor": "jvm"
+  },
+  "storage_item_pm_le": {
+    "class": "StorageItemPM_LE",
+    "description": "EcoFlow seven-layer latent heat profile storage correction. left flux,right meteorology; year,month,day,hour required. Params LE column,equipmentHeightDifference seven metre heights,everyTaFields seven Celsius columns,everyPvaporFields seven vapor-pressure columns,time_interval seconds string. Original vapor conversion216.5*p/(273.15+T).",
+    "params": {
+      "equipmentHeightDifference": "1,1,1,1,1,1,1",
+      "everyTaFields": "t1,t2,t3,t4,t5,t6,t7",
+      "time_interval": "1800",
+      "LE": "LE",
+      "everyPvaporFields": "v1,v2,v3,v4,v5,v6,v7"
+    },
+    "inputs": {
+      "left": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      },
+      "right": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "spark_batch",
+    "test": "storage_item_pm_le",
+    "upstream_ports": {
+      "left": "fluxCbsPort",
+      "right": "metroCbsPort"
+    },
+    "executor": "jvm"
+  },
+  "reichstein_check": {
+    "class": "ReichsteinCheck",
+    "description": "EcoFlow Reichstein u-star screening implemented without Spark: six equal-count temperature groups, twenty wind bins, Pearson<0.4, median valid threshold; flag nighttime low-wind FC. Params soilTemperatureField,frictionWindSpeedField,FC strings,flagValue int32,percentFlux numeric(0,1]. Excludes null/nonfinite/flagged samples from estimation; requires120 valid observations. Fixes upper-bin bound and deterministic threshold order. Bounded128MiB.",
+    "params": {
+      "soilTemperatureField": "soil",
+      "frictionWindSpeedField": "wind",
+      "FC": "Fc",
+      "flagValue": -9999,
+      "percentFlux": 0.99
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "reichstein_check"
+  },
+  "mock_data": {
+    "class": "MockData",
+    "description": "Random Arrow records. source is a trigger stream consumed and discarded (matching upstream unused default input); output independent of input. Params schema e.g. name:String,age:Int,optional:Double:true; count string0..1000000. Types String/Int/Long/Float/Double/Boolean. Batches1024.",
+    "params": {
+      "schema": "name:String,age:Int,temperature:Double:true",
+      "count": "100"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "streaming",
+    "test": "mock_data"
+  },
+  "excel_write": {
+    "class": "ExcelWrite",
+    "description": "Records to XLSX byte stream; replaces filePath/saveMode with a new workbook output. Params optional header boolean(default true),dataAddress start cell e.g. Sheet1!A1 (no bounded write ranges). Dates become ISO text, formula-looking strings remain text. Bounded128MiB/one million rows; temporary XLSX serialization, not constant-memory streaming. Vendored openpyxl3.1.5/et_xmlfile2.0.0.",
+    "params": {
+      "header": true,
+      "dataAddress": "Sheet1!A1"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "records"
+        ],
+        "formats": []
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "bytes"
+        ],
+        "formats": [
+          "xlsx"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "excel_write",
+    "uses_excel": true
+  },
+  "excel_read": {
+    "class": "ExcelRead",
+    "description": "XLSX byte stream to string records (no inference), dates as ISO strings, blanks null, cached formula values only. Params optional header boolean(default true),dataAddress [Sheet!]A1[:F35]. Replaces filePath with source bytes. Limits compressed/expanded128MiB and one million selected cells; materializes workbook bytes, preserves worksheet selection. No legacy XLS.",
+    "params": {
+      "header": true,
+      "dataAddress": "Sheet1!A1"
+    },
+    "inputs": {
+      "source": {
+        "representations": [
+          "bytes"
+        ],
+        "formats": [
+          "xlsx"
+        ]
+      }
+    },
+    "outputs": {
+      "result": {
+        "representations": [
+          "records"
+        ],
+        "formats": [
+          "arrow"
+        ]
+      }
+    },
+    "mode": "bounded_materialization",
+    "test": "excel_read",
+    "uses_excel": true
+  }
+}

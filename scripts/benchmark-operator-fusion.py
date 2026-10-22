@@ -93,7 +93,7 @@ def main():
             origin = f'dacp://localhost:{port}'
             work = d / mode
             work.mkdir()
-            config = dict(host='127.0.0.1', public_host='localhost', port=port, datasets={'data':dict(provider='mixed', items={'/' + str(n):dict(file=str(d / f'{n}.txt')) for n in args.rows})}, allowed_uri_prefixes=[origin + '/data'], tls_cert=str(cert / 'node-a.crt'), tls_key=str(cert / 'node-a.key'), tls_ca=str(cert / 'ca.crt'), local_operator_library=str(d / 'operators'), max_concurrent_tasks=4, operator_fusion_enabled=mode == 'fused', execution_store=dict(provider='file', settings=dict(directory=str(work / 'history'))))
+            config = dict(host='127.0.0.1', public_host='localhost', port=port, datasets={'data':dict(provider='mixed', items={'/' + str(n):dict(file=str(d / f'{n}.txt')) for n in args.rows})}, tls_cert=str(cert / 'node-a.crt'), tls_key=str(cert / 'node-a.key'), tls_ca=str(cert / 'ca.crt'), local_operator_library=str(d / 'operators'), max_concurrent_tasks=4, operator_fusion_enabled=mode == 'fused', execution_store=dict(provider='file', settings=dict(directory=str(work / 'history'))))
             (work / 'node.yaml').write_text(json.dumps(config, indent=2))
             with (work / 'server.log').open('w') as log:
                 p = subprocess.Popen(docker_prefix + [str(ROOT / 'dacp-server/target/universal/stage/bin/dacp-server'), str(work / 'node.yaml')], cwd=work, stdout=log, stderr=subprocess.STDOUT)

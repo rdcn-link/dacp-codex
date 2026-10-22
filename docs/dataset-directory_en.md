@@ -8,7 +8,7 @@ Click “查看数据集” in the Union website member list to open one member�
 
 ## Access boundaries
 
-Node directory reads retain mTLS trust and require no data-access or execution grant. Web pages are public; Union uses its own certificate to query the selected invited member and verifies the member identity. Arbitrary remote addresses are not accepted. Directories show names, URIs, titles, descriptions, and tags, without reading Items or data contents. Data access and execution still require authorization.
+Node directory reads retain mTLS trust and require no data-access or execution grant. Web pages are public; Union uses its own certificate to query the selected invited member and verifies the member identity. Arbitrary remote addresses are not accepted. Directories show names, URIs and JSON descriptions without reading Items or data contents. Published datasets are readable by default; execution still requires its corresponding authorization.
 
 ## Administrators: static descriptions
 
@@ -16,34 +16,30 @@ Node directory reads retain mTLS trust and require no data-access or execution g
 datasets:
   orders:
     provider: mixed
-    metadata:
-      title: 订单数据
-      description: 用于跨中心销售统计的订单数据集
-      tags: [sales, orders]
+    description: |-
+      {"summary":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}
     items:
       /records:
         file: /srv/data/orders.csv
 ```
 
-`metadata` contains public Dataset information, separately from provider `source` and `items` settings. Titles are limited to 1024 characters, descriptions to 32768 characters, and tags to 64 entries of 1–256 characters each. Omission publishes the name and URI with empty descriptions. A complete node configuration still requires the normal TLS and other fields.
+`description` is a string containing one valid JSON object. Its internal keys and nested structures are user-defined; DACP imposes no description schema. It is separate from provider `source` and `items` settings. Omission publishes `"{}"`. The string is limited to 32768 characters. Plain text, arrays, scalars, malformed JSON, multiple JSON values and YAML mappings are rejected. Public descriptions must not contain credentials or private storage settings. A complete node configuration still requires TLS and other fields.
 
 ## Developers: dynamic descriptions
 
-Existing `DatasetCatalog` plugins return public descriptions from `list()` without introducing another registration mechanism:
+Catalog plugins return the same JSON string through `DatasetInfo.description`:
 
 ```scala
-import dacp.{DatasetInfo, DatasetMetadata}
+import dacp.DatasetInfo
 
 override def list(): Seq[DatasetInfo] = Seq(
-  DatasetInfo("orders", DatasetMetadata(
-    title = "订单数据",
-    description = "最近一年的订单；每日更新",
-    tags = Seq("sales", "daily")
-  ))
+  DatasetInfo("orders", description =
+    """{"summary":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}"""
+  )
 )
 ```
 
-See [dynamic catalog plugins](dataset-catalogs_en.md) for complete registration, configuration, and lease implementation. Directory reads do not call `open()` or scan data contents. Backend discovery failures must throw rather than return empty lists.
+The string is validated at the shared plugin contract and preserved through Flight, SDKs, the shell and web views. Directory reads do not call `open()` or scan data contents. Backend discovery failures must throw rather than return empty lists. See [dynamic catalog plugins](dataset-catalogs_en.md) for registration, configuration and lease implementation.
 
 ## Shell
 
@@ -61,22 +57,12 @@ dacp-shell> use orders
 dacp-shell> ls /
 ```
 
-`datasets` accepts no arguments and lists names, titles, descriptions, and URIs on the current server. Startup and `connect dacp://host:port` leave no Dataset selected. Run `use NAME` before `ls`, `count`, `show`, `SELECT`, or `run`. `use` selects a Dataset on the current server; data access still requires authorization. Union provides only a per-member directory page on its website.
-
-## When `use` is denied
-
-`datasets` reads a public directory, while `use` requests an Item listing and therefore still requires data-access authorization. Administrators should allow the published Dataset URI in node configuration, for example:
-
-```yaml
-allowed_uri_prefixes:
-  - dacp://localhost:18861/data
-```
-
-The URI host and port must match the node's `public_host` and `port`. Restart the node after changing configuration, then run `use data`. This prefix allowlist applies to clients verified by the node's CA; it does not authorize one particular client certificate separately.
+`datasets` accepts no arguments and lists names, JSON descriptions, and URIs on the current server. On startup or `connect dacp://host:port`, the shell automatically selects and prints the sole Dataset when exactly one is listed. With zero or multiple Datasets, select one with `use NAME` before `ls`, `count`, `show`, `SELECT`, or `run`. `use` selects a Dataset on the current server; published datasets are readable by default. Union provides only a per-member directory page on its website.
 
 ## Python
 
 ```python
+import json
 from pathlib import Path
 from dacp import Source
 
@@ -85,9 +71,10 @@ credentials = dict(
     cert_chain=Path("examples/certs/client.crt").read_bytes(),
     private_key=Path("examples/certs/client.key").read_bytes(),
 )
-# The same interface connects to either an ordinary node or a Union.
+# Connect directly to dacp-server.
 for dataset in Source.datasets("dacp://localhost:18861", **credentials):
-    print(dataset.name, dataset.title, dataset.description, dataset.uri)
+    print(dataset.name, dataset.description, dataset.uri)
+    print(json.loads(dataset.description).get("owner", {}).get("team"))
 ```
 
 The Scala client uses `Source.datasets(origin, tls)` to query nodes directly. Node `FlightInfo.app_metadata` contains the `DataSet` protobuf; descriptors use `datasets/<name>`.

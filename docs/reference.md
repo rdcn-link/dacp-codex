@@ -179,16 +179,15 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | GetFlightInfo `[datasets, dataset, /logical/item]` | Arrow schema + 含 protobuf `Ticket` 的 FlightEndpoint |
 | DoGet `Ticket(dataset,item,view)` | `view=records` 为记录，`view=bytes` 为单列 binary（原始文件字节） |
 
-记录视图支持 CSV、NDJSON、Excel、SQL 和 dacp 生成的 Parquet；任意文件可用 bytes。SDK 将 binary batch 包装成可增量读取的 `io.BufferedReader`。ticket 只描述资源和视图，不是认证 token。GetFlightInfo 和 DoGet 均校验 URI 白名单、规范化路径和符号链接边界。越界链接不会出现在清单中。
+记录视图支持 CSV、NDJSON、Excel、SQL 和 dacp 生成的 Parquet；任意文件可用 bytes。SDK 将 binary batch 包装成可增量读取的 `io.BufferedReader`。ticket 只描述资源和视图，不是认证 token。GetFlightInfo 和 DoGet 均校验已发布命名空间、规范化路径和符号链接边界。越界链接不会出现在清单中。
 
 `examples/server.yaml` 配置：
 
 | 字段 | 含义 |
 |---|---|
 | `host` / `port` | 监听地址 / 端口 |
-| `public_host` | 对外 URI 主机名，白名单使用该名字及显式端口 |
+| `public_host` | 对外公布的 URI 主机名 |
 | `datasets` | Dataset 名称 → provider、source 及 items；名称为一个 URI 路径段 |
-| `allowed_uri_prefixes` | 节点级 URI 前缀白名单，按路径段边界匹配；输出名称也必须授权 |
 | `tls_cert` / `tls_key` / `tls_ca` | PEM 证书、私钥、可信客户端 CA；强制 mTLS |
 | `count_file_records_on_startup` | 启动时填充直接发布的记录文件数量，默认 false；增加启动扫描成本 |
 | `batch_size` | 文件记录视图每个 batch 的最大行数 |
@@ -198,10 +197,10 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | 有序的远程算子库 URL 列表 / 本地不可变版本缓存 / 单个制品最大字节数（默认 8 GiB） |
 | `local_operator_library` | 本地算子库 |
 | `task_peers` | 允许分发任务的节点 origin；自身始终允许，无中心发现服务 |
-| `task_input_prefixes` | 执行节点可拉取的输入 URI 前缀；省略时使用 `allowed_uri_prefixes` |
+| `task_input_prefixes` | 可选的执行节点输入 URI 前缀限制；省略或为空时不增加前缀限制 |
 | `max_concurrent_tasks` | 本地任务及控制请求并发上限（默认 2）；满载立即返回 UNAVAILABLE |
 
-前缀 `dacp://localhost:8815/data1` 不匹配 `data10`。本版白名单适用于所有通过该节点 CA 验证的连接，不提供按证书主体划分的权限组。任务执行器使用节点配置的证书发起 mTLS；多节点须互相信任相应 CA。
+节点发布的数据集默认对通过 mTLS 验证的客户端公开；不另设数据读取白名单。任务执行器使用节点配置的证书发起 mTLS；多节点须互相信任相应 CA。
 
 服务错误使用 Flight/gRPC 状态和明确的 dacp 错误名称：资源不存在为 `NOT_FOUND`；禁止访问为 `UNAUTHORIZED` 且消息含 `FORBIDDEN`；schema 冲突为 `INVALID_ARGUMENT` 且消息含 `SCHEMA_CONFLICT`。protobuf 同时定义错误码供协议扩展。任何传输失败使当前 reader 作废，调用方从头 open；没有流内重试。算子结果只通过流返回，不注册输出数据集或使用输出 TTL。
 
@@ -210,3 +209,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 ## DatasetCatalog
 
 `dataset_catalog` 选择目录 provider，通过 `source` 传入插件私有参数；不能同时配置非空 `datasets`。未配置时使用静态目录。具体契约、JDBC 示例、发现和授权见[动态目录](dataset-catalogs.md)。标准 Flight `ListFlights` 返回公开 Dataset URI 及描述，不额外要求数据授权，不返回 Item 内容。
+
+## S3 兼容端口
+
+节点默认启动匿名只读 HTTP S3 服务：dataset 为 bucket，支持 `bytes` 的 Item 为 object。配置 `s3.enabled`（默认 true）、`s3.host`（默认 `0.0.0.0`）与 `s3.port`（默认实际 Flight 端口加 2000）。使用 path-style 与 unsigned 请求。操作范围、客户端与插件示例见 [S3 兼容服务](s3-service.md)。

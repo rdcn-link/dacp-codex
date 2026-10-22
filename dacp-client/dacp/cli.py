@@ -45,11 +45,28 @@ class Browser(cmd.Cmd):
             raise ValueError('expected dacp-server address: dacp://host[:port]; select a dataset with use NAME')
         origin = urlunsplit((u.scheme, u.netloc, '', '', ''))
         entries = Source.datasets(origin, local_only=True, **self.credentials)
+        candidate, items, selected_uri = None, [], origin
+        if len(entries) == 1:
+            # Reconstruct locally so directory metadata cannot redirect the shell.
+            name = entries[0].name
+            if not name or '/' in name or name in ('.', '..'):
+                raise ValueError('invalid dataset name in directory')
+            selected_uri = origin + '/' + quote(name, safe='')
+            candidate = Source.open(selected_uri, **self.credentials)
+            try:
+                items = candidate.list()
+            except BaseException:
+                candidate.close()
+                raise
         old = self.dataset
-        self.dataset, self.items, self.uri = None, [], origin
+        self.dataset, self.items, self.uri = candidate, items, selected_uri
         if old is not None:
             old.close()
-        self.write(f'Connected: {origin} ({len(entries)} datasets); select one with use NAME')
+        self.write(f'Connected: {origin} ({len(entries)} datasets)')
+        if candidate is not None:
+            self.write(f'Automatically using: {selected_uri} ({len(items)} items)')
+        else:
+            self.write('Select a dataset with use NAME.')
 
     def onecmd(self, line):
         try:
@@ -83,7 +100,7 @@ class Browser(cmd.Cmd):
             self.write("Use help COMMAND for more examples, e.g. help run or help submit.")
 
     def do_connect(self, arg):
-        """connect URI: connect to a dacp-server address; clear dataset selection on success.
+        """connect URI: connect to dacp-server; automatically use its sole Dataset, otherwise clear selection.
 
         Example:
           connect dacp://localhost:8815
@@ -103,8 +120,8 @@ class Browser(cmd.Cmd):
         u = urlsplit(self.uri)
         origin = urlunsplit((u.scheme, u.netloc, '', '', ''))
         entries = Source.datasets(origin, local_only=True, **self.credentials)
-        self.table(('Dataset', 'Title', 'Description', 'URI'),
-                   [(m.name, m.title, m.description, m.uri) for m in entries])
+        self.table(('Dataset', 'Description (JSON)', 'URI'),
+                   [(m.name, m.description, m.uri) for m in entries])
 
     def do_use(self, arg):
         """use DATASET: select a dataset on the current server.
@@ -346,7 +363,7 @@ class Browser(cmd.Cmd):
           END
 
         Use --input for each named port. ITEM is a path, latest ls number, or full Item URI.
-        Optional: --params-file FILE, --timeout SECONDS.
+        Optional: --params-file FILE, --timeout SECONDS, --policy policy.json.
         Installed operator IDs work in NORMAL mode; native_uppercase requires publishing the native example.
         No preview limit applies by default. Job results are streams, with no saved Dataset.
         Execution time is printed after completion, failure or cancellation.
@@ -371,6 +388,7 @@ class Browser(cmd.Cmd):
         parser.add_argument('--view', choices=('bytes','records'), default='bytes')
         parser.add_argument('--params', default='{}')
         parser.add_argument('--params-file')
+        parser.add_argument('--policy', help='execution policy JSON file')
         parser.add_argument('--timeout', type=positive, default=3600)
         parser.add_argument('--preview-rows', type=positive)
         parser.add_argument('--preview-bytes', type=positive)
@@ -412,13 +430,15 @@ class Browser(cmd.Cmd):
         job = {'job':'shell', 'tasks':[{'id':'run','operator':operator,'inputs':inputs,'params':params}]}
         u = urlsplit(self.uri)
         coordinator = urlunsplit((u.scheme,u.netloc,'','',''))
-        self.print_job(coordinator, json.dumps(job), options.timeout, **({"preview_rows":options.preview_rows,"preview_bytes":options.preview_bytes} if options.preview_rows or options.preview_bytes else {}))
+        self.print_job(coordinator, json.dumps(job), options.timeout, **({"preview_rows":options.preview_rows,"preview_bytes":options.preview_bytes} if options.preview_rows or options.preview_bytes else {}),
+                       **({"execution_policy":json.loads(Path(options.policy).read_text())} if options.policy else {}))
 
     def do_submit(self, arg):
         """submit [FILE] [--preview-rows N] [--preview-bytes N]: submit job YAML.
 
         Examples (file paths are relative to the shell working directory):
           submit examples/convert.yaml
+          submit examples/convert.yaml --policy policy.json
           submit examples/convert.yaml --preview-bytes 128
 
         Without FILE, enter YAML and finish with END alone on a line:
@@ -436,6 +456,7 @@ class Browser(cmd.Cmd):
         Ctrl-C cancels entry or execution. Use your node URI and installed operator IDs.
         """
         parser = argparse.ArgumentParser(prog='submit', exit_on_error=False)
+        parser.add_argument('--policy', help='execution policy JSON file')
         parser.add_argument('file', nargs='?')
         parser.add_argument('--preview-rows', type=positive)
         parser.add_argument('--preview-bytes', type=positive)
@@ -448,9 +469,22 @@ class Browser(cmd.Cmd):
             return
         u = urlsplit(self.uri)
         self.print_job(urlunsplit((u.scheme,u.netloc,'','','')), text, 3600,
-                       preview_rows=options.preview_rows, preview_bytes=options.preview_bytes)
+                       preview_rows=options.preview_rows, preview_bytes=options.preview_bytes,
+                       **({"execution_policy":json.loads(Path(options.policy).read_text())} if options.policy else {}))
 
-    def print_job(self, node, text, timeout, *, preview_rows=None, preview_bytes=None):
+    def do_replay(self, arg):
+        """replay EXECUTION_ID: replay a job using its committed materialized outputs.
+
+        Example: replay 1a2b3c
+        Ctrl-C cancels execution. Original job policy and retry budget apply.
+        """
+        tokens = shlex.split(arg)
+        if len(tokens) != 1:
+            raise ValueError('usage: replay EXECUTION_ID')
+        u = urlsplit(self.uri)
+        self.print_job(urlunsplit((u.scheme,u.netloc,'','','')), '', 3600, replay_from=tokens[0])
+
+    def print_job(self, node, text, timeout, *, preview_rows=None, preview_bytes=None, execution_policy=None, replay_from=None):
         started = time.perf_counter()
         decoders, counts, offsets = {}, {}, {}
         text_port, line_start = None, True
@@ -473,9 +507,27 @@ class Browser(cmd.Cmd):
             if not line_start:
                 print(file=self.stdout)
                 line_start = True
+        def on_retry(event):
+            nonlocal text_port, emitted
+            separate()
+            self.write(f"Attempt failed; discard all results above for this attempt. Receiving retry {event['retry_count']}.")
+            decoders.clear(); counts.clear(); offsets.clear()
+            text_port = None
+            emitted = False
+        options = {}
+        if execution_policy is not None:
+            options['execution_policy'] = execution_policy
+            options['on_retry'] = on_retry
+        if replay_from is not None:
+            options['replay_from'] = replay_from
+            options['on_retry'] = on_retry
+        seen_execution = None
         try:
-            with Job.run(node, text, timeout=timeout, **self.credentials) as stream:
+            with Job.run(node, text, timeout=timeout, **options, **self.credentials) as stream:
                 for event in stream:
+                    if event.get('execution_id') and seen_execution is None:
+                        seen_execution = event['execution_id']
+                        self.write(f'Execution: {seen_execution}')
                     kind, port = event['type'], event.get('port')
                     if kind == 'start':
                         separate()
@@ -564,7 +616,7 @@ def positive(value):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='dacp-shell', description='Interactive DACP dataset shell (mTLS).')
-    parser.add_argument('uri', help='dacp-server address: dacp://host[:port] (then use DATASET)')
+    parser.add_argument('uri', help='dacp-server address: dacp://host[:port] (automatically selects a sole Dataset)')
     parser.add_argument('--ca', type=Path, help='CA certificate; defaults to DACP_CA')
     parser.add_argument('--cert', type=Path, help='client certificate; defaults to DACP_CERT')
     parser.add_argument('--key', type=Path, help='client key; defaults to DACP_KEY')

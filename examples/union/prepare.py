@@ -28,8 +28,8 @@ web:
   port: 19880
 '''
 (state/'x.yaml').write_text(config)
-for node, operator, port in [('a', 'quantity_sum@1.0', 18861), ('b', 'revenue_join@1.0', 18862)]:
-    policy = dict(scheduler_identity=identity('server'), input_prefixes=[f'dacp://localhost:{port}/data'], operators=[operator], max_concurrent_tasks=4, expires_at_ms=int((time.time()+86400)*1000))
+for node, operator, port in [('a', 'daily_temperature_stats@1.0', 18861), ('b', 'station_temperature_anomaly@1.0', 18862)]:
+    policy = dict(scheduler_identity=identity('server'), input_prefixes=[f'dacp://localhost:{port}/climate'], operators=[operator], max_concurrent_tasks=4, expires_at_ms=int((time.time()+86400)*1000))
     # JSON is valid YAML and parsed by the same strict policy loader.
     (state/f'{node}-policy.yaml').write_text(json.dumps(policy, indent=2)+'\n')
 print('Prepared .union-demo/x.yaml and per-node approval policies (valid for 24 hours).')

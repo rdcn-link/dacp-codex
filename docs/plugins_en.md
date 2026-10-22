@@ -18,6 +18,7 @@ All built-in implementations are maintained in [plugins/](../plugins/README_en.m
 | Archive reader | Implement `ContainerReader`; register through Java `ServiceLoader` | [Container readers](format-handlers_en.md#container-readers) |
 | Processing operator | Publish a container, thin JAR, Python source file, or wheel with a shared runtime | [Operator packaging](operator-packaging_en.md) |
 | Operator launch executor | Implement `OperatorExecutor`; register through Java `ServiceLoader` | [Executor registration](operator-packaging_en.md#executor-plugins) |
+| Output materialization storage | Implement `MaterializationStoreProvider` and register with Java `ServiceLoader`; core owns authorization and stream protocol | [Materialization and replay](materialization_en.md) |
 
 Dataset providers and format handlers currently run inside the JVM server. They must be installed by the server administrator in `plugin_directory` with their private dependency JARs, and loaded on restart. They are not sandboxed or uploaded by clients. Operators execute separately in containers.
 
@@ -76,3 +77,5 @@ See [the extension-boundary review](plugin-roadmap_en.md) ([中文](plugin-roadm
 ## In-process operator fusion
 
 `OperatorExecutor.groupCommand` is an implemented optional extension point. JVM SDK operators and Python operators explicitly exposing `process(ctx)` can share a process on the same node and environment. See [operator fusion](operator-fusion_en.md) for eligibility, registration contracts, examples and limits.
+
+S3-compatible reading is a core transport using DatasetAccess, not another storage plugin. Dataset plugins need no separate S3 registration. Native bytes pass through; records-only Items receive a UTF-8 JSONL bytes view from the common adapter without staging, also available through Flight and task inputs. See the [S3 service](s3-service_en.md).

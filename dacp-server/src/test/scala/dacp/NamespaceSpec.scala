@@ -19,7 +19,7 @@ class NamespaceSpec extends AnyFunSuite {
     Files.writeString(dir.resolve("unpublished.csv"),"hidden\n1\n")
     val entries = Seq(PublishedItem("/events",file=Some(file)), PublishedItem("/nested/orders",file=Some(file)),
       PublishedItem("/nested/archive/old",file=Some(file)), PublishedItem("/empty",kind="folder"))
-    val config = Config("localhost",8815,"localhost",Map("public"->FileDatasets.mixed(entries)),Seq("dacp://localhost:8815/public"),dir,dir,dir)
+    val config = Config("localhost",8815,"localhost",Map("public"->FileDatasets.mixed(entries)),dir,dir,dir)
     val allocator = new RootAllocator()
     try test(config,new Producer(config,allocator))
     finally { allocator.close(); Data.deleteTree(dir) }
@@ -27,9 +27,9 @@ class NamespaceSpec extends AnyFunSuite {
   def list(producer: Producer, parts: String*): Seq[Metadata.Item] =
     Metadata.DataSet.parseFrom(producer.getFlightInfo(TestCalls.context,FlightDescriptor.path(parts:_*)).getAppMetadata).getItemsList.asScala.toVector
 
-  test("unknown authorized datasets report a wrong name while other datasets retain authorization") { fixture { (c,_) =>
+  test("published datasets are readable and unknown datasets return not found") { fixture { (c,_) =>
     val allocator = new RootAllocator()
-    val p = new Producer(c.copy(prefixes=c.prefixes:+c.uri("missing")),allocator)
+    val p = new Producer(c,allocator)
     val requests = Seq(Seq("datasets", "missing"), Seq("datasets", "missing", "list", "/"),
       Seq("datasets", "missing", "/orders"), Seq("datasets", "missing", "count", "/orders"))
     requests.foreach { parts =>
@@ -38,9 +38,7 @@ class NamespaceSpec extends AnyFunSuite {
       assert(error.getMessage.contains("dataset not found") && error.getMessage.contains("dataset name"))
     }
     try {
-      val restricted = new Producer(c.copy(prefixes=Seq("dacp://localhost:8815/other")),allocator)
-      val error = intercept[FlightRuntimeException](restricted.getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","public")))
-      assert(error.status().code() == FlightStatusCode.UNAUTHORIZED)
+      assert(list(p,"datasets","public").nonEmpty)
     } finally allocator.close()
   }}
 
@@ -139,7 +137,7 @@ class NamespaceSpec extends AnyFunSuite {
     try {
       val csv = dir.resolve("orders.csv"); Files.writeString(csv,"id\n1\n2\n")
       val empty = dir.resolve("empty.csv"); Files.writeString(empty,"id\n")
-      val config = Config("localhost",8815,"localhost",Map.empty,Seq.empty,dir,dir,dir)
+      val config = Config("localhost",8815,"localhost",Map.empty,dir,dir,dir)
       val saved = FileRecordCounts.capture(csv,FileOptions(),plugins).get
       assert(saved.value == 2L)
       val ns = new NamespaceAdapter(Seq(
@@ -178,7 +176,6 @@ public_host: localhost
 tls_cert: cert.pem
 tls_key: key.pem
 tls_ca: ca.pem
-allowed_uri_prefixes: [dacp://localhost:8815/public]
 datasets:
   public:
     provider: mixed

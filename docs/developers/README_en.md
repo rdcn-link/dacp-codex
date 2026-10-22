@@ -75,7 +75,7 @@ Its contents are the implementation class name:
 example.CsvFileProvider
 ```
 
-Place the plugin and its required dependency JARs in `plugin_directory` (without duplicating the API or dependencies supplied by the server), then restart with this configuration fragment merged with listener, TLS, and URI allowlist settings:
+Place the plugin and its required dependency JARs in `plugin_directory` (without duplicating the API or dependencies supplied by the server), then restart with this configuration fragment merged with listener and TLS settings:
 
 ```yaml
 plugin_directory: /opt/dacp/plugins

@@ -130,7 +130,7 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
         next=OperatorFrames.read(pipe)
       }
       while(docker.inspectContainerCmd(container).exec().getState.getRunning){cancel.active();Thread.sleep(25)}
-      require(docker.inspectContainerCmd(container).exec().getState.getExitCodeLong==0L,"operator failed: "+stderr.synchronized(stderr.toString))
+      if(docker.inspectContainerCmd(container).exec().getState.getExitCodeLong!=0L)throw new RuntimeException("operator failed: "+stderr.synchronized(stderr.toString))
       require(ended==op.outputs.keySet,"operator output stream incomplete")
       writers.foreach(t=>{while(t.isAlive){cancel.active();t.join(100)}});cancel.active()
     } catch {

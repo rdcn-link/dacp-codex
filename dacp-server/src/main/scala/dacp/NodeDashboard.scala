@@ -11,19 +11,21 @@ import java.util.concurrent.atomic.AtomicBoolean
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
-case class NodeWebSettings(enabled:Boolean=true,host:String="0.0.0.0",port:Option[Int]=None) {
+case class NodeWebSettings(enabled:Boolean=true,host:String="0.0.0.0",port:Option[Int]=None,publicHost:Option[String]=None) {
   require(host.nonEmpty && port.forall(p=>p>=0 && p<=65535),"invalid web address")
+  require(publicHost.forall(h=>h.nonEmpty && !h.exists(_.isWhitespace) && !h.exists(c=>"/?#@".contains(c))),"invalid web.public_host")
   def bindPort(flightPort:Int):Int={val p=port.getOrElse(flightPort+1000);require(p>=0 && p<=65535,"set web.port when Flight port exceeds 64535");p}
 }
 object NodeWebSettings {
   def read(raw:Option[Object]):NodeWebSettings=raw.map { value=>
     require(value.isInstanceOf[java.util.Map[_,_]],"web must be a mapping")
     val m=value.asInstanceOf[java.util.Map[String,Object]].asScala.toMap
-    require(m.keySet.subsetOf(Set("enabled","host","port")),"unknown web setting")
+    require(m.keySet.subsetOf(Set("enabled","host","port","public_host")),"unknown web setting")
     require(m.get("enabled").forall(_.isInstanceOf[java.lang.Boolean]),"web.enabled must be a boolean")
     require(m.get("host").forall(_.isInstanceOf[String]),"web.host must be a string")
     require(m.get("port").forall(v=>v.isInstanceOf[java.lang.Integer] || v.isInstanceOf[java.lang.Long]),"web.port must be an integer")
-    NodeWebSettings(m.get("enabled").forall(_.asInstanceOf[java.lang.Boolean].booleanValue),m.get("host").map(_.toString).getOrElse("0.0.0.0"),m.get("port").map(_.toString.toInt))
+    require(m.get("public_host").forall(_.isInstanceOf[String]),"web.public_host must be a string")
+    NodeWebSettings(m.get("enabled").forall(_.asInstanceOf[java.lang.Boolean].booleanValue),m.get("host").map(_.toString).getOrElse("0.0.0.0"),m.get("port").map(_.toString.toInt),m.get("public_host").map(_.toString))
   }.getOrElse(NodeWebSettings())
 }
 
@@ -37,6 +39,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
   server.setExecutor(threads)
   server.createContext("/",(e:HttpExchange)=>handle(e))
   def port:Int=server.getAddress.getPort
+  def publicUrl:String=new java.net.URI("http",null,config.web.publicHost.getOrElse(config.publicHost),port,"/",null,null).toASCIIString
   def start():Unit={server.start();org.slf4j.LoggerFactory.getLogger("dacp.Main").info(s"dacp dashboard listening on http://${config.web.host}:$port")}
   private def send(e:HttpExchange,status:Int,bytes:Array[Byte],kind:String):Unit={e.getResponseHeaders.set("Content-Type",kind);e.sendResponseHeaders(status,bytes.length);e.getResponseBody.write(bytes)}
   private def json(e:HttpExchange,status:Int,value:JsonNode):Unit=send(e,status,Json.mapper.writeValueAsBytes(value),"application/json; charset=utf-8")
@@ -65,8 +68,8 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     }
     val localIds=definitions.map(_.path("id").asText).toSet
     definitions.foreach { d=>
-      val task=d.path("id").asText;val child=children.find(_.path("task_id").asText==task)
-      val state=if(n.path("tasks").isObject)n.path("tasks").path(task).asText(n.path("state").asText)else child.map(_.path("state").asText).getOrElse(if(Set("running","accepted")(n.path("state").asText))"unknown"else n.path("state").asText)
+      val task=d.path("id").asText;val child=children.filter(_.path("task_id").asText==task).sortBy(c=>(c.path("created_at_ms").asLong,c.path("updated_at_ms").asLong)).lastOption
+      val state=if(n.path("skipped_tasks").elements.asScala.exists(_.asText==task))"skipped"else if(n.path("tasks").isObject)n.path("tasks").path(task).asText(n.path("state").asText)else child.map(_.path("state").asText).getOrElse(if(Set("running","accepted")(n.path("state").asText))"unknown"else n.path("state").asText)
       val t=tasks.addObject().put("id",task).put("title",d.path("title").asText(task)).put("operator",d.path("operator").asText).put("node",d.path("node").asText(origin)).put("node_identity","local").put("state",state)
       val bindings=t.putArray("inputs")
       d.path("inputs").fields.asScala.foreach { e=>
@@ -99,10 +102,10 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     if(path!="/api/history" && e.getRequestURI.getRawQuery!=null){error(e,400,"unexpected query parameters");return}
     path match {
       case "/api/overview"=>
-        val n=Json.obj().put("flight_uri",origin).put("started_at_ms",startedAt).put("uptime_ms",System.currentTimeMillis()-startedAt).put("capacity",config.maxConcurrentTasks).put("reserved_tasks",config.maxConcurrentTasks-config.taskSlots.availablePermits()).put("mode",if(config.debug)"DEBUG"else "NORMAL")
+        val n=Json.obj().put("web_url",publicUrl).put("flight_uri",origin).put("started_at_ms",startedAt).put("uptime_ms",System.currentTimeMillis()-startedAt).put("capacity",config.maxConcurrentTasks).put("reserved_tasks",config.maxConcurrentTasks-config.taskSlots.availablePermits()).put("mode",if(config.debug)"DEBUG"else "NORMAL")
         val executors=n.putArray("executors");config.plugins.services(classOf[OperatorExecutor]).foreach(x=>executors.add(x.id));json(e,200,n)
       case "/api/datasets"=>
-        val n=Json.obj();val a=n.putArray("datasets");config.datasetInfos().foreach { d=>val item=a.addObject().put("name",d.name).put("uri",origin+"/"+d.name).put("title",d.metadata.title).put("description",d.metadata.description);val tags=item.putArray("tags");d.metadata.tags.foreach(tags.add) };json(e,200,n)
+        val n=Json.obj();val a=n.putArray("datasets");config.datasetInfos().foreach { d=>val item=a.addObject().put("name",d.name).put("uri",origin+"/"+d.name).put("description",d.description) };json(e,200,n)
       case "/api/history"=>
         val parts=Option(e.getRequestURI.getRawQuery).filter(_.nonEmpty).map(_.split("&").toVector).getOrElse(Vector.empty)
         require(parts.forall(_.matches("(offset|limit)=[0-9]+")),"invalid pagination")

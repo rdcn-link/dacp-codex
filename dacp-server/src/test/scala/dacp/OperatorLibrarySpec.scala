@@ -28,7 +28,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
     node.putObject("provenance").putObject("source_archive").put("sha256","b"*64).put("size",100).put("filename","sources.zip")
     node.toString
   }
-  private def config(root: Path, base: String) = Config("localhost",8815,"localhost",Map.empty,Seq.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"),
+  private def config(root: Path, base: String) = Config("localhost",8815,"localhost",Map.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"),
     localOperatorLibrary=root.resolve("local"),operatorCache=root.resolve("cache"),remoteOperatorLibraryUrls=Seq(base))
   private def cleanup(root: Path): Unit = { val paths = Files.walk(root)
     try paths.iterator.asScala.toVector.sortBy(_.getNameCount).reverse.foreach(Files.delete(_)) finally paths.close() }

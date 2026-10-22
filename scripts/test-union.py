@@ -42,7 +42,7 @@ def main():
             for node, flight_port, filename in [('a', af, 'sales'), ('b', bf, 'prices')]:
                 config = dict(host='127.0.0.1', public_host='localhost', port=flight_port,
                               datasets={'data': {'provider': 'mixed', 'items': {f'/{filename}': {'file': str(ROOT/f'examples/union/{filename}.csv')}}}},
-                              allowed_uri_prefixes=[], tls_cert=str(ROOT/f'examples/certs/node-{node}.crt'),
+                              tls_cert=str(ROOT/f'examples/certs/node-{node}.crt'),
                               tls_key=str(ROOT/f'examples/certs/node-{node}.key'), tls_ca=str(ROOT/'examples/certs/ca.crt'),
                               local_operator_library=str(ROOT/'examples/union/operators'), max_concurrent_tasks=4,
                               union=dict(state_directory=str(state/node), execution_timeout_seconds=90), execution_store=dict(provider="file",settings=dict(directory=str(state/f"{node}-executions"))))

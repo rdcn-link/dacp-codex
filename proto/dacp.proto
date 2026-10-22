@@ -17,11 +17,9 @@ message DataSet {
   string uri = 1;
   repeated Item items = 2;
   string name = 3;
-  string title = 4;
-  string description = 5;
-  repeated string tags = 6;
-  string node_identity = 7; // Set by the Union for provenance.
-  int64 observed_at_ms = 8;
+  string description = 4; // User-defined JSON object serialized as text; defaults to "{}".
+  string node_identity = 5; // Provenance when displayed through Union.
+  int64 observed_at_ms = 6;
 }
 enum ErrorCode { UNKNOWN = 0; NOT_FOUND = 1; FORBIDDEN = 2; SCHEMA_CONFLICT = 3; INVALID_ARGUMENT = 4; }
 message Error { ErrorCode code = 1; string message = 2; }
@@ -33,6 +31,9 @@ message OperatorRequest {
     string job_yaml = 1;
     bytes task_json = 2;
   }
+  bytes execution_policy_json = 3;
+  bool retry_aware = 4;
+  string replay_from = 5;
 }
 
 // Public records query; literal values are canonical text with an explicit type.

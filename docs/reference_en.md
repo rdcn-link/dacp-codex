@@ -179,7 +179,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | GetFlightInfo `[datasets, dataset, /logical/item]` | Arrow schema and a FlightEndpoint containing a protobuf `Ticket` |
 | DoGet `Ticket(dataset,item,view)` | `view=records` returns records; `view=bytes` returns a single binary column containing raw file bytes |
 
-The records view supports CSV, NDJSON, Excel, SQL, and dacp-generated Parquet. Any file can use the bytes view. The SDK wraps binary batches in an incrementally readable `io.BufferedReader`. Tickets describe resources and views; they are not authentication tokens. Both GetFlightInfo and DoGet validate URI allowlists, normalized paths, and symbolic-link boundaries. Links outside allowed boundaries are excluded from listings.
+The records view supports CSV, NDJSON, Excel, SQL, and dacp-generated Parquet. Any file can use the bytes view. The SDK wraps binary batches in an incrementally readable `io.BufferedReader`. Tickets describe resources and views; they are not authentication tokens. Both GetFlightInfo and DoGet validate published namespaces, normalized paths, and symbolic-link boundaries. Links outside allowed boundaries are excluded from listings.
 
 Configuration in `examples/server.yaml`:
 
@@ -188,7 +188,6 @@ Configuration in `examples/server.yaml`:
 | `host` / `port` | Listening address / port |
 | `public_host` | Hostname for external URIs; allowlists use this name and an explicit port |
 | `datasets` | Dataset name → provider, source, and items; names occupy one URI path segment |
-| `allowed_uri_prefixes` | Node-level URI prefix allowlist, matched at path segment boundaries |
 | `tls_cert` / `tls_key` / `tls_ca` | PEM certificate, private key, and trusted client CA; mTLS is mandatory |
 | `count_file_records_on_startup` | Populate directly published record file counts at startup; defaults to false and adds startup scanning cost |
 | `batch_size` | Maximum rows per batch in file records views |
@@ -198,10 +197,10 @@ Configuration in `examples/server.yaml`:
 | `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | Ordered remote operator library URLs / local immutable version cache / maximum size per artifact in bytes (default 8 GiB) |
 | `local_operator_library` | Local operator library |
 | `task_peers` | Node origins permitted for task dispatch; the local node is always allowed; no central discovery service |
-| `task_input_prefixes` | Input URI prefixes execution nodes may pull; defaults to `allowed_uri_prefixes` when omitted |
+| `task_input_prefixes` | Optional execution-node input URI prefix restriction; omitted or empty means no additional prefix restriction |
 | `max_concurrent_tasks` | Concurrency limit for local tasks and control requests (default 2); returns UNAVAILABLE immediately when full |
 
-The prefix `dacp://localhost:8815/data1` does not match `data10`. In this version, allowlists apply to all connections verified by the node's CA; there are no permission groups based on certificate subjects. Task executors initiate mTLS using the node's configured certificates. Multiple nodes must trust the corresponding CAs.
+Published node datasets are public to mTLS-verified clients, without an additional data-read allowlist. Task executors initiate mTLS using the node's configured certificates. Multiple nodes must trust the corresponding CAs.
 
 Service errors use Flight/gRPC statuses and explicit dacp error names: missing resources return `NOT_FOUND`; denied access returns `UNAUTHORIZED` with `FORBIDDEN`; schema conflicts return `INVALID_ARGUMENT` with `SCHEMA_CONFLICT`. Protobuf also defines error codes for protocol extensions. Any transport failure invalidates the current reader, and callers must reopen from the beginning; there are no retries within a stream.
 
@@ -210,3 +209,7 @@ Server `mode` defaults to `NORMAL`. Inline source requires `DEBUG` at both coord
 ## DatasetCatalog
 
 `dataset_catalog` selects a catalog provider and passes private plugin settings through `source`; it cannot coexist with nonempty `datasets`. Omission selects the static catalog. See [dynamic catalogs](dataset-catalogs_en.md) for contracts, JDBC examples, discovery, and authorization. Standard Flight `ListFlights` returns public Dataset URIs and descriptions without additional data grants without Item contents.
+
+## S3-compatible endpoint
+
+Nodes enable an anonymous, read-only HTTP S3 endpoint by default: datasets are buckets, and Items advertising `bytes` are objects. Configure `s3.enabled` (default true), `s3.host` (default `0.0.0.0`), and `s3.port` (default actual Flight port plus 2000). Use path-style URLs and unsigned requests. See the [S3-compatible service](s3-service_en.md) for supported operations, clients, and plugin examples.

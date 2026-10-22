@@ -18,6 +18,7 @@ DACP 通过独立贡献的插件扩展。添加已有扩展点的数据集后端
 | 归档读取器 | 实现 `ContainerReader`，通过 Java `ServiceLoader` 注册 | [归档读取器](format-handlers.md#归档读取器) |
 | 数据处理算子 | 发布完整容器、精简 JAR、Python 源码或 wheel，复用运行环境 | [算子打包](operator-packaging.md) |
 | 算子启动执行器 | 实现 `OperatorExecutor`，通过 Java `ServiceLoader` 注册 | [执行器插件](operator-packaging.md#执行器插件) |
+| 输出物化存储 | 实现 `MaterializationStoreProvider`，通过 Java `ServiceLoader` 注册；核心管理授权与流协议 | [物化与重放](materialization.md) |
 
 Dataset 提供者和格式处理器运行在服务器 JVM 内。管理员将插件及私有依赖 JAR 安装到 `plugin_directory`，重启后加载。它们不在沙箱中执行，也不由客户端上传。算子在独立容器中执行。
 
@@ -76,3 +77,5 @@ Dataset 提供者和格式处理器可通过 `Scan` 优化过滤、投影和限�
 ## 同进程算子合并
 
 `OperatorExecutor.groupCommand` 是已实现的可选扩展点；JVM SDK 算子和显式提供 `process(ctx)` 的 Python 算子可在同节点、同环境下合并运行。资格、注册契约、示例和限制见 [同进程合并执行](operator-fusion.md)。
+
+S3 兼容读取是复用 DatasetAccess 的核心传输层，不是新的存储插件。Dataset 插件无需独立注册 S3 实现；原生 bytes 直接传递，仅声明 records 的 Item 则通过通用适配层以 UTF-8 JSONL 提供 bytes（不落盘），同样适用于 Flight 和任务输入。见 [S3 服务](s3-service.md)。

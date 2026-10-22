@@ -8,6 +8,7 @@
 web:
   enabled: true
   host: 0.0.0.0
+  public_host: node-a.example.org
   port: 19861
 ```
 
@@ -26,6 +27,8 @@ Union 子任务展示本节点收到的任务定义和步骤，外部输入标�
 
 状态与所选任务每 2 秒刷新，数据集目录在打开页面或手动刷新时读取。看板不会打开 Item、运行算子、取消任务或消费结果流。
 
-该页面公开执行元信息及保存的脚本和任务参数，适用于向查看者公开这些信息的部署；可配置监听地址或关闭。Flight 的 mTLS、数据访问授权和任务执行授权保持原有规则。Web 返回 `Cache-Control: no-store`，服务静态资源不依赖外网。
+该页面公开执行元信息及保存的脚本和任务参数，适用于向查看者公开这些信息的部署；可配置监听地址或关闭。Flight 保留 mTLS；已发布的数据集默认公开，任务执行仍受其独立授权规则约束。Web 返回 `Cache-Control: no-store`，服务静态资源不依赖外网。
 
 Union 只在其网站提供按成员查看数据集的页面，不提供目录 Flight API 或全体成员合集；见[数据集目录](dataset-directory.md)。
+
+`web.public_host` 是浏览器访问 Web 看板时使用的主机名，默认沿用节点 `public_host`；它与监听地址 `web.host` 分开。节点只在 HTTP 服务成功启动后，通过 Flight `node_status` 报告 `web_enabled: true` 和实际端口对应的 `web_url`。Union 看板成员列表显示该地址链接；关闭 Web 时显示“未启用”，无法取得节点状态时显示未知。

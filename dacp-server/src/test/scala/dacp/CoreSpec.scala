@@ -35,7 +35,7 @@ class CoreSpec extends AnyFunSuite {
   test("protobuf metadata and descriptor namespaces round-trip") { temp { p =>
     Files.writeString(p.resolve("x.csv"),"id\n1\n")
     val a = new RootAllocator()
-    val c = Config("localhost",8815,"localhost",Map("d" -> FileDatasets.mixed(Seq(PublishedItem("/records", file = Some(p.resolve("x.csv")))))),Seq("dacp://localhost:8815/d"),p,p,p)
+    val c = Config("localhost",8815,"localhost",Map("d" -> FileDatasets.mixed(Seq(PublishedItem("/records", file = Some(p.resolve("x.csv")))))),p,p,p)
     val producer = new Producer(c,a)
     try {
       val info = producer.getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","d"))
@@ -45,7 +45,7 @@ class CoreSpec extends AnyFunSuite {
       val ticket = Metadata.Ticket.parseFrom(item.getEndpoints.get(0).getTicket.getBytes)
       assert(ticket.getDataset == "d" && ticket.getItem == "/records")
       intercept[FlightRuntimeException](producer.getFlightInfo(TestCalls.context,FlightDescriptor.path("wrong","d")))
-      intercept[IllegalArgumentException](c.authorize("d2","x"))
+      assert(c.hasDataset("d") && !c.hasDataset("d2"))
     } finally {a.close()}
   }}
   test("converter requires ndjson rather than treating json as a records alias") {

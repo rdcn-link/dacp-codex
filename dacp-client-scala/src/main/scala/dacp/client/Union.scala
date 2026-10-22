@@ -17,9 +17,14 @@ final class Union(url:String,cert:Path,key:Path,ca:Path,timeoutSeconds:Long=1800
   private[client] val timeout=timeoutSeconds
   require(timeoutSeconds>0)
   def members():JsonNode=remote.action(origin,"members")
-  def submit(yaml:String):UnionExecution={
-    val n=remote.action(origin,"submit",Json.obj().put("job_yaml",yaml))
+  def submit(yaml:String,executionPolicy:JsonNode=Json.obj()):UnionExecution={
+    val body=Json.obj().put("job_yaml",yaml);body.set[JsonNode]("execution_policy",executionPolicy)
+    val n=remote.action(origin,"submit",body)
     new UnionExecution(this,Json.id(Json.text(n,"job_id")))
+  }
+  def replay(id:String,tasks:Option[Seq[String]]=None):UnionExecution={
+    val body=Json.obj().put("job_id",Json.id(id));tasks.foreach(ts=>{val a=body.putArray("tasks");ts.foreach(a.add)})
+    val n=remote.action(origin,"replay_job",body);new UnionExecution(this,Json.id(Json.text(n,"job_id")))
   }
   def execution(id:String):UnionExecution=new UnionExecution(this,Json.id(id))
   def close():Unit=remote.close()
@@ -29,6 +34,7 @@ final class UnionExecution private[client](union:Union,val id:String) extends Au
   @volatile private var complete=false
   private var closed=false
   private val streams=mutable.ArrayBuffer.empty[AutoCloseable]
+  def replay(tasks:Option[Seq[String]]=None):UnionExecution=union.replay(id,tasks)
   def status():JsonNode=union.remote.action(union.origin,"job_status",body)
   def cancel():JsonNode=union.remote.action(union.origin,"cancel_job",body)
   def events(after:Long=0):UnionEvents=synchronized {
@@ -37,10 +43,11 @@ final class UnionExecution private[client](union:Union,val id:String) extends Au
     val stream=new UnionEvents(r)
     streams+=stream;stream
   }
-  def results():UnionResults=synchronized {
+  def results(onRetry:Option[JsonNode=>Unit]=None):UnionResults=synchronized {
     require(!closed)
-    val r=union.remote.stream(union.origin,"results",body,timeout=union.timeout)
-    val stream=new UnionResults(r,()=>complete=true,()=>{if(!complete)try cancel()catch{case scala.util.control.NonFatal(_)=>()}})
+    val request=body;if(onRetry.nonEmpty)request.put("retry_aware",true)
+    val r=union.remote.stream(union.origin,"results",request,timeout=union.timeout)
+    val stream=new UnionResults(r,()=>complete=true,()=>{if(!complete)try cancel()catch{case scala.util.control.NonFatal(_)=>()}},onRetry)
     streams+=stream;stream
   }
   def close():Unit=synchronized {if(!closed){closed=true;streams.foreach(_.close());if(!complete)try cancel()catch{case scala.util.control.NonFatal(_)=>()}}}
@@ -62,7 +69,7 @@ final class UnionEvents private[client](reader:BinarySource) extends Iterator[Js
   def next():JsonNode={if(!hasNext)throw new NoSuchElementException;val n=pending.get;pending=None;n}
   def close():Unit=if(!closed){closed=true;reader.close()}
 }
-final class UnionResults private[client](in:BinarySource,success:()=>Unit,abort:()=>Unit) extends Iterator[OutputEvent] with AutoCloseable {
+final class UnionResults private[client](in:BinarySource,success:()=>Unit,abort:()=>Unit,onRetry:Option[JsonNode=>Unit]=None) extends Iterator[OutputEvent] with AutoCloseable {
   private case class Port(repr:String,format:String,schema:Option[Schema],var ended:Boolean=false)
   private val ports=mutable.Map.empty[String,Port]
   private val allocator=new RootAllocator()
@@ -77,6 +84,8 @@ final class UnionResults private[client](in:BinarySource,success:()=>Unit,abort:
       val frame=dacp.OperatorFrames.decode(in.next().getOrElse(throw new IllegalArgumentException("truncated Union result")))
       val bytes=frame.data;val m=Json.mapper.readTree(frame.metadata);val kind=m.path("type").asText;val port=m.path("port").asText
       kind match {
+        case "attempt_failed"=>
+          require(onRetry.nonEmpty,"retry requires an onRetry callback");onRetry.get(m);ports.clear();return hasNext
         case "error"=>throw new IllegalStateException(m.path("message").asText)
         case "complete"=>require(ports.nonEmpty && ports.values.forall(_.ended),"incomplete results");require(in.next().isEmpty,"events after completion");complete=true;success()
         case "start"=>

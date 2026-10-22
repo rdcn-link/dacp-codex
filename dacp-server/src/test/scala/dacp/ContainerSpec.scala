@@ -31,8 +31,7 @@ class ContainerSpec extends AnyFunSuite {
     bytes.toByteArray
   }
   private def config(dir: Path, file: Path, alias: String = "/archive"): Config =
-    Config("localhost",8815,"localhost",Map("public" -> FileDatasets.mixed(Seq(PublishedItem(alias,file=Some(file))))),
-      Seq("dacp://localhost:8815/public"),dir,dir,dir)
+    Config("localhost",8815,"localhost",Map("public" -> FileDatasets.mixed(Seq(PublishedItem(alias,file=Some(file))))),dir,dir,dir)
 
   for ((suffix,format) <- Seq("tar" -> "tar","tar.gz" -> "tar-gzip","TGZ" -> "tar-gzip")) {
     test(s"$suffix exposes normalized TAR hierarchy, records, bytes, counts and safe folder properties") {

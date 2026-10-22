@@ -17,7 +17,7 @@ class ZipSpec extends AnyFunSuite {
     try {
       val file = dir.resolve("private.ZIP")
       write(file,Seq("reports/orders.csv" -> "id\n1\n2\n","empty/" -> "","nested.zip" -> "opaque"))
-      val config = Config("localhost",8815,"localhost",Map("public" -> FileDatasets.mixed(Seq(PublishedItem("/archive",file=Some(file))))),Seq("dacp://localhost:8815/public"),dir,dir,dir)
+      val config = Config("localhost",8815,"localhost",Map("public" -> FileDatasets.mixed(Seq(PublishedItem("/archive",file=Some(file))))),dir,dir,dir)
       val ns = config.openDataset("public")
       val folder = ns.list("/").head
       assert(folder.kind == "folder" && folder.format == "zip" && folder.totalSizeBytes.isEmpty && folder.lastModifiedTimeMs.isEmpty && folder.recordCount.isEmpty)
@@ -53,7 +53,7 @@ class ZipSpec extends AnyFunSuite {
       Files.write(file,raw)
       intercept[IllegalArgumentException](ZipArchive.index(file))
       write(file,Seq("a.csv" -> "id\n1\n"))
-      val config = Config("localhost",8815,"localhost",Map.empty,Seq.empty,dir,dir,dir)
+      val config = Config("localhost",8815,"localhost",Map.empty,dir,dir,dir)
       intercept[IllegalArgumentException] { new NamespaceAdapter(Seq(PublishedItem("/zip",file=Some(file)),PublishedItem("/zip/a.csv",file=Some(file))),config) }
       var staged: Path = null
       ZipArchive.withFile(file,"a.csv",() => ()) { p => staged=p; assert(Files.exists(p)) }; assert(!Files.exists(staged))

@@ -35,11 +35,11 @@ final case class Item(path: String, format: String, schema: Option[Schema], kind
   def lastModifiedTime: Option[Instant] = lastModifiedTimeMs.map(Instant.ofEpochMilli)
 }
 
-final case class DatasetInfo(name:String,uri:String,title:String,description:String,tags:Seq[String],nodeIdentity:String,observedAtMs:Long)
+final case class DatasetInfo(name:String,uri:String,description:String,nodeIdentity:String,observedAtMs:Long)
 object DatasetInfo {
   private[client] def fromFlight(info:FlightInfo):DatasetInfo={
     val m=Metadata.DataSet.parseFrom(info.getAppMetadata)
-    DatasetInfo(m.getName,m.getUri,m.getTitle,m.getDescription,m.getTagsList.asScala.toVector,m.getNodeIdentity,m.getObservedAtMs)
+    DatasetInfo(m.getName,m.getUri,m.getDescription,m.getNodeIdentity,m.getObservedAtMs)
   }
 }
 

@@ -51,3 +51,5 @@ The dashboard shows node health, start time, uptime, job DAGs, status, and traff
 Use Ctrl+C for foreground processes or send SIGTERM. Restarting does not resume interrupted result streams. Inspect operator images with `docker image ls`; local runtime configuration and repository artifacts are separate resources. DEBUG logging and the DEBUG execution mode that allows source submission are configured separately.
 
 Nodes also start a read-only HTTP dashboard by default on the Flight port plus 1000. Disable it with `web.enabled: false`. See the [node web dashboard](../node-web_en.md) for configuration and DAG views.
+
+Nodes also enable the [S3-compatible read service](../s3-service_en.md) by default, on the Flight port plus 2000. It exposes public downloads of bytes Items independently of Flight mTLS. Disable it with `s3: {enabled: false}`.

@@ -40,12 +40,14 @@ class Site(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
         if path == '/api/overview':
-            data = dict(union_id='browser-test', flight_uri='dacp://localhost:19860', at_ms=int(time.time()*1000), poll_interval_ms=500, retention_seconds=86400, job_count=1, active_jobs=0, succeeded_jobs=1, members=[dict(url='dacp://localhost:18861',identity='a'*64,state='approved',observed_at_ms=int(time.time()*1000))], jobs=[self.job])
+            data = dict(union_id='browser-test', flight_uri='dacp://localhost:19860', at_ms=int(time.time()*1000), poll_interval_ms=500, retention_seconds=86400, job_count=1, active_jobs=0, succeeded_jobs=1, members=[dict(url='dacp://localhost:'+str(18861+i),identity=c*64,state='approved',observed_at_ms=int(time.time()*1000),status=dict(web_enabled=enabled,web_url=url,executors=['jvm'])) for i,c,enabled,url in [(0,'a',True,'http://node-a:19861/'),(1,'b',False,''),(2,'c',True,'javascript:alert(1)')]], jobs=[self.job])
         elif path == '/api/jobs/g6-browser-test':
             data = self.job
         else:
-            local = ROOT / 'assets/dacp-logo.png' if path == '/assets/dacp-logo.png' else WEB / ('index.html' if path == '/' else path.lstrip('/'))
-            if (not local.resolve().is_relative_to(WEB.resolve()) and path != '/assets/dacp-logo.png') or not local.is_file():
+            assets = {'/assets/' + name: ROOT / 'assets' / name for name in ['dacp-logo.png', 'dacp-favicon.png']}
+            assets['/favicon.ico'] = ROOT / 'assets/dacp-favicon.ico'
+            local = assets.get(path, WEB / ('index.html' if path == '/' else path.lstrip('/')))
+            if (not local.resolve().is_relative_to(WEB.resolve()) and path not in assets) or not local.is_file():
                 self.send_error(404)
                 return
             body = local.read_bytes()
@@ -81,9 +83,15 @@ def main():
             page.on('console', lambda m: violations.append(m.text) if m.type == 'error' else None)
             page.on('request', lambda r: requests.append(r.url))
             page.goto(origin)
-            directory = page.locator('#members .job-link')
+            directory = page.locator('#members .member-datasets-link').first
             assert directory.inner_text() == '查看数据集'
             assert directory.get_attribute('href') == '/members/' + 'a'*64 + '/datasets'
+            web = page.locator('#members .member-web-link')
+            assert web.count() == 1
+            assert web.get_attribute('href') == 'http://node-a:19861/'
+            assert web.get_attribute('target') == '_blank'
+            assert '未启用' in page.locator('#members tr').nth(1).inner_text()
+            assert page.locator('#members tr').nth(2).locator('.member-web-link').count() == 0
             styles = page.evaluate("""() => ['#members .job-link','#jobs .job-link'].map(selector=>{
               const s=getComputedStyle(document.querySelector(selector));
               return [s.color,s.fontFamily,s.fontSize,s.textDecorationLine];

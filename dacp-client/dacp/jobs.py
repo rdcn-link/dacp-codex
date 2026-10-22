@@ -12,9 +12,11 @@ from .source import _flight_client
 
 class JobStream:
     """Iterator of metadata dictionaries with a bytes ``data`` field. Use with a context manager."""
-    def __init__(self, client, writer, reader):
+    def __init__(self, client, writer, reader, on_retry=None):
         self.client, self.writer, self.reader = client, writer, reader
         self.ports = {}
+        self.on_retry = on_retry
+        self.execution_id = None
         self.complete = False
         self.closed = False
 
@@ -53,9 +55,19 @@ class JobStream:
                 event = json.loads(raw[8:8+header_size])
                 event['data'] = raw[8+header_size:]
                 kind, port = event.get('type'), event.get('port')
+                self.execution_id = event.get('execution_id', self.execution_id)
                 if self.complete:
                     raise ValueError('event after completion')
-                if kind == 'complete':
+                if kind == 'attempt_failed':
+                    if self.on_retry is None:
+                        raise ValueError('retry notification requires on_retry callback')
+                    self.on_retry(event)
+                    self.ports.clear()
+                    continue
+                if kind == 'execution':
+                    if not event.get('execution_id') or self.ports:
+                        raise ValueError('invalid execution metadata')
+                elif kind == 'complete':
                     if any(state['ended'] is False for state in self.ports.values()):
                         raise ValueError('incomplete output port')
                     self.complete = True
@@ -99,12 +111,20 @@ class JobStream:
 
 class Job:
     @staticmethod
-    def run(node, yaml, *, tls_root_certs=None, cert_chain=None, private_key=None, timeout=3600):
+    def run(node, yaml, *, tls_root_certs=None, cert_chain=None, private_key=None, timeout=3600,
+            execution_policy=None, on_retry=None, replay_from=None):
         u = urlsplit(node)
         if (u.scheme != 'dacp' or not u.hostname or u.username or u.password
                 or u.path not in ('', '/') or u.query or u.fragment):
             raise ValueError('expected node origin dacp://host[:port]')
-        body = pb.OperatorRequest(job_yaml=yaml).SerializeToString()
+        if execution_policy is not None and not isinstance(execution_policy, dict):
+            raise TypeError('execution_policy must be a dict')
+        if on_retry is not None and not callable(on_retry):
+            raise TypeError('on_retry must be callable')
+        body = pb.OperatorRequest(job_yaml=yaml, retry_aware=on_retry is not None,
+                                  replay_from=replay_from or '',
+                                  execution_policy_json=(json.dumps(execution_policy).encode()
+                                                         if execution_policy is not None else b'')).SerializeToString()
         if len(body) > 1024*1024:
             raise ValueError('control request exceeds 1 MiB')
         client = _flight_client(u, tls_root_certs, cert_chain, private_key)
@@ -113,7 +133,12 @@ class Job:
                                                options=flight.FlightCallOptions(timeout=timeout))
             writer.begin(pa.schema([('data', pa.binary())]))
             writer.done_writing()
-            return JobStream(client, writer, reader)
+            return JobStream(client, writer, reader, on_retry)
         except BaseException:
             client.close()
             raise
+
+    @staticmethod
+    def replay(node, execution_id, **options):
+        """Replay the original job using its committed materialized boundaries."""
+        return Job.run(node, '', replay_from=execution_id, **options)

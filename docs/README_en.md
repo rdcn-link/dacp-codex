@@ -54,3 +54,7 @@ Commands run from the project root unless a document specifies otherwise. Relati
 [Shared-process measurements](operator-fusion-benchmark_en.md): strategy comparisons with one million and four million rows.
 
 [Node web dashboard](node-web_en.md): default HTTP service, configuration, and G6 execution DAGs.
+
+Official website builds, deployment and software download publication: [dacp-website](../dacp-website/README_en.md). Website content is English-only.
+
+[S3-compatible reads](s3-service_en.md): dataset buckets and Item objects exposed at node startup, with anonymous read-only downloads.

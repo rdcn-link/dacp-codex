@@ -13,7 +13,7 @@ class JobSpec extends AnyFunSuite {
     val h=header.getBytes(java.nio.charset.StandardCharsets.UTF_8)
     d.writeInt(h.length);d.writeInt(data.length);d.write(h);d.write(data);out.toByteArray
   }
-  def fixture(frames:Seq[Array[Byte]])(body:JobStream=>Unit):Unit={
+  def fixture(frames:Seq[Array[Byte]],onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None)(body:JobStream=>Unit):Unit={
     val serverAllocator=new RootAllocator()
     val producer=new NoOpFlightProducer {
       override def doExchange(ctx:FlightProducer.CallContext,r:FlightStream,w:FlightProducer.ServerStreamListener):Unit={
@@ -29,7 +29,7 @@ class JobSpec extends AnyFunSuite {
     val server=FlightServer.builder(serverAllocator,Location.forGrpcInsecure("127.0.0.1",0),producer).build().start()
     val allocator=new RootAllocator();val client=FlightClient.builder(allocator,server.getLocation).build()
     val request=Metadata.OperatorRequest.newBuilder().setJobYaml("job: test").build().toByteArray
-    val stream=Job.open(client,allocator,request,10)
+    val stream=Job.open(client,allocator,request,10,onRetry)
     try body(stream) finally {stream.close();server.close();serverAllocator.close()}
   }
   val start=frame("""{"type":"start","port":"result","representation":"bytes","format":"text"}""")
@@ -80,6 +80,19 @@ class JobSpec extends AnyFunSuite {
       } finally reader.close()
       fixture(Seq(recordStart, data)) { stream => intercept[Exception](stream.toVector) }
     } finally { root.close(); allocator.close() }
+  }
+  test("retry callback discards partial data before a fresh port start and failure closes the stream") {
+    val notice=frame("""{"type":"attempt_failed","port":"","retry_count":1}""")
+    val accepted=frame("""{"type":"execution","port":"","execution_id":"job1"}""")
+    val output=new java.io.ByteArrayOutputStream();var notices=0
+    fixture(Seq(accepted,start,data,notice,start,data,end,complete),Some(_=>{notices+=1;output.reset()})){stream=>
+      stream.foreach(e=>if(e.kind=="data")output.write(e.data))
+      assert(stream.executionId.contains("job1"));assert(output.toString=="hello");assert(notices==1)
+    }
+    fixture(Seq(notice),Some(_=>throw new IllegalStateException("abort"))){stream=>
+      intercept[IllegalStateException](stream.hasNext);assert(!stream.hasNext)
+    }
+    fixture(Seq(notice)){stream=>intercept[IllegalArgumentException](stream.hasNext)}
   }
   test("only node origins are accepted") {
     Seq("https://node","dacp://node/dataset","dacp://user:secret@node","dacp://node?x=y").foreach{n=>

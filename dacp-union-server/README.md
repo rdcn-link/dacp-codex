@@ -4,7 +4,7 @@
 
 `dacp-union-server` 是独立 Scala 模块。一个进程维护一个持久化 Union，邀请已经独立运行的 DACP 节点，并主动轮询状态和容量。节点本地批准后，X 才能安排计算。节点不需要向 X 注册或发送心跳。
 
-客户端 C 通过 Arrow Flight mTLS 向 X 提交 Job，订阅状态事件并增量读取最终输出。中间流由 B 直接从 A 拉取；最终流经 X 返回 C。不会建立输出 Dataset，也不保存输出文件。
+客户端 C 通过 Arrow Flight mTLS 向 X 提交 Job，订阅状态事件并增量读取最终输出。中间流由 B 直接从 A 拉取；最终流经 X 返回 C。不建立输出 Dataset，默认直接流传递；可通过独立执行策略在产出节点物化选定结果流，供显式重放。
 
 ## 构建和运行
 
@@ -111,6 +111,12 @@ scala.util.Using.resource(union.submit(java.nio.file.Files.readString(
 union.close()
 ```
 
+## 执行策略与重放
+
+Python 使用 `union.submit(script, execution_policy=policy)`，Scala 使用 `union.submit(script, policy)`，传入独立 JSON 对象。`materialization` 控制全局许可、默认模式与各任务输出覆盖。默认直接流传递；`allowed: false` 拒绝任何物化要求。节点须先配置 `union.materialization_store` 才能接受物化或重放。
+
+原执行结束后，`union.replay(job_id, tasks=['ta'])` 创建新的执行，复用已提交的 `ta` 输出，并重新执行仍需运行的下游步骤。省略 `tasks` 则选择当前可用且符合策略的物化步骤；最终结果也可重放；自动重试须显式设置 `max_retries`。只有原提交者可发起重放，并须仍具备节点授权。策略和来源执行关联均保存到历史。详见[配置、JSON 范例、Scala 调用与插件契约](../docs/materialization.md)。
+
 ## 执行语义与限制
 
 X 校验 DAG 并按显式节点分组。容量不足时状态为 `waiting_resources`；准备所有节点后才启动。若准备期间容量发生竞争，拒绝作业并清理已准备的节点，不自动重试。Union 与普通 Flight 任务共享节点的执行额度。每个节点的所有子任务需要能同时预留；作业合计至多 1024 个输入与连接输出端口，每个任务至多 32 个输入和 32 个连接输出，任务数上限 64，X 活跃作业上限 64，节点和 X 各保留至多 4096 个执行记录。
@@ -119,7 +125,9 @@ X 校验 DAG 并按显式节点分组。容量不足时状态为 `waiting_resour
 
 状态快照包含各节点 Task 状态与输入、输出端口累计 `payload_bytes`、`remote_payload_bytes`、`last_activity_ms`，records 流另有 `records`。只统计负载，不含 Flight/gRPC/TLS 开销；发送和接收分别计数。状态通道独立于输出队列。
 
-成员关系和执行记录持久化；运行会话及结果仅在内存中。进程重启不恢复作业；X 意外退出后，节点按自己的超时清理。无内嵌源码提交、fan-out、自动重试、检查点、结果重放或自动选址优化。原有 Flight `Job.run` 保留自己的执行路径；Union 使用独立接口。X 的 Flight 执行线程数为 128，部署时应给长连接留出控制请求余量，并按资源设置并发额度。
+成员关系和执行记录持久化；运行会话仅在内存中，只有显式物化的输出会保存。进程重启不自动恢复作业；X 意外退出后，节点按自己的超时清理。无内嵌源码提交、fan-out、算子内部检查点或自动选址优化；显式重放可基于已提交输出创建新执行。原有 Flight `Job.run` 保留自己的执行路径；Union 使用独立接口。X 的 Flight 执行线程数为 128，部署时应给长连接留出控制请求余量，并按资源设置并发额度。
+
+顶层 `max_retries`（0–10，默认 0）限制执行失败后的重试次数。结果保持增量输出；开启重试须提供回调，在新一轮前丢弃上一轮部分结果，物化可选。`timeout_seconds` 覆盖资源等待和全部尝试，不能超过服务器上限。详见[执行策略](../docs/materialization.md)。
 
 ## 开发接口
 
@@ -127,7 +135,8 @@ X 校验 DAG 并按显式节点分组。容量不足时状态为 `waiting_resour
 
 | 接口 | 类型 | JSON 请求或 Ticket |
 | --- | --- | --- |
-| 提交 | `DoAction submit` | `{"job_yaml":"..."}` |
+| 提交 | `DoAction submit` | `{"job_yaml":"...","execution_policy":{}}`（策略可省略） |
+| 重放 | `DoAction replay_job` | `{"job_id":"ID","tasks":["ta"]}`（`tasks` 可省略） |
 | 状态 / 取消 | `DoAction job_status` / `cancel_job` | `{"job_id":"ID"}` |
 | 成员状态 | `DoAction members` | `{}` |
 | 结果 | `DoGet` | `{"type":"dacp.union.results","job_id":"ID"}` |

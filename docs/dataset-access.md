@@ -16,7 +16,7 @@ DACP 的访问链为 `DatasetCatalog → PublishedDataset → DatasetAccess → 
 
 插件可以继承 `ItemDatasetAccess`，实现 `list()`、`list(path)`、`describe(path)` 和 `openItem(path)`。返回的 `ItemAccess` 实现 `count()` 和 `stream(view, allocator, listener, ready)`；可重写 `scan` 下推查询，否则使用公共的筛选、投影、limit 流式实现。
 
-`describe` 必须显式声明 `Item.views`，如 `Some(Seq("records"))` 或 `Some(Seq("bytes"))`。类型名不必注册为文件格式。未知计数返回 `None`；普通文件夹不开放内容视图。支持原始字节的结构根可以显式开放 `bytes`。
+`describe` 必须显式声明插件原生支持的 `Item.views`，如 `Some(Seq("records"))` 或 `Some(Seq("bytes"))`。类型名不必注册为文件格式。未知计数返回 `None`；普通文件夹不开放内容视图。支持原始字节的结构根可以显式开放 `bytes`。
 
 `ItemDatasetAccess` 验证逻辑路径和视图，在调用 `openItem` 前检查读取取消，并在成功、异常、读取中途取消时关闭返回的句柄。`openItem` 如果在返回前失败，应自行释放已分配的资源。`ItemAccess.stream` 同步执行：开始时调用 `listener.start(root)`，逐批调用 `putNext()`，成功后调用 `completed()`；在读取和发送前调用 `ready()`，并在 `finally` 中关闭 Arrow root、输入流或游标。不要将完整远程对象加载到内存，也不要关闭传入的 allocator。关闭 Item 不应关闭应用所有的共享连接池。
 
@@ -44,3 +44,20 @@ MongoDB Provider 可以将 collection 发布为逻辑 Item，由 `openItem` 创�
 目前已实现这些扩展契约及独立插件示例；**MongoDB、S3 生产连接器尚未实现**。内置文件的格式识别、压缩包和结构浏览属于文件 Provider；SQL 查询优化属于 JDBC 访问实现。`DatasetStreams` 只分派公共访问接口，不识别具体存储类型。
 
 契约测试覆盖独立插件的 Flight 列举与 records/bytes、原生记录扫描与计数，以及 Item 句柄在成功、失败、取消时的关闭。详见 [插件指南](plugins.md)、[Provider 配置](dataset-providers.md) 和 [动态 Catalog](dataset-catalogs.md)。
+
+## 通用 JSONL bytes 视图
+
+插件仅声明 `records`、没有声明 `bytes` 时，DACP Server 会在统一的 Dataset 访问边界补充 `bytes` 视图。`list`、`list(path)` 和 `describe` 公布两种能力；Flight、S3、普通任务和 Union 节点输入都使用相同的访问对象。插件继续只实现原生 records 流，不需要增加 bytes 分支。`ItemByteViews.wrap` 是可供直接使用 DatasetAccess 的宿主应用复用的适配器。
+
+转换规则：UTF-8、无 BOM、每条记录为一行 JSON 对象，以字段名作为键，每行以 `\n` 结尾；空记录流输出零字节。例如：
+
+```jsonl
+{"station":"北京","temperature":20.5,"quality":null}
+{"station":"A","temperature":18.0,"quality":"ok"}
+```
+
+字符串正确转义，整数与十进制保留数值，null 保留，struct 为嵌套对象、list 为数组，不将数组展开成多条记录。二进制字段为 Base64 字符串；Java 时间/日期值为字符串，非有限浮点值为 `"NaN"`、`"Infinity"` 或 `"-Infinity"`。Arrow map 保留其 entries 数组结构。顶层字典编码解码为实际值；嵌套字典、不支持的值类型及重复字段名明确报错，不做有损转换。科学文件只有在插件已显式提供 records 时才适用此规则，不会自动展平文件结构。
+
+插件已声明 bytes 时始终采用原有实现，即使该实现读取失败也不改用 JSONL。`format` 与 Arrow schema 保留原始记录的标识和结构，不伪装成原文件字节。派生 JSONL 的 `totalSizeBytes` 为未知，保留原有记录数；HEAD 或目录访问不会为求大小而扫描记录。S3 对未知大小的 Range 请求返回 501。
+
+转换按 `byte_chunk` 有界分块，分块可以跨越一条记录或 UTF-8 字符，客户端应连接字节流后解码，不能逐块独立解析 JSON。每个输入批次后刷新输出，遵守背压与取消，不缓存整个记录集、不落盘。源读取或转换失败时传播失败，已输出内容视为不完整，不能当作完整成功结果。

@@ -75,7 +75,7 @@ META-INF/services/dacp.DatasetProvider
 example.CsvFileProvider
 ```
 
-将插件及其所需依赖 JAR 放入 `plugin_directory`（不要复制服务器已提供的 API 和依赖），重启时使用以下配置片段，并合并监听地址、TLS 和 URI 白名单：
+将插件及其所需依赖 JAR 放入 `plugin_directory`（不要复制服务器已提供的 API 和依赖），重启时使用以下配置片段，并合并监听地址和 TLS：
 
 ```yaml
 plugin_directory: /opt/dacp/plugins

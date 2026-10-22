@@ -139,7 +139,7 @@ def test_dataset_discovery_local_scope_and_cleanup(monkeypatch):
             calls.append(criteria)
             if criteria == b'local' and len(calls) == 3:
                 raise ValueError('local directory unsupported')
-            return [type('Info', (), {'app_metadata': pb.DataSet(name='orders', uri='dacp://node/orders', title='Orders').SerializeToString()})()]
+            return [type('Info', (), {'app_metadata': pb.DataSet(name='orders', uri='dacp://node/orders', description='{"summary":"Orders","owner":{"team":"sales"}}').SerializeToString()})()]
         def close(self):
             self.closed = True
     clients = []
@@ -149,7 +149,7 @@ def test_dataset_discovery_local_scope_and_cleanup(monkeypatch):
         return client
     monkeypatch.setattr(source, '_flight_client', connect)
     assert source.Source.datasets('dacp://node')[0].name == 'orders'
-    assert source.Source.datasets('dacp://node', local_only=True)[0].title == 'Orders'
+    assert source.Source.datasets('dacp://node', local_only=True)[0].description == '{"summary":"Orders","owner":{"team":"sales"}}'
     with pytest.raises(ValueError):
         source.Source.datasets('dacp://union', local_only=True)
     assert calls == [b'', b'local', b'local']

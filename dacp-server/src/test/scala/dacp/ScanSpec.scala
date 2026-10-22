@@ -57,7 +57,7 @@ class ScanSpec extends AnyFunSuite {
     } finally writer.close()
     val config = Config("localhost",8815,"localhost",Map("data" -> FileDatasets.mixed(Seq(
       PublishedItem("/records",file=Some(dir.resolve("private.csv"))),
-      PublishedItem("/parquet",file=Some(dir.resolve("private.parquet")))))),Seq("dacp://localhost:8815/"),dir,dir,dir,batchSize=2)
+      PublishedItem("/parquet",file=Some(dir.resolve("private.parquet")))))),dir,dir,dir,batchSize=2)
     val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(config,allocator)).build().start()
     val client = FlightClient.builder(allocator,server.getLocation).build()
     def read(scan: Metadata.Scan, view: String = "records", path: String = "/records"): (Seq[String],Seq[String]) = {

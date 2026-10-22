@@ -74,7 +74,7 @@ class SqlSpec extends AnyFunSuite {
     val dir = Files.createTempDirectory("sql-files-"); Files.writeString(dir.resolve("x.csv"),"id\n1\n")
     val config = Config("localhost",8815,"localhost",Map("files" -> FileDatasets.mixed(Seq(PublishedItem("/records", file=Some(dir.resolve("x.csv"))))),
       "db" -> FileDatasets.mixed(Seq(PublishedItem("/orders", sql=Some("warehouse"), table=Some("ORDERS")),
-        PublishedItem("/reports/file",file=Some(dir.resolve("x.csv")))))),Seq("dacp://localhost:8815/files","dacp://localhost:8815/db"),dir,dir,dir, batchSize=2,byteChunk=32,sources=Map("warehouse"->SqlConfig.source(conf)))
+        PublishedItem("/reports/file",file=Some(dir.resolve("x.csv")))))),dir,dir,dir, batchSize=2,byteChunk=32,sources=Map("warehouse"->SqlConfig.source(conf)))
     val server = FlightServer.builder(allocator,Location.forGrpcInsecure("127.0.0.1",0),new Producer(config,allocator)).build().start()
     val client = FlightClient.builder(allocator,server.getLocation).build()
     try {
@@ -125,8 +125,7 @@ class SqlSpec extends AnyFunSuite {
       } finally bytes.close()
       val reader = new org.apache.arrow.vector.ipc.ArrowStreamReader(new java.io.ByteArrayInputStream(out.toByteArray),allocator)
       try { var rows = 0; while(reader.loadNextBatch()) rows += reader.getVectorSchemaRoot.getRowCount; assert(rows == 3) } finally reader.close()
-      val restricted = config.copy(prefixes=Seq("dacp://localhost:8815/files"))
-      intercept[FlightRuntimeException](new Producer(restricted,allocator).getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","db")))
+      assert(new Producer(config,allocator).getFlightInfo(TestCalls.context,FlightDescriptor.path("datasets","db")).getAppMetadata.nonEmpty)
     } finally { client.close(); server.close(); allocator.close(); Data.deleteTree(dir) }
   }}
   test("SQL unsupported types fail explicitly and config loads private sources and explicit aliases") { database { conf =>
@@ -141,7 +140,6 @@ public_host: localhost
 tls_cert: cert
 tls_key: key
 tls_ca: ca
-allowed_uri_prefixes: ['dacp://localhost:8815/db']
 sources:
   db:
     provider: jdbc
