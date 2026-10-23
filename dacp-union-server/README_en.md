@@ -4,7 +4,7 @@
 
 `dacp-union-server` is a Scala coordination service. Each process maintains one Union. Members run independently; Union invites and polls them and dispatches computation after local approval. Nodes neither register nor send heartbeats.
 
-Union exposes ordinary DACP Flight services: online catalogs, Item metadata and records/bytes streams, record scans and Job execution. It also exposes read-only S3 access. Stable short public dataset IDs hide member addresses. Dedicated Union management APIs and the HTTP operations dashboard retain internal topology. See [Union proxy service](../docs/union-proxy_en.md) for naming, forwarding, placement and access boundaries.
+Union exposes ordinary DACP Flight services: online catalogs, Item metadata and records/bytes streams, record scans and Job execution. It also exposes read-only S3 access. Stable short public dataset names hide member addresses. Dedicated Union management APIs and the HTTP operations dashboard retain internal topology. See [Union proxy service](../docs/union-proxy_en.md) for naming, forwarding, placement and access boundaries.
 
 ## Build and start
 
@@ -79,7 +79,7 @@ max_concurrent_tasks: 4
 expires_at_ms: 4102444800000
 ```
 
-Approval binds the Union ID, certificate identity, input prefixes, operator versions, quota and expiry. Removal requests remote withdrawal before deleting the local record; network failures report errors and preserve it. Revocation or removal stops affected jobs. Temporary outages report unknown status without automatic member removal. Catalogs are fetched online; short-ID routes persist. Complete successful listings remove missing routes, without accumulating tombstones, while the counter never moves backwards.
+Approval binds the Union ID, certificate identity, input prefixes, operator versions, quota and expiry. Removal requests remote withdrawal before deleting the local record; network failures report errors and preserve it. Revocation or removal stops affected jobs. Temporary outages report unknown status without automatic member removal. Catalogs are fetched online; short-name routes persist. Complete successful listings remove missing routes, without accumulating tombstones, while the counter never moves backwards.
 
 ## Clients and jobs
 
@@ -125,7 +125,7 @@ Management Flight Actions use the `dacp.union.` prefix and a 1 MiB JSON limit:
 
 Result Tickets use `{"type":"dacp.union.results","job_id":"ID"}`; event Tickets use `{"type":"dacp.union.events","job_id":"ID","after":0}`. Events require administrator identity. Ordinary DACP jobs use `DoExchange`, catalogs use `dacp.catalog`, and logical nodes use `dacp.nodes`.
 
-The HTTP dashboard shows real members, scripts, states, traffic, DAGs and paginated history without claiming results. It refreshes every two seconds. Locally bundled AntV G6 supports horizontal/vertical dependency and swimlane layouts, zoom, pan and group collapse. `GET /api/overview`, `/api/jobs/ID` and `/api/history?offset=0&limit=100` are read-only management APIs. Omitting web disables its listener. Loopback binding is local; external binding requires token_file. See [management boundaries](../docs/union-proxy_en.md#management-boundaries) for token and login configuration. S3 is a separate public read-only data interface.
+The HTTP dashboard shows real members, scripts, states, traffic, DAGs and paginated history without claiming results. It refreshes every two seconds. Locally bundled AntV G6 supports horizontal/vertical dependency and swimlane layouts, zoom, pan and group collapse. `GET /api/overview`, `/api/jobs/ID` and `/api/history?offset=0&limit=100` are read-only management APIs. Omitting web disables its listener. External binding permits public read-only access without login or tokens. See [management boundaries](../docs/union-proxy_en.md#management-boundaries) for access details. S3 is a separate public read-only data interface.
 
 ## Development and validation
 

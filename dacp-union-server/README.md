@@ -4,7 +4,7 @@
 
 `dacp-union-server` 是 Scala 开发的协调服务，一个进程维护一个 Union。成员节点独立运行；Union 主动邀请并轮询，经节点批准后分发计算。节点不需要注册或发送心跳。
 
-Union 对外提供普通 DACP Flight 服务，包括在线数据集目录、Item 元数据与 records/bytes 流、记录扫描和 Job 执行，也提供 S3 只读访问。公开数据集使用稳定短 ID，隐藏成员地址。专用 Union 管理 API 与 HTTP 运维看板保留内部拓扑。完整命名、代理、放置及访问边界见 [Union 代理服务](../docs/union-proxy.md)。
+Union 对外提供普通 DACP Flight 服务，包括在线数据集目录、Item 元数据与 records/bytes 流、记录扫描和 Job 执行，也提供 S3 只读访问。公开数据集使用稳定短名称，隐藏成员地址。专用 Union 管理 API 与 HTTP 运维看板保留内部拓扑。完整命名、代理、放置及访问边界见 [Union 代理服务](../docs/union-proxy.md)。
 
 ## 构建与启动
 
@@ -79,7 +79,7 @@ max_concurrent_tasks: 4
 expires_at_ms: 4102444800000
 ```
 
-审批绑定 Union ID、证书身份、输入前缀、算子版本、额度和有效期。移除先请求成员撤销，再删除本地记录；网络失败会明确报错并保留记录。撤销或移除停止受影响任务。临时离线标为未知，不自动删除成员。目录按需在线读取，短 ID 路由持久化；成功完整列表确认消失后清理旧路由，不保存无限增长的墓碑，递增计数器不回退。
+审批绑定 Union ID、证书身份、输入前缀、算子版本、额度和有效期。移除先请求成员撤销，再删除本地记录；网络失败会明确报错并保留记录。撤销或移除停止受影响任务。临时离线标为未知，不自动删除成员。目录按需在线读取，短名称 路由持久化；成功完整列表确认消失后清理旧路由，不保存无限增长的墓碑，递增计数器不回退。
 
 ## 客户端与任务
 
@@ -125,7 +125,7 @@ Flight 管理 Action 使用 `dacp.union.` 前缀，JSON 消息上限 1 MiB：
 
 结果 Ticket 为 `{"type":"dacp.union.results","job_id":"ID"}`，事件 Ticket 为 `{"type":"dacp.union.events","job_id":"ID","after":0}`；事件订阅要求管理员身份。普通 DACP 任务使用 `DoExchange`，目录使用 `dacp.catalog`，逻辑节点使用 `dacp.nodes`。
 
-HTTP 看板展示真实节点、任务脚本、状态、流量、DAG 和分页历史，不领取结果。每两秒刷新；DAG 使用本地 AntV G6，支持水平/垂直依赖布局和泳道、缩放、平移与分组折叠。`GET /api/overview`、`/api/jobs/ID`、`/api/history?offset=0&limit=100` 为只读管理接口。省略 web 则不监听；回环监听供本机访问，对外监听必须配置 token_file。令牌及登录配置见 [管理边界](../docs/union-proxy.md#管理边界)。S3 是独立公开只读数据接口。
+HTTP 看板展示真实节点、任务脚本、状态、流量、DAG 和分页历史，不领取结果。每两秒刷新；DAG 使用本地 AntV G6，支持水平/垂直依赖布局和泳道、缩放、平移与分组折叠。`GET /api/overview`、`/api/jobs/ID`、`/api/history?offset=0&limit=100` 为只读管理接口。省略 web 则不监听；配置对外监听后可公开只读访问，无需登录或 token。详情见 [管理边界](../docs/union-proxy.md#管理边界)。S3 是独立公开只读数据接口。
 
 ## 开发与验证
 

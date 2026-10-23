@@ -21,8 +21,8 @@ case class PortContract(representations: Set[String], formats: Set[String], sche
   }
 }
 object OperatorPorts {
-  def read(n: JsonNode): Map[String,PortContract] = {
-    require(n.isObject && n.size()>0,"operator must declare named ports")
+  def read(n: JsonNode, allowEmpty: Boolean = false): Map[String,PortContract] = {
+    require(n.isObject && (allowEmpty || n.size()>0),"operator must declare a port mapping; outputs must not be empty")
     n.fields.asScala.map { e =>
       require(e.getKey.matches("[A-Za-z_][A-Za-z0-9_-]{0,127}"),"invalid operator port")
       val v=e.getValue

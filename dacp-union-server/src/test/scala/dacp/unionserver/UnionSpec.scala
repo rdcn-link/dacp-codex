@@ -261,7 +261,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       eventually(f.x.memberSnapshots.exists(m=>m.path("identity").asText==tls("a").identity && m.has("status") && !m.path("status").has("web_url") && !m.path("status").path("web_enabled").asBoolean))
     }finally f.close()
   }
-  test("website reads selected members and the public Flight namespace uses opaque dataset IDs") {
+  test("website reads selected members and the public Flight namespace uses opaque dataset names") {
     val webPort=port();val f=new Fixture(dynamicCatalog=true,web=Some(WebSettings(port=webPort)))
     try {
       assert(f.stranger.catalog(DacpUri.origin(f.ca.uri(""))).size==1)
@@ -345,19 +345,19 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(http(webPort,"/api/history?unknown=bad").statusCode()==400)
     }finally restored.close()
   }
-  test("non-loopback management HTTP requires a token and keeps topology behind authentication") {
-    val webPort=port();val token="test_admin_"+("a"*40);val file=root.resolve("web-token");Files.writeString(file,token)
-    intercept[IllegalArgumentException](WebSettings(host="0.0.0.0",port=webPort))
-    val f=new Fixture(web=Some(WebSettings(host="0.0.0.0",port=webPort,tokenFile=Some(file))))
+  test("public dashboard permits anonymous non-loopback reads and has no login endpoint") {
+    val webPort=port()
+    val f=new Fixture(web=Some(WebSettings(host="0.0.0.0",port=webPort)))
     try {
-      assert(http(webPort,"/").statusCode()==302)
-      assert(http(webPort,"/login").statusCode()==200)
-      assert(http(webPort,"/api/overview").statusCode()==401)
+      f.approved()
+      assert(http(webPort,"/").statusCode()==200)
+      assert(http(webPort,"/api/overview").statusCode()==200)
+      assert(http(webPort,"/api/history").statusCode()==200)
+      assert(http(webPort,s"/members/${tls("a").identity}/datasets").statusCode()==200)
+      assert(http(webPort,"/login").statusCode()==404)
       val client=java.net.http.HttpClient.newHttpClient()
-      val response=client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"http://127.0.0.1:$webPort/api/overview")).header("Authorization","Bearer "+token).build(),java.net.http.HttpResponse.BodyHandlers.ofString())
-      assert(response.statusCode()==200 && response.body.contains("union_id"))
-      val login=client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"http://127.0.0.1:$webPort/login")).POST(java.net.http.HttpRequest.BodyPublishers.ofString("token="+token)).build(),java.net.http.HttpResponse.BodyHandlers.ofString())
-      assert(login.statusCode()==303 && login.headers.firstValue("Set-Cookie").get.contains("HttpOnly"))
+      val response=client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"http://127.0.0.1:$webPort/api/overview")).POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build(),java.net.http.HttpResponse.BodyHandlers.ofString())
+      assert(response.statusCode()==405)
     }finally f.close()
   }
   test("two-node computation resolves dynamic catalogs and uses direct A-to-B stream while X relays final result") {
@@ -539,7 +539,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     try {
       f.approved();val d=catalog(client);assert(d.getComplete && d.getDatasetsCount==2)
       val entries=d.getDatasetsList.asScala.toVector
-      assert(entries.forall(e=>e.getName.matches("ds-[a-z2-9]{4}-[a-z2-9]{4}") && e.getNodeIdentity.isEmpty && e.getDisplayName=="data"))
+      assert(entries.forall(e=>e.getName.matches("ds-[a-z2-9]{4}-[a-z2-9]{4}") && e.getNodeIdentity.isEmpty))
       val entry=entries.find { e=>
         val data=client.getInfo(FlightDescriptor.path("datasets",e.getName,"/input"));dacp.protocol.Metadata.Item.parseFrom(data.getAppMetadata).getTotalSizeBytes==f.inputA.length
       }.get

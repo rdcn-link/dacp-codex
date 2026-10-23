@@ -6,8 +6,7 @@ import java.nio.file.{Files,Path}
 import scala.jdk.CollectionConverters._
 
 /** Management dashboard across all job owners, isolated from the public DACP namespace. */
-final case class WebSettings(host:String="127.0.0.1",port:Int=19880,tokenFile:Option[Path]=None) {
-  require(Set("127.0.0.1","localhost","::1")(host) || tokenFile.nonEmpty,"non-loopback management Web requires token_file")
+final case class WebSettings(host:String="127.0.0.1",port:Int=19880) {
   require(host.nonEmpty && port>0 && port<=65535,"invalid web listener")
 }
 final case class Settings(host:String,port:Int,publicUrl:String,cert:Path,key:Path,ca:Path,state:Path,clients:Set[String],pollMs:Long=1000,timeout:Long=1800,retention:Long=300,web:Option[WebSettings]=None,executionStore:Option[dacp.ExecutionStoreDefinition]=None,pluginDirectory:Option[Path]=None,administrators:Set[String]=Set.empty,s3:dacp.S3Settings=dacp.S3Settings(),materializationStore:Option[dacp.MaterializationStoreDefinition]=None) {
@@ -21,8 +20,8 @@ object Settings {
     Json.fields(n,Set("host","port","public_url","tls_cert","tls_key","tls_ca","state_directory","client_identities"),Set("poll_interval_ms","execution_timeout_seconds","retention_seconds","web","execution_store","plugin_directory","administrator_identities","s3","materialization_store"))
     def num(k:String,d:Long,min:Long,max:Long)=if(n.has(k))Json.number(n,k,min,max)else d
     Settings(Json.text(n,"host"),Json.number(n,"port",1,65535).toInt,Json.origin(Json.text(n,"public_url")),Path.of(Json.text(n,"tls_cert")),Path.of(Json.text(n,"tls_key")),Path.of(Json.text(n,"tls_ca")),Path.of(Json.text(n,"state_directory")),Json.strings(n,"client_identities").toSet,num("poll_interval_ms",1000,100,60000),num("execution_timeout_seconds",1800,1,86400),num("retention_seconds",300,1,86400),if(n.has("web")){
-      val w=n.path("web");Json.fields(w,Set("host","port"),Set("token_file"))
-      Some(WebSettings(Json.text(w,"host"),Json.number(w,"port",1,65535).toInt,Option(w.get("token_file")).map(v=>Path.of(v.asText))))
+      val w=n.path("web");Json.fields(w,Set("host","port"))
+      Some(WebSettings(Json.text(w,"host"),Json.number(w,"port",1,65535).toInt))
     }else None,if(n.has("execution_store")){
       val e=n.path("execution_store");Json.fields(e,Set("provider","settings"))
       Some(dacp.ExecutionStoreDefinition(Json.text(e,"provider"),Json.mapper.convertValue(e.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap))

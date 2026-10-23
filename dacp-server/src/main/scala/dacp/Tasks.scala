@@ -36,7 +36,6 @@ object Jobs {
   def validate(t: Task): Unit = {
     t.title.foreach(v=>require(v.trim.nonEmpty && v.length<=256 && !v.exists(_.isControl),"title must contain 1 to 256 characters without control characters"))
     name(t.id); t.inputs.keys.foreach(name)
-    require(t.inputs.nonEmpty,"named item inputs required")
     require(t.source.isDefined || t.operator.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*@[A-Za-z0-9_-][A-Za-z0-9_.-]*"),"operator must be name@version")
     require(t.params != null,"params must be a mapping")
     t.inputs.values.foreach { b =>

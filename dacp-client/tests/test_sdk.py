@@ -129,7 +129,7 @@ def test_open_uses_advertised_views_for_containers(kind, views, readable):
             ds.open('/archive')
 
 
-def test_dataset_discovery_completeness_display_names_and_cleanup(monkeypatch):
+def test_dataset_discovery_completeness_names_and_cleanup(monkeypatch):
     import dacp.source as source
     from dacp import dacp_pb2 as pb
     calls = []
@@ -138,7 +138,7 @@ def test_dataset_discovery_completeness_display_names_and_cleanup(monkeypatch):
         def do_action(self, action, options):
             calls.append(action.type)
             directory = pb.Directory(complete=len(calls) == 1, unavailable_sources=0 if len(calls) == 1 else 1)
-            directory.datasets.add(name='ds-test-id', display_name='orders', uri='dacp://node/ds-test-id', description='{}')
+            directory.datasets.add(name='ds-test-name', uri='dacp://node/ds-test-name', description='{}')
             return [type('Result', (), {'body': pa.py_buffer(directory.SerializeToString())})()]
         def close(self):
             self.closed = True
@@ -149,7 +149,10 @@ def test_dataset_discovery_completeness_display_names_and_cleanup(monkeypatch):
         return client
     monkeypatch.setattr(source, '_flight_client', connect)
     complete = source.Source.datasets('dacp://node')
-    assert complete.complete and complete[0].display_name == 'orders'
+    assert complete.complete and complete[0].name == 'ds-test-name'
+    assert 'id' not in pb.DataSet.DESCRIPTOR.fields_by_name
+    assert 'display_name' not in pb.DataSet.DESCRIPTOR.fields_by_name
+    assert not hasattr(complete[0], 'id') and not hasattr(complete[0], 'display_name')
     partial = source.Source.datasets('dacp://union')
     assert not partial.complete and partial.unavailable_sources == 1
     assert calls == ['dacp.catalog', 'dacp.catalog']

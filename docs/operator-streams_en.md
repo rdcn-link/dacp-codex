@@ -1,6 +1,8 @@
 # Item-based operator inputs and stream-only outputs
 
 Status: implemented through Flight DoExchange and the Python shell/SDK and Scala SDK. Current ports support bytes and records. Other scientific representations require explicit contract extensions. Each output port has at most one downstream consumer; use distinct ports for duplication. Consume multiple input ports in lexical order.
+Source operators may declare `inputs: {}`; tasks must also explicitly provide `inputs: {}`. No trigger Item is needed. At least one named output is required. In the shell, use `run live_ticks@1.0 --params '{"max_records":3}'` without `--input`. Local tasks default to the connected node; `node` may explicitly select placement.
+
 
 ## User-facing contract
 

@@ -55,7 +55,7 @@ trait DatasetCatalogProvider {
 }
 ```
 
-`DatasetInfo` 包含公开寻址名称 `name`、JSON 对象描述字符串 `description` 及可选显示名称 `displayName`。`directory` 默认包装 `list`；聚合目录可返回 `DatasetDirectory(entries, complete, unavailableSources)`，失败时不能把部分结果标为完整。`CatalogContext.createDataset(definition)` 复用已安装的 Dataset provider；传入 `FileDatasets.mixed` 可复用文件与 SQL 映射；原生后端也可以直接实现 `PublishedDataset`。不要将科学数组、图像或分组隐式转换成记录。
+`DatasetInfo` 包含公开寻址名称 `name`、JSON 对象描述字符串 `description`，没有独立的 ID 或显示名称属性。`directory` 默认包装 `list`；聚合目录可返回 `DatasetDirectory(entries, complete, unavailableSources)`，失败时不能把部分结果标为完整。`CatalogContext.createDataset(definition)` 复用已安装的 Dataset provider；传入 `FileDatasets.mixed` 可复用文件与 SQL 映射；原生后端也可以直接实现 `PublishedDataset`。不要将科学数组、图像或分组隐式转换成记录。
 
 实现类提供公开无参构造函数，并在 JAR 中加入：
 

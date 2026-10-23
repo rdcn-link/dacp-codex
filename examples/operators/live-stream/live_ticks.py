@@ -15,9 +15,6 @@ def process(ctx):
         raise ValueError('interval_seconds must be a number between 0.01 and 60')
     if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 0:
         raise ValueError('max_records must be a nonnegative integer; 0 means continuous')
-    # Current task contracts require an input. Consume it as a trigger without buffering.
-    for _ in ctx.input('source').bytes():
-        pass
     output = ctx.bytes_output('result', 'ndjson')
     sequence = 0
     while maximum == 0 or sequence < maximum:

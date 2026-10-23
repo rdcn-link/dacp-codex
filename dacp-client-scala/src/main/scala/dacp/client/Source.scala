@@ -35,11 +35,11 @@ final case class Item(path: String, format: String, schema: Option[Schema], kind
   def lastModifiedTime: Option[Instant] = lastModifiedTimeMs.map(Instant.ofEpochMilli)
 }
 
-final case class DatasetInfo(name:String,uri:String,description:String,nodeIdentity:String,observedAtMs:Long,displayName:String="")
+final case class DatasetInfo(name:String,uri:String,description:String,nodeIdentity:String,observedAtMs:Long)
 object DatasetInfo {
   private[client] def fromFlight(info:FlightInfo):DatasetInfo={
     val m=Metadata.DataSet.parseFrom(info.getAppMetadata)
-    DatasetInfo(m.getName,m.getUri,m.getDescription,m.getNodeIdentity,m.getObservedAtMs,m.getDisplayName)
+    DatasetInfo(m.getName,m.getUri,m.getDescription,m.getNodeIdentity,m.getObservedAtMs)
   }
 }
 
@@ -79,7 +79,7 @@ object Source {
       val results=client.doAction(new Action("dacp.catalog",Array.emptyByteArray),CallOptions.timeout(timeoutSeconds,TimeUnit.SECONDS)).asScala.toVector
       require(results.size==1,"invalid directory response")
       val d=Metadata.Directory.parseFrom(results.head.getBody)
-      DatasetDirectory(d.getDatasetsList.asScala.map(m=>DatasetInfo(m.getName,m.getUri,m.getDescription,m.getNodeIdentity,m.getObservedAtMs,m.getDisplayName)).toVector,d.getComplete,d.getUnavailableSources)
+      DatasetDirectory(d.getDatasetsList.asScala.map(m=>DatasetInfo(m.getName,m.getUri,m.getDescription,m.getNodeIdentity,m.getObservedAtMs)).toVector,d.getComplete,d.getUnavailableSources)
     }
     finally Resources.closeAll(Seq(client,allocator))
   }

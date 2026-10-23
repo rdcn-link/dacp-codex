@@ -147,4 +147,4 @@ stage 服务端、构建所需运行时并准备示例证书后，使用 Docker 
 
 在仓库根运行 `python3 scripts/check-doc-translations.py`。发布的 Markdown 以 `README.md`/`name.md` 为中文，`README_en.md`/`name_en.md` 为英文。完整译文、命令、配置和链接应一起更新。脚本检查配对、基础语言内容和本地文件/章节链接，不能替代翻译语义审查。工具指令与构建产物不计入发布文档。
 
-Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短 ID、自动放置及管理权限配置见 [Union 代理服务](../union-proxy.md)。
+Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy.md)。

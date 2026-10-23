@@ -21,7 +21,7 @@ private[unionserver] final class MemberDatasets(members:Members) {
       require(m.getUri==new java.net.URI("dacp",null,uri.getHost,uri.getPort,"/"+m.getName,null,null).toASCIIString && DacpUri.origin(m.getUri)==origin,"catalog URI outside member namespace")
       // Whitelist public metadata; do not aggregate Item listings or unknown fields.
       Metadata.DataSet.newBuilder().setName(m.getName).setUri(m.getUri)
-        .setDisplayName(m.getDisplayName).setDescription(m.getDescription).setNodeIdentity(id).setObservedAtMs(System.currentTimeMillis()).build()
+        .setDescription(m.getDescription).setNodeIdentity(id).setObservedAtMs(System.currentTimeMillis()).build()
     }.sortBy(_.getName)
     require(entries.map(_.getName).distinct.size==entries.size,"duplicate dataset name")
     entries

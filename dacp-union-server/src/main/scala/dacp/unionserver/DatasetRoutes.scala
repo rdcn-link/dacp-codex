@@ -9,7 +9,7 @@ import dacp.union.Json
 import com.fasterxml.jackson.databind.JsonNode
 import scala.jdk.CollectionConverters._
 
-/** Only routing identities are persisted, never a replica of member catalogs. Single serving owner. */
+/** Only routing names are persisted, never a replica of member catalogs. Single serving owner. */
 private[unionserver] final class DatasetRoutes(directory:Path) extends AutoCloseable {
   Files.createDirectories(directory)
   private val channel=FileChannel.open(directory.resolve(".owner"),StandardOpenOption.CREATE,StandardOpenOption.WRITE)
@@ -34,7 +34,7 @@ private[unionserver] final class DatasetRoutes(directory:Path) extends AutoClose
     (BigInt(1,mac.doFinal(data))%half).toLong
   }
   def encode(value:Long):String=synchronized {
-    require(value>=0 && value<capacity,"dataset ID capacity exhausted")
+    require(value>=0 && value<capacity,"dataset name capacity exhausted")
     var l=value/half;var r=value%half
     (0 until 6).foreach { i=>val next=(l+round(r,i))%half;l=r;r=next }
     var n=l*half+r
@@ -42,9 +42,9 @@ private[unionserver] final class DatasetRoutes(directory:Path) extends AutoClose
     (7 to 0 by -1).foreach { i=>text(i)=alphabet((n%base).toInt);n/=base }
     "ds-"+text.take(4).mkString+"-"+text.drop(4).mkString
   }
-  def decode(id:String):Long=synchronized {
-    require(id.matches("ds-["+alphabet+"]{4}-["+alphabet+"]{4}"),"invalid dataset ID")
-    val n=id.drop(3).replace("-","").foldLeft(0L)((n,c)=>n*base+alphabet.indexOf(c))
+  def decode(name:String):Long=synchronized {
+    require(name.matches("ds-["+alphabet+"]{4}-["+alphabet+"]{4}"),"invalid dataset name")
+    val n=name.drop(3).replace("-","").foldLeft(0L)((n,c)=>n*base+alphabet.indexOf(c))
     var l=n/half;var r=n%half
     (5 to 0 by -1).foreach { i=>val previous=Math.floorMod(r-round(l,i),half);r=l;l=previous }
     l*half+r
@@ -62,22 +62,22 @@ private[unionserver] final class DatasetRoutes(directory:Path) extends AutoClose
   private def rows=state.path("routes").elements.asScala.toVector
   try {
     val loaded=rows
-    require(loaded.map(_.path("id").asText).distinct.size==loaded.size,"duplicate dataset route IDs")
-    require(loaded.map(r=>(r.path("member").asText,r.path("name").asText)).distinct.size==loaded.size,"duplicate dataset route targets")
-    loaded.foreach(r=>require(decode(r.path("id").asText)<state.path("next").asLong,"dataset route counter moved backwards"))
+    require(loaded.map(_.path("name").asText).distinct.size==loaded.size,"duplicate dataset route names")
+    require(loaded.map(r=>(r.path("member").asText,r.path("local_name").asText)).distinct.size==loaded.size,"duplicate dataset route targets")
+    loaded.foreach(r=>require(decode(r.path("name").asText)<state.path("next").asLong,"dataset route counter moved backwards"))
   }catch{case t:Throwable=>lock.release();channel.close();throw t}
-  def resolve(id:String):Option[JsonNode]=synchronized {require(!failed,"dataset registry unavailable");rows.find(_.path("id").asText==id).map(_.deepCopy[JsonNode]())}
+  def resolve(name:String):Option[JsonNode]=synchronized {require(!failed,"dataset registry unavailable");rows.find(_.path("name").asText==name).map(_.deepCopy[JsonNode]())}
   def assign(member:String,name:String):String=synchronized {
     require(!failed,"dataset registry unavailable")
-    rows.find(r=>r.path("member").asText==member && r.path("name").asText==name).map(_.path("id").asText).getOrElse {
-      require(!failed,"dataset registry unavailable");val next=state.path("next").asLong;require(next<capacity,"dataset ID capacity exhausted")
-      val id=encode(next);val updated=state.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();updated.put("next",next+1)
-      updated.withArray("routes").addObject().put("id",id).put("member",member).put("name",name)
-      commit(updated);id
+    rows.find(r=>r.path("member").asText==member && r.path("local_name").asText==name).map(_.path("name").asText).getOrElse {
+      require(!failed,"dataset registry unavailable");val next=state.path("next").asLong;require(next<capacity,"dataset name capacity exhausted")
+      val publicName=encode(next);val updated=state.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();updated.put("next",next+1)
+      updated.withArray("routes").addObject().put("name",publicName).put("member",member).put("local_name",name)
+      commit(updated);publicName
     }
   }
   def reconcile(member:String,names:Set[String]):Unit=synchronized {
-    val keep=rows.filter(r=>r.path("member").asText!=member || r.path("name").asText.isEmpty || names(r.path("name").asText))
+    val keep=rows.filter(r=>r.path("member").asText!=member || r.path("local_name").asText.isEmpty || names(r.path("local_name").asText))
     if(keep.size!=rows.size){val updated=state.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();val a=updated.putArray("routes");keep.foreach(a.add);commit(updated)}
   }
   def retainMembers(ids:Set[String]):Unit=synchronized {

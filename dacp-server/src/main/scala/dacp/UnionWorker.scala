@@ -98,7 +98,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         }finally artifact.close()
       }
       val op=Json.text(t,"operator");if(!Json.strings(policy,"operators").contains(op))denied("operator denied")
-      require(t.path("params").isObject && t.path("inputs").isObject && t.path("inputs").size()>0 && t.path("inputs").size()<=32 && t.path("outputs").isObject && t.path("outputs").size()<=32,"invalid task ports")
+      require(t.path("params").isObject && t.path("inputs").isObject && t.path("inputs").size()<=32 && t.path("outputs").isObject && t.path("outputs").size()<=32,"invalid task ports")
       t.path("inputs").fields.asScala.foreach(e=>{Json.id(e.getKey);validateInput(e.getValue,policy)})
       t.path("outputs").fields.asScala.foreach(e=>{Json.id(e.getKey);Json.identity(e.getValue.asText)})
     }

@@ -147,4 +147,4 @@ Ordinary Flight requests, Union node subtasks, and global jobs share persistent 
 
 Run `python3 scripts/check-doc-translations.py` from the repository root. Published Markdown uses Chinese in `README.md`/`name.md` and English in `README_en.md`/`name_en.md`. Update complete translations, commands, configuration and links together. The check validates pairing, basic language presence and local document/heading links; it does not replace semantic translation review. Agent instructions and generated build output are excluded.
 
-Union provides standard DACP discovery, Items, Jobs and S3. For public short IDs, placement and management access, see [Union proxy service](../union-proxy_en.md).
+Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy_en.md).

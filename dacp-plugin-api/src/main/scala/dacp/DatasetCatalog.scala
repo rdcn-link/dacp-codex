@@ -11,7 +11,7 @@ object DatasetDescriptions {
     require(node!=null && node.isObject,"dataset description must be a JSON object")
   }
 }
-case class DatasetInfo(name:String,description:String="{}",displayName:String="") {
+case class DatasetInfo(name:String,description:String="{}") {
   DatasetDescriptions.validate(description)
 }
 object DatasetNames {

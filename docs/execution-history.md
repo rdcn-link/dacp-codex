@@ -30,7 +30,7 @@ U 使用 `state_directory/executions`。不同运行实例应使用独立目录�
  target/universal/stage/bin/dacp-union-server history get ../.union-demo/x/executions JOB_ID
 ```
 
-Union HTTP 看板的“执行历史”可分页查看 U 的持久化作业、任务状态与流量。`GET /api/history?offset=0&limit=100` 查询历史；`GET /api/jobs/ID` 在内存会话失效后仍返回历史元数据。列表最大分页大小为 1000，网页每页 100 条，搜索和状态筛选作用于当前页。历史记录与看板属于管理界面，对外监听需要管理令牌。历史数据不能用于重放结果、恢复 Job 或重新授权读取源数据。
+Union HTTP 看板的“执行历史”可分页查看 U 的持久化作业、任务状态与流量。`GET /api/history?offset=0&limit=100` 查询历史；`GET /api/jobs/ID` 在内存会话失效后仍返回历史元数据。列表最大分页大小为 1000，网页每页 100 条，搜索和状态筛选作用于当前页。历史记录与看板公开只读，无需登录或 token。历史数据不能用于重放结果、恢复 Job 或重新授权读取源数据。
 
 服务器重启发现未结束的记录时将其标为 `interrupted`（服务中断），并记录 `interruption_detected_at_ms`。未知的真实结束时刻不会伪装成确定时间：`finished_at_ms` 与 `elapsed_ms` 取最后观测时刻，具体状态变更检测时间见事件。正常关闭时已清理的任务记录为取消或已结束。保留历史不会自动恢复任务。
 
@@ -42,7 +42,7 @@ Union HTTP 看板的“执行历史”可分页查看 U 的持久化作业、任
 
 验证：`cd dacp-server && sbt test`，`cd dacp-union-server && sbt test`。构建两个模块的 `sbt stage` 并准备示例证书和 `dacp/operator-python:1.0` 镜像后，在根目录运行 `python3 scripts/test-execution-history.py` 和 `python3 scripts/test-union.py`，验证真实 Docker 执行及历史记录。两个脚本使用临时端口和目录，并自动关闭启动的服务。
 
-Union 看板展示提交的 Job YAML 和数据集、任务、端口依赖及最终输出组成的 DAG 图。管理看板和查询接口向管理员展示这些信息，历史文件由服务器管理员管理。节点健康信息包含 JVM 进程启动时间 `started_at_ms` 和单调计时的已运行时间 `uptime_ms`；节点不可达时保留上次观测值。未保存脚本的旧记录明确提示脚本不可用。
+Union 看板展示提交的 Job YAML 和数据集、任务、端口依赖及最终输出组成的 DAG 图。看板和只读查询接口公开展示这些信息，历史文件由服务器管理员管理。节点健康信息包含 JVM 进程启动时间 `started_at_ms` 和单调计时的已运行时间 `uptime_ms`；节点不可达时保留上次观测值。未保存脚本的旧记录明确提示脚本不可用。
 
 ## 存储扩展
 

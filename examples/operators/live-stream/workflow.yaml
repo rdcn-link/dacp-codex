@@ -1,0 +1,37 @@
+job: live-weather-stream
+tasks:
+  - id: ticks
+    title: 持续生成模拟气象观测
+    operator: live_ticks@1.0
+    inputs: {}
+    params:
+      interval_seconds: 1
+      max_records: 0
+  - id: decode
+    title: 逐行将JSONL解码为Arrow记录流
+    operator: live_ticks_decode@1.0
+    inputs:
+      source: {task: ticks, port: result, view: bytes}
+  - id: project
+    title: 选取序号、站点、时间和温度
+    operator: piflow_select_field@1.0
+    inputs:
+      source: {task: decode, port: result, view: records}
+    params:
+      columnNames: sequence,station_id,timestamp,temperature_c
+  - id: rename
+    title: 将温度字段重命名为摄氏温度
+    operator: piflow_convert_schema@1.0
+    inputs:
+      source: {task: project, port: result, view: records}
+    params:
+      schema: temperature_c->air_temperature_c
+  - id: csv
+    title: 逐条输出CSV文本流
+    operator: piflow_csv_save@1.0
+    inputs:
+      source: {task: rename, port: result, view: records}
+    params:
+      header: true
+outputs:
+  weather_csv: {task: csv, port: result}

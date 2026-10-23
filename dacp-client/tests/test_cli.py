@@ -541,21 +541,19 @@ def test_submit_policy_and_replay_use_bound_server(browser, monkeypatch, tmp_pat
     assert calls[1][1]['replay_from'] == 'execution1'
 
 
-def test_union_display_name_resolution_and_ambiguity(browser, monkeypatch):
+def test_union_dataset_names_are_used_directly(browser, monkeypatch):
     from dacp.source import DatasetInfo
     b, ds, out = browser
-    entries = [DatasetInfo('ds-2345-6789', 'dacp://localhost/ds-2345-6789', display_name='climate'),
-               DatasetInfo('ds-abcd-efgh', 'dacp://localhost/ds-abcd-efgh', display_name='climate')]
+    entries = [DatasetInfo('ds-2345-6789', 'dacp://localhost/ds-2345-6789'),
+               DatasetInfo('ds-abcd-efgh', 'dacp://localhost/ds-abcd-efgh')]
     monkeypatch.setattr(cli.Source, 'datasets', lambda *a, **kw: entries)
     opened = []
     monkeypatch.setattr(cli.Source, 'open', lambda uri, **kw: opened.append(uri) or FakeDataset())
-    b.onecmd('use climate')
-    assert not opened and 'ambiguous' in out.getvalue()
+    b.onecmd('datasets')
+    assert 'Dataset ID' not in out.getvalue() and 'ds-2345-6789' in out.getvalue()
     b.onecmd('use ds-2345-6789')
     assert opened == ['dacp://localhost/ds-2345-6789']
-    entries.pop()
-    b.onecmd('use climate')
-    assert opened[-1] == 'dacp://localhost/ds-2345-6789'
+    assert not hasattr(entries[0], 'id') and not hasattr(entries[0], 'display_name')
 
 
 def test_partial_union_directory_never_autoselects(monkeypatch):
@@ -571,3 +569,48 @@ def test_partial_union_directory_never_autoselects(monkeypatch):
         assert 'Directory incomplete: 1 source(s) unavailable' in output.getvalue()
     finally:
         with_browser.close()
+
+
+def test_run_zero_input_source(browser, monkeypatch):
+    b, ds, out = browser
+    calls = []
+    monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
+    b.onecmd("run live_ticks@1.0 --params '{\"max_records\":3}'")
+    import json
+    task = json.loads(calls[0][1])['tasks'][0]
+    assert task['inputs'] == {}
+    assert task['params'] == {'max_records': 3}
+
+
+def test_dataset_numbers_follow_last_display_and_reset_on_connect(browser, monkeypatch):
+    from dacp.source import DatasetInfo
+    b, ds, out = browser
+    entries = [DatasetInfo('weather', 'dacp://untrusted/weather'),
+               DatasetInfo('stations', 'dacp://untrusted/stations')]
+    monkeypatch.setattr(cli.Source, 'datasets', lambda *a, **kw: entries)
+    opened = []
+    monkeypatch.setattr(cli.Source, 'open', lambda uri, **kw: opened.append(uri) or FakeDataset())
+    b.onecmd('use 1')
+    assert not opened and 'run datasets' in out.getvalue()
+    out.truncate(0);out.seek(0)
+    b.onecmd('datasets')
+    table = out.getvalue()
+    assert '| #' in table and '| Name' in table
+    assert '| URI' not in table and 'dacp://untrusted' not in table
+    # Changing the live catalog must not retarget numbers from the printed list.
+    entries.reverse()
+    b.onecmd('use 1')
+    b.onecmd('use 2')
+    assert opened == ['dacp://localhost/weather', 'dacp://localhost/stations']
+    b.onecmd('use 0');b.onecmd('use 3')
+    assert len(opened) == 2
+    b.onecmd('datasets');b.onecmd('use 1')
+    assert opened[-1] == 'dacp://localhost/stations'
+    b.onecmd('connect dacp://other-server')
+    b.onecmd('use 1')
+    assert len(opened) == 3 and b.dataset_names == []
+    # An empty displayed catalog also clears old row numbers.
+    b.onecmd('datasets')
+    entries.clear()
+    b.onecmd('datasets');b.onecmd('use 1')
+    assert b.dataset_names == [] and len(opened) == 3

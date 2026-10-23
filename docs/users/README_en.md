@@ -139,7 +139,7 @@ See [records query semantics and plugin contracts](../../docs/records-scans_en.m
 
 `show` accepts a path or a number from the latest listing. It prefers records when available and otherwise shows hexadecimal bytes. Records appear in a table with column names; `text` displays text, and `hex` displays offsets, hexadecimal bytes, and ASCII. Previews default to at most 20 rows or 4096 bytes, adjustable with `--rows` and `--bytes`.
 
-Use `use DATASET` to switch datasets on the same server, `connect URI` to connect elsewhere, and `help` for commands. Certificate paths can also be passed through `--ca`, `--cert`, and `--key`.
+`datasets` shows `#`, `Name`, and `Description (JSON)`, without URIs. Use `use NAME` to select a dataset by name, or `use 1` for the first row of the latest `datasets` output. Row numbers start at 1; refreshing the list updates the mapping and reconnecting clears it. Numeric arguments are interpreted as row numbers. Use `connect URI` to connect elsewhere, and `help` for commands. Certificate paths can also be passed through `--ca`, `--cert`, and `--key`.
 
 Enter a single-line SQL query directly at the shell prompt:
 
@@ -330,4 +330,4 @@ DACP and Union persist all execution records by default; the Union dashboard can
 
 Both single-node DACP Server multi-step jobs and Union collaborative jobs accept a separate execution-policy JSON with `max_retries`, `timeout_seconds`, and `materialization`. Use `submit workflow.yaml --policy policy.json` in the shell and `replay EXECUTION_ID` to replay from valid materialized boundaries. Python and Scala clients must explicitly supply a retry callback to clear the preceding attempt's partial results; closing the result stream cancels execution. See [execution policy, output materialization, and replay](../materialization_en.md) for configuration, complete calls, and success confirmation rules.
 
-Union provides standard DACP discovery, Items, Jobs and S3. For public short IDs, placement and management access, see [Union proxy service](../union-proxy_en.md).
+Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy_en.md).

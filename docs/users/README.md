@@ -139,7 +139,7 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 `show` 接受路径或最近一次列表中的编号；默认优先显示记录，否则显示十六进制。记录使用带列名的表格，`text` 显示文本，`hex` 显示偏移量、十六进制及 ASCII。默认最多预览 20 行或 4096 字节，可通过 `--rows` 和 `--bytes` 调整。
 
-使用 `use DATASET` 切换同一服务器上的数据集，`connect URI` 连接其他位置，`help` 查看命令。证书也可通过 `--ca`、`--cert`、`--key` 指定。
+`datasets` 显示 `#`、`Name`、`Description (JSON)` 三列，不显示 URI。使用 `use NAME` 按名称切换同一服务器上的数据集，也可用 `use 1` 选择最近一次 `datasets` 列表中的第 1 行。行号从 1 开始，刷新列表会更新映射，重新连接会清空映射；纯数字参数按行号解释。使用 `connect URI` 连接其他位置，`help` 查看命令。证书也可通过 `--ca`、`--cert`、`--key` 指定。
 
 在 shell 提示符下直接输入单行 SQL 查询：
 
@@ -330,4 +330,4 @@ DACP 与 Union 默认持久化全部执行记录；Union 看板支持重启后�
 
 单机 DACP Server 的多步骤任务和 Union 协作任务均支持独立的执行策略 JSON：`max_retries`、`timeout_seconds` 和 `materialization`。Shell 用 `submit workflow.yaml --policy policy.json` 提交，并可用 `replay EXECUTION_ID` 从有效的物化边界重放。Python 与 Scala 客户端须通过显式重试回调清空上一轮部分结果；关闭结果流可取消任务。配置、完整调用示例与成功确认规则见[执行策略、输出物化与重放](../materialization.md)。
 
-Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短 ID、自动放置及管理权限配置见 [Union 代理服务](../union-proxy.md)。
+Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy.md)。

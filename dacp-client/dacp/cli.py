@@ -32,6 +32,7 @@ class Browser(cmd.Cmd):
         self.rows, self.byte_limit = rows, byte_limit
         self.dataset = None
         self.items = []
+        self.dataset_names = []
         self.connect(uri)
 
     def write(self, value):
@@ -60,6 +61,7 @@ class Browser(cmd.Cmd):
                 raise
         old = self.dataset
         self.dataset, self.items, self.uri = candidate, items, selected_uri
+        self.dataset_names = []
         if old is not None:
             old.close()
         self.write(f'Connected: {origin} ({len(entries)} datasets)')
@@ -83,7 +85,9 @@ class Browser(cmd.Cmd):
         pass
 
     def do_help(self, arg):
-        """help [COMMAND]: show commands and usage examples.
+        """Show available commands or detailed help for one command.
+
+        Usage: help [COMMAND]
 
         Examples:
           help
@@ -100,7 +104,9 @@ class Browser(cmd.Cmd):
             self.write("Use help COMMAND for more examples, e.g. help run or help submit.")
 
     def do_connect(self, arg):
-        """connect URI: connect to dacp-server; automatically use its sole Dataset, otherwise clear selection.
+        """Connect to a DACP server and automatically select its sole Dataset.
+
+        Usage: connect URI
 
         Example:
           connect dacp://localhost:8815
@@ -108,10 +114,13 @@ class Browser(cmd.Cmd):
         self.connect(arg.strip())
 
     def do_datasets(self, arg):
-        """datasets: list public datasets on the connected dacp-server.
+        """List public datasets on the connected server.
+
+        Usage: datasets
 
         Example:
           datasets
+        Shows #, Name and Description (JSON). use NUMBER selects a listed row.
         Uses this shell's server and existing TLS credentials; accepts no arguments.
         Directory access requires no data-access grant.
         """
@@ -120,30 +129,33 @@ class Browser(cmd.Cmd):
         u = urlsplit(self.uri)
         origin = urlunsplit((u.scheme, u.netloc, '', '', ''))
         entries = Source.datasets(origin, **self.credentials)
-        self.table(('Dataset ID', 'Name', 'Description (JSON)', 'URI'),
-                   [(m.name, getattr(m, 'display_name', '') or m.name, m.description, m.uri) for m in entries])
+        self.table(('#', 'Name', 'Description (JSON)'),
+                   [(i, m.name, m.description) for i, m in enumerate(entries, 1)], numeric=(0,))
+        self.dataset_names = [m.name for m in entries]
         if not getattr(entries, 'complete', True):
             self.write(f"Directory incomplete: {entries.unavailable_sources} source(s) unavailable")
 
     def do_use(self, arg):
-        """use DATASET: select a dataset on the current server.
+        """Select the Dataset to browse, query, or use as operator input.
+
+        Usage: use NAME_OR_NUMBER
 
         Example:
           use documents
-        Use datasets to discover names on this server.
+          datasets
+          use 1
+        Numbers select rows from the latest datasets output; reconnecting clears them.
         """
         name = arg.strip()
+        if re.fullmatch(r'[0-9]+', name):
+            number = int(name)
+            if not 1 <= number <= len(self.dataset_names):
+                raise ValueError('dataset number out of range; run datasets to list choices')
+            name = self.dataset_names[number - 1]
         if not name or '/' in name or name in ('.', '..'):
             raise ValueError('expected one dataset name')
         u = urlsplit(self.uri)
         origin = urlunsplit((u.scheme, u.netloc, '', '', ''))
-        entries = Source.datasets(origin, **self.credentials)
-        if not any(m.name == name for m in entries):
-            matches = [m for m in entries if getattr(m, 'display_name', '') == name]
-            if len(matches) > 1:
-                raise ValueError('dataset name is ambiguous; use a Dataset ID from datasets')
-            if len(matches) == 1:
-                name = matches[0].name
         uri = urlunsplit((u.scheme, u.netloc, '/' + quote(name, safe=''), '', ''))
         candidate = Source.open(uri, **self.credentials)
         try:
@@ -180,7 +192,9 @@ class Browser(cmd.Cmd):
         self.write(border)
 
     def do_ls(self, arg):
-        """ls [PATH]: list all Items recursively, or immediate children of a folder.
+        """List all Items recursively, or the immediate children of a folder.
+
+        Usage: ls [PATH]
 
         Examples:
           ls
@@ -206,7 +220,9 @@ class Browser(cmd.Cmd):
         self.write(f'{len(self.items)} items')
 
     def do_count(self, arg):
-        """count ITEM: explicitly compute exact records by ls number or quoted path; may be slow.
+        """Compute the exact record count of an Item; this may require scanning its contents.
+
+        Usage: count ITEM
 
         Examples:
           count /reports/orders
@@ -230,7 +246,9 @@ class Browser(cmd.Cmd):
         return value
 
     def do_show(self, arg):
-        """show ITEM [auto|records|text|hex]: preview an item by ls number or quoted path.
+        """Preview an Item as records, text, or hexadecimal bytes.
+
+        Usage: show ITEM [auto|records|text|hex]
 
         auto uses the advertised records view when available, otherwise hex.
         records prints at most --rows rows; text/hex reads at most --bytes bytes.
@@ -304,7 +322,9 @@ class Browser(cmd.Cmd):
         return command, arg, original
 
     def do_select(self, arg):
-        """SELECT columns FROM "/item" or FROM number [WHERE condition] [LIMIT n]: query remote records.
+        """Query remote records with filtering, column selection, and an optional row limit.
+
+        Usage: SELECT columns FROM "/item" or FROM number [WHERE condition] [LIMIT n]
 
         FROM number uses the latest ls listing.
         Supports *, column lists, comparisons, AND/OR/NOT, IN, and null checks.
@@ -353,13 +373,16 @@ class Browser(cmd.Cmd):
         return code
 
     def do_run(self, arg):
-        """run OP --input PORT=ITEM [--params JSON]
-        run --runtime NAME@VERSION [--entrypoint CLASS] --input PORT=ITEM <<END
+        """Run an operator on selected inputs and print its output streams as they arrive.
+
+        Usage: run OP [--input PORT=ITEM] [--params JSON]
+        run --runtime NAME@VERSION [--entrypoint CLASS] [--input PORT=ITEM] <<END
         Source follows until END on its own line. Source requires server DEBUG mode.
         Results print incrementally; Ctrl-C cancels entry or execution.
         --preview-rows N or --preview-bytes N cancels the entire job at the first per-port limit.
 
         Examples:
+          run live_ticks@1.0 --params '{"max_records":3}'
           run identity@1.1 --input source=/reports/orders
           run identity@1.1 --input source=1 --view records --preview-rows 5
           run format_convert@1.1 --input source=/reports/orders --params '{"from":"csv","to":"parquet"}'
@@ -372,7 +395,7 @@ class Browser(cmd.Cmd):
                   yield chunk.upper()
           END
 
-        Use --input for each named port. ITEM is a path, latest ls number, or full Item URI.
+        Omit --input for zero-input source operators. Use --input for each named port. ITEM is a path, latest ls number, or full Item URI.
         Optional: --params-file FILE, --timeout SECONDS, --policy policy.json.
         Installed operator IDs work in NORMAL mode; native_uppercase requires publishing the native example.
         No preview limit applies by default. Job results are streams, with no saved Dataset.
@@ -394,7 +417,7 @@ class Browser(cmd.Cmd):
         parser.add_argument('operator', nargs='?')
         parser.add_argument('--runtime')
         parser.add_argument('--entrypoint')
-        parser.add_argument('--input', action='append', required=True)
+        parser.add_argument('--input', action='append', default=[])
         parser.add_argument('--view', choices=('bytes','records'), default='bytes')
         parser.add_argument('--params', default='{}')
         parser.add_argument('--params-file')
@@ -444,7 +467,9 @@ class Browser(cmd.Cmd):
                        **({"execution_policy":json.loads(Path(options.policy).read_text())} if options.policy else {}))
 
     def do_submit(self, arg):
-        """submit [FILE] [--preview-rows N] [--preview-bytes N]: submit job YAML.
+        """Submit a workflow from a YAML file or interactive input and print its result streams.
+
+        Usage: submit [FILE] [--preview-rows N] [--preview-bytes N]
 
         Examples (file paths are relative to the shell working directory):
           submit examples/convert.yaml
@@ -483,7 +508,9 @@ class Browser(cmd.Cmd):
                        **({"execution_policy":json.loads(Path(options.policy).read_text())} if options.policy else {}))
 
     def do_replay(self, arg):
-        """replay EXECUTION_ID: replay a job using its committed materialized outputs.
+        """Replay a job using its committed materialized outputs.
+
+        Usage: replay EXECUTION_ID
 
         Example: replay 1a2b3c
         Ctrl-C cancels execution. Original job policy and retry budget apply.
@@ -600,7 +627,9 @@ class Browser(cmd.Cmd):
             self.stdout.flush()
 
     def do_quit(self, arg):
-        """quit: close the connection and exit. Aliases: exit, EOF (Ctrl-D).
+        """Close the connection and exit the shell.
+
+        Usage: quit (aliases: exit, EOF / Ctrl-D)
 
         Examples:
           quit

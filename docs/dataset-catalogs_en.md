@@ -55,7 +55,7 @@ trait DatasetCatalogProvider {
 }
 ```
 
-`DatasetInfo` contains the public addressable `name`, JSON object description string `description`, and optional `displayName`. `directory` defaults to wrapping `list`; aggregating catalogs may return `DatasetDirectory(entries, complete, unavailableSources)` and must identify partial results explicitly. `CatalogContext.createDataset(definition)` reuses installed Dataset providers; `FileDatasets.mixed` reuses file and SQL mappings. Native backends may implement `PublishedDataset` directly. Do not implicitly flatten scientific arrays, images, or groups into records.
+`DatasetInfo` contains the public addressable `name`, JSON object description string `description`, with no separate ID or display-name property. `directory` defaults to wrapping `list`; aggregating catalogs may return `DatasetDirectory(entries, complete, unavailableSources)` and must identify partial results explicitly. `CatalogContext.createDataset(definition)` reuses installed Dataset providers; `FileDatasets.mixed` reuses file and SQL mappings. Native backends may implement `PublishedDataset` directly. Do not implicitly flatten scientific arrays, images, or groups into records.
 
 Provide a public no-argument implementation constructor and include this file in the JAR:
 

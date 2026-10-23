@@ -82,20 +82,20 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         details.set[com.fasterxml.jackson.databind.JsonNode]("sources",n.path("sources"))
         record.update("running",details)
         val sources=n.path("sources").elements.asScala.map(_.asText).toVector
-        require(sources.nonEmpty,"source item provenance required")
+        require(n.path("sources").isArray,"source provenance must be a list")
         sources.foreach{uri=>
           val u=DacpUri.parse(uri);require(u.getPath.stripPrefix("/").split("/",2).length==2,"input must be an item")
           require(config.taskInputPrefixes.isEmpty || config.taskInputPrefixes.exists(DacpUri.within(uri,_)),"FORBIDDEN: task input URI prefix denied")
         }
         val ports=n.path("ports").elements.asScala.map(_.asText).toVector
-        require(ports.nonEmpty && ports.distinct.size==ports.size,"invalid worker ports")
+        require(n.path("ports").isArray && ports.distinct.size==ports.size,"invalid worker ports")
         val inputMetadata=dacp.union.Json.obj();val savedInputs=inputMetadata.putObject("inputs")
-        ports.foreach(p=>savedInputs.putObject(p).put("uri",sources.head))
+        ports.foreach { p=>val entry=savedInputs.putObject(p);sources.headOption.foreach(entry.put("uri",_)) }
         record.update("running",inputMetadata)
         require(n.path("params").isObject,"params must be a mapping")
         val inline=if(n.path("operator").isObject)Some(Jobs.source(Data.mapper.convertValue(n.path("operator"),classOf[java.util.LinkedHashMap[String,Object]])))else None
         require(inline.isEmpty || config.debug,"FORBIDDEN: source submission requires DEBUG mode")
-        val task=Task(n.path("id").asText,ports.map(p=>p->InputBinding(uri=Some(sources.head))).toMap,n.path("operator").asText,
+        val task=Task(n.path("id").asText,ports.map(p=>p->sources.headOption.map(u=>InputBinding(uri=Some(u))).getOrElse(InputBinding(task=Some("upstream")))).toMap,n.path("operator").asText,
           Data.mapper.convertValue(n.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),source=inline,title=Option(n.get("title")).map(v=>{require(v.isTextual,"title must be a string");v.asText}))
         Jobs.validate(task)
         val queues=ports.map(p=>p->new FrameQueue(cancel)).toMap
@@ -180,8 +180,8 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     plan.tasks.foreach{t=>
       val uris=t.inputs.values.toVector.flatMap(b=>b.uri.toVector++b.task.toVector.flatMap(provenance)).distinct
       provenance+=t.id->uris
-      val anchor=t.inputs.toVector.sortBy(_._1).head._2
-      val target=t.node.map(DacpUri.node).getOrElse(anchor.uri.map(DacpUri.origin).getOrElse(targets(anchor.task.get)))
+      val anchor=t.inputs.toVector.sortBy(_._1).headOption.map(_._2)
+      val target=t.node.map(DacpUri.node).getOrElse(anchor.map(b=>b.uri.map(DacpUri.origin).getOrElse(targets(b.task.get))).getOrElse(local))
       require(allowed(target),"FORBIDDEN: task target not in task_peers");targets+=t.id->target
     }
     if(targets.values.toSet.size==1 && targets.values.head!=local){

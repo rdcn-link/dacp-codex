@@ -55,7 +55,6 @@ class DatasetInfo:
     description: str = "{}"
     node_identity: str = ""
     observed_at_ms: int = 0
-    display_name: str = ""
 
 
 class DatasetDirectory(list):
@@ -71,7 +70,7 @@ def _dataset_infos(client, timeout=30):
         raise ValueError('invalid dataset directory response')
     directory = pb.Directory.FromString(results[0].body.to_pybytes())
     entries = [DatasetInfo(m.name, m.uri, m.description, m.node_identity,
-                           m.observed_at_ms, m.display_name or m.name) for m in directory.datasets]
+                           m.observed_at_ms) for m in directory.datasets]
     return DatasetDirectory(entries, complete=directory.complete,
                             unavailable_sources=directory.unavailable_sources)
 

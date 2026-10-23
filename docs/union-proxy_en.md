@@ -6,17 +6,17 @@ Union provides a standard DACP service, Union management Flight APIs, and a sepa
 
 ## Public dataset names
 
-Nodes continue publishing datasets by local name. Union maps each (member certificate identity, local dataset name) pair to a fixed-length public ID such as `ds-k7m2-9wqr`. Its public URI is `dacp://union.example:19860/ds-k7m2-9wqr`, followed by an Item's logical path. `name` is the addressable ID; `display_name` preserves the member-provided name and may repeat. Public catalogs omit member addresses and certificate identities. User descriptions and payloads are preserved; publishers control the information they contain.
+Nodes continue publishing datasets by local name. Union maps each (member certificate identity, local dataset name) pair to a fixed-length public name such as `ds-k7m2-9wqr`. Its public URI is `dacp://union.example:19860/ds-k7m2-9wqr`, followed by an Item's logical path. `name` is that public name. Datasets have no separate `id` or display-name property anywhere in the system. Member-local names are used only for internal routing. Public catalogs omit member addresses and certificate identities. User descriptions and payloads are preserved; publishers control the information they contain.
 
-IDs use a persistent increasing counter, keyed reversible permutation and an unambiguous alphabet. Adjacent counters are not apparent from their strings. Encoding is not authorization. Logical node IDs use `nd-xxxx-xxxx` for clients requiring explicit placement; obtain them through Flight Action `dacp.nodes`.
+Names use a persistent increasing counter, keyed reversible permutation and an unambiguous alphabet. Adjacent counters are not apparent from their strings. Encoding is not authorization. Logical node IDs use `nd-xxxx-xxxx` for clients requiring explicit placement; obtain them through Flight Action `dacp.nodes`.
 
-`state_directory/dataset-routes/routes.json` stores the encoding key, next counter and current routes, without dataset metadata replicas. A writer lock allows one serving instance. Back up the entire Union state directory; do not restore an old backup over an ID namespace still referenced externally. Losing the key or rolling back the counter can break ID stability.
+`state_directory/dataset-routes/routes.json` stores the encoding key, next counter and current routes, without dataset metadata replicas. A writer lock allows one serving instance. Back up the entire Union state directory; do not restore an old backup over an dataset namespace still referenced externally. Losing the key or rolling back the counter can break name stability.
 
 ## Online catalogs and membership changes
 
-Action `dacp.catalog` accepts an empty body and returns a `Directory` protobuf with `datasets`, `complete` and `unavailable_sources`. Each request reads and merges approved members' catalogs online; newly discovered datasets receive IDs automatically. Unreachable, unapproved or failing members produce an explicitly incomplete directory containing available entries. Clients must not interpret partial directories as complete. Standard `ListFlights` cannot carry completeness, so partial catalogs fail with `UNAVAILABLE`.
+Action `dacp.catalog` accepts an empty body and returns a `Directory` protobuf with `datasets`, `complete` and `unavailable_sources`. Each request reads and merges approved members' catalogs online; newly discovered datasets receive names automatically. Unreachable, unapproved or failing members produce an explicitly incomplete directory containing available entries. Clients must not interpret partial directories as complete. Standard `ListFlights` cannot carry completeness, so partial catalogs fail with `UNAVAILABLE`.
 
-Temporary failures preserve routes. Only a successful complete member listing confirming a missing name removes that mapping. Explicit member removal also removes its routes. Deleted IDs are never reused; a returning name receives a new ID. Revocation stops proxy access, and failures or revocation never redirect an old ID to another dataset. Replacing a dataset in place under the same native name cannot be detected as a new identity under this naming contract.
+Temporary failures preserve routes. Only a successful complete member listing confirming a missing name removes that mapping. Explicit member removal also removes its routes. Deleted public names are never reused; a returning local name receives a new public name. Revocation stops proxy access, and failures or revocation never redirect an old public name to another dataset. Replacing a dataset in place under the same native name cannot be detected as a new identity under this naming contract.
 
 ## Clients
 
@@ -28,7 +28,7 @@ dacp-shell> ls /
 dacp-shell> show /observations records
 ```
 
-Shell startup binds the server address; `datasets` accepts no address argument. A complete, single-entry directory is selected automatically. `use NAME` works for a unique display name; duplicate names require an ID. SDK `Source.datasets(...)` returns an iterable directory with completeness fields. Item reads, record scans and bytes streams use ordinary DACP interfaces. S3 defaults to anonymous read-only access, using public IDs as buckets and Item logical paths as keys. Disable it with `s3: {enabled: false}`. Incomplete bucket listings return 503 because S3 cannot express partial directory completeness.
+Shell startup binds the server address; `datasets` accepts no address argument. A complete, single-entry directory is selected automatically. `use NAME` selects the exact published name, such as `use ds-k7m2-9wqr`; after `datasets`, `use 1` selects the corresponding row. The list shows row numbers, names, and JSON descriptions, without URIs. SDK `Source.datasets(...)` returns an iterable directory with completeness fields. Item reads, record scans and bytes streams use ordinary DACP interfaces. S3 defaults to anonymous read-only access, using public names as buckets and Item logical paths as keys. Disable it with `s3: {enabled: false}`. Incomplete bucket listings return 503 because S3 cannot express partial directory completeness.
 
 ## Ordinary jobs and placement
 
@@ -58,25 +58,20 @@ Execution policy JSON, output streams, failed-attempt notifications, cancellatio
 
 `dacp.union.members`, `invite_member` (`{"url":"dacp://node:18861"}`), and `remove_member` (`{"identity":"certificate fingerprint"}`) are administrator interfaces. The specialized asynchronous Union submission API accepts explicit internal placements for administrators. Ordinary clients use only the public namespace; status and failure messages omit internal topology. Node approval remains a node administrator operation.
 
-The operations dashboard exposes real addresses, scripts, execution history and per-member catalogs separately from the public namespace. It defaults to loopback; external binding requires `web.token_file`, containing at least 32 URL-safe characters. Authenticate through `/login` or HTTP Bearer:
-
-```bash
-python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > union-admin.token
-```
+The operations dashboard is public and read-only, exposing real member addresses, scripts, execution history and per-member catalogs without login or tokens. Configure its listener for remote access:
 
 ```yaml
 administrator_identities: ["<administrator certificate SHA-256 fingerprint>"]
 web:
   host: 0.0.0.0
   port: 19880
-  token_file: union-admin.token
 s3:
   enabled: true
   host: 0.0.0.0
   port: 20860
 ```
 
-Use an HTTPS reverse proxy to protect management tokens over public networks. Omitting `web` disables the dashboard; omitting `s3.port` uses the Flight port plus 2000.
+Omitting `web` disables the dashboard; omitting `s3.port` uses the Flight port plus 2000.
 
 ## Development and validation
 
@@ -89,7 +84,7 @@ Use an HTTPS reverse proxy to protect management tokens over public networks. Om
 PYTHONPATH=dacp-client .venv/bin/python -m pytest dacp-client/tests
 ```
 
-Contract tests cover ID encoding/decoding and restart, complete/partial catalogs, public URIs, Item streams, S3, placement, raw cross-member inputs, worker composition, authorization and cycle detection.
+Contract tests cover name encoding/decoding and restart, complete/partial catalogs, public URIs, Item streams, S3, placement, raw cross-member inputs, worker composition, authorization and cycle detection.
 
 To materialize outputs when Union acts as an upstream member, configure top-level `materialization_store` using the same storage plugin contract. Storage resides at that Union layer; its downstream members need not materialize:
 

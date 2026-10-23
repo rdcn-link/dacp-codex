@@ -7,6 +7,20 @@ import org.scalatest.funsuite.AnyFunSuite
 import scala.jdk.CollectionConverters._
 
 class OperatorLibrarySpec extends AnyFunSuite {
+  test("source tasks and operator contracts accept explicitly empty inputs only") {
+    val source="""job: source
+      |tasks:
+      | - {id: ticks, operator: live_ticks@1.0, inputs: {}}
+      |outputs: {result: {task: ticks, port: result}}
+      |""".stripMargin
+    assert(Jobs.parse(source).tasks.head.inputs.isEmpty)
+    intercept[IllegalArgumentException](Jobs.parse(source.replace(", inputs: {}", "")))
+    val empty=Data.mapper.readTree("{}")
+    assert(OperatorPorts.read(empty, allowEmpty=true).isEmpty)
+    intercept[IllegalArgumentException](OperatorPorts.read(empty))
+    intercept[IllegalArgumentException](OperatorPorts.read(Data.mapper.readTree("[]"), allowEmpty=true))
+    intercept[IllegalArgumentException](OperatorPorts.read(Data.mapper.readTree("null"), allowEmpty=true))
+  }
   private val image = "sha256:" + "a" * 64
   private val archive = "shared runtime".getBytes(java.nio.charset.StandardCharsets.UTF_8)
   private val code = "small operator bundle".getBytes(java.nio.charset.StandardCharsets.UTF_8)

@@ -56,7 +56,7 @@ object Repository {
   }
   def validatePorts(ports: com.fasterxml.jackson.databind.JsonNode): Unit = {
     Seq("inputs","outputs").foreach { key=>
-      val n=ports.path(key);require(n.isObject && n.size()>0,"named input/output port declarations required")
+      val n=ports.path(key);require(n.isObject && (key=="inputs" || n.size()>0),"input/output port mappings required; outputs must not be empty")
       n.fields.asScala.foreach { e=>
         require(e.getKey.matches("[A-Za-z_][A-Za-z0-9_-]{0,127}"),"invalid port name")
         val v=e.getValue

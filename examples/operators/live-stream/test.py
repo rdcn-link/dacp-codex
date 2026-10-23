@@ -8,16 +8,11 @@ class Context:
     def __init__(self, params, stop_after=None):
         self.params = params
         self.rows = []
-        self.drained = False
         self.stop_after = stop_after
     def input(self, name):
-        assert name == 'source'
-        return self
-    def bytes(self):
-        yield b'trigger'
-        self.drained = True
+        raise AssertionError('zero-input source must not request an input')
     def bytes_output(self, name, format):
-        assert self.drained and (name, format) == ('result', 'ndjson')
+        assert (name, format) == ('result', 'ndjson')
         return self
     def write(self, value):
         if self.stop_after is not None and len(self.rows) == self.stop_after:
@@ -44,4 +39,25 @@ for params in ({'interval_seconds':0}, {'interval_seconds':float('nan')}, {'inte
         raise AssertionError('invalid parameters accepted')
     except ValueError:
         pass
-print('PASS: bounded trigger drain, ordered output, pacing, continuous disconnection and validation')
+print('PASS: zero-input source, ordered output, pacing, continuous disconnection and validation')
+
+# The decoder must emit before input EOF and preserve JSON across chunk boundaries.
+import live_ticks_decode
+class Decoder:
+    params = {}
+    def __init__(self): self.rows = []
+    def input(self, name): return self
+    def bytes(self):
+        raw = json.dumps(dict(sequence=1, timestamp='2026-10-23T00:00:00Z', station_id='站点A', temperature_c=20.5), ensure_ascii=False).encode() + b'\n'
+        cut = raw.index('站'.encode()) + 1
+        yield raw[:cut]
+        yield raw[cut:]
+        assert len(self.rows) == 1, 'decoder waited for EOF'
+        yield b'{"sequence":2,"timestamp":"now","station_id":"B","temperature_c":21}'
+    def records_output(self, name, schema):
+        assert name == 'result' and schema == live_ticks_decode.SCHEMA
+        return self
+    def write(self, batch): self.rows.extend(batch.to_pylist())
+ctx = Decoder();live_ticks_decode.process(ctx)
+assert [r['sequence'] for r in ctx.rows] == [1, 2] and ctx.rows[0]['station_id'] == '站点A'
+print('PASS: decoder emits before EOF, handles split UTF-8 and final unterminated line')

@@ -34,7 +34,7 @@ Top-level `max_retries` (0–10, default 0) bounds execution retries. Results re
 
 ## Administration website
 
-U can expose a read-only operations dashboard on a separate HTTP listener without changing the Flight collaboration protocol above. The website uses U's cached state; observation neither triggers node RPCs nor claims results. Management views expose execution metadata across submitters. Loopback access is local; external binding requires a token file and login or Bearer authentication. See the [Union server](../dacp-union-server/README_en.md#management-api-and-dashboard) for configuration and read-only HTTP interfaces.
+U can expose a read-only operations dashboard on a separate HTTP listener without changing the Flight collaboration protocol above. The website uses U's cached state; observation neither triggers node RPCs nor claims results. The public read-only dashboard exposes execution metadata across submitters without login or tokens. See the [Union server](../dacp-union-server/README_en.md#management-api-and-dashboard) for configuration and read-only HTTP interfaces.
 
 A task `id` is its unique dependency identifier within the Job, used by input `task` references, final outputs, scheduling, status, and traffic correlation; it is required. Optional `title` describes its purpose, supports Unicode, and must contain 1–256 characters without control characters. Titles need not be unique and do not resolve dependencies. Dashboard cards and DAGs show the title with the ID; execution history retains titles.
 

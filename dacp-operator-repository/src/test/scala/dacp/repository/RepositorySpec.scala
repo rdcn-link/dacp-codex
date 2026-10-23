@@ -231,6 +231,16 @@ class RepositorySpec extends AnyFunSuite {
       } finally { Files.delete(outside.resolve("manifest.json")); Files.delete(outside) }
     } finally server.close()
   }}
+  test("zero-input sources publish while missing inputs and empty outputs are rejected") { withRoot { root =>
+    val source=ports.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
+    source.putObject("inputs")
+    val result=Repository.mapper.readTree(Repository.publish(root,"ticks@1","runtime",source,exporter))
+    assert(result.path("inputs").isObject && result.path("inputs").size()==0)
+    source.remove("inputs")
+    intercept[IllegalArgumentException](Repository.validatePorts(source))
+    source.putObject("inputs");source.putObject("outputs")
+    intercept[IllegalArgumentException](Repository.validatePorts(source))
+  }}
   test("port declarations are mandatory before exporting any runtime") { withRoot { root=>
     val rejecting=new Repository.ImageExporter {
       def inspect(tag:String):String=fail("must validate ports before Docker")

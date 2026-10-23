@@ -40,19 +40,19 @@ private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,
           val values=directories.entries(id,check,path).getOrElse(throw new IllegalStateException("member removed"))
           require(values.size<=10000,"member catalog exceeds limit")
           routes.reconcile(id,values.map(_.getName).toSet)
-          values.map { m=>DatasetInfo(routes.assign(id,m.getName),m.getDescription,if(m.getDisplayName.nonEmpty)m.getDisplayName else m.getName) }
+          values.map { m=>DatasetInfo(routes.assign(id,m.getName),m.getDescription) }
         }
       }catch{case _:java.util.concurrent.CancellationException=>throw new java.util.concurrent.CancellationException();case NonFatal(_)=>failures+=1;Vector.empty}
     }
     DatasetDirectory((entries++uploads.entries(scala.util.Try(Rpc.identity).getOrElse(""))).sortBy(_.name),failures==0,failures)
   }
-  private[unionserver] def target(id:String,check:()=>Unit=()=>()):(com.fasterxml.jackson.databind.JsonNode,String)={
-    val row=routes.resolve(id).getOrElse(throw new java.io.FileNotFoundException("dataset not found"))
+  private[unionserver] def target(name:String,check:()=>Unit=()=>()):(com.fasterxml.jackson.databind.JsonNode,String)={
+    val row=routes.resolve(name).getOrElse(throw new java.io.FileNotFoundException("dataset not found"))
     val member=members.all.find(_.path("identity").asText==row.path("member").asText).getOrElse(throw new java.io.FileNotFoundException("dataset not found"))
     check()
     val state=members.inspect(member).path("state").asText
     if(state!="approved")throw CallStatus.UNAVAILABLE.withDescription("dataset source unavailable").toRuntimeException
-    check();(member,row.path("name").asText)
+    check();(member,row.path("local_name").asText)
   }
   def open(name:String):PublishedDataset=open(name,()=>())
   override def open(name:String,check:()=>Unit):PublishedDataset={
