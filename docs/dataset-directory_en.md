@@ -2,13 +2,13 @@
 
 [中文](dataset-directory.md)
 
-DACP nodes publish local `DatasetCatalog.list()` results through Flight `ListFlights`. Union exposes no directory Flight API, client directory methods, or cross-node aggregate.
+DACP nodes publish local catalogs; Union reads approved members online and exposes its own DACP namespace using short IDs. SDKs use the `dacp.catalog` Action to obtain a `Directory` with completeness fields. `ListFlights` fails for incomplete catalogs. See [Union proxy service](union-proxy_en.md).
 
 Click “查看数据集” in the Union website member list to open one member’s directory. Opening or refreshing the page queries only that member over Flight, with a 5-second timeout. Directories are never saved, cached, or polled. Failed reads report an error instead of showing old entries.
 
 ## Access boundaries
 
-Node directory reads retain mTLS trust and require no data-access or execution grant. Web pages are public; Union uses its own certificate to query the selected invited member and verifies the member identity. Arbitrary remote addresses are not accepted. Directories show names, URIs and JSON descriptions without reading Items or data contents. Published datasets are readable by default; execution still requires its corresponding authorization.
+Node directory reads retain mTLS trust and require no data-access or execution grant. See [Union proxy service](union-proxy_en.md) for management Web access boundaries. Union uses its own certificate to query the selected invited member and verifies the member identity. Arbitrary remote addresses are not accepted. Directories show names, URIs and JSON descriptions without reading Items or data contents. Published datasets are readable by default; execution still requires its corresponding authorization.
 
 ## Administrators: static descriptions
 
@@ -43,7 +43,7 @@ The string is validated at the shared plugin contract and preserved through Flig
 
 ## Shell
 
-The shell connects only to dacp-server, not to Union. The startup argument must be a server address, not a Dataset URI:
+The shell connects to DACP nodes or a Union providing DACP services. The startup argument must be a server address, not a Dataset URI:
 
 ```bash
 dacp-shell dacp://localhost:18861
@@ -57,7 +57,7 @@ dacp-shell> use orders
 dacp-shell> ls /
 ```
 
-`datasets` accepts no arguments and lists names, JSON descriptions, and URIs on the current server. On startup or `connect dacp://host:port`, the shell automatically selects and prints the sole Dataset when exactly one is listed. With zero or multiple Datasets, select one with `use NAME` before `ls`, `count`, `show`, `SELECT`, or `run`. `use` selects a Dataset on the current server; published datasets are readable by default. Union provides only a per-member directory page on its website.
+`datasets` accepts no arguments and lists names, JSON descriptions, and URIs on the current server. On startup or `connect dacp://host:port`, the shell automatically selects and prints the sole Dataset when the complete catalog contains exactly one Dataset. With zero or multiple Datasets, select one with `use NAME` before `ls`, `count`, `show`, `SELECT`, or `run`. `use` selects a Dataset on the current server; published datasets are readable by default. Union uses public short IDs; duplicate display names require selecting by ID. Incomplete catalogs never trigger automatic selection.
 
 ## Python
 

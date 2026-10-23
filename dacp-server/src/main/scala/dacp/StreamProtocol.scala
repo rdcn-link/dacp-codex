@@ -39,6 +39,7 @@ final class StreamCancel(check: () => Boolean = () => false, timeoutSeconds: Lon
   private val failure=new AtomicReference[Throwable]()
   private val resources=new java.util.concurrent.ConcurrentLinkedDeque[AutoCloseable]()
   private val deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(timeoutSeconds)
+  def remainingSeconds:Long=math.max(1L,(deadline-System.nanoTime()+TimeUnit.SECONDS.toNanos(1)-1)/TimeUnit.SECONDS.toNanos(1))
   /** Inspect a parent scope without treating interruption of a child worker as parent cancellation. */
   private[dacp] def checkState():Unit={
     Option(failure.get()).foreach(throw _)

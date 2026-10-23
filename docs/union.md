@@ -1,6 +1,6 @@
 # 单 Union 协作协议
 
-本次实现目标：每个 `dacp-union-server`（X）管理一个持久化的 Union。独立 DACP 节点响应 X 的邀请，经本地管理员批准后参与协作。X 主动轮询成员，不要求节点注册或主动心跳。此文先定义协议，实际支持范围和命令见模块 README。
+每个 `dacp-union-server`（X）管理一个持久化的 Union。独立 DACP 节点响应 X 的邀请，经本地管理员批准后参与协作。X 主动轮询成员，不要求节点注册或主动心跳。支持范围与命令见模块 README 及 [Union 代理服务](union-proxy.md)。
 
 ## 身份与授权
 
@@ -10,7 +10,7 @@ Union 全部使用 Arrow Flight mTLS；节点复用已有 Flight 数据端口，
 
 ## 执行与流
 
-客户端提交具有明确 task.node 和 outputs 的 Job；X 复用 DAG 验证，按节点组织子 Job。第一版只接受版本化算子，不接受内嵌源码。输入为本地 data Item（uri/view）或上游 task/port；本地输入使用 DatasetAccess 直接读取，不通过 X 或 Flight 下载。每条输出连接只有一个消费者。
+客户端提交使用 Union 公开 URI、可选逻辑 task.node 和明确 outputs 的标准 Job；管理员也可通过专用异步 API 指定内部位置。X 复用 DAG 验证，按节点组织子 Job。Union 只接受版本化算子，不接受内嵌源码。输入为 data Item（uri/view）或上游 task/port；本地输入使用 DatasetAccess 直接读取，不通过 X 或 Flight 下载。每条输出连接只有一个消费者。
 
 X 先 prepare 所有子 Job，得到接收确认后再 start。节点检查自身容量与授权，拒绝无法执行的计划。A 输出连接绑定本次 execution/task/port 与 B 的证书身份；B 通过 mTLS 主动拉取。相同节点内使用有界队列，跨节点使用带背压的 Flight `DoGet` 流。复用 OperatorFrames：start/data/end 后，成功退出才发送 complete；失败以 Flight 错误状态结束。接收 complete 后仍须验证 Flight 正常结束。输出不创建 Dataset，默认直接流传递；显式策略可在产出节点物化选定输出供重放。
 
@@ -28,13 +28,13 @@ Union 在 `job_yaml` 之外接收独立的 `execution_policy` JSON。默认仍�
 
 原执行结束后，提交者可显式请求 `replay_job`，创建新的执行，复用完整且未过期的指定输出，剪枝不需要的上游任务并重新运行下游。最终结果也可重放。原始/生效策略、来源关联和重放状态均保存在历史中。节点须启用存储插件并重新校验授权。完整说明见[执行策略、节点配置、客户端示例与插件契约](materialization.md)。
 
-这是任务边界重放，不是算子内部 checkpoint、按字节续读或运行进程恢复。过期、不完整、损坏的数据不能成功重放。普通单服务器 `Job.run` 保留独立的流式接口。
+这是任务边界重放，不是算子内部 checkpoint、按字节续读或运行进程恢复。过期、不完整、损坏的数据不能成功重放。Union 同样支持标准 `Job.run`，复用调度及策略引擎。
 
 顶层 `max_retries`（0–10，默认 0）限制执行失败后的重试次数。结果保持增量输出；开启重试须提供回调，在新一轮前丢弃上一轮部分结果，物化可选。`timeout_seconds` 覆盖资源等待和全部尝试，不能超过服务器上限。详见[执行策略](materialization.md)。
 
 ## 管理网站
 
-U 可通过独立 HTTP 监听提供只读运行看板；这不改变上述 Flight 协作协议。网站使用 U 的缓存状态，观察不会触发节点 RPC 或领取结果。公开只读视图跨提交者显示运行元数据，无需访问令牌；可配置监听地址供远程查看。配置与 HTTP 只读接口见 [Union 服务器](../dacp-union-server/README.md#http-运行看板)。
+U 可通过独立 HTTP 监听提供只读运行看板；这不改变上述 Flight 协作协议。网站使用 U 的缓存状态，观察不会触发节点 RPC 或领取结果。管理视图跨提交者显示运行元数据；回环监听仅供本机查看，对外监听要求 token_file，通过登录或 Bearer 认证。配置与 HTTP 只读接口见 [Union 服务器](../dacp-union-server/README.md#管理-api-与看板)。
 
 任务的 `id` 是 Job 内唯一的依赖标识，供输入的 `task`、最终输出、调度、状态与流量关联使用，必须保留。可选 `title` 是用途说明，支持中文，长度为 1–256 个字符且不可包含控制字符；不参与依赖解析，不要求唯一。看板任务卡片和 DAG 优先显示标题，同时保留 ID；标题随执行历史保存。
 

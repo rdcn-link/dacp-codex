@@ -53,7 +53,7 @@ def main():
                 processes.append(subprocess.Popen([str(NODE), str(path)], cwd=ROOT/'dacp-server', stdout=log, stderr=subprocess.STDOUT))
             config = dict(host='127.0.0.1', port=xp, public_url=f'dacp://localhost:{xp}',
                           tls_cert=str(ROOT/'examples/certs/server.crt'), tls_key=str(ROOT/'examples/certs/server.key'), tls_ca=str(ROOT/'examples/certs/ca.crt'),
-                          state_directory=str(state/'x'), client_identities=[fingerprint('client')], poll_interval_ms=100, execution_timeout_seconds=90, retention_seconds=10, web=dict(host="127.0.0.1",port=wp))
+                          state_directory=str(state/'x'), client_identities=[fingerprint('client')], administrator_identities=[fingerprint('client')], poll_interval_ms=100, execution_timeout_seconds=90, retention_seconds=10, web=dict(host="127.0.0.1",port=wp))
             path = state/'x.yaml'
             path.write_text(json.dumps(config))
             log = (state/'x.log').open('w+')

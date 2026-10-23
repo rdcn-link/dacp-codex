@@ -58,14 +58,12 @@ class DatasetCatalogSpec extends AnyFunSuite {
     val client=FlightClient.builder(allocator,server.getLocation).build()
     try {
       val info=client.listFlights(Criteria.ALL).iterator().next()
-      assert(client.listFlights(new Criteria("local".getBytes)).iterator().next().getDescriptor==info.getDescriptor)
       val meta=dacp.protocol.Metadata.DataSet.parseFrom(info.getAppMetadata)
       assert(meta.getName=="restricted" && meta.getDescription==entries.head.description)
       assert(meta.getItemsCount==0 && !meta.getAllFields.keySet.asScala.exists(f=>Set("title","tags")(f.getName)))
       assert(meta.getUri==c.uri("restricted"))
       entries=Seq.empty
       assert(!client.listFlights(Criteria.ALL).iterator().hasNext)
-      assert(!client.listFlights(new Criteria("local".getBytes)).iterator().hasNext)
       intercept[FlightRuntimeException](client.listFlights(new Criteria("search".getBytes)).iterator().hasNext)
     }finally {client.close();server.close();c.close();allocator.close();Data.deleteTree(dir)}
   }

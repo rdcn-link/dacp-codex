@@ -30,7 +30,7 @@ From the corresponding module directory, query records using the local CLI, incl
  target/universal/stage/bin/dacp-union-server history get ../.union-demo/x/executions JOB_ID
 ```
 
-The Union HTTP dashboard's execution-history view paginates U's persistent jobs, task states, and traffic. `GET /api/history?offset=0&limit=100` queries history; `GET /api/jobs/ID` continues to return historical metadata after its in-memory session expires. The maximum page size is 1000; the website uses 100 records per page, with search and state filters applying to that page. History and dashboard queries are publicly readable. It cannot replay outputs, resume Jobs, or grant access to source data.
+The Union HTTP dashboard's execution-history view paginates U's persistent jobs, task states, and traffic. `GET /api/history?offset=0&limit=100` queries history; `GET /api/jobs/ID` continues to return historical metadata after its in-memory session expires. The maximum page size is 1000; the website uses 100 records per page, with search and state filters applying to that page. History and dashboard are management views; external binding requires a management token. It cannot replay outputs, resume Jobs, or grant access to source data.
 
 On restart, unfinished records become `interrupted`, with `interruption_detected_at_ms` recording detection time. Unknown actual completion times are not presented as certain: `finished_at_ms` and `elapsed_ms` use the last observation, while the event records when interruption was detected. Tasks cleaned up during a normal shutdown are recorded as cancelled or completed. Retaining history does not resume tasks.
 
@@ -42,7 +42,7 @@ The shared implementation is `dacp-server/ExecutionHistory.scala`, reused by U. 
 
 Validate with `cd dacp-server && sbt test` and `cd dacp-union-server && sbt test`. After `sbt stage` in both modules and preparing the example certificates and `dacp/operator-python:1.0` image, run `python3 scripts/test-execution-history.py` and `python3 scripts/test-union.py` from the root to check actual Docker execution and history. Both scripts use temporary ports and directories and shut down the services they start.
 
-The Union dashboard displays the submitted Job YAML and a DAG of datasets, tasks, port dependencies and final outputs. Union history retains the complete submitted Job YAML (including parameters) for this view; node audit records do not store it. The dashboard and query APIs expose this information publicly; server administrators manage the history files. Node health reports include JVM process start time (`started_at_ms`) and monotonic uptime (`uptime_ms`); unreachable nodes retain their last observation. Older records without saved source display an explicit unavailable message.
+The Union dashboard displays the submitted Job YAML and a DAG of datasets, tasks, port dependencies and final outputs. Union history retains the complete submitted Job YAML (including parameters) for this view; node audit records do not store it. The management dashboard and query APIs expose this information to administrators; server administrators manage the history files. Node health reports include JVM process start time (`started_at_ms`) and monotonic uptime (`uptime_ms`); unreachable nodes retain their last observation. Older records without saved source display an explicit unavailable message.
 
 ## Storage extension
 

@@ -20,6 +20,12 @@ message DataSet {
   string description = 4; // User-defined JSON object serialized as text; defaults to "{}".
   string node_identity = 5; // Provenance when displayed through Union.
   int64 observed_at_ms = 6;
+  string display_name = 7;
+}
+message Directory {
+  repeated DataSet datasets = 1;
+  bool complete = 2;
+  uint32 unavailable_sources = 3;
 }
 enum ErrorCode { UNKNOWN = 0; NOT_FOUND = 1; FORBIDDEN = 2; SCHEMA_CONFLICT = 3; INVALID_ARGUMENT = 4; }
 message Error { ErrorCode code = 1; string message = 2; }

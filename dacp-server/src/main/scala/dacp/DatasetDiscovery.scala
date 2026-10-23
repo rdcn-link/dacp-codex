@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters._
 object DatasetDiscovery {
   def metadata(config:Config,info:DatasetInfo):Metadata.DataSet=Metadata.DataSet.newBuilder()
     .setUri(config.uri(info.name)).setName(info.name)
-    .setDescription(info.description).setObservedAtMs(System.currentTimeMillis()).build()
+    .setDisplayName(if(info.displayName.nonEmpty)info.displayName else info.name).setDescription(info.description).setObservedAtMs(System.currentTimeMillis()).build()
   def flight(meta:Metadata.DataSet,descriptor:FlightDescriptor):FlightInfo=
     new FlightInfo(PluginSchemas.bytes,descriptor,java.util.Collections.emptyList[FlightEndpoint](),-1,-1,false,
       org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,meta.toByteArray)

@@ -5,7 +5,7 @@ import scala.jdk.CollectionConverters._
 import org.yaml.snakeyaml.Yaml
 
 case class InputBinding(uri: Option[String] = None, task: Option[String] = None, port: String = "result", view: String = "bytes")
-case class Task(id: String, inputs: Map[String,InputBinding], operator: String, params: java.util.Map[String,Object], node: Option[String] = None, source: Option[SourceOperator] = None, title: Option[String] = None)
+case class Task(id: String, inputs: Map[String,InputBinding], operator: String, params: java.util.Map[String,Object], node: Option[String] = None, source: Option[SourceOperator] = None, title: Option[String] = None, outputPorts:Seq[String]=Seq.empty, proxyPath:Vector[String]=Vector.empty)
 case class JobPlan(tasks: Vector[Task], outputs: Map[String,(String,String)])
 case class SourceOperator(runtime: String, source: String, entrypoint: String = "Main")
 object Jobs {
@@ -31,7 +31,7 @@ object Jobs {
   private def name(s: String): Unit = require(s.matches("[A-Za-z_][A-Za-z0-9_-]{0,127}"),"invalid task/port name")
   private def mapping(value: Any, label: String): Map[String,Object] = {
     require(value.isInstanceOf[java.util.Map[_,_]],s"$label must be a mapping")
-    value.asInstanceOf[java.util.Map[String,Object]].asScala.toMap
+    scala.collection.immutable.VectorMap.from(value.asInstanceOf[java.util.Map[String,Object]].asScala)
   }
   def validate(t: Task): Unit = {
     t.title.foreach(v=>require(v.trim.nonEmpty && v.length<=256 && !v.exists(_.isControl),"title must contain 1 to 256 characters without control characters"))
@@ -46,7 +46,7 @@ object Jobs {
       b.task.foreach(name)
       b.uri.foreach { u => val parsed=DacpUri.parse(u); require(parsed.getPath.stripPrefix("/").split("/",2).length == 2,"operator input must address an item, not a dataset") }
     }
-    t.node.foreach(DacpUri.node)
+    t.node.foreach(n=>if(n.startsWith("nd-"))require(n.matches("nd-[a-z2-9]{4}-[a-z2-9]{4}"),"invalid logical node")else DacpUri.node(n))
   }
   def load(path: Path): JobPlan = parse(Files.readString(path))
   def parse(text: String): JobPlan = {

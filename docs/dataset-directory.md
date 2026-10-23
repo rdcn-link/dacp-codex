@@ -2,13 +2,13 @@
 
 [English](dataset-directory_en.md)
 
-DACP 节点通过 Flight `ListFlights` 发布本地 `DatasetCatalog.list()` 的结果。Union 不提供目录 Flight API、客户端目录方法或跨节点合集。
+DACP 节点发布本地目录；Union 在线合并已批准成员目录，以短 ID 暴露自己的 DACP 命名空间。SDK 使用 `dacp.catalog` Action 获取包含完整性标记的 `Directory`，`ListFlights` 遇到不完整目录返回错误。详见 [Union 代理服务](union-proxy.md)。
 
 在 Union Web 成员列表点击“查看数据集”，可打开指定成员的目录页面。每次打开或刷新仅通过 Flight 查询该成员，超时为 5 秒；不保存、不缓存、不定时采集目录。失败页面明确报错，不展示旧目录。
 
 ## 访问边界
 
-节点目录读取沿用 mTLS 信任，不需要数据访问或计算授权。Web 页面公开可读，Union 使用自身证书查询已邀请的指定成员，并校验成员身份；不接受任意远程地址。目录仅展示名称、URI 和 JSON 描述，不读取 Items 或数据内容。已发布的数据集默认可读取；计算执行仍需相应授权。
+节点目录读取沿用 mTLS 信任，不需要数据访问或计算授权。管理 Web 的访问边界见 [Union 代理服务](union-proxy.md)。Union 使用自身证书查询已邀请的指定成员，并校验成员身份；不接受任意远程地址。目录仅展示名称、URI 和 JSON 描述，不读取 Items 或数据内容。已发布的数据集默认可读取；计算执行仍需相应授权。
 
 ## 管理员：静态目录描述
 
@@ -43,7 +43,7 @@ override def list(): Seq[DatasetInfo] = Seq(
 
 ## Shell
 
-Shell 只连接 dacp-server，不连接 Union。启动参数必须是服务器地址，不接受 Dataset URI：
+Shell 可连接 DACP 节点或提供 DACP 服务的 Union。启动参数必须是服务器地址，不接受 Dataset URI：
 
 ```bash
 dacp-shell dacp://localhost:18861
@@ -57,7 +57,7 @@ dacp-shell> use orders
 dacp-shell> ls /
 ```
 
-`datasets` 不接受参数，列出当前服务器上的数据集名称、JSON 描述和 URI。启动或 `connect dacp://host:port` 后，若目录中只有一个数据集，Shell 自动选择并打印名称；没有或有多个数据集时先执行 `use NAME`，选中后才能执行 `ls`、`count`、`show`、`SELECT` 和 `run`。`use` 只选择当前服务器的数据集，已发布的数据集默认可读取。Union Web 仅提供按成员查看目录的页面。
+`datasets` 不接受参数，列出当前服务器上的数据集名称、JSON 描述和 URI。启动或 `connect dacp://host:port` 后，若完整目录中只有一个数据集，Shell 自动选择并打印名称；没有或有多个数据集时先执行 `use NAME`，选中后才能执行 `ls`、`count`、`show`、`SELECT` 和 `run`。`use` 只选择当前服务器的数据集，已发布的数据集默认可读取。Union 使用公开短 ID，显示名称重名时以 ID 选择；不完整目录不会触发自动选择。
 
 ## Python
 

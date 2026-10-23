@@ -35,12 +35,17 @@ final case class Item(path: String, format: String, schema: Option[Schema], kind
   def lastModifiedTime: Option[Instant] = lastModifiedTimeMs.map(Instant.ofEpochMilli)
 }
 
-final case class DatasetInfo(name:String,uri:String,description:String,nodeIdentity:String,observedAtMs:Long)
+final case class DatasetInfo(name:String,uri:String,description:String,nodeIdentity:String,observedAtMs:Long,displayName:String="")
 object DatasetInfo {
   private[client] def fromFlight(info:FlightInfo):DatasetInfo={
     val m=Metadata.DataSet.parseFrom(info.getAppMetadata)
-    DatasetInfo(m.getName,m.getUri,m.getDescription,m.getNodeIdentity,m.getObservedAtMs)
+    DatasetInfo(m.getName,m.getUri,m.getDescription,m.getNodeIdentity,m.getObservedAtMs,m.getDisplayName)
   }
+}
+
+final case class DatasetDirectory(entries:Vector[DatasetInfo],complete:Boolean,unavailableSources:Int) extends IndexedSeq[DatasetInfo] {
+  def length:Int=entries.length
+  def apply(index:Int):DatasetInfo=entries(index)
 }
 
 object Source {
@@ -65,12 +70,17 @@ object Source {
   }
 
   /** Public metadata only. Accepts either a DACP node origin or a Union origin. */
-  def datasets(origin:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=30):Seq[DatasetInfo]={
+  def datasets(origin:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=30):DatasetDirectory={
     val u=new URI(origin)
     require(u.getScheme=="dacp" && u.getHost!=null && u.getUserInfo==null && u.getQuery==null && u.getFragment==null &&
       (u.getPath==null || u.getPath.isEmpty || u.getPath=="/") && (u.getPort == -1 || u.getPort>0 && u.getPort<=65535) && timeoutSeconds>0,"expected DACP origin and positive timeout")
     val (client,allocator)=connection(u,tls)
-    try DacpErrors.protect(client.listFlights(Criteria.ALL,CallOptions.timeout(timeoutSeconds,TimeUnit.SECONDS)).asScala.map(DatasetInfo.fromFlight).toVector)
+    try DacpErrors.protect {
+      val results=client.doAction(new Action("dacp.catalog",Array.emptyByteArray),CallOptions.timeout(timeoutSeconds,TimeUnit.SECONDS)).asScala.toVector
+      require(results.size==1,"invalid directory response")
+      val d=Metadata.Directory.parseFrom(results.head.getBody)
+      DatasetDirectory(d.getDatasetsList.asScala.map(m=>DatasetInfo(m.getName,m.getUri,m.getDescription,m.getNodeIdentity,m.getObservedAtMs,m.getDisplayName)).toVector,d.getComplete,d.getUnavailableSources)
+    }
     finally Resources.closeAll(Seq(client,allocator))
   }
 

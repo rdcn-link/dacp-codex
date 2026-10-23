@@ -44,6 +44,7 @@ INSERT INTO dacp_items VALUES ('reports', '/orders', '/srv/data/orders.csv');
 ```scala
 trait DatasetCatalog extends AutoCloseable {
   def list(): Seq[DatasetInfo]
+  def directory(check: () => Unit): DatasetDirectory = DatasetDirectory(list(check))
   def open(name: String): PublishedDataset
   // 另提供带 check: () => Unit 的重载，以便执行取消检查。
 }
@@ -54,7 +55,7 @@ trait DatasetCatalogProvider {
 }
 ```
 
-`DatasetInfo` 只包含公开名称 `name`。`CatalogContext.createDataset(definition)` 复用已安装的 Dataset provider；传入 `FileDatasets.mixed` 可复用文件与 SQL 映射；原生后端也可以直接实现 `PublishedDataset`。不要将科学数组、图像或分组隐式转换成记录。
+`DatasetInfo` 包含公开寻址名称 `name`、JSON 对象描述字符串 `description` 及可选显示名称 `displayName`。`directory` 默认包装 `list`；聚合目录可返回 `DatasetDirectory(entries, complete, unavailableSources)`，失败时不能把部分结果标为完整。`CatalogContext.createDataset(definition)` 复用已安装的 Dataset provider；传入 `FileDatasets.mixed` 可复用文件与 SQL 映射；原生后端也可以直接实现 `PublishedDataset`。不要将科学数组、图像或分组隐式转换成记录。
 
 实现类提供公开无参构造函数，并在 JAR 中加入：
 
@@ -79,7 +80,7 @@ example.JdbcCatalogProvider
 - 服务器关闭目录实例。目录仅释放自己拥有的资源；用户注入的共享连接池由用户管理。
 - 目录信息无需额外的数据或 Union 执行授权，仍使用 Flight mTLS。已发布的数据集默认允许读取，仍验证命名空间和资源路径。
 
-目录发现使用标准 Flight `ListFlights`，默认使用空 criteria；dacp-server 还接受 `local` criteria，供仅连接节点的 Shell 使用。每条 `FlightInfo.app_metadata` 为 `DataSet` protobuf，包含公开名称、URI 和包含用户自定义 JSON 对象字符串的 `description`，不包含 Item 内容。公开描述、Shell 和 Union Web 按节点查看目录见[数据集目录](dataset-directory.md)。
+目录发现使用 Flight `dacp.catalog` Action，返回目录条目及完整性标记；标准 `ListFlights` 提供完整目录，不完整时返回错误。每条 `FlightInfo.app_metadata` 为 `DataSet` protobuf，包含公开名称、URI 和包含用户自定义 JSON 对象字符串的 `description`，不包含 Item 内容。公开描述、Shell 和 Union Web 按节点查看目录见[数据集目录](dataset-directory.md)。
 
 在项目根目录使用 Python 的标准 Flight 接口列举数据集：
 

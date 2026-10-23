@@ -1,5 +1,5 @@
-from .source import Source, DataSet, Item, DatasetInfo
-__all__ = ["Source", "DataSet", "Item", "DatasetInfo"]
+from .source import Source, DataSet, Item, DatasetInfo, DatasetDirectory
+__all__ = ["Source", "DataSet", "Item", "DatasetInfo", "DatasetDirectory"]
 
 from .jobs import Job
 __all__.append("Job")

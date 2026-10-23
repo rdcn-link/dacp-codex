@@ -32,7 +32,7 @@ Official website module: [dacp-website](dacp-website/README_en.md), providing an
 | `dacp-shell` | Interactive browsing, SQL queries, operator execution, and job-file submission; installed with the Python SDK |
 | `dacp-client` / `dacp-client-scala` | Python / Scala applications access data, execute Jobs, and submit Union jobs |
 | [dacp-union-server](dacp-union-server/README_en.md) | Manages one Union, invites nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
-| [Union web dashboard](dacp-union-server/README_en.md#http-operations-dashboard) | Public read-only view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
+| [Union web dashboard](dacp-union-server/README_en.md#management-api-and-dashboard) | Management view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
 | [dacp-operator-repository](dacp-operator-repository/README_en.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; administrators publish through the CLI |
 | `dacp-operator-runtime` / `plugins/dacp-plugin-operator-executors` | Shared operator environments, JVM / Python / container launchers, and native-command stream bridging |
 | `dacp-plugin-api` / `dacp-union-protocol` | Public plugin contracts and shared Union Flight transport utilities |

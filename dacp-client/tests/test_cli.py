@@ -467,7 +467,7 @@ def test_datasets_and_directory_only_startup(monkeypatch):
         b.onecmd('datasets dacp://node:8815')
         assert 'datasets accepts no arguments' in output.getvalue()
         assert calls[-1][0] == 'dacp://node:8815' and calls[-1][1]['cert_chain'] == b'cert'
-        assert calls[-1][1]['local_only'] is True
+        assert 'local_only' not in calls[-1][1]
         b.onecmd('ls')
         assert 'select a Dataset first' in output.getvalue()
         ds = FakeDataset()
@@ -539,3 +539,35 @@ def test_submit_policy_and_replay_use_bound_server(browser, monkeypatch, tmp_pat
     b.onecmd('replay execution1')
     assert calls[1][0][:2] == ('dacp://localhost', '')
     assert calls[1][1]['replay_from'] == 'execution1'
+
+
+def test_union_display_name_resolution_and_ambiguity(browser, monkeypatch):
+    from dacp.source import DatasetInfo
+    b, ds, out = browser
+    entries = [DatasetInfo('ds-2345-6789', 'dacp://localhost/ds-2345-6789', display_name='climate'),
+               DatasetInfo('ds-abcd-efgh', 'dacp://localhost/ds-abcd-efgh', display_name='climate')]
+    monkeypatch.setattr(cli.Source, 'datasets', lambda *a, **kw: entries)
+    opened = []
+    monkeypatch.setattr(cli.Source, 'open', lambda uri, **kw: opened.append(uri) or FakeDataset())
+    b.onecmd('use climate')
+    assert not opened and 'ambiguous' in out.getvalue()
+    b.onecmd('use ds-2345-6789')
+    assert opened == ['dacp://localhost/ds-2345-6789']
+    entries.pop()
+    b.onecmd('use climate')
+    assert opened[-1] == 'dacp://localhost/ds-2345-6789'
+
+
+def test_partial_union_directory_never_autoselects(monkeypatch):
+    from dacp.source import DatasetInfo, DatasetDirectory
+    entries = DatasetDirectory([DatasetInfo('ds-2345-6789', 'dacp://localhost/ds-2345-6789')], complete=False, unavailable_sources=1)
+    monkeypatch.setattr(cli.Source, 'datasets', lambda *a, **kw: entries)
+    monkeypatch.setattr(cli.Source, 'open', lambda *a, **kw: pytest.fail('partial directory must not select'))
+    output = io.StringIO()
+    with_browser = cli.Browser('dacp://localhost', stdout=output)
+    try:
+        assert with_browser.dataset is None
+        with_browser.onecmd('datasets')
+        assert 'Directory incomplete: 1 source(s) unavailable' in output.getvalue()
+    finally:
+        with_browser.close()

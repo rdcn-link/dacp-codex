@@ -44,9 +44,9 @@ class Browser(cmd.Cmd):
                 or u.port is not None and not 0 < u.port <= 65535):
             raise ValueError('expected dacp-server address: dacp://host[:port]; select a dataset with use NAME')
         origin = urlunsplit((u.scheme, u.netloc, '', '', ''))
-        entries = Source.datasets(origin, local_only=True, **self.credentials)
+        entries = Source.datasets(origin, **self.credentials)
         candidate, items, selected_uri = None, [], origin
-        if len(entries) == 1:
+        if len(entries) == 1 and getattr(entries, "complete", True):
             # Reconstruct locally so directory metadata cannot redirect the shell.
             name = entries[0].name
             if not name or '/' in name or name in ('.', '..'):
@@ -119,9 +119,11 @@ class Browser(cmd.Cmd):
             raise ValueError('datasets accepts no arguments; it uses the connected server')
         u = urlsplit(self.uri)
         origin = urlunsplit((u.scheme, u.netloc, '', '', ''))
-        entries = Source.datasets(origin, local_only=True, **self.credentials)
-        self.table(('Dataset', 'Description (JSON)', 'URI'),
-                   [(m.name, m.description, m.uri) for m in entries])
+        entries = Source.datasets(origin, **self.credentials)
+        self.table(('Dataset ID', 'Name', 'Description (JSON)', 'URI'),
+                   [(m.name, getattr(m, 'display_name', '') or m.name, m.description, m.uri) for m in entries])
+        if not getattr(entries, 'complete', True):
+            self.write(f"Directory incomplete: {entries.unavailable_sources} source(s) unavailable")
 
     def do_use(self, arg):
         """use DATASET: select a dataset on the current server.
@@ -134,6 +136,14 @@ class Browser(cmd.Cmd):
         if not name or '/' in name or name in ('.', '..'):
             raise ValueError('expected one dataset name')
         u = urlsplit(self.uri)
+        origin = urlunsplit((u.scheme, u.netloc, '', '', ''))
+        entries = Source.datasets(origin, **self.credentials)
+        if not any(m.name == name for m in entries):
+            matches = [m for m in entries if getattr(m, 'display_name', '') == name]
+            if len(matches) > 1:
+                raise ValueError('dataset name is ambiguous; use a Dataset ID from datasets')
+            if len(matches) == 1:
+                name = matches[0].name
         uri = urlunsplit((u.scheme, u.netloc, '/' + quote(name, safe=''), '', ''))
         candidate = Source.open(uri, **self.credentials)
         try:

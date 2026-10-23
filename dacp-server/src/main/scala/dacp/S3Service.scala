@@ -95,6 +95,7 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
           val (status,code)=t match {
             case f:Failure=>(f.status,f.code)
             case _:DatasetNotFound=>(404,"NoSuchBucket")
+            case e:org.apache.arrow.flight.FlightRuntimeException if e.status().code()==org.apache.arrow.flight.FlightStatusCode.UNAVAILABLE=>(503,"ServiceUnavailable")
             case _:java.io.FileNotFoundException=>(404,"NoSuchKey")
             case _:SecurityException | _:java.nio.file.AccessDeniedException=>(403,"AccessDenied")
             case _:IllegalArgumentException=>(400,"InvalidArgument")

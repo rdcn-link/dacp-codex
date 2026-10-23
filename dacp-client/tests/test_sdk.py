@@ -129,17 +129,17 @@ def test_open_uses_advertised_views_for_containers(kind, views, readable):
             ds.open('/archive')
 
 
-def test_dataset_discovery_local_scope_and_cleanup(monkeypatch):
+def test_dataset_discovery_completeness_display_names_and_cleanup(monkeypatch):
     import dacp.source as source
     from dacp import dacp_pb2 as pb
     calls = []
     class Client:
         closed = False
-        def list_flights(self, criteria, options):
-            calls.append(criteria)
-            if criteria == b'local' and len(calls) == 3:
-                raise ValueError('local directory unsupported')
-            return [type('Info', (), {'app_metadata': pb.DataSet(name='orders', uri='dacp://node/orders', description='{"summary":"Orders","owner":{"team":"sales"}}').SerializeToString()})()]
+        def do_action(self, action, options):
+            calls.append(action.type)
+            directory = pb.Directory(complete=len(calls) == 1, unavailable_sources=0 if len(calls) == 1 else 1)
+            directory.datasets.add(name='ds-test-id', display_name='orders', uri='dacp://node/ds-test-id', description='{}')
+            return [type('Result', (), {'body': pa.py_buffer(directory.SerializeToString())})()]
         def close(self):
             self.closed = True
     clients = []
@@ -148,9 +148,9 @@ def test_dataset_discovery_local_scope_and_cleanup(monkeypatch):
         clients.append(client)
         return client
     monkeypatch.setattr(source, '_flight_client', connect)
-    assert source.Source.datasets('dacp://node')[0].name == 'orders'
-    assert source.Source.datasets('dacp://node', local_only=True)[0].description == '{"summary":"Orders","owner":{"team":"sales"}}'
-    with pytest.raises(ValueError):
-        source.Source.datasets('dacp://union', local_only=True)
-    assert calls == [b'', b'local', b'local']
+    complete = source.Source.datasets('dacp://node')
+    assert complete.complete and complete[0].display_name == 'orders'
+    partial = source.Source.datasets('dacp://union')
+    assert not partial.complete and partial.unavailable_sources == 1
+    assert calls == ['dacp.catalog', 'dacp.catalog']
     assert all(client.closed for client in clients)

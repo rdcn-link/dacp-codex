@@ -32,7 +32,7 @@ Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs.md)动态提�
 | `dacp-shell` | 交互式浏览、SQL 查询、运行算子和提交任务文件；随 Python SDK 安装 |
 | `dacp-client` / `dacp-client-scala` | Python / Scala 应用访问数据、执行 Job 和提交 Union 作业 |
 | [dacp-union-server](dacp-union-server/README.md) | 管理一个 Union，邀请节点、轮询健康与容量、调度跨节点 DAG、转发最终结果流 |
-| [Union Web 看板](dacp-union-server/README.md#http-运行看板) | 公开只读展示节点、任务脚本、可缩放 DAG、流量与执行历史 |
+| [Union Web 看板](dacp-union-server/README.md#管理-api-与看板) | 管理界面展示节点、任务脚本、可缩放 DAG、流量与执行历史 |
 | [dacp-operator-repository](dacp-operator-repository/README.md) | HTTP/HTTPS 算子仓库；公开搜索、版本浏览和下载，管理员通过 CLI 发布 |
 | `dacp-operator-runtime` / `plugins/dacp-plugin-operator-executors` | 共享算子运行环境、JVM / Python / 容器启动器及原生命令流桥接 |
 | `dacp-plugin-api` / `dacp-union-protocol` | 插件公开契约和 Union 共享 Flight 传输工具 |

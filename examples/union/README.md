@@ -86,4 +86,4 @@ python3 examples/union/client.py
 
 ## 浏览运行看板
 
-`prepare.py` 为 X 配置了本机 HTTP 看板。启动 X 后打开 `http://127.0.0.1:19880/`，可查看 A、B 的审批、健康和容量；提交示例作业后点击作业 ID，查看两项任务的依赖、状态和端口流量。页面每 2 秒刷新，不会领取客户端的结果流。任务通信仍使用 Flight。远程访问及令牌配置见 [HTTP 运行看板](../../dacp-union-server/README.md#http-运行看板)。
+`prepare.py` 为 X 配置了本机 HTTP 看板。启动 X 后打开 `http://127.0.0.1:19880/`，可查看 A、B 的审批、健康和容量；提交示例作业后点击作业 ID，查看两项任务的依赖、状态和端口流量。页面每 2 秒刷新，不会领取客户端的结果流。任务通信仍使用 Flight。远程访问及令牌配置见 [HTTP 运行看板](../../dacp-union-server/README.md#管理-api-与看板)。

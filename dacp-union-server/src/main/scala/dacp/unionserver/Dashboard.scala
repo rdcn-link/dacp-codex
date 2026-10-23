@@ -10,6 +10,7 @@ import scala.util.control.NonFatal
 
 /** Public read-only view. Does not open result streams or issue execution RPCs. */
 private[unionserver] final class Dashboard(settings:WebSettings,coordinator:Coordinator) extends AutoCloseable {
+  private val token=settings.tokenFile.map(p=>java.nio.file.Files.readString(p).trim).map { value=>require(value.length>=32 && value.matches("[A-Za-z0-9_-]+"),"management token must contain at least 32 URL-safe characters");value }
   private val server=HttpServer.create(new InetSocketAddress(settings.host,settings.port),16)
   private val executor=Executors.newFixedThreadPool(4)
   private val closed=new AtomicBoolean()
@@ -25,6 +26,25 @@ private[unionserver] final class Dashboard(settings:WebSettings,coordinator:Coor
   }
   private def json(e:HttpExchange,status:Int,n:com.fasterxml.jackson.databind.JsonNode):Unit=send(e,status,Json.mapper.writeValueAsBytes(n),"application/json; charset=utf-8")
   private def error(e:HttpExchange,status:Int,message:String):Unit=json(e,status,Json.obj().put("error",message))
+  private def equal(a:String,b:String):Boolean=java.security.MessageDigest.isEqual(a.getBytes(UTF_8),b.getBytes(UTF_8))
+  private def authenticated(e:HttpExchange):Boolean=token.forall { expected=>
+    val bearer=Option(e.getRequestHeaders.getFirst("Authorization")).filter(_.startsWith("Bearer ")).map(_.drop(7))
+    val cookie=Option(e.getRequestHeaders.getFirst("Cookie")).toVector.flatMap(_.split(";").map(_.trim)).find(_.startsWith("dacp_admin=")).map(_.stripPrefix("dacp_admin="))
+    bearer.orElse(cookie).exists(equal(_,expected))
+  }
+  private def login(e:HttpExchange):Boolean={
+    val path=e.getRequestURI.getPath
+    if(path=="/login") {
+      if(e.getRequestMethod=="POST") {
+        val bytes=e.getRequestBody.readNBytes(1025)
+        val submitted=if(bytes.length<=1024)scala.util.Try(java.net.URLDecoder.decode(new String(bytes,UTF_8).stripPrefix("token="),UTF_8)).getOrElse("")else ""
+        if(token.exists(equal(_,submitted))){e.getResponseHeaders.add("Set-Cookie","dacp_admin="+submitted+"; HttpOnly; SameSite=Strict; Path=/");e.getResponseHeaders.set("Location","/");e.sendResponseHeaders(303,-1)}else error(e,401,"invalid management token")
+      }else send(e,200,"<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Union administration</title><h1>Union administration</h1><form method=\"post\" action=\"/login\"><label>Access token <input type=\"password\" name=\"token\" required></label><button>Sign in</button></form></html>".getBytes(UTF_8),"text/html; charset=utf-8")
+      true
+    }else if((path=="/" || path.startsWith("/api/") || path.startsWith("/members/")) && !authenticated(e)){
+      if(path.startsWith("/api/"))error(e,401,"management authentication required")else {e.getResponseHeaders.set("Location","/login");e.sendResponseHeaders(302,-1)};true
+    }else false
+  }
   private def handle(e:HttpExchange):Unit=try {
     val headers=e.getResponseHeaders
     headers.set("Cache-Control","no-store")
@@ -32,6 +52,7 @@ private[unionserver] final class Dashboard(settings:WebSettings,coordinator:Coor
     headers.set("X-Frame-Options","DENY")
     headers.set("Referrer-Policy","no-referrer")
     headers.set("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+    if(login(e))return
     if(e.getRequestMethod!="GET"){headers.set("Allow","GET");error(e,405,"read-only dashboard");return}
     val path=e.getRequestURI.getRawPath
     if(path.startsWith("/api/")) {

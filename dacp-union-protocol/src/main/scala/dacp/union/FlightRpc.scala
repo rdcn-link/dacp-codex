@@ -22,6 +22,12 @@ object Rpc {
   val MaxMessage=9*1024*1024
   val Frames=new Schema(java.util.List.of(new Field("data",FieldType.nullable(new ArrowType.Binary()),java.util.List.of[Field]())))
   val Events=new Schema(java.util.List.of(new Field("event",FieldType.nullable(new ArrowType.Binary()),java.util.List.of[Field]())))
+  private val hopsKey:Context.Key[String]=Context.key("dacp-proxy-hops")
+  def proxyHops:Vector[String]=Option(hopsKey.get()).filter(_.nonEmpty).map(_.split(",").toVector).getOrElse(Vector.empty)
+  def hopOptions(hops:Vector[String]):HeaderCallOption={
+    require(hops.size<=8 && hops.forall(_.matches("[a-zA-Z0-9_-]+")),"invalid proxy path")
+    val headers=new FlightCallHeaders();headers.insert("x-dacp-proxy-hops",hops.mkString(","));new HeaderCallOption(headers)
+  }
   private val peerKey:Context.Key[String]=Context.key("dacp-verified-tls-peer")
   def identity:String=Option(peerKey.get()).getOrElse(throw UnionFailure(FlightStatusCode.UNAUTHENTICATED,"verified TLS identity required"))
   val interceptor:ServerInterceptor=new ServerInterceptor {
@@ -34,7 +40,7 @@ object Rpc {
             call.close(io.grpc.Status.UNAUTHENTICATED.withDescription("verified peer certificate required"),new Metadata())
             return new ServerCall.Listener[A]() {}
         }
-        Contexts.interceptCall(Context.current().withValue(peerKey,who),call,headers,next)
+        Contexts.interceptCall(Context.current().withValue(peerKey,who).withValue(hopsKey,Option(headers.get(Metadata.Key.of("x-dacp-proxy-hops",Metadata.ASCII_STRING_MARSHALLER))).getOrElse("")),call,headers,next)
       }
     }
   }
@@ -95,20 +101,21 @@ final class Remote(tls:Tls) extends AutoCloseable {
     })
   }
   /** Public catalog discovery uses transport trust only, without Union execution grants. */
-  def catalog(origin:String,pin:Option[String]=None,timeout:Long=5):Vector[FlightInfo]=
-    connection(origin,pin).client.listFlights(Criteria.ALL,CallOptions.timeout(timeout,TimeUnit.SECONDS)).asScala.toVector
+  def dataClient(origin:String,pin:Option[String]):FlightClient=connection(origin,pin).client
+  def catalog(origin:String,pin:Option[String]=None,timeout:Long=5,hops:Vector[String]=Vector.empty):Vector[FlightInfo]=
+    connection(origin,pin).client.listFlights(Criteria.ALL,CallOptions.timeout(timeout,TimeUnit.SECONDS),Rpc.hopOptions(hops)).asScala.toVector
   def peer(origin:String,pin:Option[String]=None):String=Option(connection(origin,pin).peer.get()).getOrElse(throw new IllegalStateException("no verified server identity"))
-  def action(origin:String,name:String,body:JsonNode=Json.obj(),pin:Option[String]=None,timeout:Long=30):JsonNode={
+  def action(origin:String,name:String,body:JsonNode=Json.obj(),pin:Option[String]=None,timeout:Long=30,hops:Vector[String]=Vector.empty):JsonNode={
     require(timeout>0)
     try {
-      val responses=connection(origin,pin).client.doAction(new Action(Rpc.Prefix+name,Rpc.bytes(body)),CallOptions.timeout(timeout,TimeUnit.SECONDS))
+      val responses=connection(origin,pin).client.doAction(new Action(Rpc.Prefix+name,Rpc.bytes(body)),CallOptions.timeout(timeout,TimeUnit.SECONDS),Rpc.hopOptions(hops))
       require(responses.hasNext,"missing action response");val result=Rpc.parse(responses.next().getBody);require(!responses.hasNext,"multiple action responses");result
     }catch{case e:FlightRuntimeException if Set(FlightStatusCode.INVALID_ARGUMENT,FlightStatusCode.UNAUTHORIZED,FlightStatusCode.UNAUTHENTICATED,FlightStatusCode.NOT_FOUND,FlightStatusCode.ALREADY_EXISTS,FlightStatusCode.RESOURCE_EXHAUSTED,FlightStatusCode.UNIMPLEMENTED)(e.status().code())=>throw UnionFailure(e.status().code(),e.status().description())}
   }
-  def stream(origin:String,kind:String,body:JsonNode,pin:Option[String]=None,timeout:Long=1800):BinarySource=lifecycle.synchronized {
+  def stream(origin:String,kind:String,body:JsonNode,pin:Option[String]=None,timeout:Long=1800,hops:Vector[String]=Vector.empty):BinarySource=lifecycle.synchronized {
     require(!closed,"Union connection closed")
     require(timeout>0)
-    val reader=connection(origin,pin).client.getStream(Rpc.ticket(kind,body),CallOptions.timeout(timeout,TimeUnit.SECONDS))
+    val reader=connection(origin,pin).client.getStream(Rpc.ticket(kind,body),CallOptions.timeout(timeout,TimeUnit.SECONDS),Rpc.hopOptions(hops))
     val expected=if(kind=="events")Rpc.Events else Rpc.Frames
     val source=new BinarySource {
       private val lock=new Object()

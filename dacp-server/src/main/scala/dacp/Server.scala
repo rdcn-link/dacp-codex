@@ -77,11 +77,17 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
   datasets.keys.foreach(DatasetNames.validate)
   require(datasetCatalog.isEmpty || datasets.isEmpty,"datasets and dataset_catalog are mutually exclusive")
   def initializeDatasets(): Unit = { catalog; () }
-  def datasetInfos(check:()=>Unit=()=>()):Seq[DatasetInfo]={
-    val result=catalog.list(check).toVector
+  def datasetDirectory(check:()=>Unit=()=>()):DatasetDirectory={
+    val snapshot=catalog.directory(check)
+    val result=snapshot.entries.toVector
     result.foreach { i=>DatasetNames.validate(i.name);DatasetDescriptions.validate(i.description) }
     require(result.map(_.name).distinct.size==result.size,"duplicate dataset name")
-    result.sortBy(_.name)
+    snapshot.copy(entries=result.sortBy(_.name))
+  }
+  def datasetInfos(check:()=>Unit=()=>()):Seq[DatasetInfo]={
+    val snapshot=datasetDirectory(check)
+    if(!snapshot.complete)throw CallStatus.UNAVAILABLE.withDescription("dataset directory incomplete; use dacp.catalog for partial results").toRuntimeException
+    snapshot.entries
   }
   def openDataset(name:String,check:()=>Unit=()=>()):DatasetAccess={
     DatasetNames.validate(name);check()
@@ -225,7 +231,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
       new FlightInfo(PluginSchemas.bytes, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,
         org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,metadata.toByteArray)
     } else if (p.size == 2 || p.size == 4) {
-      val publicInfo=config.datasetInfos(()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()).find(_.name==ds).getOrElse(throw new DatasetNotFound)
+      val publicInfo=config.datasetDirectory(()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()).entries.find(_.name==ds).getOrElse(throw new DatasetNotFound)
       val meta = DatasetDiscovery.metadata(config,publicInfo).toBuilder
       (if (p.size == 4) a.list(item) else a.list()).foreach { i =>
         meta.addItems(itemMetadata(i))
@@ -247,7 +253,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     val audit=config.accessLog.begin("list_flights");val listener=AccessLogging.results(audit,raw)
     try {
     def check():Unit=if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()
-    require(criteria.getExpression.isEmpty || java.util.Arrays.equals(criteria.getExpression,"local".getBytes(java.nio.charset.StandardCharsets.UTF_8)),"unsupported dataset directory criteria")
+    require(criteria.getExpression.isEmpty,"unsupported dataset directory criteria")
     config.datasetInfos(()=>check()).foreach { info=>
       check()
       val meta=DatasetDiscovery.metadata(config,info)
@@ -258,7 +264,13 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
   }
   override def doAction(ctx:FlightProducer.CallContext,action:Action,raw:FlightProducer.StreamListener[Result]):Unit={
     val audit=config.accessLog.begin("do_action");val listener=AccessLogging.results(audit,raw)
-    try union match {
+    try if(action.getType=="dacp.catalog") {
+      require(action.getBody.isEmpty,"catalog action takes no body")
+      val snapshot=config.datasetDirectory(()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException())
+      val directory=Metadata.Directory.newBuilder().setComplete(snapshot.complete).setUnavailableSources(snapshot.unavailableSources)
+      snapshot.entries.foreach(i=>directory.addDatasets(DatasetDiscovery.metadata(config,i)))
+      listener.onNext(new Result(directory.build().toByteArray));listener.onCompleted()
+    } else union match {
       case Some(worker) if action.getType.startsWith(dacp.union.Rpc.Prefix)=>worker.doAction(ctx,action,listener)
       case _=>listener.onError(CallStatus.UNIMPLEMENTED.withDescription("unknown action").toRuntimeException)
     }catch{case scala.util.control.NonFatal(t)=>listener.onError(fail(t))}

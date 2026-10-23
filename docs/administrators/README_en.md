@@ -38,11 +38,11 @@ Flight uses mTLS: callers verify servers and servers verify clients. Nodes makin
 
 ## Union and repository
 
-- [Union manual](../../dacp-union-server/README_en.md): configuration, invitations, approval, polling, job submission, and public dashboard.
+- [Union manual](../../dacp-union-server/README_en.md): configuration, invitations, approval, polling, job submission, and management dashboard.
 - [Two-node example](../../examples/union/README_en.md): complete certificate, node, Union, and client demonstration.
 - [Repository manual](../../dacp-operator-repository/README_en.md): initialization, publication, source materials, HTTP service, and downloads.
 
-Union maintains one Union, inviting independent nodes and polling their status. Joining requires node approval. Its HTTP dashboard is publicly readable and exposes job scripts and execution metadata. Review task parameters for information unsuitable for public viewing. Computation remains protected by authorization on Flight interfaces.
+Union maintains one Union, inviting independent nodes and polling their status. Joining requires node approval. Its HTTP management dashboard requires authentication for external binding and exposes job scripts and execution metadata. Review task parameters for information unsuitable for public viewing. Computation remains protected by authorization on Flight interfaces.
 
 ## Monitoring, records, and shutdown
 
@@ -53,3 +53,5 @@ Use Ctrl+C for foreground processes or send SIGTERM. Restarting does not resume 
 Nodes also start a read-only HTTP dashboard by default on the Flight port plus 1000. Disable it with `web.enabled: false`. See the [node web dashboard](../node-web_en.md) for configuration and DAG views.
 
 Nodes also enable the [S3-compatible read service](../s3-service_en.md) by default, on the Flight port plus 2000. It exposes public downloads of bytes Items independently of Flight mTLS. Disable it with `s3: {enabled: false}`.
+
+Union provides standard DACP discovery, Items, Jobs and S3. For public short IDs, placement and management access, see [Union proxy service](../union-proxy_en.md).

@@ -58,3 +58,5 @@
 官方网站的构建、部署和软件下载发布：[dacp-website](../dacp-website/README.md)。网站仅提供英文内容。
 
 [S3 兼容读取](s3-service.md)：节点启动时公开 dataset bucket 与 Item object，支持匿名只读下载。
+
+Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短 ID、自动放置及管理权限配置见 [Union 代理服务](union-proxy.md)。

@@ -1,21 +1,21 @@
-# DACP Union scheduling server
+# DACP Union service
 
 [中文](README.md)
 
-`dacp-union-server` is an independent Scala module. One process maintains one persistent Union, invites independently running DACP nodes, and actively polls status and capacity. X can schedule computation only after local node approval. Nodes do not register with X or send heartbeats.
+`dacp-union-server` is a Scala coordination service. Each process maintains one Union. Members run independently; Union invites and polls them and dispatches computation after local approval. Nodes neither register nor send heartbeats.
 
-Client C submits Jobs to X over Arrow Flight mTLS, subscribes to status events, and incrementally reads final output. B pulls intermediate streams directly from A; final streams return through X to C. Outputs create no Datasets and stream directly by default. An independent execution policy can materialize selected output streams on their producing node for explicit replay.
+Union exposes ordinary DACP Flight services: online catalogs, Item metadata and records/bytes streams, record scans and Job execution. It also exposes read-only S3 access. Stable short public dataset IDs hide member addresses. Dedicated Union management APIs and the HTTP operations dashboard retain internal topology. See [Union proxy service](../docs/union-proxy_en.md) for naming, forwarding, placement and access boundaries.
 
-## Build and run
+## Build and start
 
-Requires JDK 17, sbt, and the nodes' existing operator runtime environments. From this module directory:
+Requires JDK 17 and sbt. Run from this module:
 
 ```bash
 sbt test stage
 target/universal/stage/bin/dacp-union-server serve ../.union-demo/x.yaml
 ```
 
-Example configuration; paths are relative to the process working directory:
+Configuration paths are relative to the process working directory:
 
 ```yaml
 host: 127.0.0.1
@@ -25,17 +25,25 @@ tls_cert: ../examples/certs/server.crt
 tls_key: ../examples/certs/server.key
 tls_ca: ../examples/certs/ca.crt
 state_directory: ../.union-demo/x
-client_identities: ["<64 lowercase hexadecimal characters: SHA-256 of client leaf certificate DER>"]
+client_identities: ["<SHA-256 of client leaf certificate DER: 64 lowercase hexadecimal characters>"]
+administrator_identities: ["<administrator certificate fingerprint>"]
 poll_interval_ms: 500
 execution_timeout_seconds: 120
 retention_seconds: 60
+web:
+  host: 127.0.0.1
+  port: 19880
+s3:
+  enabled: true
+  host: 0.0.0.0
+  port: 20860
 ```
 
-Every endpoint requires a client certificate. TLS verifies the certificate chain and hostname; application identity is the verified certificate fingerprint. Private keys use unencrypted PKCS#8 PEM. Certificates used by X and nodes need both `serverAuth` and `clientAuth`; C needs `clientAuth`. Flight hostnames must match certificate SANs. `client_identities` is an exact allowlist: sharing a CA does not grant submission access. A Job is visible only to its submitter. Node connections additionally pin the invited node certificate fingerprint. Certificate rotation requires invitation and approval again; use a new state directory when rotating X's certificate.
+Flight uses mTLS with hostname verification. Union and members also act as clients, requiring `serverAuth` and `clientAuth`; private keys use unencrypted PKCS#8 PEM. CA signatures do not grant computation. Client and administrator identity lists are separate; only a job's owner can read its results or cancel it. Member connections pin certificates. Rotating node certificates requires invitation and approval again; rotating Union certificates requires a new state directory.
 
-## Membership management
+## Invitation and approval
 
-These are local X administrator commands. They share configuration and state with the running service:
+These local Union administration commands can share state with the running service:
 
 ```bash
 target/universal/stage/bin/dacp-union-server identity ../.union-demo/x.yaml
@@ -44,9 +52,7 @@ target/universal/stage/bin/dacp-union-server members ../.union-demo/x.yaml
 target/universal/stage/bin/dacp-union-server remove ../.union-demo/x.yaml NODE_ID
 ```
 
-`invite` creates a pending invitation at the node and returns its certificate fingerprint and data origin. `members` actively queries approval and runtime status; network failures produce `unknown` without removing the node. `remove` first asks the node to revoke membership, then deletes X's local record; a network failure retains the record and reports an error. Removal or revocation cancels affected running jobs. Each node retains at most 128 invitations.
-
-Add this to the DACP node YAML, reusing its own TLS configuration:
+Enable `union` on a node, then obtain node administrator approval:
 
 ```yaml
 union:
@@ -55,32 +61,31 @@ union:
   retention_seconds: 300
 ```
 
-From `dacp-server`, the node administrator runs:
+Run from `dacp-server`:
 
 ```bash
 target/universal/stage/bin/dacp-server union list ../.union-demo/a
 target/universal/stage/bin/dacp-server union approve ../.union-demo/a UNION_ID ../.union-demo/a-policy.yaml
-target/universal/stage/bin/dacp-server union reject ../.union-demo/a UNION_ID
 target/universal/stage/bin/dacp-server union leave ../.union-demo/a UNION_ID
 ```
 
-The approval policy must provide every field:
+Example approval policy:
 
 ```yaml
-scheduler_identity: "<X certificate fingerprint>"
-input_prefixes: [dacp://localhost:18861/data]
-operators: [quantity_sum@1.0]
+scheduler_identity: "<Union certificate fingerprint>"
+input_prefixes: [dacp://localhost:18861/climate]
+operators: [daily_temperature_stats@1.0]
 max_concurrent_tasks: 4
 expires_at_ms: 4102444800000
 ```
 
-Approval binds the Union ID to X's actual certificate identity and limits compute input prefixes, exact operator versions, concurrency, and expiry. Compute permission does not change ordinary Flight download permission. Only pending invitations can be approved; rejected or revoked invitations can be invited again. State files use file locks and atomic replacement, allowing administration alongside the service.
+Approval binds the Union ID, certificate identity, input prefixes, operator versions, quota and expiry. Removal requests remote withdrawal before deleting the local record; network failures report errors and preserve it. Revocation or removal stops affected jobs. Temporary outages report unknown status without automatic member removal. Catalogs are fetched online; short-ID routes persist. Complete successful listings remove missing routes, without accumulating tombstones, while the counter never moves backwards.
 
-## Jobs and clients
+## Clients and jobs
 
-The [complete two-node example](../examples/union/README_en.md) includes operators, configuration, approval, and a client: A aggregates sales; B combines them with local prices. Tasks require explicit `node`, versioned operators, and final `outputs`. Inputs reference Items on the executing node or upstream Task/Port pairs.
+Ordinary clients connect through `Source.datasets`, `Source.open`, `Job.run` and the shell, using public URIs and either implicit placement or logical node IDs. Multiple inputs are processed at one member, with cross-node inputs streamed. Final streams return through Union. See [proxy service and job examples](../docs/union-proxy_en.md).
 
-Python:
+Dedicated asynchronous interfaces support independent status, cancellation and event subscriptions:
 
 ```python
 from pathlib import Path
@@ -88,106 +93,49 @@ from dacp import Union
 
 with Union('dacp://localhost:19860', cert='examples/certs/client.crt',
            key='examples/certs/client.key', ca='examples/certs/ca.crt') as union:
-    with union.submit(Path('examples/union/job.yaml').read_text()) as execution:
+    with union.submit(Path('job.yaml').read_text()) as execution:
         print(execution.job_id)
         for event in execution.results():
             if event['type'] == 'data':
                 print(event.get('batch', event['data']))
 ```
 
-`execution.status()` queries status; `execution.cancel()` cancels the entire job. `execution.events(after=0)` returns an independent Flight event iterator that can run in another thread. Sequence numbers increase monotonically; the latest 128 events are retained within a 4 MiB budget. A stale cursor receives `gap` with the current snapshot. Explicitly close iterators on early exit; leaving the execution context cancels unfinished jobs and closes connections. Closing only the status subscription does not cancel execution. Results are single consumption streams; a second claim returns `ALREADY_EXISTS`.
+`execution.status()`, `cancel()` and `events(after=0)` query, cancel and subscribe. Scala `dacp.client.Union` provides corresponding methods. Close executions and iterators to release resources. Results can be claimed once; disconnecting final results cancels unfinished jobs, while closing status subscriptions does not. Ordinary clients use the public namespace; administrators can submit explicit internal placements through the asynchronous API. See the [complete two-node example](../examples/union/README_en.md).
 
-The Scala client `dacp.client.Union` provides the same `submit`, `status`, `cancel`, `events`, and `results` interfaces. Close executions and iterators with `Using.resource`:
+## Policy, materialization and execution semantics
 
-```scala
-val union = new dacp.client.Union("dacp://localhost:19860",
-  java.nio.file.Path.of("examples/certs/client.crt"),
-  java.nio.file.Path.of("examples/certs/client.key"),
-  java.nio.file.Path.of("examples/certs/ca.crt"))
-scala.util.Using.resource(union.submit(java.nio.file.Files.readString(
-  java.nio.file.Path.of("examples/union/job.yaml")))) { execution =>
-  scala.util.Using.resource(execution.results())(_.foreach(println))
-}
-union.close()
-```
+Separate policy JSON controls `materialization`, `max_retries` (0–10) and `timeout_seconds`. Outputs stream by default. Explicit materialization stores output on its producing member for replay in a new execution. Automatic retries require clients to recognize failed attempts and discard previous partial output; final-output materialization is optional. Total timeout includes queuing and every attempt. See [execution policy](../docs/materialization_en.md) for configuration, calls and plugin contracts.
 
-## Execution policy and replay
+The engine prepares all members before starting; insufficient capacity waits. Intermediate streams travel directly between nodes, using bounded queues and Flight backpressure. `end` alone is insufficient: consumers verify `complete` and successful Flight end-of-stream. Cancellation, failure, revocation and timeout clean up the job. Union can participate upstream through the ordinary worker contract without a dedicated nesting protocol; paths detect cycles and enforce depth limits.
 
-Pass a separate JSON object as `union.submit(script, execution_policy=policy)` in Python or `union.submit(script, policy)` in Scala. `materialization` controls workflow permission, default mode, and per-task output overrides. Streaming is the default; `allowed: false` rejects every materialization request. Nodes must configure `union.materialization_store` before accepting materialization or replay.
+Each job allows 64 steps and 1024 connected ports; each step allows 32 inputs and 32 connected outputs. Union allows 64 active jobs and 4096 in-memory sessions; members reserve all subjob slots simultaneously. Events retain at most 128 entries within 4 MiB; stale cursors receive gap. History metadata persists, but running jobs do not recover automatically after restart. Materialized outputs support explicit replay. Output fan-out, inline source and internal operator checkpoints are unsupported. Backups should include members, routes, approvals and execution history.
 
-After termination, `union.replay(job_id, tasks=['ta'])` creates a new execution that reuses committed `ta` outputs and reruns necessary downstream steps. Omitting `tasks` selects available eligible materialized steps. Final results can also be replayed; automatic retry is opt-in through `max_retries`. Only the source owner can request replay, with current node authorization. Policies and source execution links persist in history. See [configuration, JSON examples, Scala calls, and plugin contracts](../docs/materialization_en.md).
+## Management API and dashboard
 
-## Execution semantics and limitations
+Management Flight Actions use the `dacp.union.` prefix and a 1 MiB JSON limit:
 
-X validates the DAG and groups tasks by explicit node. Insufficient capacity produces `waiting_resources`; every node is prepared before any starts. A capacity race during preparation rejects the job and cleans up prepared nodes without automatic retry. Union and ordinary Flight tasks share the node execution capacity. Each node must reserve all its subjob tasks simultaneously. A job allows at most 1024 input and connected output ports in total. Each task allows at most 32 inputs and 32 connected outputs. A job allows at most 64 tasks, X allows 64 active jobs, and each node and X retain at most 4096 execution records.
+| Action | Request |
+| --- | --- |
+| submit | `{"job_yaml":"...","execution_policy":{}}`, policy optional |
+| replay_job | `{"job_id":"ID","tasks":["ta"]}`, tasks optional |
+| job_status / cancel_job | `{"job_id":"ID"}` |
+| members | `{}`, administrator |
+| invite_member | `{"url":"dacp://node:18861"}`, administrator |
+| remove_member | `{"identity":"fingerprint"}`, administrator |
 
-States are `queued`, `waiting_resources`, `preparing`, `running`, `succeeded`, `failed`, `cancelled`, and `expired`. Data channels use two-frame queues and Flight backpressure. Consumers verify upstream success through `complete`, rather than accepting data `end` alone. Final-result disconnection, cancellation, failure, authorization revocation, or timeout cleans up the global job. Execution timeout also applies while waiting for a client to claim results.
+Result Tickets use `{"type":"dacp.union.results","job_id":"ID"}`; event Tickets use `{"type":"dacp.union.events","job_id":"ID","after":0}`. Events require administrator identity. Ordinary DACP jobs use `DoExchange`, catalogs use `dacp.catalog`, and logical nodes use `dacp.nodes`.
 
-Snapshots include node Task states and per-input/output cumulative `payload_bytes`, `remote_payload_bytes`, and `last_activity_ms`; records streams also report `records`. Counters measure payloads, excluding Flight/gRPC/TLS overhead. Sending and receiving are counted separately. The status channel is independent of output queues.
+The HTTP dashboard shows real members, scripts, states, traffic, DAGs and paginated history without claiming results. It refreshes every two seconds. Locally bundled AntV G6 supports horizontal/vertical dependency and swimlane layouts, zoom, pan and group collapse. `GET /api/overview`, `/api/jobs/ID` and `/api/history?offset=0&limit=100` are read-only management APIs. Omitting web disables its listener. Loopback binding is local; external binding requires token_file. See [management boundaries](../docs/union-proxy_en.md#management-boundaries) for token and login configuration. S3 is a separate public read-only data interface.
 
-Membership and execution records persist; running sessions remain in memory and outputs persist only when explicitly materialized. Restart does not automatically recover jobs; nodes clean up by their own timeout if X crashes. Inline source submission, fan-out, internal operator checkpoints and automatic placement optimization are unavailable. Explicit replay creates a new execution from committed outputs. Existing Flight `Job.run` retains its own execution path; Union uses separate interfaces. X uses 128 Flight executor threads: leave room for control requests alongside long connections and set concurrency according to resources.
+## Development and validation
 
-Top-level `max_retries` (0–10, default 0) bounds execution retries. Results remain incremental; consumers must provide a retry callback to discard prior partial output. Materialization is optional. `timeout_seconds` covers resource waits and all attempts and cannot exceed the server limit. See [execution policy](../docs/materialization_en.md).
-
-## Developer interfaces
-
-All Action types have the `dacp.union.` prefix. Requests and single responses are JSON limited to 1 MiB. Addresses use `dacp://host:port`; nodes need no separate Union port. The operator repository retains HTTP.
-
-| Interface | Type | JSON request or Ticket |
-| --- | --- | --- |
-| Submit | `DoAction submit` | `{"job_yaml":"...","execution_policy":{}}` (policy optional) |
-| Replay | `DoAction replay_job` | `{"job_id":"ID","tasks":["ta"]}` (`tasks` optional) |
-| Status / cancel | `DoAction job_status` / `cancel_job` | `{"job_id":"ID"}` |
-| Member status | `DoAction members` | `{}` |
-| Results | `DoGet` | `{"type":"dacp.union.results","job_id":"ID"}` |
-| Events | `DoGet` | `{"type":"dacp.union.events","job_id":"ID","after":0}` |
-
-Node `DoAction` operations are `invite`, `membership`, `withdraw`, `node_status` (`union_id`), `prepare` (`union_id`, `execution_id`, `tasks`), and `start`, `execution_status`, `cancel_execution` (`execution_id`). Node output Tickets are `{"type":"dacp.union.output","execution_id":"ID","task":"ta","port":"result"}`.
-
-Results and intermediate streams have Arrow schema `data: binary`, one row per batch containing a complete OperatorFrame. Events use `event: binary`, one JSON event per batch. Successful results include `start/data/end/complete` and require successful Flight end-of-stream. Failures use Flight status codes. Previous HTTP interfaces have been removed.
-
-Node protocol, mTLS, and JSON helpers live in `dacp-union-protocol`. Node execution lives in `dacp-server`'s `UnionWorker`, using existing `DatasetAccess`, `TaskExecutor`, and operator contracts; domain analysis belongs in example operators. The [protocol contract](../docs/union_en.md) and `UnionSpec` cover authorization, direct transport, capacity waiting, failures, and cancellation.
-
-## HTTP operations dashboard
-
-Add `web` to U's configuration to start the website with `serve`. Without this section, no HTTP listener is opened:
-
-```yaml
-web:
-  host: 127.0.0.1
-  port: 19880
-```
-
-Open `http://127.0.0.1:19880/` in a browser. The two-node example's `prepare.py` generates this configuration. The website refreshes every 2 seconds and shows member approval, health and observation time, node capacity and Union quotas, available executors, job filters, task dependencies, elapsed time, and per-port byte and record counters. Select a job for details. Rates use successive node observations; stale observations are explicitly marked. The list displays the latest 100 jobs; counters cover all currently retained jobs. In-memory sessions follow `retention_seconds`; execution metadata persists indefinitely and remains available after restart through the paginated execution-history view.
-
-This is a public read-only view across all submitters' execution metadata, including nodes, operators, and input Item URIs. It neither reads result contents nor claims result streams. Invitation, approval, submission, and cancellation are unavailable on the website. Node communication, client submission, and data streams continue to use Flight; the operator repository continues to use HTTP.
-
-The dashboard is publicly readable without a token. To allow remote browsers:
-
-```yaml
-web:
-  host: 0.0.0.0
-  port: 19880
-```
-
-Read-only HTTP interfaces: `GET /api/overview`, `GET /api/jobs/ID`, and `GET /api/history?offset=0&limit=100`. Pages and APIs publicly expose node status, task scripts, DAGs, and execution history. State responses disable caching and cross-origin access. Task submission, computation, and data access still require Flight certificates and authorization. Stopping U also releases its HTTP listener.
-
-The DAG uses locally bundled AntV G6, with automatic server grouping, zoom/pan, double-click group collapse and click-to-inspect task/traffic details. State refreshes preserve layout and viewport. Browsers do not access an external CDN.
-
-All global jobs persist execution records by default, and nodes also record local subtasks. For directories, query commands, history interfaces, and interruption semantics, see [execution history](../docs/execution-history_en.md).
-
-### Frontend development and validation
-
-Dashboard resources live in `src/main/resources/web/`. `dag.js` maps execution snapshots to G6 nodes, edges and combos and manages the graph instance and viewport. `app.js` handles read-only APIs and other page sections. Layout runs again only when topology or the selected job changes. Custom cards render Canvas text and inspector details use DOM `textContent`; task metadata is never executed as HTML.
-
-The local `vendor/g6-5.1.1.min.js` is `dist/g6.min.js` from the official npm package `@antv/g6@5.1.1`. Its MIT license is retained as `G6-LICENSE.txt` in the same directory. The file SHA-256 is `3e091a94fd08994a383ff34bfba256bb8e382e4be4042197a206d2ecc0957331`. When updating, synchronize the versioned filename, HTML reference, `Dashboard.scala` asset list and tests. Normal builds need neither npm nor frontend dependency downloads.
-
-Run browser contract tests from the repository root. They use a temporary local HTTP fixture and require neither nodes nor Docker:
+`dacp-union-protocol` supplies transport, mTLS and JSON contracts; `UnionWorker` reuses plugin data access and executors. `ProxyCatalog` forwards through `DatasetAccess` without format/backend branches. Domain operators use the existing plugin and repository mechanisms.
 
 ```bash
-python -m pip install playwright
-python -m playwright install chromium
+# This module
+sbt test
+# Repository root; requires Playwright and Chromium
 python scripts/test-union-dashboard.py
 ```
 
-Use `--browser-executable /path/to/chromium` to select a browser and `--screenshots /tmp/dacp-dashboard` to save desktop and mobile screenshots. Tests cover nonoverlapping server groups, inspection, zoom, viewport preservation during state refresh, collapse, text injection protection, mobile layout and offline assets. Run `sbt test` in this module for Scala service interfaces and asset routing tests.
+Web resources live in `src/main/resources/web/`. `dag.js` manages graphs and viewports; `app.js` handles read-only requests. Canvas/DOM text rendering prevents metadata execution. Local `@antv/g6@5.1.1` retains its MIT license; upgrades synchronize versioned filenames, HTML, asset routing and tests. Normal builds download no frontend dependencies. See [Union protocol](../docs/union_en.md) and [execution history](../docs/execution-history_en.md) for details and storage paths.

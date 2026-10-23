@@ -56,11 +56,16 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
   private def denied(message:String):Nothing=throw UnionFailure(UNAUTHORIZED,message)
   private def validateInput(b:JsonNode,policy:JsonNode):Unit={
     if(b.has("uri")) {
-      Json.fields(b,Set("uri","view"));val uri=Json.text(b,"uri");val u=DacpUri.parse(uri)
-      require(DacpUri.origin(uri)==DacpUri.origin(config.uri("")),"input must belong to this node")
+      Json.fields(b,Set("uri","view"),Set("origin","identity"));val uri=Json.text(b,"uri");val u=DacpUri.parse(uri)
       require(u.getPath.stripPrefix("/").split("/",2).length==2,"input must identify an item")
       require(Set("bytes","records")(Json.text(b,"view")),"invalid view")
-      if(!Json.strings(policy,"input_prefixes").exists(DacpUri.within(uri,_)))denied("local input computation denied")
+      if(DacpUri.origin(uri)==DacpUri.origin(config.uri(""))) {
+        require(!b.has("origin") && !b.has("identity"),"unexpected local source pin")
+        if(!Json.strings(policy,"input_prefixes").exists(DacpUri.within(uri,_)))denied("local input computation denied")
+      }else {
+        require(b.has("origin") && b.has("identity") && DacpUri.origin(uri)==Json.origin(Json.text(b,"origin")),"remote source needs matching origin and identity")
+        Json.identity(Json.text(b,"identity"))
+      }
     } else {
       Json.fields(b,Set("task","port"),Set("origin","identity"))
       Json.id(Json.text(b,"task"));Json.id(Json.text(b,"port"))
@@ -172,6 +177,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     def claim(who:String):Unit={if(who!=consumer)denied("output consumer denied");if(!claimed.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"output already consumed")}
   }
   private final class Session(val id:String,val union:String,val owner:String,definitions:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long) {
+    private val proxyPath=Rpc.proxyHops
     val size=definitions.size
     val created=Json.now
     val cancel=new StreamCancel(timeoutSeconds=timeoutSeconds)
@@ -223,7 +229,33 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         def close():Unit=in.close()
       }
     }
+    private def datasetInput(b:JsonNode):FrameSource={
+      val uri=Json.text(b,"uri");val parts=DacpUri.parse(uri).getPath.stripPrefix("/").split("/",2);val view=Json.text(b,"view")
+      val client=remote.dataClient(Json.text(b,"origin"),Some(Json.text(b,"identity")))
+      val info=client.getInfo(FlightDescriptor.path("datasets",parts(0),"/"+parts(1)),CallOptions.timeout(10,TimeUnit.SECONDS))
+      val meta=dacp.protocol.Metadata.Item.parseFrom(info.getAppMetadata)
+      require(meta.getViewsList.contains(view),"source view unavailable")
+      val ticket=dacp.protocol.Metadata.Ticket.newBuilder().setDataset(parts(0)).setItem("/"+parts(1)).setView(view).build()
+      val reader=client.getStream(new Ticket(ticket.toByteArray),CallOptions.timeout(settings.executionTimeoutSeconds,TimeUnit.SECONDS))
+      cancel.add(new AutoCloseable{def close():Unit={reader.cancel("dataset input cancelled",null);reader.close()}})
+      new FrameSource {
+        private var started=false;private var ended=false;private var pending=Iterator.empty[Array[Byte]]
+        def next():Option[OperatorFrame]={
+          cancel.active()
+          if(!started){started=true;return Some(StreamProtocol.start("",view,meta.getFormat,if(view=="records")Some(reader.getSchema)else None))}
+          if(ended)return None
+          if(view=="records"){
+            if(reader.next())Some(StreamProtocol.frame("data",data=StreamProtocol.batch(reader.getRoot)))else {ended=true;Some(StreamProtocol.frame("end"))}
+          }else {
+            while(!pending.hasNext){if(!reader.next()){ended=true;return Some(StreamProtocol.frame("end"))};val root=reader.getRoot;pending=(0 until root.getRowCount).iterator.flatMap(i=>root.getVector(0).asInstanceOf[VarBinaryVector].get(i).grouped(65536))}
+            Some(StreamProtocol.frame("data",data=pending.next()))
+          }
+        }
+        def close():Unit={reader.cancel("dataset input closed",null);reader.close()}
+      }
+    }
     private def localInput(b:JsonNode):FrameSource={
+      if(b.has("origin"))return datasetInput(b)
       val u=DacpUri.parse(Json.text(b,"uri"));val split=u.getPath.drop(1).split("/",2);val path="/"+split(1);val view=Json.text(b,"view")
       val access=cancel.add(config.openDataset(split(0),()=>cancel.active()))
       val meta=access.describe(path)
@@ -364,7 +396,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
             e.getKey->new TrackedInput(src,taskId,e.getKey,b.has("origin"))
           }.toMap
           val bindings=inputs.keys.map(p=>p->InputBinding(uri=Some(config.uri("union","/item")))).toMap
-          val task=Task(taskId,bindings,t.path("operator").asText,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),title=Option(t.get("title")).map(_.asText))
+          val task=Task(taskId,bindings,t.path("operator").asText,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),title=Option(t.get("title")).map(_.asText),outputPorts=t.path("outputs").fieldNames.asScala.toVector,proxyPath=proxyPath)
           states.put(taskId,"running");taskRecords(taskId).update("running")
           var seen=Set.empty[String];val phases=scala.collection.mutable.Map.empty[String,Int]
           val emit:OperatorFrame=>Unit=f=>{

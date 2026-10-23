@@ -55,21 +55,31 @@ class DatasetInfo:
     description: str = "{}"
     node_identity: str = ""
     observed_at_ms: int = 0
+    display_name: str = ""
 
 
-def _dataset_infos(client, timeout=30, *, local_only=False):
-    entries = []
-    for info in client.list_flights(criteria=b'local' if local_only else b'', options=flight.FlightCallOptions(timeout=timeout)):
-        m = pb.DataSet.FromString(info.app_metadata)
-        entries.append(DatasetInfo(m.name, m.uri, m.description,
-                                   m.node_identity, m.observed_at_ms))
-    return entries
+class DatasetDirectory(list):
+    def __init__(self, entries=(), *, complete=True, unavailable_sources=0):
+        super().__init__(entries)
+        self.complete = complete
+        self.unavailable_sources = unavailable_sources
+
+
+def _dataset_infos(client, timeout=30):
+    results = list(client.do_action(flight.Action('dacp.catalog', b''), options=flight.FlightCallOptions(timeout=timeout)))
+    if len(results) != 1:
+        raise ValueError('invalid dataset directory response')
+    directory = pb.Directory.FromString(results[0].body.to_pybytes())
+    entries = [DatasetInfo(m.name, m.uri, m.description, m.node_identity,
+                           m.observed_at_ms, m.display_name or m.name) for m in directory.datasets]
+    return DatasetDirectory(entries, complete=directory.complete,
+                            unavailable_sources=directory.unavailable_sources)
 
 
 class Source:
     @staticmethod
     @public_errors
-    def datasets(url, *, tls_root_certs=None, cert_chain=None, private_key=None, timeout=30, local_only=False):
+    def datasets(url, *, tls_root_certs=None, cert_chain=None, private_key=None, timeout=30):
         """Read public metadata from dacp-server."""
         u = urlsplit(url)
         if (u.scheme != "dacp" or not u.hostname or u.username is not None or u.query or u.fragment
@@ -77,7 +87,7 @@ class Source:
             raise ValueError("expected dacp://host[:port] origin and positive timeout")
         client = _flight_client(u, tls_root_certs, cert_chain, private_key)
         try:
-            return _dataset_infos(client, timeout, local_only=local_only)
+            return _dataset_infos(client, timeout)
         finally:
             client.close()
 

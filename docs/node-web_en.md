@@ -29,6 +29,6 @@ Node status and the selected execution refresh every 2 seconds. Dataset director
 
 The page publicly exposes execution metadata and stored scripts and task parameters. Use it where this information may be public, configure its bind address, or disable it. Flight retains mTLS; published datasets are public by default, while execution retains its separate authorization rules. Responses use `Cache-Control: no-store`; static resources require no external network access.
 
-Union provides per-member dataset pages on its website, with no directory Flight API or aggregate of all members; see [dataset directories](dataset-directory_en.md).
+Union provides public DACP proxy catalogs and per-member dataset pages on its management website; see [dataset directories](dataset-directory_en.md).
 
 `web.public_host` is the browser-facing dashboard hostname and defaults to the node `public_host`; it is separate from the bind address `web.host`. Only after HTTP starts successfully does the node report `web_enabled: true` and `web_url`, including its actual port, through Flight `node_status`. The Union member table links to that address, shows “未启用” when Web is disabled, and an unknown state when node status is unavailable.

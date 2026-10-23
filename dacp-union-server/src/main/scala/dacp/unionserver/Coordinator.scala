@@ -26,12 +26,43 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   private val timer=Executors.newScheduledThreadPool(2)
   private val cleanup=Executors.newFixedThreadPool(4)
   private val allocator=new RootAllocator()
+  private[unionserver] val routes=new DatasetRoutes(settings.state.resolve("dataset-routes"))
+  private val uploads=new StreamInputs()
+  private val proxyCatalog=new ProxyCatalog(members,settings,routes,uploads)
+  private val planner=new PublicPlanner(members,settings,proxyCatalog,routes)
+  private val publicConfig=Config(settings.host,settings.port,java.net.URI.create(settings.publicUrl).getHost,Map.empty,settings.cert,settings.key,settings.ca,
+    catalogOverride=Some(proxyCatalog),pluginEnvironment=Some(plugins),maxConcurrentTasks=64,
+    union=Some(NodeUnionSettings(settings.state.resolve("upstream"),settings.timeout,settings.retention,settings.materializationStore)),
+    executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->settings.state.resolve("incoming-executions").toString))),
+    accessLogDirectory=Some(settings.state.resolve("access")),s3=settings.s3)
+  private val worker=new UnionWorker(publicConfig,publicConfig.union.get,allocator,Some((task,inputs,emit,cancel)=>nested(task,inputs,emit,cancel)))
+  private val standard=new Producer(publicConfig,allocator,union=Some(worker))
+  private val workerActions=Set("invite","membership","withdraw","node_status","materialized_status","prepare","start","execution_status","cancel_execution")
   private val producer=new NoOpFlightProducer {
-    override def doAction(ctx:CallContext,a:Action,out:StreamListener[Result]):Unit=Rpc.action(ctx,a,out)(action)
-    override def getStream(ctx:CallContext,t:Ticket,out:ServerStreamListener):Unit=Rpc.stream(ctx,t,out)((n,who)=>stream(n,who,out))
+    override def listFlights(ctx:CallContext,c:Criteria,out:StreamListener[FlightInfo]):Unit=standard.listFlights(ctx,c,out)
+    override def getFlightInfo(ctx:CallContext,d:FlightDescriptor):FlightInfo=standard.getFlightInfo(ctx,d)
+    override def doExchange(ctx:CallContext,r:FlightStream,out:ServerStreamListener):Unit=publicExchange(ctx,r,out)
+    override def doAction(ctx:CallContext,a:Action,out:StreamListener[Result]):Unit={
+      if(a.getType=="dacp.nodes")try {require(settings.clients(Rpc.identity) || settings.administrators(Rpc.identity));out.onNext(new Result(Json.mapper.writeValueAsBytes(planner.nodes)));out.onCompleted()}catch{case scala.util.control.NonFatal(_)=>out.onError(CallStatus.UNAUTHORIZED.withDescription("access denied").toRuntimeException)}
+      else if(a.getType=="dacp.catalog")standard.doAction(ctx,a,out)
+      else if(workerActions(a.getType.stripPrefix(Rpc.Prefix))) {
+        if(Rpc.proxyHops.contains(members.unionId) || Rpc.proxyHops.size>=8)out.onError(CallStatus.INVALID_ARGUMENT.withDescription("proxy cycle or depth limit").toRuntimeException)
+        else worker.doAction(ctx,a,out)
+      }else Rpc.action(ctx,a,out)(action)
+    }
+    override def getStream(ctx:CallContext,t:Ticket,out:ServerStreamListener):Unit={
+      if(!Rpc.isTicket(t.getBytes))standard.getStream(ctx,t,out)
+      else {
+        val n=Rpc.parse(t.getBytes)
+        if(n.path("type").asText==Rpc.Prefix+"output")worker.getStream(ctx,t,out)
+        else Rpc.stream(ctx,t,out)((n,who)=>stream(n,who,out))
+      }
+    }
   }
+  private var s3:Option[S3Service]=None
+  def s3Port:Option[Int]=s3.map(_.port)
   private val endpoint=new Endpoint(settings.host,settings.port,members.tls,allocator,producer)
-  private val dashboard=settings.web.map(w=>new Dashboard(w,this))
+  private var dashboard:Option[Dashboard]=None
   private val closed=new AtomicBoolean()
   private[unionserver] def memberSnapshots:Vector[JsonNode]=members.all.map { m=>
     Option(observed.get(m.path("identity").asText)).getOrElse(m.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]().put("state","unknown").put("observed_at_ms",0))
@@ -52,21 +83,98 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     val ms=n.putArray("members");memberSnapshots.foreach(ms.add)
     val js=n.putArray("jobs");jobSnapshots.foreach(js.add);n
   }
+  private def publicExchange(ctx:CallContext,reader:FlightStream,out:ServerStreamListener):Unit={
+    var job:Execution=null
+    val audit=publicConfig.accessLog.begin("do_exchange")
+    val sink=new Rpc.Sink(allocator,out,Rpc.Frames)
+    try {
+      val owner=Rpc.identity;if(!settings.clients(owner) && !settings.administrators(owner))denied()
+      require(reader.getDescriptor.isCommand && reader.getDescriptor.getCommand.length<=Rpc.MaxJson,"invalid job request")
+      val request=dacp.protocol.Metadata.OperatorRequest.parseFrom(reader.getDescriptor.getCommand)
+      require(request.hasJobYaml,"submit a job definition")
+      val body=Json.obj().put("job_yaml",request.getJobYaml)
+      if(!request.getExecutionPolicyJson.isEmpty)body.set[JsonNode]("execution_policy",Json.mapper.readTree(request.getExecutionPolicyJson.toByteArray))
+      val result=if(request.getReplayFrom.nonEmpty){
+        require(request.getJobYaml.isEmpty,"replay uses original job definition")
+        val replay=Json.obj().put("job_id",request.getReplayFrom)
+        Option(body.get("execution_policy")).foreach(p=>replay.set[JsonNode]("execution_policy",p))
+        action("replay_job",replay,owner)
+      }else {
+        val plan=planner.plan(Jobs.parse(request.getJobYaml),()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException())
+        val policy=ExecutionPolicy.parse(Option(body.get("execution_policy")).getOrElse(Json.obj()),plan)
+        require(policy.maxRetries==0 || request.getRetryAware,"automatic retries require a retry-aware client")
+        submit(plan,owner,render(plan),policy,path=Rpc.proxyHops).snapshot
+      }
+      job=owned(result.path("job_id").asText,owner)
+      require(!job.requiresRetryAwareness || request.getRetryAware,"retry-aware client required")
+      require(job.claimed.compareAndSet(false,true),"results already consumed")
+      val current=job;out.setOnCancelHandler(()=>current.stop("cancelled"))
+      sink.start();sink.frame(OperatorFrame(Json.mapper.writeValueAsBytes(Json.obj().put("type","execution").put("port","").put("execution_id",job.id)),Array.emptyByteArray))
+      var f=job.output.next()
+      while(f.nonEmpty){
+        val h=StreamProtocol.header(f.get).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
+        h.put("execution_id",job.id)
+        if(h.has("error"))h.put("error","task execution failed")
+        if(h.has("message"))h.put("message","execution attempt failed; discard partial output before retry")
+        sink.frame(OperatorFrame(Json.mapper.writeValueAsBytes(h),f.get.data));f=job.output.next()
+      }
+      sink.completed();audit.finish("completed")
+    }catch{case scala.util.control.NonFatal(t)=>
+      if(job!=null && !job.terminal)job.stop(if(ctx.isCancelled || out.isCancelled)"cancelled"else "failed")
+      audit.finish("failed")
+      val status=t match {
+        case f:UnionFailure if Set(UNAUTHORIZED,UNAUTHENTICATED)(f.code)=>CallStatus.UNAUTHORIZED
+        case _:IllegalArgumentException=>CallStatus.INVALID_ARGUMENT
+        case _:java.util.concurrent.CancellationException=>CallStatus.CANCELLED
+        case _:java.util.concurrent.TimeoutException=>CallStatus.TIMED_OUT
+        case _=>CallStatus.UNAVAILABLE
+      }
+      if(!out.isCancelled)out.error(status.withDescription("Union request failed or unavailable").toRuntimeException)
+    }
+    finally sink.close()
+  }
+  private def render(plan:JobPlan):String={
+    val n=Json.obj().put("job","union-execution");val tasks=n.putArray("tasks")
+    plan.tasks.foreach { t=>val v=tasks.addObject().put("id",t.id).put("operator",t.operator);t.title.foreach(v.put("title",_));t.node.foreach(v.put("node",_));v.set[JsonNode]("params",Json.mapper.valueToTree(t.params));val inputs=v.putObject("inputs");t.inputs.foreach{case(p,b)=>val i=inputs.putObject(p).put("view",b.view);b.uri.foreach(i.put("uri",_));b.task.foreach(i.put("task",_));i.put("port",b.port)} }
+    val outputs=n.putObject("outputs");plan.outputs.foreach{case(p,(t,o))=>outputs.putObject(p).put("task",t).put("port",o)};n.toString
+  }
+  private def nested(task:Task,inputs:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel):Unit={
+    val candidates=members.all.map(m=>members.inspect(m)).filter(m=>m.path("state").asText=="approved" && m.path("grant").path("operators").elements.asScala.exists(_.asText==task.operator))
+    require(candidates.nonEmpty,"no execution node for delegated task")
+    val member=candidates.sortBy(_.path("identity").asText).head
+    val upload=uploads.register(member.path("identity").asText,inputs)
+    var j:Execution=null
+    try {
+      val ports=task.outputPorts
+      require(ports.nonEmpty,"delegated task needs connected output ports")
+      val t=task.copy(node=Some(member.path("data_origin").asText),inputs=inputs.keys.map(p=>p->InputBinding(uri=Some(settings.publicUrl.stripSuffix("/")+"/"+upload+"/"+p),view=inputsView(upload,p))).toMap)
+      val plan=JobPlan(Vector(t),ports.map(p=>p->(t.id,p)).toMap)
+      j=submit(plan,members.tls.identity,render(plan),ExecutionPolicy.parse(Json.obj().put("timeout_seconds",math.min(settings.timeout,cancel.remainingSeconds)),plan),path=task.proxyPath)
+      val current=j
+      val scope=new AutoCloseable{def close():Unit=if(!current.terminal)current.stop("cancelled")};cancel.add(scope)
+      var f=j.output.next()
+      while(f.nonEmpty){cancel.active();if(StreamProtocol.header(f.get).path("type").asText!="complete")emit(f.get);f=j.output.next()}
+    }finally {if(j!=null && !j.terminal)j.stop("cancelled");uploads.remove(upload)}
+  }
+  private def inputsView(upload:String,port:String):String=uploads.view(upload,port)
   private def denied():Nothing=throw UnionFailure(UNAUTHORIZED,"client identity denied")
   private def owned(id:String,who:String):Execution={val j=Option(jobs.get(Json.id(id))).getOrElse(throw UnionFailure(NOT_FOUND,"job unavailable"));if(j.owner!=who)denied();j}
   private def action(op:String,n:JsonNode,who:String):JsonNode={
-    if(!settings.clients(who))denied()
-    op match {
-      case "members"=>Json.fields(n,Set.empty);val result=Json.obj().put("union_id",members.unionId);val a=result.putArray("members");observed.values.asScala.foreach(a.add);result
+    if(!settings.clients(who) && !settings.administrators(who))denied()
+    val result=op match {
+      case "invite_member"=>if(!settings.administrators(who))denied();Json.fields(n,Set("url"));members.invite(Json.text(n,"url"))
+      case "remove_member"=>if(!settings.administrators(who))denied();Json.fields(n,Set("identity"));members.remove(Json.text(n,"identity"));Json.obj().put("removed",true)
+      case "members"=>if(!settings.administrators(who))denied();Json.fields(n,Set.empty);val result=Json.obj().put("union_id",members.unionId);val a=result.putArray("members");observed.values.asScala.foreach(a.add);result
       case "submit"=>
         Json.fields(n,Set("job_yaml"),Set("execution_policy"));val script=Json.text(n,"job_yaml");val plan=Jobs.parse(script)
-        submit(plan,who,script,ExecutionPolicy.parse(Option(n.get("execution_policy")).getOrElse(Json.obj()),plan)).snapshot
+        val executionPlan=if(settings.administrators(who))plan else planner.plan(plan,()=>())
+        submit(executionPlan,who,if(settings.administrators(who))script else render(executionPlan),ExecutionPolicy.parse(Option(n.get("execution_policy")).getOrElse(Json.obj()),executionPlan),path=Rpc.proxyHops).snapshot
       case "replay_job"=>
-        Json.fields(n,Set("job_id"),Set("tasks"));val source=history.get(Json.id(Json.text(n,"job_id"))).getOrElse(throw UnionFailure(NOT_FOUND,"source execution unavailable"))
+        Json.fields(n,Set("job_id"),Set("tasks","execution_policy"));val source=history.get(Json.id(Json.text(n,"job_id"))).getOrElse(throw UnionFailure(NOT_FOUND,"source execution unavailable"))
         if(source.path("owner").asText!=who)denied()
         require(Set("succeeded","failed","cancelled","expired","interrupted")(source.path("state").asText),"source execution is still active")
         val script=Json.text(source,"job_yaml");val plan=Jobs.parse(script)
-        val policy=ExecutionPolicy.parse(Option(source.get("execution_policy")).getOrElse(Json.obj()),plan)
+        val policy=ExecutionPolicy.parse(Option(n.get("execution_policy")).orElse(Option(source.get("execution_policy"))).getOrElse(Json.obj()),plan)
         val ports=ExecutionPolicy.connected(plan)
         val eligible=plan.tasks.map(_.id).filter(t=>ports.exists(_._1==t) && ports.filter(_._1==t).subsetOf(policy.materialized)).toSet
         def sourceId(task:String):String=source.path("materialized_sources").path(task).asText(source.path("job_id").asText)
@@ -84,12 +192,22 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         if(op=="cancel_job")j.stop("cancelled");j.snapshot
       case _=>throw UnionFailure(UNIMPLEMENTED,"unknown Union action")
     }
+    if(settings.administrators(who))result else publicStatus(result)
+  }
+  private def publicStatus(value:JsonNode):JsonNode={
+    val n=value.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
+    n.remove("nodes");n.remove("error");n.remove("message");n.remove("job_yaml");n.remove("task_definitions")
+    n.remove("attempts")
+    val states=n.putArray("steps")
+    value.path("nodes").elements.asScala.foreach(v=>v.path("tasks").fields.asScala.foreach(e=>states.addObject().put("id",e.getKey).put("state",e.getValue.asText)))
+    n
   }
   private def stream(n:JsonNode,who:String,listener:ServerStreamListener):Unit={
-    if(!settings.clients(who))denied()
+    if(!settings.clients(who) && !settings.administrators(who))denied()
     val kind=Json.text(n,"type")
     kind match {
       case "dacp.union.events"=>
+        if(!settings.administrators(who))denied()
         Json.fields(n,Set("type","job_id","after"));val after=Json.number(n,"after",0,Long.MaxValue);val j=owned(Json.text(n,"job_id"),who);j.validateCursor(after)
         val sink=new Rpc.Sink(allocator,listener,Rpc.Events)
         try {sink.start();j.events(after,sink);sink.completed()}finally sink.close()
@@ -103,21 +221,25 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         val sink=new Rpc.Sink(allocator,listener,Rpc.Frames)
         try {
           sink.start();var f=j.output.next()
-          while(f.nonEmpty){sink.frame(f.get);f=j.output.next()}
+          while(f.nonEmpty){
+            val frame=if(settings.administrators(who))f.get else {val h=StreamProtocol.header(f.get).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();if(h.has("message"))h.put("message","execution attempt failed; discard partial output before retry");if(h.has("error"))h.put("error","task execution failed");OperatorFrame(Json.mapper.writeValueAsBytes(h),f.get.data)}
+            sink.frame(frame);f=j.output.next()
+          }
           complete.set(true);sink.completed()
         }finally {sink.close();if(!complete.get())j.stop("cancelled")}
       case _=>throw UnionFailure(UNIMPLEMENTED,"unknown Union ticket")
     }
   }
-  private def submit(plan:JobPlan,owner:String,script:String,policy:ExecutionPolicy,replaySources:Map[String,String]=Map.empty,replayOf:Option[String]=None):Execution=synchronized {
+  private def submit(plan:JobPlan,owner:String,script:String,policy:ExecutionPolicy,replaySources:Map[String,String]=Map.empty,replayOf:Option[String]=None,path:Vector[String]=Vector.empty):Execution=synchronized {
     if(jobs.size>=4096 || jobs.values.asScala.count(!_.terminal)>=64)throw UnionFailure(RESOURCE_EXHAUSTED,"union job capacity unavailable")
     val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     require(timeout<=settings.timeout,"timeout_seconds exceeds Union server limit")
     val effective=policy.effective.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]().put("timeout_seconds",timeout)
-    val j=new Execution(Json.uuid(),owner,plan,script,policy.copy(effective=effective),replaySources,replayOf)
+    val j=new Execution(Json.uuid(),owner,plan,script,policy.copy(effective=effective),replaySources,replayOf,path)
     jobs.put(j.id,j);j.start();j
   }
-  private[unionserver] final class Execution(val id:String,val owner:String,plan:JobPlan,script:String,policy:ExecutionPolicy,initialReplaySources:Map[String,String],replayOf:Option[String]) {
+  private[unionserver] final class Execution(val id:String,val owner:String,plan:JobPlan,script:String,policy:ExecutionPolicy,initialReplaySources:Map[String,String],replayOf:Option[String],incomingPath:Vector[String]) {
+    private val proxyPath={require(!incomingPath.contains(members.unionId) && incomingPath.size<8,"proxy cycle or depth limit");incomingPath:+members.unionId}
     private val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     def requiresRetryAwareness:Boolean=policy.maxRetries>0
     require(plan.outputs.nonEmpty,"explicit final outputs required")
@@ -143,7 +265,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       def connect(key:(String,String),who:String):Unit={require(!result.contains(key),"output fan-out unsupported");result(key)=who}
       activeTasks.filterNot(t=>replaySources.contains(t.id)).foreach { t=>t.inputs.values.foreach { b=>
         b.task.foreach(parent=>connect((parent,b.port),identity(placements(t.id))))
-        b.uri.foreach(u=>require(DacpUri.origin(u)==placements(t.id).path("data_origin").asText,"raw input must belong to the executing node"))
+        b.uri.foreach(u=>require(DacpUri.origin(u)==settings.publicUrl || known.contains(DacpUri.origin(u)),"unknown input node"))
       }}
       plan.outputs.values.foreach(key=>connect(key,members.tls.identity));result.toMap
     }
@@ -200,11 +322,11 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     }
     private def change(s:String):Unit=synchronized {if(!terminal){state=s;event("state")}}
     private def request(n:JsonNode,op:String,body:JsonNode):JsonNode=
-      remote.action(url(n),op,body,Some(identity(n)))
+      remote.action(url(n),op,body,Some(identity(n)),hops=proxyPath)
     private def executionBody:JsonNode=Json.obj().put("execution_id",attemptId)
     private def unionBody:JsonNode=Json.obj().put("union_id",members.unionId)
     private def rollback():Unit=prepared.values.asScala.foreach { n=>
-      try remote.action(url(n),"cancel_execution",executionBody,Some(identity(n)),timeout=5)catch{case scala.util.control.NonFatal(_)=>()}
+      try remote.action(url(n),"cancel_execution",executionBody,Some(identity(n)),hops=proxyPath,timeout=5)catch{case scala.util.control.NonFatal(_)=>()}
     }
     def stop(reason:String,message:Option[String]=None):Unit={
       var changed=false
@@ -226,7 +348,12 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         t.inputs.foreach {case(port,b)=>
           val v=inputs.putObject(port)
           b.uri match {
-            case Some(u)=>v.put("uri",u).put("view",b.view)
+            case Some(u)=>
+              v.put("uri",u).put("view",b.view)
+              if(DacpUri.origin(u)!=n.path("data_origin").asText){
+                val source=known.get(DacpUri.origin(u))
+                v.put("origin",source.map(url).getOrElse(settings.publicUrl)).put("identity",source.map(identity).getOrElse(members.tls.identity))
+              }
             case None=>
               val parent=b.task.get;v.put("task",parent).put("port",b.port)
               if(identity(placements(parent))!=identity(n))v.put("origin",url(placements(parent))).put("identity",identity(placements(parent)))
@@ -248,7 +375,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     private def pull(label:String,task:String,port:String,publish:Boolean,token:StreamCancel):Unit={
       val n=placements(task)
       val body=Json.obj().put("execution_id",attemptId).put("task",task).put("port",port)
-      val in=token.add(remote.stream(url(n),"output",body,pin=Some(identity(n)),timeout=timeout))
+      val in=token.add(remote.stream(url(n),"output",body,pin=Some(identity(n)),hops=proxyPath,timeout=timeout))
       try {
         var complete=false;var ended=false;var started=false
         while(!complete){
@@ -371,13 +498,16 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       }
     }
     def check():Unit={
-      if(!terminal && !nodes.forall(n=>members.all.exists(_.path("identity").asText==identity(n))))stop("cancelled")
+      val sources=activeTasks.flatMap(_.inputs.values.flatMap(_.uri)).flatMap(u=>known.get(DacpUri.origin(u)))
+      val required=(nodes++sources).groupBy(identity).values.map(_.head).toVector
+      if(!terminal && !required.forall(n=>members.all.exists(_.path("identity").asText==identity(n))))stop("cancelled")
+      if(!terminal && required.exists(n=>Option(observed.get(identity(n))).exists(v=>Set("revoked","rejected","expired")(v.path("state").asText))))stop("cancelled")
       if(!terminal){try cancel.checkState()catch{case scala.util.control.NonFatal(t)=>stop(if(cancel.cause(t).isInstanceOf[java.util.concurrent.TimeoutException] || Json.now-created>=timeout*1000)"expired"else "failed")}}
     }
     def release():Unit=cancel.close()
   }
   def start():Unit={
-    try {endpoint.start();dashboard.foreach(_.start())}catch{case scala.util.control.NonFatal(t)=>close();throw t}
+    try {endpoint.start();worker.start();dashboard=settings.web.map(w=>new Dashboard(w,this));dashboard.foreach(_.start());if(settings.s3.enabled){val service=new S3Service(publicConfig,endpoint.boundPort,allocator);s3=Some(service);service.start()}}catch{case scala.util.control.NonFatal(t)=>close();throw t}
     timer.scheduleWithFixedDelay(new Runnable{def run():Unit={
       try {
         val current=members.all;val ids=current.map(_.path("identity").asText).toSet
@@ -391,8 +521,8 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     println(s"union ${members.unionId} listening on ${settings.publicUrl}; identity ${members.tls.identity}")
   }
   def close():Unit=if(closed.compareAndSet(false,true)){
-    dashboard.foreach(_.close());timer.shutdownNow();jobs.values.asScala.foreach(_.stop("cancelled"));endpoint.close();jobs.values.asScala.foreach(_.release())
+    s3.foreach(_.close());dashboard.foreach(_.close());worker.close();timer.shutdownNow();jobs.values.asScala.foreach(_.stop("cancelled"));endpoint.close();jobs.values.asScala.foreach(_.release())
     cleanup.shutdown();if(!cleanup.awaitTermination(5,TimeUnit.SECONDS))cleanup.shutdownNow()
-    members.close();history.close();if(providedPlugins.isEmpty)plugins.close();allocator.close()
+    publicConfig.close();routes.close();members.close();history.close();if(providedPlugins.isEmpty)plugins.close();allocator.close()
   }
 }

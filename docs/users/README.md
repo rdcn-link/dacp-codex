@@ -34,7 +34,7 @@ cd dacp-server
 sbt run
 ```
 
-默认服务地址为 `localhost:8815`，配置见 [examples/server.yaml](../../examples/server.yaml)。可先连接服务器根地址，在 Shell 中使用无参数 `datasets` 列出目录，再选择数据集；目标服务器只有一个数据集时会自动选中。节点发布本地目录，Union Web 按指定成员查看目录；见[数据集目录](../dataset-directory.md)。
+默认服务地址为 `localhost:8815`，配置见 [examples/server.yaml](../../examples/server.yaml)。可先连接服务器根地址，在 Shell 中使用无参数 `datasets` 列出目录，再选择数据集；目标服务器只有一个数据集时会自动选中。节点发布本地目录，Union 在线合并公开目录，管理 Web 可按指定成员查看目录；见[数据集目录](../dataset-directory.md)。
 
 在另一个终端中，从项目根目录连接：
 
@@ -329,3 +329,5 @@ DACP 与 Union 默认持久化全部执行记录；Union 看板支持重启后�
 ## 执行策略、重试与重放
 
 单机 DACP Server 的多步骤任务和 Union 协作任务均支持独立的执行策略 JSON：`max_retries`、`timeout_seconds` 和 `materialization`。Shell 用 `submit workflow.yaml --policy policy.json` 提交，并可用 `replay EXECUTION_ID` 从有效的物化边界重放。Python 与 Scala 客户端须通过显式重试回调清空上一轮部分结果；关闭结果流可取消任务。配置、完整调用示例与成功确认规则见[执行策略、输出物化与重放](../materialization.md)。
+
+Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短 ID、自动放置及管理权限配置见 [Union 代理服务](../union-proxy.md)。

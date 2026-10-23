@@ -20,6 +20,7 @@ tls_key: ../examples/certs/server.key
 tls_ca: ../examples/certs/ca.crt
 state_directory: ../.union-demo/x
 client_identities: [{identity('client')}]
+administrator_identities: [{identity('client')}]
 poll_interval_ms: 500
 execution_timeout_seconds: 120
 retention_seconds: 60

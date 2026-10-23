@@ -86,4 +86,4 @@ After `sbt stage` in both modules and preparing certificates and the Python imag
 
 ## Browse the operations dashboard
 
-`prepare.py` configures a local HTTP dashboard for X. After starting X, open `http://127.0.0.1:19880/` to inspect A and B's approval, health, and capacity. Submit the example job and select its ID to view both tasks' dependencies, states, and port traffic. The page refreshes every 2 seconds without claiming the client's result stream. Task communication still uses Flight. See the [HTTP operations dashboard](../../dacp-union-server/README_en.md#http-operations-dashboard) for remote access and token configuration.
+`prepare.py` configures a local HTTP dashboard for X. After starting X, open `http://127.0.0.1:19880/` to inspect A and B's approval, health, and capacity. Submit the example job and select its ID to view both tasks' dependencies, states, and port traffic. The page refreshes every 2 seconds without claiming the client's result stream. Task communication still uses Flight. See the [HTTP operations dashboard](../../dacp-union-server/README_en.md#management-api-and-dashboard) for remote access and token configuration.

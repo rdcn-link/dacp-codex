@@ -8,7 +8,7 @@ DACP（Data Access and Collaboration Protocol，数据访问与协作协议）�
 
 服务器通过 Dataset 组织数据，通过 Item 描述可访问的对象。客户端先浏览元数据与服务器公布的能力，再选择读取视图。`bytes` 提供字节内容，`records` 提供具有 Arrow schema 的记录批次。文件格式与读取视图分别描述存储表示和访问能力；客户端不能仅凭文件后缀推断读取方式。组、表和多维变量等科学数据结构应由插件显式描述，不应隐式展开为记录。
 
-作业包含 task；task 的 `id` 用于引用依赖，`title` 用于向用户说明用途。算子通过命名输入、输出端口消费和产生流。输入可以引用数据项或上游输出；结果不自动发布为新的 Dataset。普通节点作业与 Union 跨节点作业具有各自的提交接口和执行约束，不能互换脚本后假定能够运行。
+作业包含 task；task 的 `id` 用于引用依赖，`title` 用于向用户说明用途。算子通过命名输入、输出端口消费和产生流。输入可以引用数据项或上游输出；结果不自动发布为新的 Dataset。普通节点与 Union 均接受标准 Job 提交；Union 使用自己的公开 URI 和可选逻辑节点 ID，并保留专用管理 API，见 [Union 代理服务](union-proxy.md)。
 
 ## 传输分工
 
@@ -21,7 +21,7 @@ DACP（Data Access and Collaboration Protocol，数据访问与协作协议）�
 | Union 邀请、审批、成员、状态和作业控制 | Flight `DoAction`，使用 `dacp.union.` 动作前缀及 JSON 消息 |
 | Union 最终结果与节点间流读取 | Flight `DoGet`，使用相应 ticket |
 | 算子仓库搜索、版本与制品下载 | HTTP/HTTPS |
-| Union 公开只读看板 | HTTP；查询运行状态及历史，不能据此提交计算任务 |
+| Union 管理只读看板 | HTTP；查询运行状态及历史，不能据此提交计算任务 |
 
 Union 的共享传输模块对 JSON 消息实施 1 MiB 上限。具体动作、ticket 和字段以 [Union 协议](union.md)、[技术参考](reference.md)、`proto/dacp.proto` 和 `dacp-union-protocol` 实现为准。算子进程的端口帧协议属于执行器接口，见[算子流契约](operator-streams.md)，不等同于客户端 Flight 接口。
 

@@ -38,11 +38,11 @@ Flight 使用 mTLS，调用方验证服务器，服务器验证客户端。节�
 
 ## Union 和仓库
 
-- [Union 手册](../../dacp-union-server/README.md)：配置、邀请、审批、状态轮询、作业提交和公开看板。
+- [Union 手册](../../dacp-union-server/README.md)：配置、邀请、审批、状态轮询、作业提交和管理看板。
 - [双节点示例](../../examples/union/README.md)：证书、节点、Union 和客户端的完整演示。
 - [算子仓库手册](../../dacp-operator-repository/README.md)：初始化、发布、源码材料、HTTP 服务和下载。
 
-Union 维护一个 Union，主动邀请独立节点并轮询状态。成员加入需要节点审批。HTTP 看板公开只读，展示任务脚本和执行元数据；发布前检查任务参数中是否包含不宜公开的内容。计算操作仍通过受授权保护的 Flight 接口进行。
+Union 维护一个 Union，主动邀请独立节点并轮询状态。成员加入需要节点审批。HTTP 管理看板展示任务脚本和执行元数据；对外监听需配置 token_file。计算操作仍通过受授权保护的 Flight 接口进行。
 
 ## 监控、记录与停机
 
@@ -53,3 +53,5 @@ Union 维护一个 Union，主动邀请独立节点并轮询状态。成员加�
 节点默认同时开启只读 HTTP 看板，端口为 Flight 端口加 1000；可通过 `web.enabled: false` 关闭。配置和 DAG 展示见[节点 Web 看板](../node-web.md)。
 
 节点默认同时启用 [S3 兼容读取服务](../s3-service.md)，端口为 Flight 端口加 2000；它公开下载 bytes Item，独立于 Flight mTLS。可通过 `s3: {enabled: false}` 关闭。
+
+Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短 ID、自动放置及管理权限配置见 [Union 代理服务](../union-proxy.md)。

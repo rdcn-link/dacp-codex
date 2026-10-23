@@ -8,20 +8,20 @@ DACP (Data Access and Collaboration Protocol) defines data access and computatio
 
 Servers organize data into Datasets and describe accessible objects as Items. Clients inspect metadata and advertised capabilities before selecting a view. `bytes` exposes byte content; `records` exposes batches with an Arrow schema. Format and view describe storage representation and access capability separately; clients must not infer supported reads solely from filename extensions. Plugins should explicitly describe scientific groups, tables, and multidimensional variables rather than silently flattening them into records.
 
-A job contains tasks. A task's `id` identifies dependency references; its `title` describes its purpose to users. Operators consume and produce streams through named ports. Inputs may reference data items or upstream outputs. Results are not automatically published as Datasets. Ordinary node jobs and Union jobs have separate submission interfaces and execution constraints; their scripts are not interchangeable.
+A job contains tasks. A task's `id` identifies dependency references; its `title` describes its purpose to users. Operators consume and produce streams through named ports. Inputs may reference data items or upstream outputs. Results are not automatically published as Datasets. Nodes and Union both accept standard Job submission. Union uses its public URIs and optional logical node IDs, and retains dedicated management APIs; see [Union proxy service](union-proxy_en.md).
 
 ## Transport responsibilities
 
 | Purpose | Current transport |
 |---|---|
-| Dataset discovery | Flight `ListFlights` returns public Dataset URIs and descriptions without additional data grants; plugins can supply a dynamic catalog |
+| Dataset discovery | Flight `dacp.catalog` returns completeness, public Dataset URIs and descriptions without additional data grants; plugins can supply a dynamic catalog |
 | Browsing, metadata, and reading | Arrow Flight; see the technical reference and protobuf definitions for messages |
 | S3-compatible object reads | Separate HTTP endpoint, anonymous and read-only; datasets map to buckets and bytes Items to objects; see the [S3 service](s3-service_en.md) |
 | Ordinary node job execution | Flight `DoExchange` carrying control messages and result streams |
 | Union invitations, approval, members, status, and job control | Flight `DoAction` with the `dacp.union.` action prefix and JSON messages |
 | Union final results and inter-node stream reads | Flight `DoGet` with the corresponding tickets |
 | Operator repository search, versions, and artifact downloads | HTTP/HTTPS |
-| Public read-only Union dashboard | HTTP for status and history; it does not authorize computation submission |
+| Read-only Union management dashboard | HTTP for status and history; it does not authorize computation submission |
 
 The shared Union transport module limits JSON messages to 1 MiB. For exact actions, tickets, and fields, see the [Union protocol](union_en.md), [technical reference](reference_en.md), `proto/dacp.proto`, and `dacp-union-protocol`. The operator process port framing protocol is an executor interface, described in the [operator stream contract](operator-streams_en.md), rather than the client Flight interface.
 

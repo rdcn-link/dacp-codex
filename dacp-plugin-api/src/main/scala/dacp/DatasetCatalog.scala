@@ -11,7 +11,7 @@ object DatasetDescriptions {
     require(node!=null && node.isObject,"dataset description must be a JSON object")
   }
 }
-case class DatasetInfo(name:String,description:String="{}") {
+case class DatasetInfo(name:String,description:String="{}",displayName:String="") {
   DatasetDescriptions.validate(description)
 }
 object DatasetNames {
@@ -22,7 +22,10 @@ object DatasetNames {
   * Each open returns a caller-owned PublishedDataset lease. Its close must not close resources
   * owned by another lease. Existing leases remain usable when discovery metadata changes.
   */
+case class DatasetDirectory(entries:Seq[DatasetInfo],complete:Boolean=true,unavailableSources:Int=0)
+
 trait DatasetCatalog extends AutoCloseable {
+  def directory(check:()=>Unit):DatasetDirectory=DatasetDirectory(list(check))
   def list():Seq[DatasetInfo]
   def list(check:()=>Unit):Seq[DatasetInfo]={check();val result=list();check();result}
   def open(name:String):PublishedDataset

@@ -44,6 +44,7 @@ Public types reside in `dacp-plugin-api`:
 ```scala
 trait DatasetCatalog extends AutoCloseable {
   def list(): Seq[DatasetInfo]
+  def directory(check: () => Unit): DatasetDirectory = DatasetDirectory(list(check))
   def open(name: String): PublishedDataset
   // Overloads accepting check: () => Unit support cancellation checks.
 }
@@ -54,7 +55,7 @@ trait DatasetCatalogProvider {
 }
 ```
 
-`DatasetInfo` contains only the public `name`. `CatalogContext.createDataset(definition)` reuses installed Dataset providers; `FileDatasets.mixed` reuses file and SQL mappings. Native backends may implement `PublishedDataset` directly. Do not implicitly flatten scientific arrays, images, or groups into records.
+`DatasetInfo` contains the public addressable `name`, JSON object description string `description`, and optional `displayName`. `directory` defaults to wrapping `list`; aggregating catalogs may return `DatasetDirectory(entries, complete, unavailableSources)` and must identify partial results explicitly. `CatalogContext.createDataset(definition)` reuses installed Dataset providers; `FileDatasets.mixed` reuses file and SQL mappings. Native backends may implement `PublishedDataset` directly. Do not implicitly flatten scientific arrays, images, or groups into records.
 
 Provide a public no-argument implementation constructor and include this file in the JAR:
 
@@ -79,7 +80,7 @@ Startup matches configured `provider` against the plugin's `id` and calls `creat
 - The server closes the catalog instance. Catalogs release only their own resources; application-injected shared pools remain application-owned.
 - Directory information requires no additional data or Union execution grant and still uses Flight mTLS. Published datasets are readable by default; namespace and resource-path validation remain in place.
 
-Discovery uses standard Flight `ListFlights` with empty criteria by default; dacp-server also accepts `local` criteria for the node-only shell. Each `FlightInfo.app_metadata` is a `DataSet` protobuf containing public names, URIs and user-defined JSON object strings in `description`, without Item contents. See [dataset directories](dataset-directory_en.md) for descriptions, the shell and per-member browsing on the Union website.
+Discovery uses the Flight `dacp.catalog` Action, returning entries and completeness. Standard `ListFlights` returns a complete directory or fails for incomplete catalogs. Each `FlightInfo.app_metadata` is a `DataSet` protobuf containing public names, URIs and user-defined JSON object strings in `description`, without Item contents. See [dataset directories](dataset-directory_en.md) for descriptions, the shell and per-member browsing on the Union website.
 
 List Datasets through the standard Python Flight interface from the project root:
 
