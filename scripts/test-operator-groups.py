@@ -48,8 +48,8 @@ def main():
             else:raise RuntimeError('server startup timeout')
             tls=dict(tls_root_certs=(cert/'ca.crt').read_bytes(),cert_chain=(cert/'client.crt').read_bytes(),private_key=(cert/'client.key').read_bytes())
             for language,ops,expected in [('jvm',['upper@1','strip@1'],b'HELLO DACP'),('python',['python@1','python@1'],b'HELLO DACP\n'),('mixed',['upper@1','legacy@1'],b'HELLO DACP\n')]:
-                tasks=[dict(id='a',operator=ops[0],inputs={'source':dict(uri=origin+'/data/message',view='bytes')},params={'upper':True} if language=='python' else {}),dict(id='b',operator=ops[1],inputs={'source':dict(task='a',port='result')},params={})]
-                job=dict(job='fusion-'+language,tasks=tasks,outputs={'result':dict(task='b',port='result')})
+                tasks=[dict(id='a',operator=ops[0],inputs={'source':'read'},params={'upper':True} if language=='python' else {}),dict(id='b',operator=ops[1],inputs={'source':'a'},params={})]
+                job=dict(job='fusion-'+language,tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/message',view='bytes'))]+tasks,outputs={'result':'b'})
                 started=time.monotonic()
                 with Job.run(origin,json.dumps(job),timeout=180,**tls) as stream:
                     frames=list(stream)
@@ -61,7 +61,7 @@ def main():
                 time.sleep(.05)
             shared=[r for r in records if r.get('kind')=='dacp_exchange' and r.get('execution_mode')=='shared_process']
             assert len(shared)==2 and all(r['state']=='succeeded' for r in shared),records
-            children=[r for r in records if r.get('kind')=='job_task'];assert len(children)==4 and all(r['state']=='succeeded' for r in children),records
+            children=[r for r in records if r.get('kind')=='job_task'];assert len(children)==6 and all(r['state']=='succeeded' for r in children),records
             until=datetime.now(timezone.utc).isoformat()
             events=subprocess.run(prefix+['docker','events','--since',since,'--until',until,'--filter','type=container','--filter','event=create','--filter','label=dacp.execution_mode=shared_process','--format','{{json .}}'],capture_output=True,text=True,check=True)
             assert len(events.stdout.splitlines())==2,events.stdout

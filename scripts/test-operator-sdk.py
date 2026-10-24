@@ -23,6 +23,16 @@ def frames(data):
 
 
 class SDKTest(unittest.TestCase):
+    def test_zero_input_zero_output_operator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / 'manifest.json').write_text('[]')
+            (directory / 'params.json').write_text('{}')
+            output = io.BytesIO()
+            with OperatorContext(['operator', tmp, str(directory / 'params.json')], output):
+                pass
+            self.assertEqual(output.getvalue(), b'')
+
     def test_templates_and_parameters(self):
         for records in (False, True):
             with tempfile.TemporaryDirectory() as tmp:

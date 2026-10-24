@@ -25,22 +25,29 @@ Existing SDK templates work directly. For example, published `scala_text_upperca
 ```yaml
 job: clean-text
 tasks:
-  - id: uppercase
-    title: Uppercase text
-    node: dacp://localhost:18861
-    operator: scala_text_uppercase@1.0
-    inputs:
-      source: {uri: 'dacp://localhost:18861/data/message', view: bytes}
-    params: {}
-  - id: trim
-    title: Trim whitespace
-    node: dacp://localhost:18861
-    operator: scala_text_strip@1.0
-    inputs:
-      source: {task: uppercase, port: result}
-    params: {}
+- id: read_uppercase_source
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://localhost:18861/data/message
+    view: bytes
+  node: dacp://localhost:18861
+- id: uppercase
+  title: Uppercase text
+  node: dacp://localhost:18861
+  operator: scala_text_uppercase@1.0
+  inputs:
+    source: read_uppercase_source
+  params: {}
+- id: trim
+  title: Trim whitespace
+  node: dacp://localhost:18861
+  operator: scala_text_strip@1.0
+  inputs:
+    source: uppercase
+  params: {}
 outputs:
-  result: {task: trim, port: result}
+  result: trim
 ```
 
 The target node must configure the operators' repository and the input Item must exist and be authorized. The fusion launcher carries the current SDK and scheduling code; Arrow, Jackson and Scala dependencies remain supplied by the image. Existing images need not preinstall the new fusion launcher.

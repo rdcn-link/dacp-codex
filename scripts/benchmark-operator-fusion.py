@@ -112,8 +112,8 @@ def main():
             nonlocal sequence
             sequence += 1
             origin = nodes[mode]
-            tasks = [dict(id=f'step{i}', operator=language + '@1', inputs={'source':dict(uri=origin + '/data/' + str(rows), view='bytes') if i == 0 else dict(task=f'step{i-1}', port='result')}, params={'upper':i % 2 == 0}) for i in range(3)]
-            job = dict(job=f'benchmark-{sequence}', tasks=tasks, outputs={'result':dict(task='step2', port='result')})
+            tasks = [dict(id=f'step{i}', operator=language + '@1', inputs={'source':'read' if i == 0 else f'step{i-1}'}, params={'upper':i % 2 == 0}) for i in range(3)]
+            job = dict(job=f'benchmark-{sequence}', tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/'+str(rows),view='bytes'))]+tasks, outputs={'result':'step2'})
             (d / f'job-{sequence}.json').write_text(json.dumps(job, indent=2))
             since = datetime.now(timezone.utc).isoformat()
             start = time.perf_counter()

@@ -25,22 +25,29 @@ DACP 会自动检查 Job 的执行位置、算子环境和执行器能力。满�
 ```yaml
 job: clean-text
 tasks:
-  - id: uppercase
-    title: 转大写
-    node: dacp://localhost:18861
-    operator: scala_text_uppercase@1.0
-    inputs:
-      source: {uri: 'dacp://localhost:18861/data/message', view: bytes}
-    params: {}
-  - id: trim
-    title: 去除首尾空白
-    node: dacp://localhost:18861
-    operator: scala_text_strip@1.0
-    inputs:
-      source: {task: uppercase, port: result}
-    params: {}
+- id: read_uppercase_source
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://localhost:18861/data/message
+    view: bytes
+  node: dacp://localhost:18861
+- id: uppercase
+  title: 转大写
+  node: dacp://localhost:18861
+  operator: scala_text_uppercase@1.0
+  inputs:
+    source: read_uppercase_source
+  params: {}
+- id: trim
+  title: 去除首尾空白
+  node: dacp://localhost:18861
+  operator: scala_text_strip@1.0
+  inputs:
+    source: uppercase
+  params: {}
 outputs:
-  result: {task: trim, port: result}
+  result: trim
 ```
 
 目标节点必须配置这些算子的仓库地址，输入 Item 也必须实际存在并获准访问。合并启动器携带当前 SDK 和调度代码，Arrow / Jackson / Scala 等依赖继续复用镜像；不要求已有镜像预装新的合并启动器。

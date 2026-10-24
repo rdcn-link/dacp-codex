@@ -43,7 +43,7 @@ with ds.open("/archive/reports/orders.csv") as stream:
     records = stream.as_records()
 ```
 
-列举只读取 ZIP 目录，不解压条目。打开、推断 schema 或计数时，仅将所需条目解压到服务器临时文件，完成、失败或取消后清理；因此大条目的首次响应需要等待解压。每个归档最多 10,000 个条目，单条目解压上限 512 MiB，目录声明的总大小上限 2 GiB。绝对路径、路径穿越、重复条目、文件与父集合冲突均被拒绝；不解压到源目录，也不跟随归档内符号链接。`dacp-shell` 可用 `ls /archive` 浏览、用 `show /archive hex` 预览原始归档。Python 和 Scala SDK 均按 advertised views 打开可读集合；普通集合没有读取视图。
+列举只读取 ZIP 目录，不解压条目。打开、推断 schema 或计数时，仅将所需条目解压到服务器临时文件，完成、失败或取消后清理；因此大条目的首次响应需要等待解压。每个归档最多 10,000 个条目，单条目解压上限 512 MiB，目录声明的总大小上限 2 GiB。绝对路径、路径穿越、重复条目、文件与父集合冲突均被拒绝；不解压到源目录，也不跟随归档内符号链接。`dacp-shell` 可用 `ls /archive` 浏览、用 `cat /archive hex` 预览原始归档。Python 和 Scala SDK 均按 advertised views 打开可读集合；普通集合没有读取视图。
 
 ### TAR、GZIP 与压缩 TAR
 
@@ -137,7 +137,7 @@ Dataset provider、容器 reader、格式 handler 分别负责构建数据集、
 
 ## 任务执行与算子
 
-任务使用命名输入绑定，指向具体数据项或上游任务端口。输出为命名流，不保存数据集。shell 支持 `run OP --input source=/item` 和 `submit job.yaml`，并逐块打印结果。任务通过 mTLS Flight DoExchange 协作；流水线任务使用有界队列并发执行。每个输出端口最多有一个下游消费者；多个输入按端口名称字典序消费。
+任务输入只引用上游步骤的输出，使用 `task[:port]`，省略端口时为 `result`。外部数据项通过 `read_item@1.0` 的 `params.uri/view` 读取；`depends_on` 声明等待前置步骤成功的控制依赖，详见[作业格式](jobs.md)。输出为命名流，不保存数据集。shell 支持 `run OP --input source=/item` 和 `submit job.yaml`，并逐块打印结果。任务通过 mTLS Flight DoExchange 协作；流水线任务使用有界队列并发执行。每个输出端口最多有一个下游消费者；多个输入按端口名称字典序消费。
 
 算子启动参数为 `operator /input /input/params.json`。输入为 Arrow IPC FIFO，由 `/input/manifest.json` 描述。stdout 写 start/data/end 协议帧，stderr 写诊断。无输出目录、输出注册、TTL 或结果数据集 URI。Parquet 转换使用私有临时空间完成 footer 后流式发送字节。
 

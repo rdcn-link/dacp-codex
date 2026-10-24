@@ -168,7 +168,7 @@ class UnionExecution:
                 if kind == 'error':
                     raise RuntimeError(event.get('message', 'Union execution failed'))
                 if kind == 'complete':
-                    if not ports or any(not p['ended'] for p in ports.values()):
+                    if any(not p['ended'] for p in ports.values()):
                         raise ValueError('incomplete output')
                     if next(values, None) is not None:
                         raise ValueError("events after completion")

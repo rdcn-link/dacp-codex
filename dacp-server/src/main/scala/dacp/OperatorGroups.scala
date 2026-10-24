@@ -3,11 +3,25 @@ package dacp
 import com.github.dockerjava.core.{DefaultDockerClientConfig,DockerClientImpl}
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient
 
-case class PreparedOperatorGroup(task:Task,operator:ResolvedOperator,inputs:Map[String,InputBinding],outputs:Map[String,(String,String)])
+case class PreparedOperatorGroup(task:Task,operator:ResolvedOperator,inputs:Map[String,InputBinding],outputs:Map[String,(String,String)],transportSources:Map[String,String]=Map.empty)
 /** Placement and exact environment identity are core policy; fusion belongs to launch plugins. */
 object OperatorGroups {
   def prepare(config:Config,plan:JobPlan):Either[String,PreparedOperatorGroup]={
+    if(plan.tasks.exists(_.dependsOn.nonEmpty))return Left("control_boundary")
+    val readers=plan.tasks.filter(_.operator==Jobs.ReadItem).map(t=>t.id->t).toMap
+    if(readers.nonEmpty){
+      val consumed=plan.tasks.flatMap(_.inputs.values.flatMap(_.task)).toSet
+      if(!readers.keySet.subsetOf(consumed))return Left("unconsumed_transport_source")
+      if(plan.outputs.values.exists(p=>readers.contains(p._1)))return Left("selected_transport_source")
+      val lowered=plan.copy(tasks=plan.tasks.filterNot(t=>readers.contains(t.id)).map { t=>t.copy(inputs=t.inputs.map{case(port,b)=>
+        port->b.task.filter(readers.contains).map { id=>require(b.port=="result","read_item has only result output");Jobs.readBinding(readers(id)).get }.getOrElse(b)
+      })})
+      val external=lowered.tasks.flatMap(t=>t.inputs.toVector.sortBy(_._1).collect{case(p,b)if b.uri.nonEmpty=>(t.id,p)})
+      val sources=external.zipWithIndex.flatMap {case((id,port),i)=>plan.tasks.find(_.id==id).get.inputs(port).task.filter(readers.contains).map(read=>s"i$i"->read)}.toMap
+      return prepare(config,lowered).map(_.copy(transportSources=sources))
+    }
     if(!config.operatorFusionEnabled)return Left("disabled_by_configuration")
+    if(plan.outputs.isEmpty)return Left("no_selected_outputs")
     if(plan.tasks.size<2)return Left("single_step")
     if(plan.tasks.exists(_.source.nonEmpty))return Left("inline_source")
     val dc=DefaultDockerClientConfig.createDefaultConfigBuilder().build()
@@ -19,6 +33,7 @@ object OperatorGroups {
     }finally{docker.close();transport.close()}
   }
   private[dacp] def prepareResolved(config:Config,plan:JobPlan,operators:Map[String,ResolvedOperator]):Either[String,PreparedOperatorGroup]={
+      if(operators.values.exists(_.outputs.isEmpty))return Left("sink_boundary")
       val all=operators.values.toVector
       if(all.map(_.image).distinct.size!=1)return Left("different_runtime_images")
       if(all.map(_.executor).distinct.size!=1)return Left("different_executors")
@@ -26,8 +41,7 @@ object OperatorGroups {
       val external=plan.tasks.flatMap(t=>t.inputs.toVector.sortBy(_._1).collect{case(port,b)if b.uri.nonEmpty=>(t.id,port,b)})
       val names=external.zipWithIndex.map{case((id,port,_),i)=>(id,port)->s"i$i"}.toMap
       val bindings=external.map{case(id,port,b)=>names((id,port))->b}.toMap
-      val used=plan.tasks.flatMap(_.inputs.values.flatMap(b=>b.task.map(_->b.port))).toSet
-      val selected=if(plan.outputs.nonEmpty)plan.outputs else plan.tasks.flatMap(t=>operators(t.id).outputs.keys.filterNot(p=>used((t.id,p))).map(p=>(t.id+"."+p)->(t.id,p))).toMap
+      val selected=plan.outputs
       val outputs=selected.toVector.sortBy(_._1).zipWithIndex.map{case((label,pair),i)=>s"o$i"->pair}.toMap
       require(outputs.nonEmpty,"job must expose an output")
       val labels=selected.map(_.swap)

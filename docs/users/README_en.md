@@ -2,6 +2,8 @@
 
 [中文](README.md) · [Documentation](../README_en.md) · [Developer guide](../developers/README_en.md)
 
+Job inputs and outputs use `task[:port]`, defaulting to `result`. External data enters through `read_item@1.0`; `depends_on` declares execution prerequisites. See [streaming jobs and control dependencies](../jobs_en.md).
+
 For people browsing data, using SDKs, running operators, and configuring DACP nodes with existing plugins. Commands below run from the project root unless stated otherwise. To implement a new backend, format, or operator, use the developer guide.
 
 ## Data model
@@ -54,17 +56,17 @@ Inside the shell:
 ls /
 ls /reports
 ls /archive
-show /archive/reports/orders.csv records
+cat /archive/reports/orders.csv records
 ls /images
-show /images/images/pixel.png hex
+cat /images/images/pixel.png hex
 ls /bundle_gzip
-show /bundle_gzip/reports/orders.csv records
+cat /bundle_gzip/reports/orders.csv records
 ls /orders.csv.gz
-show /orders.csv.gz/orders.csv records
-show /orders.csv.gz hex
-show /reports/orders records
-show /events text
-show /image hex
+cat /orders.csv.gz/orders.csv records
+cat /orders.csv.gz hex
+cat /reports/orders records
+cat /events text
+cat /image hex
 count /reports/orders
 quit
 ```
@@ -137,7 +139,7 @@ See [records query semantics and plugin contracts](../../docs/records-scans_en.m
 
 `ls` displays a bordered table with #, Path, Format, Bytes, Records, and Modified (UTC). The first column numbers items starting from 1. Unknown values appear as `-`, timestamps use `2026-10-16 06:22:02`, and terminal folder paths are highlighted in bold cyan.
 
-`show` accepts a path or a number from the latest listing. It prefers records when available and otherwise shows hexadecimal bytes. Records appear in a table with column names; `text` displays text, and `hex` displays offsets, hexadecimal bytes, and ASCII. Previews default to at most 20 rows or 4096 bytes, adjustable with `--rows` and `--bytes`.
+`cat` accepts a path or a number from the latest listing. It prefers records when available and otherwise shows hexadecimal bytes. Records appear in a table with column names; `text` displays text, and `hex` displays offsets, hexadecimal bytes, and ASCII. Previews default to at most 20 rows or 4096 bytes, adjustable with `--rows` and `--bytes`.
 
 `datasets` shows `#`, `Name`, and `Description (JSON)`, without URIs. Use `use NAME` to select a dataset by name, or `use 1` for the first row of the latest `datasets` output. Row numbers start at 1; refreshing the list updates the mapping and reconnecting clears it. Numeric arguments are interpreted as row numbers. Use `connect URI` to connect elsewhere, and `help` for commands. Certificate paths can also be passed through `--ca`, `--cert`, and `--key`.
 
@@ -154,7 +156,7 @@ The shell uses SQLGlot to translate a supported SQL subset into the same remote 
 
 ### Help and command examples
 
-Run `help` for the command list and a short example session. Run `help show`, `help select`, `help run`, or `help submit` for command-specific syntax and examples. Paths shown in help are examples; use paths advertised by your Dataset. Item numbers refer to the latest `ls` result.
+Run `help` for the command list and a short example session. Run `help cat`, `help select`, `help run`, or `help submit` for command-specific syntax and examples. Paths shown in help are examples; use paths advertised by your Dataset. Item numbers refer to the latest `ls` result.
 
 ### Scala SDK
 

@@ -43,7 +43,7 @@ with ds.open("/archive/reports/orders.csv") as stream:
     records = stream.as_records()
 ```
 
-Listings read the ZIP directory without decompressing entries. Opening, inferring schema, or counting stages only the requested entry into a temporary server file, cleaned after completion, failure, or cancellation; the first response for a large entry therefore waits for decompression. Archives allow at most 10,000 entries, 512 MiB decompressed per entry, and 2 GiB total declared size. Absolute paths, traversal, duplicate entries, and file/parent conflicts are rejected. Entries never extract into the source directory or follow archived symlinks. Use `ls /archive` in `dacp-shell` to browse entries and `show /archive hex` to preview original archive bytes. Both SDKs open readable folders by advertised views; ordinary folders have no readable views.
+Listings read the ZIP directory without decompressing entries. Opening, inferring schema, or counting stages only the requested entry into a temporary server file, cleaned after completion, failure, or cancellation; the first response for a large entry therefore waits for decompression. Archives allow at most 10,000 entries, 512 MiB decompressed per entry, and 2 GiB total declared size. Absolute paths, traversal, duplicate entries, and file/parent conflicts are rejected. Entries never extract into the source directory or follow archived symlinks. Use `ls /archive` in `dacp-shell` to browse entries and `cat /archive hex` to preview original archive bytes. Both SDKs open readable folders by advertised views; ordinary folders have no readable views.
 
 ### TAR, GZIP, and compressed TAR
 
@@ -137,7 +137,7 @@ Dataset providers construct datasets, container readers browse archives, and for
 
 ## Task execution and operators
 
-Tasks use named input bindings to specific data items or upstream task ports. Outputs are named streams, never saved datasets. The shell supports `run OP --input source=/item` and `submit job.yaml`, and prints results incrementally. Jobs use mTLS Flight DoExchange; pipeline tasks run concurrently with bounded queues. Each output port has at most one downstream consumer; consume multiple inputs in lexical port order.
+Task inputs reference only upstream outputs as `task[:port]`, defaulting to `result`. External Items enter through `read_item@1.0` with `params.uri/view`; `depends_on` waits for successful predecessors. See [Job format](jobs_en.md). Outputs are named streams, never saved datasets. The shell supports `run OP --input source=/item` and `submit job.yaml`, and prints results incrementally. Jobs use mTLS Flight DoExchange; pipeline tasks run concurrently with bounded queues. Each output port has at most one downstream consumer; consume multiple inputs in lexical port order.
 
 Operator launch arguments are `operator /input /input/params.json`. Inputs are Arrow IPC FIFOs described by `/input/manifest.json`. Stdout carries framed start/data/end events; diagnostics go to stderr. No output directory, output registration, TTL, or result-dataset URI is used. Parquet conversion uses private ephemeral scratch to complete the footer, then streams bytes.
 

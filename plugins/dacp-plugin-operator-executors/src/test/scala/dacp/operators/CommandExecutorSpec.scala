@@ -11,6 +11,15 @@ class CommandExecutorSpec extends AnyFunSuite {
   def program = OperatorProgram("uppercase@1","/usr/bin/tr",None,
     settings("""{"args":["a-z","A-Z","$(touch /tmp/should-not-exist)"],"stdin":"source","stdout":{"port":"result","representation":"bytes","format":"text"}}"""),
     Map("source"->Set("bytes")),Map("result"->Set("bytes")))
+  test("native sources and sinks declare absent streams explicitly with null") {
+    val sink=program.copy(configuration=settings("""{"args":[],"stdin":null,"stdout":null}"""),inputs=Map.empty,outputs=Map.empty)
+    val command=new CommandExecutor().command(sink,None)
+    val config=new com.fasterxml.jackson.databind.ObjectMapper().readTree(command.entrypoint.get.last)
+    assert(config.path("stdin").isNull && config.path("port").isNull)
+    intercept[IllegalArgumentException](new CommandExecutor().command(sink.copy(inputs=program.inputs),None))
+    val source=program.copy(configuration=program.configuration+("stdin"->null),inputs=Map.empty)
+    new CommandExecutor().command(source,None)
+  }
   test("command launches bridge without shell and preserves literal arguments") {
     val c=new CommandExecutor().command(program,None)
     assert(c.arguments.isEmpty && !c.executableScratch)

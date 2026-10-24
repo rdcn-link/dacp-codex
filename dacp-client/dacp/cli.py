@@ -73,7 +73,7 @@ class Browser(cmd.Cmd):
     def onecmd(self, line):
         try:
             command, _, _ = self.parseline(line)
-            if self.dataset is None and command in ('ls', 'count', 'show', 'select', 'run'):
+            if self.dataset is None and command in ('ls', 'count', 'cat', 'select', 'run'):
                 raise ValueError('select a Dataset first with use NAME; use datasets to list choices')
             return super().onecmd(line)
         except Exception as error:
@@ -91,13 +91,13 @@ class Browser(cmd.Cmd):
 
         Examples:
           help
-          help show
+          help cat
           help run
         """
         super().do_help(arg)
         if not arg.strip():
             self.write("Examples (replace paths with items in your Dataset):")
-            self.write("  datasets\n  use data1\n  ls /\n  show /reports/orders records")
+            self.write("  datasets\n  use data1\n  ls /\n  cat /reports/orders records")
             self.write('  SELECT id, amount FROM "/reports/orders" WHERE amount > 10 LIMIT 5')
             self.write("  run identity@1.1 --input source=/reports/orders")
             self.write("  submit examples/convert.yaml")
@@ -200,7 +200,7 @@ class Browser(cmd.Cmd):
           ls
           ls /
           ls /reports
-        Item numbers in show, count, SELECT and run refer to the latest listing.
+        Item numbers in cat, count, SELECT and run refer to the latest listing.
         """
         args = shlex.split(arg)
         if len(args) > 1:
@@ -245,24 +245,24 @@ class Browser(cmd.Cmd):
             return self.items[index - 1].path
         return value
 
-    def do_show(self, arg):
+    def do_cat(self, arg):
         """Preview an Item as records, text, or hexadecimal bytes.
 
-        Usage: show ITEM [auto|records|text|hex]
+        Usage: cat ITEM [auto|records|text|hex]
 
         auto uses the advertised records view when available, otherwise hex.
         records prints at most --rows rows; text/hex reads at most --bytes bytes.
 
         Examples:
-          show /reports/orders records
-          show 1
-          show "/file name" text
-          show /image hex
+          cat /reports/orders records
+          cat 1
+          cat "/file name" text
+          cat /image hex
         A number refers to the latest ls result. Ordinary folders use ls instead.
         """
         args = shlex.split(arg)
         if len(args) not in (1, 2):
-            raise ValueError('usage: show ITEM [auto|records|text|hex]')
+            raise ValueError('usage: cat ITEM [auto|records|text|hex]')
         path = self.item(args[0])
         listed = next((i for i in self.items if i.path == path), None)
         if listed is not None and listed.kind == "folder" and not listed.views:
@@ -396,6 +396,7 @@ class Browser(cmd.Cmd):
           END
 
         Omit --input for zero-input source operators. Use --input for each named port. ITEM is a path, latest ls number, or full Item URI.
+        Output defaults to result. Use --output PORT repeatedly for named outputs, or --no-output for a sink.
         Optional: --params-file FILE, --timeout SECONDS, --policy policy.json.
         Installed operator IDs work in NORMAL mode; native_uppercase requires publishing the native example.
         No preview limit applies by default. Job results are streams, with no saved Dataset.
@@ -418,6 +419,8 @@ class Browser(cmd.Cmd):
         parser.add_argument('--runtime')
         parser.add_argument('--entrypoint')
         parser.add_argument('--input', action='append', default=[])
+        parser.add_argument('--output', action='append', help='output port to receive; repeat for multiple ports')
+        parser.add_argument('--no-output', action='store_true', help='run a sink without result streams')
         parser.add_argument('--view', choices=('bytes','records'), default='bytes')
         parser.add_argument('--params', default='{}')
         parser.add_argument('--params-file')
@@ -442,6 +445,7 @@ class Browser(cmd.Cmd):
         if not isinstance(params, dict):
             raise ValueError('params must be a JSON object')
         inputs = {}
+        readers = []
         for binding in options.input:
             port, sep, item = binding.partition('=')
             if not sep or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]{0,127}', port) or port in inputs or not item:
@@ -453,14 +457,23 @@ class Browser(cmd.Cmd):
                 if not path.startswith('/') or path == '/':
                     raise ValueError('input must name an item path or ls number')
                 uri = self.uri.rstrip('/') + quote(path, safe='/')
-            inputs[port] = {'uri': uri, 'view': options.view}
+            reader = 'read_' + str(len(readers) + 1)
+            readers.append({'id': reader, 'operator': 'read_item@1.0', 'inputs': {},
+                            'params': {'uri': uri, 'view': options.view}})
+            inputs[port] = reader
         if delimiter is not None:
             try:
                 operator['source'] = self.heredoc(delimiter)
             except (KeyboardInterrupt, EOFError):
                 self.write('Source entry cancelled; nothing submitted.')
                 return
-        job = {'job':'shell', 'tasks':[{'id':'run','operator':operator,'inputs':inputs,'params':params}]}
+        if options.no_output and options.output:
+            raise ValueError('--no-output and --output cannot be combined')
+        ports = [] if options.no_output else (options.output or ['result'])
+        if len(set(ports)) != len(ports) or any(not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]{0,127}', p) for p in ports):
+            raise ValueError('output ports must be unique identifiers')
+        job = {'job':'shell', 'tasks':readers + [{'id':'run','operator':operator,'inputs':inputs,'params':params}],
+               'outputs': {p: ('run' if p == 'result' else 'run:' + p) for p in ports}}
         u = urlsplit(self.uri)
         coordinator = urlunsplit((u.scheme,u.netloc,'','',''))
         self.print_job(coordinator, json.dumps(job), options.timeout, **({"preview_rows":options.preview_rows,"preview_bytes":options.preview_bytes} if options.preview_rows or options.preview_bytes else {}),

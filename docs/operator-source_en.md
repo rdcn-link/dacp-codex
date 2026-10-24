@@ -44,16 +44,20 @@ Job YAML and SDK submissions use the same source representation:
 ```yaml
 job: uppercase
 tasks:
-  - id: uppercase
-    operator:
-      runtime: python@1.0
-      source: |
-        def process(inputs, params):
-            for chunk in inputs['source']:
-                yield chunk.upper()
-    inputs:
-      source: {uri: 'dacp://localhost:18815/data1/orders', view: bytes}
-    params: {output_format: csv}
+- id: read_uppercase_source
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://localhost:18815/data1/orders
+    view: bytes
+- id: uppercase
+  operator:
+    runtime: python@1.0
+    source: "def process(inputs, params):\n    for chunk in inputs['source']:\n        yield chunk.upper()\n"
+  inputs:
+    source: read_uppercase_source
+  params:
+    output_format: csv
 ```
 
 Use `with Job.run(node, yaml_text, **credentials) as events:` and iterate events to consume the stream; leaving the context closes it. `run identity@1.1 --input source=/orders` continues to select a repository operator. An operator ID and inline source are mutually exclusive.

@@ -87,7 +87,7 @@ web: {host: localhost, port: 0}
     val count=new AtomicInteger();val c=config(dir,cert,key).copy(web=NodeWebSettings(port=Some(0),publicHost=Some("node.example.org")))
     val server=DacpServer.builder().config(c).catalog(catalog(count)).build().start();val port=server.webPort.get
     try {
-      assert(http(port,"/").body().contains("节点运行概览"))
+      assert(http(port,"/").body().contains("Node overview"))
       assert(http(port,"/dag.js").body().contains("DacpDag"))
       assert(http(port,"/vendor/g6-5.1.1.min.js").statusCode()==200)
       assert(http(port,"/assets/dacp-logo.png").statusCode()==200)

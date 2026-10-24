@@ -64,7 +64,7 @@ def test_incremental_results_preserve_payload_and_complete():
     assert not union.calls
 
 
-@pytest.mark.parametrize('raw', [b'', frame('data', b'bad', port='r'), frame('complete'), frame('error', message='node failed'), struct.pack('>II', 65537, 0)])
+@pytest.mark.parametrize('raw', [b'', frame('data', b'bad', port='r'), frame('start', port='r', representation='bytes') + frame('complete'), frame('error', message='node failed'), struct.pack('>II', 65537, 0)])
 def test_invalid_or_truncated_results_cancel_the_job(raw):
     union = FakeUnion(raw)
     with pytest.raises((ValueError, RuntimeError)):
@@ -185,3 +185,10 @@ def test_retry_callback_error_closes_stream_and_cancels_job():
         list(UnionExecution(union, 'job1').results(on_retry=stop))
     assert union.calls[-1] == ('cancel_job', {'job_id': 'job1'})
     assert union.connections[0].closed
+
+
+def test_zero_result_job_completes_without_cancelling():
+    union = FakeUnion(frame('complete'))
+    with UnionExecution(union, 'job1') as execution:
+        assert [event['type'] for event in execution.results()] == ['complete']
+    assert execution.complete and not union.calls

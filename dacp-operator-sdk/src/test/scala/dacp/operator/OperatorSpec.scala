@@ -6,6 +6,16 @@ import org.scalatest.funsuite.AnyFunSuite
 import dacp.OperatorFrames
 
 class OperatorSpec extends AnyFunSuite {
+  test("zero-output operators finish without emitting protocol frames") {
+    val dir=Files.createTempDirectory("operator-sdk-sink-")
+    try {
+      Files.writeString(dir.resolve("manifest.json"),"[]");Files.writeString(dir.resolve("params.json"),"{}")
+      val bytes=new ByteArrayOutputStream()
+      OperatorRunner.run(Array("operator",dir.toString,dir.resolve("params.json").toString),bytes){ctx=>assert(ctx.inputNames.isEmpty)}
+      assert(bytes.size()==0)
+    }finally {Files.deleteIfExists(dir.resolve("manifest.json"));Files.deleteIfExists(dir.resolve("params.json"));Files.delete(dir)}
+  }
+
   test("bytes template reads Arrow input and applies parameters") {
     val dir=Files.createTempDirectory("operator-sdk-input-")
     val allocator=new org.apache.arrow.memory.RootAllocator()

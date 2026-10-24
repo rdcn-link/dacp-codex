@@ -15,6 +15,13 @@ import com.github.dockerjava.api.async.ResultCallback
 class TaskExecutor(config: Config,allocator: BufferAllocator) {
   def execute(task: Task,inputs: Map[String,FrameSource],emit: OperatorFrame=>Unit,cancel: StreamCancel, resolved:Option[ResolvedOperator]=None,onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None): Unit = {
     Jobs.authorizeSource(config,task)
+    Jobs.readBinding(task).foreach { binding=>
+      require(inputs.isEmpty,"read_item has no input ports")
+      val stream=cancel.add(ItemSource.open(config,allocator,binding,cancel))
+      try {var f=stream.next();while(f.nonEmpty){cancel.active();emit(StreamProtocol.rename(f.get,"result"));f=stream.next()}}
+      finally stream.close()
+      return
+    }
     val dc=DefaultDockerClientConfig.createDefaultConfigBuilder().build()
     val transport=new ApacheDockerHttpClient.Builder().dockerHost(dc.getDockerHost).sslConfig(dc.getSSLConfig).build()
     val docker=DockerClientImpl.getInstance(dc,transport)

@@ -5,13 +5,31 @@ import scala.jdk.CollectionConverters._
 import org.yaml.snakeyaml.Yaml
 
 case class InputBinding(uri: Option[String] = None, task: Option[String] = None, port: String = "result", view: String = "bytes")
-case class Task(id: String, inputs: Map[String,InputBinding], operator: String, params: java.util.Map[String,Object], node: Option[String] = None, source: Option[SourceOperator] = None, title: Option[String] = None, outputPorts:Seq[String]=Seq.empty, proxyPath:Vector[String]=Vector.empty)
+case class Task(id: String, inputs: Map[String,InputBinding], operator: String, params: java.util.Map[String,Object], node: Option[String] = None, source: Option[SourceOperator] = None, title: Option[String] = None, outputPorts:Seq[String]=Seq.empty, proxyPath:Vector[String]=Vector.empty, dependsOn:Vector[String]=Vector.empty)
 case class JobPlan(tasks: Vector[Task], outputs: Map[String,(String,String)])
 case class SourceOperator(runtime: String, source: String, entrypoint: String = "Main")
 object Jobs {
+  val ReadItem = "read_item@1.0"
+  def dependencies(t:Task):Vector[String]=(t.inputs.values.flatMap(_.task).toVector++t.dependsOn).distinct
+  def roots(plan:JobPlan):Set[String]={val upstream=plan.tasks.flatMap(dependencies).toSet;plan.tasks.map(_.id).filterNot(upstream).toSet++plan.outputs.values.map(_._1)}
+  def reference(value:Any):(String,String)={
+    require(value.isInstanceOf[String],"stream binding must be task[:port]")
+    val parts=value.toString.split(":",-1);require(parts.length==1 || parts.length==2,"stream binding must be task[:port]")
+    val task=parts(0);val port=if(parts.length==1)"result"else parts(1);name(task);name(port);task->port
+  }
+  def readBinding(t:Task):Option[InputBinding]=if(t.operator!=ReadItem)None else {
+    require(t.inputs.isEmpty && t.source.isEmpty,"read_item is a zero-input transport source")
+    require(t.params.keySet.asScala.toSet==Set("uri","view"),"read_item params require exactly uri and view")
+    val uri=t.params.get("uri");val view=t.params.get("view")
+    require(uri.isInstanceOf[String] && view.isInstanceOf[String],"read_item uri/view must be strings")
+    val b=InputBinding(uri=Some(uri.toString),view=view.toString)
+    val parsed=DacpUri.parse(uri.toString);require(parsed.getPath.stripPrefix("/").split("/",2).length==2,"read_item requires an Item URI")
+    require(Set("bytes","records")(b.view),"unsupported read_item view");Some(b)
+  }
+
   /** Contracting node regions must not turn an acyclic task graph into a cycle. */
   def canGroupByNode(plan:JobPlan,nodes:Map[String,String]):Boolean={
-    val edges=plan.tasks.flatMap(t=>t.inputs.values.flatMap(_.task).map(p=>nodes(p)->nodes(t.id))).filter(e=>e._1!=e._2).distinct
+    val edges=plan.tasks.flatMap(t=>dependencies(t).map(p=>nodes(p)->nodes(t.id))).filter(e=>e._1!=e._2).distinct
     var left=nodes.values.toSet;var done=Set.empty[String]
     while(left.nonEmpty){val ready=left.filter(n=>edges.filter(_._2==n).forall(e=>done(e._1)));if(ready.isEmpty)return false;done++=ready;left--=ready}
     true
@@ -45,41 +63,47 @@ object Jobs {
       b.task.foreach(name)
       b.uri.foreach { u => val parsed=DacpUri.parse(u); require(parsed.getPath.stripPrefix("/").split("/",2).length == 2,"operator input must address an item, not a dataset") }
     }
+    require(t.dependsOn.distinct.size==t.dependsOn.size,"duplicate control dependency");t.dependsOn.foreach(name)
+    readBinding(t)
     t.node.foreach(n=>if(n.startsWith("nd-"))require(n.matches("nd-[a-z2-9]{4}-[a-z2-9]{4}"),"invalid logical node")else DacpUri.node(n))
   }
   def load(path: Path): JobPlan = parse(Files.readString(path))
   def parse(text: String): JobPlan = {
     require(text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 1024*1024,"job exceeds 1 MiB")
     val options=new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
-    val doc=mapping(new Yaml(options).load[Object](text),"job")
+    val raw=try new Yaml(options).load[Object](text)catch{case e:org.yaml.snakeyaml.error.YAMLException=>throw new IllegalArgumentException("invalid job YAML",e)}
+    val doc=mapping(raw,"job")
     require(doc.keySet.subsetOf(Set("job","tasks","outputs")) && doc.contains("job"),"invalid job settings")
     require(doc.get("tasks").exists(_.isInstanceOf[java.util.List[_]]),"tasks must be a list")
     val tasks=doc("tasks").asInstanceOf[java.util.List[Object]].asScala.map { raw =>
       val m=mapping(raw,"task")
-      require(m.keySet.subsetOf(Set("id","title","inputs","operator","params","node")) && Set("id","inputs","operator").subsetOf(m.keySet),"invalid task settings")
+      require(m.keySet.subsetOf(Set("id","title","inputs","operator","params","node","depends_on")) && Set("id","inputs","operator").subsetOf(m.keySet),"invalid task settings")
       val inputs=mapping(m("inputs"),"inputs").map { case (port,raw) =>
-        val b=mapping(raw,"input binding")
-        require(b.keySet.subsetOf(Set("uri","task","port","view")),"unknown input binding setting")
-        port -> InputBinding(b.get("uri").map(_.toString),b.get("task").map(_.toString),b.getOrElse("port","result").toString,b.getOrElse("view","bytes").toString)
+        val (task,output)=reference(raw)
+        port -> InputBinding(task=Some(task),port=output)
       }
       val params=new java.util.LinkedHashMap[String,Object](); m.get("params").foreach(v => mapping(v,"params").foreach{case(k,v)=>params.put(k,v)})
       val inline=if(m("operator").isInstanceOf[java.util.Map[_,_]])Some(source(m("operator")))else None
       require(m.get("title").forall(_.isInstanceOf[String]),"title must be a string")
-      val t=Task(m("id").toString,inputs,if(inline.isDefined)""else m("operator").toString,params,m.get("node").map(_.toString),inline,m.get("title").map(_.toString));validate(t);t
+      val t=Task(m("id").toString,inputs,if(inline.isDefined)""else m("operator").toString,params,m.get("node").map(_.toString),inline,m.get("title").map(_.toString),dependsOn=m.get("depends_on").map { v=>require(v.isInstanceOf[java.util.List[_]],"depends_on must be a list");v.asInstanceOf[java.util.List[Object]].asScala.map(x=>{require(x.isInstanceOf[String],"control dependency must be a task name");x.toString}).toVector }.getOrElse(Vector.empty));validate(t);t
     }.toVector
     require(tasks.nonEmpty && tasks.size <= 64 && tasks.map(_.id).distinct.size == tasks.size,"empty, oversized, or duplicate task list")
     val ids=tasks.map(_.id).toSet
-    tasks.foreach(_.inputs.values.flatMap(_.task).foreach(id=>require(ids(id),"unknown upstream task")))
+    tasks.foreach(t=>dependencies(t).foreach(id=>require(ids(id),"unknown upstream/control task")))
+    def streamingAncestors(id:String):Set[String]=tasks.find(_.id==id).get.inputs.values.flatMap(_.task).toSet
+    tasks.foreach { t=>
+      var seen=Set.empty[String];var pending=streamingAncestors(t.id)
+      while(pending.nonEmpty){val next=pending--seen;seen++=next;pending=next.flatMap(streamingAncestors)--seen}
+      require(!t.dependsOn.exists(seen),"control dependency cannot also be a streaming ancestor; use a materialization boundary")
+    }
     var left=tasks; var done=Set.empty[String]; val result=Vector.newBuilder[Task]
     while(left.nonEmpty) {
-      val ready=left.filter(_.inputs.values.flatMap(_.task).forall(done))
+      val ready=left.filter(t=>dependencies(t).forall(done))
       require(ready.nonEmpty,"cyclic task DAG")
       ready.foreach(t=>{result+=t;done+=t.id});left=left.filterNot(ready.contains)
     }
     val outputs=doc.get("outputs").map(v=>mapping(v,"outputs").map {case(label,raw)=>
-      name(label);val m=mapping(raw,"output binding")
-      require(m.keySet==Set("task","port"),"output requires task and port")
-      val task=m("task").toString;val port=m("port").toString;name(port);require(ids(task),"unknown output task");label -> (task,port)
+      name(label);val (task,port)=reference(raw);require(ids(task),"unknown output task");label -> (task,port)
     }).getOrElse(Map.empty[String,(String,String)])
     JobPlan(result.result(),outputs)
   }

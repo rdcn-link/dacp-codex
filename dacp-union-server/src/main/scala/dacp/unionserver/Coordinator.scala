@@ -29,6 +29,16 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   private[unionserver] val routes=new DatasetRoutes(settings.state.resolve("dataset-routes"))
   private val uploads=new StreamInputs()
   private val proxyCatalog=new ProxyCatalog(members,settings,routes,uploads)
+  private[unionserver] def websiteDirectory:JsonNode={
+    val directory=proxyCatalog.directory(()=>())
+    val n=Json.obj().put("complete",directory.complete).put("unavailable_sources",directory.unavailableSources).put("observed_at_ms",Json.now)
+    val entries=n.putArray("datasets")
+    directory.entries.foreach { d=>
+      val uri=new java.net.URI(settings.publicUrl)
+      val publicUri=new java.net.URI("dacp",null,uri.getHost,uri.getPort,"/"+d.name,null,null).toASCIIString
+      entries.addObject().put("name",d.name).put("uri",publicUri).put("description",d.description)
+    };n
+  }
   private val planner=new PublicPlanner(members,settings,proxyCatalog,routes)
   private val publicConfig=Config(settings.host,settings.port,java.net.URI.create(settings.publicUrl).getHost,Map.empty,settings.cert,settings.key,settings.ca,
     catalogOverride=Some(proxyCatalog),pluginEnvironment=Some(plugins),maxConcurrentTasks=64,
@@ -37,7 +47,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     accessLogDirectory=Some(settings.state.resolve("access")),s3=settings.s3)
   private val worker=new UnionWorker(publicConfig,publicConfig.union.get,allocator,Some((task,inputs,emit,cancel)=>nested(task,inputs,emit,cancel)))
   private val standard=new Producer(publicConfig,allocator,union=Some(worker))
-  private val workerActions=Set("invite","membership","withdraw","node_status","materialized_status","prepare","start","execution_status","cancel_execution")
+  private val workerActions=Set("invite","membership","withdraw","node_status","materialized_status","prepare","start","execution_status","task_status","cancel_execution")
   private val producer=new NoOpFlightProducer {
     override def listFlights(ctx:CallContext,c:Criteria,out:StreamListener[FlightInfo]):Unit=standard.listFlights(ctx,c,out)
     override def getFlightInfo(ctx:CallContext,d:FlightDescriptor):FlightInfo=standard.getFlightInfo(ctx,d)
@@ -75,6 +85,17 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     val n=Json.obj().put("offset",offset).put("limit",limit);val records=n.putArray("jobs");history.list(offset,limit).foreach { record=>
       val summary=record.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();summary.remove("nodes");summary.remove("events");records.add(summary)
     };n
+  }
+  private[unionserver] def nodeTopology:JsonNode={
+    val saved=history.list(0,100).map(j=>j.path("job_id").asText->j).toMap
+    val live=jobs.values.asScala.map(j=>j.id->j.dashboardSnapshot).toMap
+    val recent=(saved++live).values.toVector.sortBy(j=> -j.path("created_at_ms").asLong).take(100)
+    val topology=NodeTopology.build(memberSnapshots,recent,Json.now,math.max(settings.pollMs*3,5000L)).asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
+    val all=(history.store.records.map(j=>j.path("job_id").asText->j).toMap++live).values
+    val counts=topology.putObject("participation")
+    memberSnapshots.foreach { m=>val id=m.path("identity").asText;counts.put(id,all.count(_.path("nodes").has(id))) }
+    topology
+
   }
   private[unionserver] def overview:JsonNode={
     val n=Json.obj().put("union_id",members.unionId).put("flight_uri",settings.publicUrl).put("at_ms",Json.now)
@@ -135,9 +156,14 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   }
   private def render(plan:JobPlan):String={
     val n=Json.obj().put("job","union-execution");val tasks=n.putArray("tasks")
-    plan.tasks.foreach { t=>val v=tasks.addObject().put("id",t.id).put("operator",t.operator);t.title.foreach(v.put("title",_));t.node.foreach(v.put("node",_));v.set[JsonNode]("params",Json.mapper.valueToTree(t.params));val inputs=v.putObject("inputs");t.inputs.foreach{case(p,b)=>val i=inputs.putObject(p).put("view",b.view);b.uri.foreach(i.put("uri",_));b.task.foreach(i.put("task",_));i.put("port",b.port)} }
-    val outputs=n.putObject("outputs");plan.outputs.foreach{case(p,(t,o))=>outputs.putObject(p).put("task",t).put("port",o)};n.toString
+    plan.tasks.foreach { t=>
+      val v=tasks.addObject().put("id",t.id).put("operator",t.operator);t.title.foreach(v.put("title",_));t.node.foreach(v.put("node",_))
+      v.set[JsonNode]("params",Json.mapper.valueToTree(t.params));val control=v.putArray("depends_on");t.dependsOn.foreach(control.add)
+      val inputs=v.putObject("inputs");t.inputs.foreach{case(p,b)=>require(b.task.nonEmpty,"job inputs require upstream tasks");inputs.put(p,b.task.get+":"+b.port)}
+    }
+    val outputs=n.putObject("outputs");plan.outputs.foreach{case(p,(t,o))=>outputs.put(p,t+":"+o)};n.toString
   }
+
   private def nested(task:Task,inputs:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel):Unit={
     val candidates=members.all.map(m=>members.inspect(m)).filter(m=>m.path("state").asText=="approved" && m.path("grant").path("operators").elements.asScala.exists(_.asText==task.operator))
     require(candidates.nonEmpty,"no execution node for delegated task")
@@ -146,9 +172,12 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     var j:Execution=null
     try {
       val ports=task.outputPorts
-      require(ports.nonEmpty,"delegated task needs connected output ports")
-      val t=task.copy(node=Some(member.path("data_origin").asText),inputs=inputs.keys.map(p=>p->InputBinding(uri=Some(settings.publicUrl.stripSuffix("/")+"/"+upload+"/"+p),view=inputsView(upload,p))).toMap)
-      val plan=JobPlan(Vector(t),ports.map(p=>p->(t.id,p)).toMap)
+      val readers=inputs.keys.toVector.sorted.zipWithIndex.map {case(p,i)=>
+        val params=new java.util.LinkedHashMap[String,Object]();params.put("uri",settings.publicUrl.stripSuffix("/")+"/"+upload+"/"+p);params.put("view",inputsView(upload,p))
+        Task("read_"+i,Map.empty,Jobs.ReadItem,params,node=Some(member.path("data_origin").asText))
+      }
+      val t=task.copy(node=Some(member.path("data_origin").asText),inputs=inputs.keys.toVector.sorted.zip(readers).map{case(p,r)=>p->InputBinding(task=Some(r.id))}.toMap,dependsOn=Vector.empty)
+      val plan=JobPlan(readers:+t,ports.map(p=>p->(t.id,p)).toMap)
       j=submit(plan,members.tls.identity,render(plan),ExecutionPolicy.parse(Json.obj().put("timeout_seconds",math.min(settings.timeout,cancel.remainingSeconds)),plan),path=task.proxyPath)
       val current=j
       val scope=new AutoCloseable{def close():Unit=if(!current.terminal)current.stop("cancelled")};cancel.add(scope)
@@ -242,21 +271,26 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     private val proxyPath={require(!incomingPath.contains(members.unionId) && incomingPath.size<8,"proxy cycle or depth limit");incomingPath:+members.unionId}
     private val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     def requiresRetryAwareness:Boolean=policy.maxRetries>0
-    require(plan.outputs.nonEmpty,"explicit final outputs required")
     require(plan.tasks.forall(t=>t.node.nonEmpty && t.source.isEmpty),"union tasks require explicit node and versioned operator")
     @volatile private var replaySources=initialReplaySources
     @volatile private var attemptId=id
     @volatile private var retryCount=0
     @volatile private var attemptStarted=false
+    @volatile private var attemptStartedAt=0L
     private val attempts=mutable.ArrayBuffer.empty[JsonNode]
     private def needed:Set[String]={
       val result=mutable.Set.empty[String]
-      def visit(task:String):Unit=if(result.add(task) && !replaySources.contains(task))plan.tasks.find(_.id==task).get.inputs.values.flatMap(_.task).foreach(visit)
-      plan.outputs.values.foreach(p=>visit(p._1));result.toSet
+      def visit(task:String):Unit=if(result.add(task) && !replaySources.contains(task))Jobs.dependencies(plan.tasks.find(_.id==task).get).foreach(visit)
+      Jobs.roots(plan).foreach(visit);result.toSet
     }
     private def activeTasks=plan.tasks.filter(t=>needed(t.id))
     private val known=members.all.map(n=>n.path("data_origin").asText->n).toMap
     private val placements=plan.tasks.map(t=>t.id->known.getOrElse(DacpUri.node(t.node.get),throw new IllegalArgumentException("task node is not invited"))).toMap
+    plan.tasks.foreach { t=>Jobs.readBinding(t).foreach { b=>
+      val origin=DacpUri.origin(b.uri.get)
+      require(origin==settings.publicUrl || known.contains(origin),"unknown read_item source node")
+      require(origin==settings.publicUrl || origin==placements(t.id).path("data_origin").asText,"read_item must execute at the data owner")
+    }}
     private def identity(n:JsonNode)=n.path("identity").asText
     private def url(n:JsonNode)=n.path("url").asText
     private def nodes=activeTasks.map(t=>placements(t.id)).toVector.groupBy(identity).values.map(_.head).toVector
@@ -295,7 +329,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       val n=Json.obj().put("job_id",id).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished)
       n.set[JsonNode]("execution_policy",policy.submitted);n.set[JsonNode]("effective_execution_policy",policy.effective)
       replayOf.foreach(n.put("replay_of",_))
-      n.put("attempt_id",attemptId).put("retry_count",retryCount).put("max_retries",policy.maxRetries)
+      n.put("attempt_id",attemptId).put("attempt_started_at_ms",attemptStartedAt).put("retry_count",retryCount).put("max_retries",policy.maxRetries)
       val history=n.putArray("attempts");synchronized{attempts.foreach(history.add)}
       val a=n.putObject("nodes");nodeStates.asScala.foreach{case(k,v)=>a.set[JsonNode](k,v)};n
     }
@@ -311,6 +345,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         val node=placements(t.id);val task=ts.addObject().put("id",t.id).put("node",url(node)).put("node_identity",identity(node)).put("operator",t.operator)
         t.title.foreach(task.put("title",_))
         task.put("replayed",replaySources.contains(t.id));task.put("state",if(!needed(t.id))"skipped"else Option(nodeStates.get(identity(node))).map(_.path("tasks").path(t.id).asText("unknown")).getOrElse(if(state=="queued" || state=="waiting_resources")"waiting"else state))
+        val controls=task.putArray("depends_on");t.dependsOn.foreach(controls.add)
         val inputs=task.putArray("inputs")
         t.inputs.toVector.sortBy(_._1).foreach {case(port,b)=>
           val input=inputs.addObject().put("port",port)
@@ -342,8 +377,21 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       activeTasks.filter(t=>identity(placements(t.id))==identity(n)).foreach { t=>
         val j=tasks.addObject().put("id",t.id).put("operator",t.operator)
         t.title.foreach(j.put("title",_))
+        val controls=j.putArray("depends_on")
+        t.dependsOn.foreach { parent=>
+          val b=controls.addObject().put("task",parent)
+          if(identity(placements(parent))!=identity(n))b.put("origin",url(placements(parent))).put("identity",identity(placements(parent)))
+        }
+        val controlConsumers=j.putArray("control_consumers");activeTasks.filter(_.dependsOn.contains(t.id)).map(x=>identity(placements(x.id))).distinct.foreach(controlConsumers.add)
         val materialize=j.putArray("materialize");policy.materialized.toVector.sorted.filter(p=>p._1==t.id && consumers.contains(p)).foreach(p=>materialize.add(p._2))
         replaySources.get(t.id).foreach(j.put("replay_from",_))
+        Jobs.readBinding(t).foreach { b=>
+          val uri=b.uri.get
+          if(DacpUri.origin(uri)!=n.path("data_origin").asText){
+            require(DacpUri.origin(uri)==settings.publicUrl,"read_item must execute at the data owner")
+            j.putObject("read_source").put("origin",settings.publicUrl).put("identity",members.tls.identity)
+          }
+        }
         j.set[JsonNode]("params",Json.mapper.valueToTree[JsonNode](t.params));val inputs=j.putObject("inputs")
         t.inputs.foreach {case(port,b)=>
           val v=inputs.putObject(port)
@@ -392,7 +440,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       }finally in.close()
     }
     private def attempt():Unit={
-      attemptStarted=false
+      attemptStarted=false;attemptStartedAt=Json.now
       val token=cancel.add(new StreamCancel(timeoutSeconds=timeout))
       val polling=new AtomicBoolean(true);var poll:Thread=null
       try {
@@ -428,7 +476,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       finally {polling.set(false);token.close();if(poll!=null && poll!=Thread.currentThread())poll.join(10000)}
     }
     private def recordAttempt(result:String,error:Option[Throwable]=None):Unit=synchronized {
-      val n=Json.obj().put("attempt_id",attemptId).put("retry_index",retryCount).put("state",result).put("finished_at_ms",Json.now)
+      val n=Json.obj().put("attempt_id",attemptId).put("retry_index",retryCount).put("state",result).put("started_at_ms",attemptStartedAt).put("finished_at_ms",Json.now)
       error.foreach(t=>n.put("message",Option(t.getMessage).getOrElse(t.getClass.getSimpleName).take(2048)))
       val ns=n.putObject("nodes");nodeStates.asScala.foreach{case(k,v)=>
         val summary=v.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();summary.remove("ports");ns.set[JsonNode](k,summary)

@@ -36,8 +36,9 @@ except Exception as error:
 else:
     raise AssertionError('source unexpectedly exists on coordinator')
 bad = json.dumps(dict(job='failed_remote', tasks=[
-    dict(id='fail', inputs=dict(source=dict(uri=B+'/csv_data/orders')), operator='missing@1.0'),
-    dict(id='blocked', inputs=dict(source=dict(task='fail',port='result')), node=A, operator='identity@1.1')]))
+    dict(id='read', operator='read_item@1.0', inputs={}, params=dict(uri=B+'/csv_data/orders', view='bytes')),
+    dict(id='fail', inputs=dict(source='read'), operator='missing@1.0'),
+    dict(id='blocked', inputs=dict(source='fail'), node=A, operator='identity@1.1')]))
 try:
     with Job.run(A,bad,timeout=30) as events:
         list(events)

@@ -23,7 +23,7 @@ dacp-shell dacp://localhost:8815
 # use reports
 ```
 
-在 shell 中使用 `ls /`、`show /orders`。前台示例用 Ctrl+C 停止。示例应用自行安装关闭钩子，嵌入 API 不自动安装。
+在 shell 中使用 `ls /`、`cat /orders`。前台示例用 Ctrl+C 停止。示例应用自行安装关闭钩子，嵌入 API 不自动安装。
 
 需要 JDK 17、sbt 1.10.x 和已安装的 Python SDK/shell；本示例只读取 CSV，不需要 Docker。项目依赖 `../../dacp-server` 源码工程，JVM 的 Arrow 参数见 [build.sbt](build.sbt)。完整源码见 [EmbeddedServerExample.scala](src/main/scala/example/EmbeddedServerExample.scala)。
 

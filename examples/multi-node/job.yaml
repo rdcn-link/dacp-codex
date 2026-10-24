@@ -1,14 +1,24 @@
 job: collaborative_demo
 tasks:
-  - id: convert_at_data
-    inputs:
-      source: {uri: 'dacp://localhost:8816/csv_data/orders', view: bytes}
-    operator: format_convert@1.1
-    params: {from: auto, to: parquet, schema: infer, compression: zstd}
-  - id: relay_to_a
-    inputs:
-      source: {task: convert_at_data, port: result}
-    node: dacp://localhost:8815
-    operator: identity@1.1
+- id: read_convert_at_data_source
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://localhost:8816/csv_data/orders
+    view: bytes
+- id: convert_at_data
+  inputs:
+    source: read_convert_at_data_source
+  operator: format_convert@1.1
+  params:
+    from: auto
+    to: parquet
+    schema: infer
+    compression: zstd
+- id: relay_to_a
+  inputs:
+    source: convert_at_data
+  node: dacp://localhost:8815
+  operator: identity@1.1
 outputs:
-  result: {task: relay_to_a, port: result}
+  result: relay_to_a

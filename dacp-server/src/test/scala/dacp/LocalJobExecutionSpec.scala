@@ -10,9 +10,22 @@ import scala.jdk.CollectionConverters._
 class LocalJobExecutionSpec extends AnyFunSuite {
   private val yaml="""job: local
     |tasks:
-    | - {id: a, operator: copy@1, inputs: {source: {uri: 'dacp://localhost:8815/data/item'}}}
-    | - {id: b, operator: copy@1, inputs: {source: {task: a}}}
-    |outputs: {result: {task: b, port: result}}
+    |- id: read_a_source
+    |  operator: read_item@1.0
+    |  inputs: {}
+    |  params:
+    |    uri: dacp://localhost:8815/data/item
+    |    view: bytes
+    |- id: a
+    |  operator: copy@1
+    |  inputs:
+    |    source: read_a_source
+    |- id: b
+    |  operator: copy@1
+    |  inputs:
+    |    source: a
+    |outputs:
+    |  result: b
     |""".stripMargin
   private val plan=Jobs.parse(yaml)
   private def fixture(f:(Config,RootAllocator)=>Unit):Unit=fixtureWithHistory(false)(f)
@@ -42,6 +55,37 @@ class LocalJobExecutionSpec extends AnyFunSuite {
   }
   private def record(c:Config)=c.executionHistory.begin("dacp_exchange",metadata=Json.obj().put("owner","alice").put("request_type","job").put("job_yaml",yaml))
   private def policy(text:String)=ExecutionPolicy.parse(Json.mapper.readTree(text),plan)
+  test("control-only preparation finishes before a zero-output sink starts; source data remains streamed") {fixtureWithHistory(true){(c,a)=>
+    val definition="""job: control
+      |tasks:
+      | - {id: prepare, operator: init@1, inputs: {}}
+      | - {id: read, operator: read_item@1.0, inputs: {}, params: {uri: 'dacp://localhost:8815/data/item', view: bytes}}
+      | - {id: sink, operator: sink@1, inputs: {source: read}, depends_on: [prepare]}
+      |outputs: {}
+      |""".stripMargin
+    val p=Jobs.parse(definition);val prepared=new java.util.concurrent.atomic.AtomicBoolean();val consumed=new AtomicInteger
+    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={
+      if(t.id=="prepare"){Thread.sleep(100);prepared.set(true)}
+      else {assert(prepared.get(),"sink started before predecessor success");var f=in("source").next();while(f.nonEmpty){if(StreamProtocol.header(f.get).path("type").asText=="data")consumed.addAndGet(f.get.data.length);f=if(StreamProtocol.header(f.get).path("type").asText=="end")None else in("source").next()}}
+    }}
+    new LocalJobExecution(c,executor,input,a).run(p,ExecutionPolicy.parse(Json.obj(),p),"alice",record(c),None,_=>fail("sink must not emit data"),new StreamCancel())
+    assert(prepared.get() && consumed.get()>0)
+    assert(c.executionHistory.list().count(_.path("kind").asText=="job_task")==3)
+  }}
+  test("failed control predecessor cancels downstream without running it") {fixtureWithHistory(true){(c,a)=>
+    val p=Jobs.parse("""job: failure
+      |tasks:
+      | - {id: prepare, operator: init@1, inputs: {}}
+      | - {id: sink, operator: sink@1, inputs: {}, depends_on: [prepare]}
+      |outputs: {}
+      |""".stripMargin)
+    val downstream=new AtomicInteger
+    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={
+      if(t.id=="prepare")throw new IllegalStateException("prepare failed")else downstream.incrementAndGet()
+    }}
+    intercept[RuntimeException](new LocalJobExecution(c,executor,input,a).run(p,ExecutionPolicy.parse(Json.obj(),p),"alice",record(c),None,_=>(),new StreamCancel()))
+    assert(downstream.get()==0 && c.taskSlots.availablePermits()==c.maxConcurrentTasks)
+  }}
   test("standalone policy configuration is independent of Union and validates timeout types") {
     val file=Files.createTempFile("local-policy-config-",".yaml")
     val base="host: localhost\npublic_host: localhost\ntls_cert: unused\ntls_key: unused\ntls_ca: unused\n"

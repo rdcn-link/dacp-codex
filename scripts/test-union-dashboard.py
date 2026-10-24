@@ -27,25 +27,31 @@ def fixture():
     for region, identity, port in [('east', 'a', 18861), ('west', 'c', 18863)]:
         tasks += [dict(id='sum_' + region, title=region + '：汇总商品销量', node=f'dacp://localhost:{port}', node_identity=identity, operator='quantity_sum@1.0', state='succeeded', inputs=[dict(port='source', uri=f'dacp://localhost:{port}/data/sales', view='bytes')]),
                   dict(id='revenue_' + region, title=region + '：融合价格计算收入', node='dacp://localhost:18862', node_identity='b', operator='revenue_join@1.0', state='succeeded', inputs=[dict(port='prices', uri='dacp://localhost:18862/data/prices', view='bytes'), dict(port='quantities', task='sum_' + region, output_port='result')])]
+    tasks.append(dict(id="prepare", title="准备目标表", node="dacp://localhost:18862", node_identity="b", operator="prepare@1.0", state="succeeded", inputs=[]))
+    tasks[1]["depends_on"] = ["prepare"]
     for t in tasks:
         node = nodes.setdefault(t['node_identity'], dict(observed_at_ms=now, ports={}))
         for direction, ports in [('inputs', [b['port'] for b in t['inputs']]), ('outputs', ['result'])]:
             for port in ports:
                 node['ports'][t['id'] + '/' + direction + '/' + port] = dict(payload_bytes=128, remote_payload_bytes=128 if port == 'quantities' else 0, last_activity_ms=now)
-    return dict(job_id='g6-browser-test', state='succeeded', owner='client', elapsed_ms=2400, created_at_ms=now-2400, finished_at_ms=now, tasks=tasks, nodes=nodes, events=[], job_yaml='job: g6-browser-test\ntasks: []', outputs={region + '_revenue': dict(task='revenue_' + region, port='result') for region in ['east', 'west']})
+    return dict(job_id='g6-browser-test', state='succeeded', owner='client', elapsed_ms=2400, created_at_ms=now-2400, finished_at_ms=now, tasks=tasks, nodes=nodes, events=[], job_yaml='job: g6-browser-test\ntasks: []', attempts=[dict(attempt_id='first',retry_index=0,state='failed',started_at_ms=now-3000,finished_at_ms=now-2500,message='<script>unsafe</script>'),dict(attempt_id='second',retry_index=1,state='succeeded',started_at_ms=now-2400,finished_at_ms=now,nodes=nodes)], outputs={region + '_revenue': dict(task='revenue_' + region, port='result') for region in ['east', 'west']})
 
 
 class Site(BaseHTTPRequestHandler):
     job = fixture()
     def do_GET(self):
         path = urlsplit(self.path).path
-        if path == '/api/overview':
+        if path in ('/api/overview', '/api/topology'):
             data = dict(union_id='browser-test', flight_uri='dacp://localhost:19860', at_ms=int(time.time()*1000), poll_interval_ms=500, retention_seconds=86400, job_count=1, active_jobs=0, succeeded_jobs=1, members=[dict(url='dacp://localhost:'+str(18861+i),identity=c*64,state='approved',observed_at_ms=int(time.time()*1000),status=dict(web_enabled=enabled,web_url=url,executors=['jvm'])) for i,c,enabled,url in [(0,'a',True,'http://node-a:19861/'),(1,'b',False,''),(2,'c',True,'javascript:alert(1)')]], jobs=[self.job])
+            if path == '/api/topology':
+                data.update(stale_after_ms=5000,job_count=1,participation={'a'*64:7,'b'*64:3,'c'*64:2},union_traffic=dict(started_at_ms=1,observed_at_ms=int(time.time()*1000),counters=[dict(origin='dacp://localhost:18861',kind='control',direction='sent',bytes=128),dict(origin='dacp://localhost:18861',kind='stream',direction='received',bytes=1024)]),edges=[dict(source='a'*64,target='b'*64,payload_bytes=2048,observed=True,samples=[dict(key='j/try1/receive/source',bytes=2048,observed_at_ms=int(time.time()*1000),active=True)])])
         elif path == '/api/jobs/g6-browser-test':
             data = self.job
         else:
             assets = {'/assets/' + name: ROOT / 'assets' / name for name in ['dacp-logo.png', 'dacp-favicon.png']}
             assets['/favicon.ico'] = ROOT / 'assets/dacp-favicon.ico'
+            assets['/datasets'] = WEB / 'datasets.html'
+            assets['/nodes'] = WEB / 'nodes.html'
             local = assets.get(path, WEB / ('index.html' if path == '/' else path.lstrip('/')))
             if (not local.resolve().is_relative_to(WEB.resolve()) and path not in assets) or not local.is_file():
                 self.send_error(404)
@@ -70,6 +76,11 @@ def main():
     args.add_argument('--browser-executable', help='Optional Chromium executable path')
     args.add_argument('--screenshots', type=Path, help='Optional screenshot directory')
     options = args.parse_args()
+    # Keep authored UI text English; fixture titles deliberately retain user Chinese.
+    for assets in [WEB, ROOT / 'dacp-server/src/main/resources/node-web']:
+        for asset in assets.iterdir():
+            if asset.suffix in {'.html', '.js', '.css'}:
+                assert not any('\u4e00' <= c <= '\u9fff' for c in asset.read_text()), asset
     server = ThreadingHTTPServer(('127.0.0.1', 0), Site)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -83,25 +94,21 @@ def main():
             page.on('console', lambda m: violations.append(m.text) if m.type == 'error' else None)
             page.on('request', lambda r: requests.append(r.url))
             page.goto(origin)
-            directory = page.locator('#members .member-datasets-link').first
-            assert directory.inner_text() == '查看数据集'
-            assert directory.get_attribute('href') == '/members/' + 'a'*64 + '/datasets'
-            web = page.locator('#members .member-web-link')
-            assert web.count() == 1
-            assert web.get_attribute('href') == 'http://node-a:19861/'
-            assert web.get_attribute('target') == '_blank'
-            assert '未启用' in page.locator('#members tr').nth(1).inner_text()
-            assert page.locator('#members tr').nth(2).locator('.member-web-link').count() == 0
-            styles = page.evaluate("""() => ['#members .job-link','#jobs .job-link'].map(selector=>{
-              const s=getComputedStyle(document.querySelector(selector));
-              return [s.color,s.fontFamily,s.fontSize,s.textDecorationLine];
-            })""")
-            assert styles[0] == styles[1]
+            assert page.locator('html').get_attribute('lang') == 'en-US'
+            assert page.locator('h1').inner_text() == 'Collaboration overview'
+            assert page.locator('#members .member-datasets-link').count() == 0
+            assert page.locator('nav a[href="/datasets"]').count() == 1
             page.locator('#jobs .job-link').first.click()
             page.wait_for_function('() => dagViewer.ready')
             page.evaluate('dagViewer.pending')
+            assert page.locator('#job-attempts details').count() == 2
+            page.locator('#job-attempts details').first.locator('summary').click()
+            assert page.locator('#job-attempts details').first.get_attribute('open') is not None
+            assert 'attempts' not in page.locator('#job-policy').inner_text()
+            assert page.locator('#job-attempts script').count() == 0
             assert page.locator('#dag canvas').count() >= 1
             assert page.locator('#dag-error').is_hidden()
+            assert page.evaluate("dagViewer.graph.getEdgeData('control:prepare:revenue_east').style.lineDash.length") > 0
             assert page.evaluate('dagViewer.graph.getComboData().length') == 4
             # All dependencies flow left to right, within and across server groups.
             assert page.evaluate('''() => {
@@ -122,6 +129,9 @@ def main():
             box = page.locator('#dag').bounding_box()
             page.mouse.click(box['x'] + point[0], box['y'] + point[1])
             assert 'sum_east' in page.locator('#dag-inspect').inner_text()
+            page.evaluate('dagViewer.pending')
+            assert page.evaluate("dagViewer.graph.getElementState('task:sum_east')") == ['selected']
+            assert page.evaluate("dagViewer.graph.getElementRenderStyle('task:sum_east').lineWidth") == 3.5
             zoom = page.evaluate('dagViewer.graph.getZoom()')
             page.locator('#dag-zoom-in').click()
             page.evaluate('dagViewer.pending')
@@ -140,12 +150,36 @@ def main():
             page.evaluate('refresh()')
             page.evaluate('dagViewer.pending')
             after = page.evaluate('''() => ({zoom:dagViewer.graph.getZoom(),position:dagViewer.graph.getPosition(),nodes:dagViewer.graph.getNodeData().map(n=>[n.id,n.style.x,n.style.y])})''')
+            assert page.evaluate("dagViewer.graph.getEdgeData('control:prepare:revenue_east').style.lineDash.length") > 0
+            assert page.locator('#job-attempts details').first.get_attribute('open') is not None
             assert before == after
             assert page.evaluate('originalGraph === dagViewer.graph')
             assert page.evaluate("dagViewer.graph.getNodeData('task:sum_east').data.outgoing") == '4 KiB'
             assert page.evaluate("dagViewer.graph.getNodeData('task:revenue_east').data.dash.length") > 0
-            assert page.evaluate("dagViewer.graph.getNodeData('task:sum_west').data.stateLabel") == '? 状态未知'
-            assert '运行中' in page.locator('#dag-inspect').inner_text()
+            assert page.evaluate("dagViewer.graph.getNodeData('task:sum_west').data.stateLabel") == '? Unknown status'
+            assert 'Running' in page.locator('#dag-inspect').inner_text()
+            assert page.evaluate("dagViewer.graph.getElementState('task:sum_east')") == ['selected']
+            assert page.evaluate("dagViewer.graph.getElementRenderStyle('task:sum_east').lineWidth") == 3.5
+            # Edge selection replaces node selection and survives counter refreshes.
+            edge_id = page.evaluate("dagViewer.graph.getEdgeData().find(e=>e.id.startsWith('flow:')).id")
+            page.evaluate("id=>dagViewer.graph.emit('edge:click',{target:{id}})", edge_id)
+            page.evaluate('dagViewer.pending')
+            assert page.evaluate("dagViewer.graph.getElementState('task:sum_east')") == []
+            assert page.evaluate('id=>dagViewer.graph.getElementRenderStyle(id).lineWidth', edge_id) == 4
+            page.evaluate('refresh()')
+            page.evaluate('dagViewer.pending')
+            assert page.evaluate('id=>dagViewer.graph.getElementState(id)', edge_id) == ['selected']
+            assert page.evaluate('id=>dagViewer.graph.getElementRenderStyle(id).lineWidth', edge_id) == 4
+            page.locator('[data-dag-layout="swimlane"]').click()
+            page.evaluate('dagViewer.pending')
+            assert page.evaluate('id=>dagViewer.graph.getElementState(id)', edge_id) == ['selected']
+            page.locator('[data-dag-layout="dependency"]').click()
+            page.evaluate('dagViewer.pending')
+            assert page.evaluate('id=>dagViewer.graph.getElementRenderStyle(id).lineWidth', edge_id) == 4
+            page.evaluate("()=>dagViewer.graph.emit('canvas:click',{})")
+            page.evaluate('dagViewer.pending')
+            assert page.evaluate('id=>dagViewer.graph.getElementState(id)', edge_id) == []
+            assert page.evaluate('id=>dagViewer.graph.getElementRenderStyle(id).lineWidth', edge_id) < 4
             # Double-click a group's empty header, rather than a task, to collapse it.
             page.locator('#dag-fit').click()
             page.evaluate('dagViewer.pending')
@@ -181,6 +215,90 @@ def main():
             assert not errors, errors
             assert not violations, violations
             assert all(url.startswith(origin) for url in requests), requests
+            dataset_reads = []
+            fail_node = [True]
+            def datasets_response(route):
+                member = route.request.url.split('/members/')[1].split('/')[0]
+                dataset_reads.append(member)
+                if member == 'c'*64 and fail_node[0]:
+                    route.fulfill(status=503, content_type='application/json', body='{}')
+                else:
+                    entries = [] if member == 'b'*64 else [dict(name='weather',description='{"summary":"<img src=x onerror=alert(1)>"}',uri='dacp://node/weather')]
+                    route.fulfill(content_type='application/json',body=json.dumps(dict(datasets=entries,observed_at_ms=1)))
+            page.route('**/members/*/datasets', datasets_response)
+            page.goto(origin+'/nodes')
+            assert page.locator('h1').inner_text() == 'Member nodes'
+            page.wait_for_selector('.directory-heading')
+            assert page.locator('.member-web-link').count() == 1
+            assert page.locator('.member-web-link').get_attribute('href') == 'http://node-a:19861/'
+            assert page.locator('.network-node').count() == 3
+            assert page.locator('.traffic-wire').count() == 1
+            assert 'Union jobs participated: 7 times' in page.locator('.participation-count').first.inner_text()
+            assert 'Flight消息' not in page.locator('#network-lines').text_content()
+            assert page.locator('.flow-label').count() == 1
+            assert page.locator('#network-flows').count() == 0
+            assert page.locator('.resource-gauge').count() == 12
+            assert '2 KiB' in page.locator('#network-lines').text_content()
+            page.evaluate("""async () => {
+              const data=await (await fetch('/api/topology')).json();window.rateTest=data;
+              data.at_ms=10000;data.edges[0].samples[0].observed_at_ms=9000;
+              DacpTopology.render(data,()=>{});
+              data.at_ms=11000;data.edges[0].samples[0].observed_at_ms=10000;data.edges[0].samples[0].bytes+=1024;
+              DacpTopology.render(data,()=>{});
+            }""")
+            assert page.locator('.flow-active').count() == 1
+            assert '1 KiB/s' in page.locator('.wire-rate').first.text_content()
+            page.evaluate("rateTest.edges[0].samples[0].key='retry2';DacpTopology.render(rateTest,()=>{})")
+            assert page.locator('.flow-active').count() == 0
+            assert 'Rate —' in page.locator('.wire-rate').first.text_content()
+            page.evaluate('refreshNodes()')
+
+            assert len(dataset_reads) == 0
+            cards = page.locator('.directory-node')
+            page.locator('.network-node').first.click()
+            page.wait_for_selector('.directory-body tbody tr')
+            assert len(dataset_reads) == 1 and page.url == origin+'/nodes'
+            assert '<img' in cards.nth(0).locator('pre').inner_text()
+            assert cards.nth(0).locator('.directory-body img').count() == 0
+            cards.nth(0).locator('.directory-heading').click()
+            cards.nth(0).locator('.directory-heading').click()
+            assert len(dataset_reads) == 1
+            cards.nth(0).get_by_role('button',name='Reload').click()
+            page.wait_for_function('() => !document.querySelector(".directory-body").hasAttribute("aria-busy")')
+            assert len(dataset_reads) == 2
+            cards.nth(1).locator('.directory-heading').click()
+            page.wait_for_selector('.directory-body .empty')
+            cards.nth(2).locator('.directory-heading').click()
+            retry = cards.nth(2).get_by_role('button',name='Retry',exact=True)
+            retry.wait_for()
+            fail_node[0] = False
+            retry.click()
+            cards.nth(2).locator('tbody tr').wait_for()
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            page.get_by_role('button',name='Refresh nodes').click()
+            page.wait_for_selector('.directory-heading')
+            assert page.locator('.directory-heading[aria-expanded="true"]').count() == 0
+            assert not errors, errors
+            catalog_reads=[]
+            def catalog_response(route):
+                catalog_reads.append(route.request.url)
+                route.fulfill(content_type='application/json',body=json.dumps(dict(complete=False,unavailable_sources=1,observed_at_ms=1,datasets=[dict(name='ds-abcd-2345',description='{"summary":"<script>test</script>"}',uri='dacp://union/ds-abcd-2345')])))
+            page.route('**/datasets/entries',catalog_response)
+            page.goto(origin+'/datasets')
+            page.wait_for_selector('#catalog-rows pre')
+            assert page.locator('.directory-heading').count() == 0
+            assert 'ds-abcd-2345' in page.locator('#catalog-rows').inner_text()
+            assert 'Incomplete catalog' in page.locator('#catalog-error').inner_text()
+            assert page.locator('#catalog-rows script').count() == 0
+            page.locator('#catalog-search').fill('no-match')
+            assert 'No matching' in page.locator('#catalog-rows').inner_text()
+            page.locator('#catalog-search').fill('abcd')
+            assert page.locator('#catalog-rows pre').count() == 1
+            page.get_by_role('button',name='Refresh catalog').click()
+            page.wait_for_function('() => !document.querySelector("#refresh-catalog").disabled')
+            assert len(catalog_reads)==2
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            assert not errors, errors
             browser.close()
             print('G6 browser contracts passed: grouping, clicks, zoom, stable updates, collapse, safe text, mobile and offline assets')
     finally:

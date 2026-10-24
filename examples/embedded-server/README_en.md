@@ -23,7 +23,7 @@ dacp-shell dacp://localhost:8815
 # use reports
 ```
 
-Use `ls /` and `show /orders` in the shell. Stop the foreground example with Ctrl+C. The example application installs its own shutdown hook; the embedded API does not install one automatically.
+Use `ls /` and `cat /orders` in the shell. Stop the foreground example with Ctrl+C. The example application installs its own shutdown hook; the embedded API does not install one automatically.
 
 Requirements are JDK 17, sbt 1.10.x, and the installed Python SDK/shell. This example only reads CSV and needs no Docker. Its source-project dependency is `../../dacp-server`; see [build.sbt](build.sbt) for Arrow JVM options and [EmbeddedServerExample.scala](src/main/scala/example/EmbeddedServerExample.scala) for the full source.
 

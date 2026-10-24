@@ -14,20 +14,21 @@ final class CommandExecutor extends OperatorExecutor {
         case _ => throw new IllegalArgumentException("command args must be strings without NUL") }.toVector
       case _ => throw new IllegalArgumentException("command args must be a list")
     }
-    val input=c("stdin") match {case s:String => s;case _ => throw new IllegalArgumentException("stdin must name a port")}
+    val input=c("stdin") match {case null => null;case s:String => s;case _ => throw new IllegalArgumentException("stdin must name a port or be null")}
     val output=c("stdout") match {
+      case null=>Map.empty[String,Object]
       case m:java.util.Map[_,_] => m.asScala.iterator.map {
         case (k:String,v) => k -> v
         case _ => throw new IllegalArgumentException("stdout keys must be strings")
       }.toMap
       case _ => throw new IllegalArgumentException("stdout must be a mapping")
     }
-    require(output.keySet == Set("port","representation","format"),"stdout requires port, representation, format")
-    require(output("representation")=="bytes","command stdout supports bytes only")
-    val port=output("port");val format=output("format")
-    require(port.isInstanceOf[String] && format.isInstanceOf[String] && format.toString.nonEmpty,"invalid stdout metadata")
-    require(p.inputs == Map(input -> Set("bytes")),"command requires exactly one bytes input matching stdin")
-    require(p.outputs == Map(port.toString -> Set("bytes")),"command requires exactly one bytes output matching stdout")
+    require(c("stdout")==null || output.keySet == Set("port","representation","format"),"stdout requires port, representation, format")
+    require(output.isEmpty || output("representation")=="bytes","command stdout supports bytes only")
+    val port=output.getOrElse("port",null);val format=output.getOrElse("format",null)
+    require(output.isEmpty || (port.isInstanceOf[String] && format.isInstanceOf[String] && format.toString.nonEmpty),"invalid stdout metadata")
+    require(p.inputs == (if(input==null)Map.empty[String,Set[String]]else Map(input -> Set("bytes"))),"command inputs must match stdin (a bytes port or null)")
+    require(p.outputs == (if(port==null)Map.empty[String,Set[String]]else Map(port.toString -> Set("bytes"))),"command outputs must match stdout (a bytes port mapping or null)")
     require(p.artifact.isDefined==artifactPath.isDefined,"missing executable artifact path")
     require(p.entrypoint.startsWith("/") && !p.entrypoint.contains('\u0000'),"command entrypoint must be an absolute executable path")
     require(p.artifact.isEmpty || p.entrypoint==artifactPath.get,"artifact entrypoint must equal its /operator/<filename> path")
@@ -46,7 +47,7 @@ import pyarrow.ipc as ipc
 config=json.loads(sys.argv[1])
 with open('/input/manifest.json') as f:
     manifest=json.load(f)
-if len(manifest)!=1 or manifest[0]['port']!=config['stdin'] or manifest[0]['representation']!='bytes':
+if (config['stdin'] is None and manifest) or (config['stdin'] is not None and (len(manifest)!=1 or manifest[0]['port']!=config['stdin'] or manifest[0]['representation']!='bytes')):
     raise ValueError('command requires one bytes input')
 argv=config['argv']
 if config['artifact']:
@@ -62,9 +63,11 @@ def frame(kind,data=b'',**metadata):
     sys.stdout.buffer.write(struct.pack('>II',len(header),len(data))+header+data)
     sys.stdout.buffer.flush()
 
-process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=None,bufsize=0)
+process=subprocess.Popen(argv,stdin=subprocess.PIPE if config['stdin'] is not None else subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=None,bufsize=0)
 errors=[]
 def feed():
+    if config['stdin'] is None:
+        return
     try:
         with open('/input/'+manifest[0]['file'],'rb') as source:
             with ipc.open_stream(source) as reader:
@@ -85,12 +88,14 @@ def feed():
 pump=threading.Thread(target=feed,daemon=True)
 try:
     pump.start()
-    frame('start',representation='bytes',format=config['format'])
+    if config['port'] is not None:
+        frame('start',representation='bytes',format=config['format'])
     while True:
         chunk=process.stdout.read(65536)
         if not chunk:
             break
-        frame('data',chunk)
+        if config['port'] is not None:
+            frame('data',chunk)
     status=process.wait()
     if errors:
         raise errors[0]
@@ -99,7 +104,8 @@ try:
     pump.join()
     if errors:
         raise errors[0]
-    frame('end')
+    if config['port'] is not None:
+        frame('end')
 finally:
     if process.poll() is None:
         process.kill()

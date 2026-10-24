@@ -32,3 +32,5 @@ The page publicly exposes execution metadata and stored scripts and task paramet
 Union provides public DACP proxy catalogs and per-member dataset pages on its management website; see [dataset directories](dataset-directory_en.md).
 
 `web.public_host` is the browser-facing dashboard hostname and defaults to the node `public_host`; it is separate from the bind address `web.host`. Only after HTTP starts successfully does the node report `web_enabled: true` and `web_url`, including its actual port, through Flight `node_status`. The Union member table links to that address, shows “未启用” when Web is disabled, and an unknown state when node status is unavailable.
+
+The dashboard interface uses English. Task titles, dataset names, JSON descriptions and user scripts retain their original content; dates and numbers use English locale formatting.

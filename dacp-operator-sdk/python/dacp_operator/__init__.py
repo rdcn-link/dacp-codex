@@ -52,8 +52,6 @@ class OperatorContext:
             if kind is None:
                 if self._index != len(self.input_names):
                     raise ValueError('all inputs must be consumed to Arrow EOS')
-                if not self._outputs:
-                    raise ValueError('operator must declare outputs')
                 for port in self._outputs:
                     self._frame(port, 'end')
                 self._finished = True

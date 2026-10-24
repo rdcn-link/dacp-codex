@@ -18,6 +18,7 @@ private[dacp] final class LocalJobExecution(config:Config,executor:TaskExecutor,
       val n=Json.obj().put("id",t.id).put("operator",t.operator)
       n.set[JsonNode]("params",Data.mapper.valueToTree(t.params))
       t.source.foreach(x=>n.putObject("source").put("runtime",x.runtime).put("source",x.source).put("entrypoint",x.entrypoint))
+      val controls=n.putArray("depends_on");t.dependsOn.foreach(controls.add)
       val ins=n.putObject("inputs");t.inputs.toVector.sortBy(_._1).foreach{case(p,b)=>val v=ins.putObject(p).put("port",b.port).put("view",b.view);b.uri.foreach(v.put("uri",_));b.task.foreach(v.put("task",_))};n
     }
     val reusable=scala.collection.mutable.Map.empty[String,String]
@@ -59,20 +60,20 @@ private[dacp] final class LocalJobExecution(config:Config,executor:TaskExecutor,
       record.update(if(retry==0)"running"else "retrying",details)
       try {
         var needed=Set.empty[String]
-        def visit(id:String):Unit=if(!needed(id)){needed+=id;if(!attemptReuse.contains(id))plan.tasks.find(_.id==id).get.inputs.values.flatMap(_.task).foreach(visit)}
-        if(plan.outputs.nonEmpty)plan.outputs.values.foreach(p=>visit(p._1))else plan.tasks.foreach(t=>visit(t.id))
+        def visit(id:String):Unit=if(!needed(id)){needed+=id;if(!attemptReuse.contains(id))Jobs.dependencies(plan.tasks.find(_.id==id).get).foreach(visit)}
+        Jobs.roots(plan).foreach(visit)
         val graph=Json.obj();val skipped=graph.putArray("skipped_tasks");plan.tasks.filterNot(t=>needed(t.id)).foreach(t=>skipped.add(t.id));record.update("running",graph)
         val edges=plan.tasks.filter(t=>needed(t.id) && !attemptReuse.contains(t.id)).flatMap(t=>t.inputs.toVector.flatMap{case(p,b)=>b.task.map(up=>(up,b.port,t.id,p))})
         require(edges.map(e=>e._1->e._2).distinct.size==edges.size,"fan-out requires an explicit duplicating operator")
         require(plan.outputs.values.toSet.size==plan.outputs.size && !plan.outputs.values.exists(p=>edges.exists(e=>(e._1,e._2)==p)),"output is consumed more than once")
-        require(needed.size<=config.maxConcurrentTasks,"pipeline needs more local task slots; increase max_concurrent_tasks")
+        require(plan.tasks.count(t=>needed(t.id) && t.operator!=Jobs.ReadItem)<=config.maxConcurrentTasks,"pipeline needs more local task slots; increase max_concurrent_tasks")
         val queues=edges.map(e=>(e._3,e._4)->new FrameQueue(token)).toMap
         val terminal=new FrameQueue(token)
+        val completed=java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
         plan.tasks.filter(t=>needed(t.id)).foreach { t=>
           val child=config.executionHistory.begin("job_task",metadata=Json.obj().put("parent_execution_id",record.id).put("task_id",t.id).put("attempt_id",attempt).put("operator",t.operator),state="waiting_inputs")
           val stepDetails=Json.obj();t.title.foreach(stepDetails.put("title",_));stepDetails.set[JsonNode]("inputs",signature(t).path("inputs"));child.update("waiting_inputs",stepDetails)
           threads+=StreamProtocol.thread(token){
-            child.update(if(attemptReuse.contains(t.id))"replaying"else "running")
             val counters=new java.util.concurrent.ConcurrentHashMap[String,UnionPortMetrics]()
             def observe(direction:String,port:String,f:OperatorFrame):Unit=counters.computeIfAbsent(direction+"/"+port,_=>new UnionPortMetrics(allocator)).observe(f,remote=false)
             def metrics:com.fasterxml.jackson.databind.node.ObjectNode={val n=Json.obj();val ps=n.putObject("ports");counters.asScala.foreach{case(k,v)=>ps.set[JsonNode](k,v.snapshot)};n}
@@ -93,11 +94,14 @@ private[dacp] final class LocalJobExecution(config:Config,executor:TaskExecutor,
               if(selected(port))writer.foreach(_.append(port,OperatorFrames.encode(f)))
               edges.find(e=>e._1==t.id && e._2==port) match {
                 case Some(e)=>queues(e._3,e._4).put(StreamProtocol.rename(f,e._4))
-                case None=>val label=if(plan.outputs.isEmpty)Some(t.id+"."+port)else plan.outputs.find(_._2==(t.id,port)).map(_._1)
+                case None=>val label=plan.outputs.find(_._2==(t.id,port)).map(_._1)
                   label.foreach(p=>terminal.put(StreamProtocol.rename(f,p,t.id)))
               }
             }
             try {
+              if(t.dependsOn.nonEmpty)child.update("waiting_dependencies")
+              while(!attemptReuse.contains(t.id) && !t.dependsOn.forall(completed.contains)){token.active();Thread.sleep(20)}
+              child.update(if(attemptReuse.contains(t.id))"replaying"else "running")
               attemptReuse.get(t.id) match {
                 case Some(previous)=>
                   val a=token.add(artifact(t,previous).getOrElse(throw new IllegalArgumentException("materialized output expired")))
@@ -119,7 +123,8 @@ private[dacp] final class LocalJobExecution(config:Config,executor:TaskExecutor,
                   }finally a.close()
                 case None=>
                   val inputs=scala.collection.mutable.Map.empty[String,FrameSource]
-                  require(config.taskSlots.tryAcquire(),"node task capacity reached")
+                  val acquired=t.operator!=Jobs.ReadItem
+                  if(acquired)require(config.taskSlots.tryAcquire(),"node task capacity reached")
                   try {
                     t.inputs.foreach{case(p,b)=>
                       val raw=b.uri.map(_=>source(b,token)).getOrElse(queues(t.id,p))
@@ -128,15 +133,18 @@ private[dacp] final class LocalJobExecution(config:Config,executor:TaskExecutor,
                         def close():Unit=raw.close()
                       }
                     }
-                    executor.execute(t,inputs.toMap,output,token)
-                  }finally {inputs.values.foreach(_.close());config.taskSlots.release()}
+                    Jobs.readBinding(t) match {
+                      case Some(b)=>val stream=token.add(source(b,token));try {var f=stream.next();while(f.nonEmpty){output(StreamProtocol.rename(f.get,"result"));f=stream.next()}}finally stream.close()
+                      case None=>executor.execute(t,inputs.toMap,output,token)
+                    }
+                  }finally {inputs.values.foreach(_.close());if(acquired)config.taskSlots.release()}
               }
               require(outgoing.getOrElse(t.id,Set.empty).subsetOf(ended.toSet),"missing output end")
               token.active();writer.foreach(_.commit());if(writer.nonEmpty){committed.add(t.id);reusable.synchronized {
                 reusable(t.id)=attempt
                 val saved=Json.obj();val sources=saved.putObject("materialized_sources");reusable.foreach{case(id,ex)=>sources.put(id,ex)};record.update("running",saved)
               }}
-              child.update("succeeded",metrics.put("replayed",attemptReuse.contains(t.id)))
+              child.update("succeeded",metrics.put("replayed",attemptReuse.contains(t.id)));completed.add(t.id)
             }catch{case e:Throwable=>child.update(token.cause(e) match {case _:java.util.concurrent.TimeoutException=>"expired";case _:java.util.concurrent.CancellationException=>"cancelled";case _=>"failed"},metrics,message=Some(Option(e.getMessage).getOrElse("step failed")));throw e}
             finally writer.foreach(_.close())
           }

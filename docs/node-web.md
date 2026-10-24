@@ -32,3 +32,5 @@ Union 子任务展示本节点收到的任务定义和步骤，外部输入标�
 Union 提供公开 DACP 代理目录，管理网站也提供按成员查看数据集的页面；见[数据集目录](dataset-directory.md)。
 
 `web.public_host` 是浏览器访问 Web 看板时使用的主机名，默认沿用节点 `public_host`；它与监听地址 `web.host` 分开。节点只在 HTTP 服务成功启动后，通过 Flight `node_status` 报告 `web_enabled: true` 和实际端口对应的 `web_url`。Union 看板成员列表显示该地址链接；关闭 Web 时显示“未启用”，无法取得节点状态时显示未知。
+
+看板界面使用英文。任务标题、数据集名称、JSON 描述和用户脚本保留原文；日期和数值采用英文区域格式。

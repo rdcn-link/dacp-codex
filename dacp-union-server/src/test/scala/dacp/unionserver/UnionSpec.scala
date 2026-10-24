@@ -40,6 +40,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val bs=NodeUnionSettings(dir.resolve("b-state"),30,30,store("b"))
     val invocations=new java.util.concurrent.ConcurrentHashMap[String,java.util.concurrent.atomic.AtomicInteger]()
     @volatile var failDownstreamOnce=false
+    @volatile var controlFinished=false
     def count(task:String):Int=Option(invocations.get(task)).map(_.get).getOrElse(0)
     def config(name:String):Config={
       val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin"))))++(if(withRecords)Seq(PublishedItem("/observations",file=Some(dir.resolve("observations.csv"))))else Seq.empty)).copy(description="""{"summary":"公开数据说明","html":"<script>alert(1)</script>"}""")
@@ -55,7 +56,12 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       invocations.computeIfAbsent(task.id,_=>new java.util.concurrent.atomic.AtomicInteger()).incrementAndGet()
       if(task.params.containsKey("fail"))throw new IllegalArgumentException("test failure")
       if(task.params.containsKey("wait")){while(true){cancel.active();Thread.sleep(20)}}
-      if(task.params.containsKey("multi")){
+      if(task.params.containsKey("control")){Thread.sleep(100);controlFinished=true}
+      else if(task.params.containsKey("sink")){
+        assert(controlFinished,"control predecessor has not succeeded")
+        inputs.values.foreach { source=>var done=false;while(!done){val frame=source.next().get;done=StreamProtocol.header(frame).path("type").asText=="end"} }
+      }
+      else if(task.params.containsKey("multi")){
         val data=new java.io.ByteArrayOutputStream()
         inputs.values.foreach { input=>var done=false;while(!done){val f=input.next().get;StreamProtocol.header(f).path("type").asText match {case "data"=>data.write(f.data);case "end"=>done=true;case _=>()}}}
         Seq("z","a").foreach { port=>emit(StreamProtocol.start(port,"bytes","binary"));data.toByteArray.grouped(65536).foreach(chunk=>emit(StreamProtocol.frame("data",port,chunk)));emit(StreamProtocol.frame("end",port))}
@@ -87,21 +93,37 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     }
     def approved():Unit={approve(as.state,DacpUri.origin(ca.uri("")));approve(bs.state,DacpUri.origin(cb.uri("")))}
     val yaml=s"""job: union-example
-      |tasks:
-      | - id: ta
-      |   title: 汇总本地数据
-      |   node: ${DacpUri.origin(ca.uri(""))}
-      |   operator: identity@1.3
-      |   inputs: {source: {uri: '${ca.uri("data","/input")}'}}
-      | - id: tb
-      |   title: 融合跨节点数据
-      |   node: ${DacpUri.origin(cb.uri(""))}
-      |   operator: identity@1.3
-      |   inputs:
-      |     left: {task: ta, port: result}
-      |     right: {uri: '${cb.uri("data","/input")}'}
-      |outputs: {result: {task: tb, port: result}}
-      |""".stripMargin
+    |tasks:
+    |- id: read_ta_source
+    |  operator: read_item@1.0
+    |  inputs: {}
+    |  params:
+    |    uri: ${ca.uri("data","/input")}
+    |    view: bytes
+    |  node: ${DacpUri.origin(ca.uri(""))}
+    |- id: ta
+    |  title: 汇总本地数据
+    |  node: ${DacpUri.origin(ca.uri(""))}
+    |  operator: identity@1.3
+    |  inputs:
+    |    source: read_ta_source
+    |- id: read_tb_right
+    |  operator: read_item@1.0
+    |  inputs: {}
+    |  params:
+    |    uri: ${cb.uri("data","/input")}
+    |    view: bytes
+    |  node: ${DacpUri.origin(cb.uri(""))}
+    |- id: tb
+    |  title: 融合跨节点数据
+    |  node: ${DacpUri.origin(cb.uri(""))}
+    |  operator: identity@1.3
+    |  inputs:
+    |    left: ta
+    |    right: read_tb_right
+    |outputs:
+    |  result: tb
+    |""".stripMargin
     def submit(text:String=yaml):String=client.action(settings.publicUrl,"submit",Json.obj().put("job_yaml",text)).path("job_id").asText
     def submitPolicy(policy:JsonNode):String=client.action(settings.publicUrl,"submit",Json.obj().put("job_yaml",yaml).set[JsonNode]("execution_policy",policy)).path("job_id").asText
     def replay(id:String,tasks:Option[Seq[String]]=None):String={
@@ -118,6 +140,31 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     def close():Unit={x.close();a.close();b.close();af.close();bf.close();client.close();stranger.close();Thread.sleep(100);ca.close();cb.close();allocator.close()}
   }
   private def policy(all:Boolean=false):JsonNode=if(all)Json.parse("""{"materialization":{"default":"materialize"}}""")else Json.parse("""{"materialization":{"tasks":{"ta":{"outputs":{"result":"materialize"}}}}}""")
+  test("cross-node control completion gates zero-output sinks and status is consumer-authorized") {
+    val f=new Fixture()
+    try {
+      f.approved()
+      val script=s"""job: controlled-sink
+        |tasks:
+        | - {id: gate, node: '${DacpUri.origin(f.ca.uri(""))}', operator: identity@1.3, inputs: {}, params: {control: true}}
+        | - {id: read, node: '${DacpUri.origin(f.cb.uri(""))}', operator: read_item@1.0, inputs: {}, params: {uri: '${f.cb.uri("data","/input")}', view: bytes}}
+        | - {id: sink, node: '${DacpUri.origin(f.cb.uri(""))}', operator: identity@1.3, inputs: {source: read}, depends_on: [gate], params: {sink: true}}
+        |outputs: {}
+        |""".stripMargin
+      val id=f.submit(script);assert(f.bytes(id).isEmpty);eventually(f.status(id).path("state").asText=="succeeded")
+      assert(f.controlFinished && f.count("gate")==1 && f.count("sink")==1)
+      val detail=f.x.history.get(id).get
+      assert(detail.path("tasks").elements.asScala.find(_.path("id").asText=="sink").get.path("depends_on").get(0).asText=="gate")
+      val attempt=f.status(id).path("attempt_id").asText
+      assert(intercept[UnionFailure](f.stranger.action(f.ca.uri(""),"task_status",Json.obj().put("execution_id",attempt).put("task","gate"))).code==UNAUTHORIZED)
+      f.controlFinished=false
+      val failed=f.submit(script.replace("control: true","fail: true"))
+      val stream=f.client.stream(f.settings.publicUrl,"results",Json.obj().put("job_id",failed))
+      try intercept[FlightRuntimeException]{while(stream.next().nonEmpty){}}finally stream.close()
+      eventually(f.status(failed).path("state").asText=="failed")
+      assert(!f.controlFinished && f.count("sink")==1)
+    }finally f.close()
+  }
   test("execution policy is strict and forbid wins before any job starts") {
     val f=new Fixture(materialize=true)
     try {
@@ -148,6 +195,25 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val again=f.replay(replay);assert(f.bytes(again).sameElements(f.inputA++f.inputB));assert(f.count("ta")==1 && f.count("tb")==3)
     }finally f.close()
   }
+  test("replay preserves control signatures and skips replaced control ancestors") {
+    val f=new Fixture(materialize=true)
+    try {
+      f.approved()
+      val gate=s"""- id: gate
+        |  operator: identity@1.3
+        |  node: ${DacpUri.origin(f.cb.uri(""))}
+        |  inputs: {}
+        |  params: {control: true}
+        |""".stripMargin
+      val script=f.yaml.replace("tasks:\n","tasks:\n"+gate).replace("- id: ta\n","- id: ta\n  depends_on: [gate]\n")
+      val original=f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",script).set[JsonNode]("execution_policy",policy())).path("job_id").asText
+      assert(f.bytes(original).sameElements(f.inputA++f.inputB));eventually(f.status(original).path("state").asText=="succeeded")
+      assert(f.count("gate")==1)
+      val replay=f.replay(original,Some(Seq("ta")))
+      assert(f.bytes(replay).sameElements(f.inputA++f.inputB));eventually(f.status(replay).path("state").asText=="succeeded")
+      assert(f.count("gate")==1 && f.count("ta")==1 && f.count("tb")==2)
+    }finally f.close()
+  }
   test("automatic retry reuses upstream and callback discards partial result") {
     val f=new Fixture(materialize=true)
     try {
@@ -173,7 +239,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val f=new Fixture(materialize=true)
     try {
       f.approved()
-      val script=f.yaml.replace(" - id: tb"," - id: tb").replace("   title: 融合跨节点数据","   params: {fail: true}\n   title: 融合跨节点数据")
+      val script=f.yaml.replace(" - id: tb"," - id: tb").replace("  title: 融合跨节点数据","  params: {fail: true}\n  title: 融合跨节点数据")
       val id=f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",script).set[JsonNode]("execution_policy",policy(all=true).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]().put("max_retries",1))).path("job_id").asText
       val r=f.client.stream(f.settings.publicUrl,"results",Json.obj().put("job_id",id).put("retry_aware",true));try intercept[FlightRuntimeException]{while(r.next().nonEmpty){}}finally r.close()
       eventually(f.status(id).path("state").asText=="failed");assert(f.status(id).path("retry_count").asInt==1 && f.count("tb")==2)
@@ -183,7 +249,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val f=new Fixture(materialize=true)
     try {
       f.approved()
-      val script=f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n   params: {wait: true}")
+      val script=f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {wait: true}")
       def submit()=f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",script).set[JsonNode]("execution_policy",policy(all=true).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]().put("max_retries",2))).path("job_id").asText
       val cancelled=submit();eventually(f.status(cancelled).path("state").asText=="running")
       f.client.action(f.settings.publicUrl,"cancel_job",Json.obj().put("job_id",cancelled));assert(f.status(cancelled).path("retry_count").asInt==0)
@@ -206,7 +272,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val f=new Fixture()
     try {
       f.approved()
-      val script=f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n   params: {wait: true}")
+      val script=f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {wait: true}")
       val id=f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",script).set[JsonNode]("execution_policy",Json.parse("""{"max_retries":2,"timeout_seconds":1}"""))).path("job_id").asText
       val start=System.nanoTime();eventually(f.status(id).path("state").asText=="expired")
       assert((System.nanoTime()-start)/1e9<5 && f.status(id).path("retry_count").asInt==0)
@@ -218,7 +284,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val f=new Fixture(materialize=true)
     try {
       f.approved()
-      val script=f.yaml.replace(" - id: tb","   params: {multi: true}\n - id: tb").replace("left: {task: ta, port: result}","left: {task: ta, port: z}").replace("right: {uri: '"+f.cb.uri("data","/input")+"'}","right: {task: ta, port: a}")
+      val script=f.yaml.replace("  title: 汇总本地数据","  params: {multi: true}\n  title: 汇总本地数据").replace("left: ta","left: ta:z").replace("right: read_tb_right","right: ta:a")
       val original=f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",script).set[JsonNode]("execution_policy",policy(all=true))).path("job_id").asText
       assert(f.bytes(original).sameElements(f.inputA++f.inputA));eventually(f.status(original).path("state").asText=="succeeded")
       val replay=f.replay(original,Some(Seq("ta")));assert(f.bytes(replay).sameElements(f.inputA++f.inputA));eventually(f.status(replay).path("state").asText=="succeeded")
@@ -273,12 +339,19 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val path=s"/members/$id/datasets"
       val first=http(webPort,path)
       assert(first.statusCode()==200 && first.body().contains("公开数据说明"))
-      assert(!first.body().contains("<script>alert(1)</script>") && first.body().contains("&lt;script&gt;"))
+      assert(Json.parse(first.body()).path("datasets").get(0).path("description").asText.contains("<script>alert(1)</script>"))
+      assert(http(webPort,"/nodes").body().contains("directory-nodes"))
       assert(first.headers().firstValue("Cache-Control").get()=="no-store")
+      val unionDirectory=Json.parse(http(webPort,"/datasets/entries").body())
+      assert(unionDirectory.path("complete").asBoolean && unionDirectory.path("datasets").size()==2)
+      assert(unionDirectory.path("datasets").elements.asScala.forall(d=>d.path("name").asText.startsWith("ds-") && d.path("uri").asText.startsWith(f.settings.publicUrl+"/ds-")))
+      assert(http(webPort,"/datasets").body().contains("catalog-rows"))
       f.catalogVisible=false
-      assert(http(webPort,path).body().contains("该节点暂无数据集"))
+      assert(Json.parse(http(webPort,path).body()).path("datasets").size()==0)
       f.catalogVisible=true;f.catalogFailure=true
       assert(http(webPort,path).statusCode()==503)
+      val partial=Json.parse(http(webPort,"/datasets/entries").body())
+      assert(!partial.path("complete").asBoolean && partial.path("unavailable_sources").asInt==2)
       f.catalogFailure=false
       assert(http(webPort,path).body().contains("公开数据说明"))
       assert(http(webPort,"/members/"+("0"*64)+"/datasets").statusCode()==404)
@@ -288,7 +361,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
   test("HTTP dashboard observes Flight executions without claiming outputs and closes its listener") {
     val webPort=port();val f=new Fixture(web=Some(WebSettings(port=webPort)))
     try {
-      val page=http(webPort,"/");assert(page.statusCode()==200 && page.body().contains("协作运行概览"))
+      val page=http(webPort,"/");assert(page.statusCode()==200 && page.body().contains("Collaboration overview"))
       assert(page.headers().firstValue("Content-Security-Policy").get().contains("script-src 'self'"))
       assert(http(webPort,"/app.js").body().contains("/api/overview"))
       assert(http(webPort,"/style.css").statusCode()==200)
@@ -305,9 +378,9 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       eventually(Json.parse(http(webPort,"/api/overview").body()).path("members").elements.asScala.count(_.path("state").asText=="approved")==2)
       val id=f.submit()
       val details=Json.parse(http(webPort,s"/api/jobs/$id").body())
-      assert(details.path("tasks").size()==2)
-      assert(details.path("tasks").get(0).path("title").asText=="汇总本地数据")
-      assert(details.path("tasks").get(1).path("inputs").elements.asScala.exists(_.path("task").asText=="ta"))
+      assert(details.path("tasks").size()==4)
+      assert(details.path("tasks").elements.asScala.find(_.path("id").asText=="ta").get.path("title").asText=="汇总本地数据")
+      assert(details.path("tasks").elements.asScala.find(_.path("id").asText=="tb").get.path("inputs").elements.asScala.exists(_.path("task").asText=="ta"))
       assert(details.path("job_yaml").asText.contains("tasks:"))
       val statuses=Json.parse(http(webPort,"/api/overview").body()).path("members").elements.asScala.map(_.path("status")).toVector
       assert(statuses.forall(s=>s.path("started_at_ms").asLong>0 && s.path("uptime_ms").asLong>=0))
@@ -319,6 +392,14 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val detail=Json.parse(http(webPort,s"/api/jobs/$id").body())
       assert(detail.path("nodes").path(tls("a").identity).path("ports").path("ta/outputs/result").path("remote_payload_bytes").asLong==f.inputA.length)
       assert(detail.path("elapsed_ms").asLong>=0)
+      val topology=f.x.nodeTopology
+      assert(topology.path("participation").path(tls("a").identity).asInt==1)
+      assert(!topology.has("union_traffic"))
+      val resources=topology.path("members").get(0).path("status").path("resources")
+      assert(resources.path("processors").asInt>0 && resources.path("heap_used_bytes").asLong>0)
+
+      val attempt=detail.path("attempts").get(0)
+      assert(attempt.path("started_at_ms").asLong>0 && attempt.path("finished_at_ms").asLong>=attempt.path("started_at_ms").asLong)
     }finally f.close()
     intercept[java.net.ConnectException](http(webPort,"/"))
   }
@@ -395,7 +476,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(intercept[UnionFailure](f.stranger.action(f.ca.uri(""),"node_status",Json.obj().put("union_id",f.x.members.unionId))).code==UNAUTHORIZED)
       val pending=f.submit();eventually(f.status(pending).path("state").asText=="failed")
       f.approved()
-      val waiting=f.submit(f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n   params: {wait: true}"))
+      val waiting=f.submit(f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {wait: true}"))
       eventually(f.status(waiting).path("state").asText=="running")
       new UnionMembership(f.as.state).revoke(f.x.members.unionId)
       eventually(Set("failed","cancelled")(f.status(waiting).path("state").asText))
@@ -407,7 +488,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val f=new Fixture
     try {
       f.approved()
-      assert(intercept[UnionFailure](f.submit(f.yaml.replace("right: {uri: '"+f.cb.uri("data","/input")+"'}","right: {task: ta, port: result}"))).code==INVALID_ARGUMENT)
+      assert(intercept[UnionFailure](f.submit(f.yaml.replace("right: read_tb_right","right: ta"))).code==INVALID_ARGUMENT)
       assert(intercept[UnionFailure](f.submit(f.yaml.replace(f.cb.uri("data","/input"),"dacp://localhost:1/data/input"))).code==INVALID_ARGUMENT)
       assert(intercept[UnionFailure](f.submit(f.yaml.replace("identity@1.3","{runtime: python@1.0, source: pass}"))).code==INVALID_ARGUMENT)
     }finally f.close()
@@ -416,12 +497,12 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val f=new Fixture
     try {
       def limited(state:Path,origin:String):Unit={
-        val p=Json.obj().put("scheduler_identity",tls("x").identity).put("max_concurrent_tasks",1).put("expires_at_ms",Json.now+180000)
+        val p=Json.obj().put("scheduler_identity",tls("x").identity).put("max_concurrent_tasks",2).put("expires_at_ms",Json.now+180000)
         p.putArray("input_prefixes").add(origin+"/data");p.putArray("operators").add("identity@1.3")
         new UnionMembership(state).approve(f.x.members.unionId,p)
       }
       limited(f.as.state,DacpUri.origin(f.ca.uri("")));limited(f.bs.state,DacpUri.origin(f.cb.uri("")))
-      val text=f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n   params: {wait: true}")
+      val text=f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {wait: true}")
       assert(f.ca.taskSlots.tryAcquire(4)) // The same slots are used by ordinary Flight tasks.
       val first=try {val id=f.submit(text);eventually(f.status(id).path("state").asText=="waiting_resources");id}finally f.ca.taskSlots.release(4)
       eventually(f.status(first).path("state").asText=="running")
@@ -429,10 +510,10 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       f.client.action(f.settings.publicUrl,"cancel_job",Json.obj().put("job_id",first))
       eventually(f.status(second).path("state").asText=="running")
       f.client.action(f.settings.publicUrl,"cancel_job",Json.obj().put("job_id",second))
-      val broken=f.submit(f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n   params: {fail: true}"))
+      val broken=f.submit(f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {fail: true}"))
       eventually(f.status(broken).path("state").asText=="failed")
       // Closing a Flight result stream before completion cancels the graph.
-      val disconnect=f.submit(f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n   params: {flood: true}"))
+      val disconnect=f.submit(f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {flood: true}"))
       val response=f.client.stream(f.settings.publicUrl,"results",Json.obj().put("job_id",disconnect))
       assert(response.next().nonEmpty);response.close()
       eventually(f.status(disconnect).path("state").asText=="cancelled")
@@ -457,7 +538,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val f=new Fixture(allowStranger=true)
     try {
       f.approved()
-      val id=f.submit(f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n   params: {wait: true}"))
+      val id=f.submit(f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {wait: true}"))
       eventually(f.status(id).path("state").asText=="running")
       Seq("job_status","cancel_job").foreach { op=>
         assert(intercept[UnionFailure](f.stranger.action(f.settings.publicUrl,op,Json.obj().put("job_id",id))).code==UNAUTHORIZED)
@@ -501,7 +582,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val f=new Fixture(timeoutSeconds=2)
     try {
       f.approved()
-      val id=f.submit(f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n   params: {wait: true}"))
+      val id=f.submit(f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {wait: true}"))
       eventually(Set("expired","failed")(f.status(id).path("state").asText),f.status(id).toPrettyString)
       assert(f.status(id).path("state").asText=="expired",f.status(id).toPrettyString)
       eventually(f.x.members.remote.action(f.ca.uri(""),"node_status",Json.obj().put("union_id",f.x.members.unionId)).path("reserved_tasks").asInt==0,"reservations remain: "+f.status(id).toPrettyString)
@@ -552,12 +633,20 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val httpBytes=java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"http://localhost:${f.x.s3Port.get}/${entry.getName}/input")).build(),java.net.http.HttpResponse.BodyHandlers.ofByteArray())
       assert(httpBytes.statusCode()==200 && httpBytes.body.sameElements(f.inputA))
       val job=s"""job: public-example
-        |tasks:
-        | - id: copied
-        |   operator: identity@1.3
-        |   inputs: {source: {uri: '${entry.getUri}/input'}}
-        |outputs: {result: {task: copied, port: result}}
-        |""".stripMargin
+    |tasks:
+    |- id: read_copied_source
+    |  operator: read_item@1.0
+    |  inputs: {}
+    |  params:
+    |    uri: ${entry.getUri}/input
+    |    view: bytes
+    |- id: copied
+    |  operator: identity@1.3
+    |  inputs:
+    |    source: read_copied_source
+    |outputs:
+    |  result: copied
+    |""".stripMargin
       assert(publicJob(client,job).sameElements(f.inputA))
       assert(catalog(client).getDatasetsList.asScala.map(_.getName).toSet==entries.map(_.getName).toSet)
       assert(intercept[UnionFailure](f.stranger.action(f.settings.publicUrl,"members")).code==UNAUTHORIZED)
@@ -580,11 +669,12 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val f=new Fixture(allowStranger=true);val client=publicClient(f,"stranger")
     try {
       f.approved();val entries=catalog(client).getDatasetsList.asScala.toVector
-      val inputs=entries.zipWithIndex.map{case(e,i)=>s"p$i: {uri: '${e.getUri}/input'}"}.mkString(", ")
-      val job=s"job: joined\ntasks:\n - id: join\n   operator: identity@1.3\n   inputs: {$inputs}\noutputs: {result: {task: join, port: result}}\n"
+      val inputs=entries.zipWithIndex.map{case(e,i)=>s"p$i: read$i"}.mkString(", ")
+      val readers=entries.zipWithIndex.map{case(e,i)=>s" - {id: read$i, operator: read_item@1.0, inputs: {}, params: {uri: '${e.getUri}/input', view: bytes}}"}.mkString("\n")
+      val job=s"job: joined\ntasks:\n$readers\n - id: join\n   operator: identity@1.3\n   inputs: {$inputs}\noutputs: {result: join}\n"
       val expected=entries.flatMap(e=>{val info=client.getInfo(FlightDescriptor.path("datasets",e.getName,"/input"));if(dacp.protocol.Metadata.Item.parseFrom(info.getAppMetadata).getTotalSizeBytes==f.inputA.length)f.inputA.toVector else f.inputB.toVector}).toArray
       assert(publicJob(client,job).sameElements(expected))
-      val records=f.x.history.list(0,100);assert(records.head.path("tasks").get(0).path("node").asText==DacpUri.origin(f.ca.uri("")))
+      val records=f.x.history.list(0,100);assert(records.head.path("tasks").elements.asScala.find(_.path("id").asText=="join").get.path("node").asText==DacpUri.origin(f.ca.uri("")))
       val status=f.stranger.action(f.settings.publicUrl,"job_status",Json.obj().put("job_id",records.head.path("job_id").asText))
       assert(!status.toString.contains(f.ca.port.toString) && !status.has("nodes") && !status.has("attempts"))
     }finally {client.close();f.close()}
@@ -602,7 +692,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val entries=catalog(client).getDatasetsList.asScala.toVector
       assert(entries.size==2 && entries.forall(_.getUri.startsWith(upper.settings.publicUrl+"/ds-")))
       val e=entries.head
-      val job=s"job: composed\ntasks:\n - id: delegated\n   operator: identity@1.3\n   inputs: {source: {uri: '${e.getUri}/input'}}\noutputs: {result: {task: delegated, port: result}}\n"
+      val job=s"job: composed\ntasks:\n - {id: read, operator: read_item@1.0, inputs: {}, params: {uri: '${e.getUri}/input', view: bytes}}\n - id: delegated\n   operator: identity@1.3\n   inputs: {source: read}\noutputs: {result: delegated}\n"
       val output=publicJob(client,job);assert(output.sameElements(f.inputA) || output.sameElements(f.inputB))
       val cycle=upper.members.remote.dataClient(f.settings.publicUrl,Some(tls("x").identity))
       val error=intercept[FlightRuntimeException](cycle.doAction(new Action("dacp.catalog",Array.emptyByteArray),Rpc.hopOptions(Vector(f.x.members.unionId))).asScala.toVector)

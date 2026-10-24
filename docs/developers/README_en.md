@@ -2,6 +2,8 @@
 
 [中文](README.md) · [Documentation](../README_en.md) · [User guide](../users/README_en.md)
 
+The built-in `read_item@1.0` handles transport only; Dataset/Item plugins own backends and formats. See [Jobs] for stream and control dependency contracts(../jobs_en.md).
+
 For contributors implementing operators, dataset providers, formats, executors, SDKs, or the server. For connecting to a node, browsing data, configuring built-in providers, and running jobs, start with the user guide. Commands below run from the project root unless stated otherwise.
 
 For catalog-level extensions and application startup, see [DatasetCatalog](../dataset-catalogs_en.md) and the [embedded server](../embedded-server_en.md).

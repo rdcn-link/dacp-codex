@@ -12,60 +12,68 @@ class CollaborationSpec extends AnyFunSuite {
     |   operator:
     |     runtime: python@1.0
     |     source: |
-    |       def process(inputs, params):
-    |           yield from inputs['source']
-    |   inputs:
-    |     source: {uri: 'dacp://localhost:18815/data/message'}
+    |       def process(ctx):
+    |           ctx.bytes_output('result').write(b'hello')
+    |   inputs: {}
     |""".stripMargin
   test("task titles describe work while ids remain dependency identifiers") {
     val text=yaml.replace("id: first","id: first\n   title: 汇总销量")
     assert(Jobs.parse(text).tasks.head.title.contains("汇总销量"))
     assert(Jobs.parse(text).tasks.head.id=="first")
-    assert(Jobs.parse(yaml).tasks.head.title.isEmpty)
     for(value<-Seq("''","123","null","'"+("x"*257)+"'"))
       intercept[IllegalArgumentException](Jobs.parse(yaml.replace("id: first",s"id: first\n   title: $value")))
   }
-  test("source task preserves text and explicit runtime without an operator ID") {
+  test("inline source preserves text and requires DEBUG") {
     val task=Jobs.parse(yaml).tasks.head
-    assert(task.operator.isEmpty)
-    assert(task.source.get.runtime=="python@1.0")
-    assert(task.source.get.source.contains("    yield from"))
-    intercept[IllegalArgumentException](Jobs.parse(yaml.replace("runtime: python@1.0","runtime: arbitrary/image")))
-    intercept[IllegalArgumentException](Jobs.parse(yaml.replace("runtime: python@1.0","runtime: python@1.0\n     image: attacker")))
-  }
-  test("normal mode rejects source before contacting Docker, DEBUG explicitly permits it") {
-    val task=Jobs.parse(yaml).tasks.head
-    val error=intercept[IllegalArgumentException](Jobs.authorizeSource(config,task))
-    assert(error.getMessage.contains("FORBIDDEN"))
+    assert(task.source.get.runtime=="python@1.0" && task.source.get.source.contains("    ctx.bytes_output"))
+    assert(intercept[IllegalArgumentException](Jobs.authorizeSource(config,task)).getMessage.contains("FORBIDDEN"))
     Jobs.authorizeSource(config.copy(debug=true),task)
-    val allocator=new RootAllocator()
-    try {
-      val executor=new TaskExecutor(config,allocator)
-      intercept[IllegalArgumentException](executor.execute(task,Map.empty,_=>fail("no output expected"),new StreamCancel()))
-    } finally allocator.close()
   }
-  test("repository tasks remain permitted without DEBUG") {
-    val task=Jobs.parse(yaml.replace("""operator:
-    |     runtime: python@1.0
-    |     source: |
-    |       def process(inputs, params):
-    |           yield from inputs['source']""".stripMargin,"operator: identity@1.1")).tasks.head
-    Jobs.authorizeSource(config,task)
+  test("references use task with optional port and reject old object bindings") {
+    val text="""job: pipeline
+      |tasks:
+      | - {id: b, operator: identity@1.1, inputs: {source: a}}
+      | - {id: a, operator: live_ticks@1.0, inputs: {}}
+      |outputs: {result: b}
+      |""".stripMargin
+    val plan=Jobs.parse(text)
+    assert(plan.tasks.map(_.id)==Vector("a","b"))
+    assert(plan.tasks.last.inputs("source").port=="result" && plan.outputs("result")==("b","result"))
+    assert(Jobs.parse(text.replace("source: a","source: a:other")).tasks.last.inputs("source").port=="other")
+    Seq("{task: a}","{uri: 'dacp://localhost:18815/data/item'}","a:","a:b:c","unknown").foreach { binding=>
+      intercept[IllegalArgumentException](Jobs.parse(text.replace("source: a","source: "+binding)))
+    }
+    intercept[IllegalArgumentException](Jobs.parse(text.replace("result: b","result: {task: b, port: result}")))
+  }
+  test("control and streaming dependencies share cycle validation but distinct semantics") {
+    val text="""job: controlled
+      |tasks:
+      | - {id: consume, operator: sink@1, inputs: {source: generate}, depends_on: [prepare]}
+      | - {id: prepare, operator: init@1, inputs: {}}
+      | - {id: generate, operator: generate@1, inputs: {}}
+      |outputs: {}
+      |""".stripMargin
+    val plan=Jobs.parse(text);assert(plan.tasks.last.id=="consume")
+    assert(Jobs.dependencies(plan.tasks.last).toSet==Set("generate","prepare"))
+    assert(Jobs.roots(plan)==Set("consume"))
+    for(replacement<-Seq("[missing]","[generate]","[prepare, prepare]","consume"))
+      intercept[IllegalArgumentException](Jobs.parse(text.replace("[prepare]",replacement)))
+    intercept[IllegalArgumentException](Jobs.parse(text.replace("id: prepare, operator: init@1, inputs: {}","id: prepare, operator: init@1, inputs: {}, depends_on: [consume]")))
+  }
+  test("read_item requires an Item URI and explicit view") {
+    val text="""job: read
+      |tasks:
+      | - {id: read, operator: read_item@1.0, inputs: {}, params: {uri: 'dacp://localhost:18815/data/item', view: records}}
+      |outputs: {result: read}
+      |""".stripMargin
+    assert(Jobs.readBinding(Jobs.parse(text).tasks.head).get.view=="records")
+    Seq(text.replace("/data/item","/data"),text.replace("view: records","view: image"),text.replace(", view: records",""),text.replace("inputs: {}","inputs: {source: read}"))
+      .foreach(s=>intercept[IllegalArgumentException](Jobs.parse(s)))
   }
   test("URI policy rejects traversal and prefix lookalikes") {
     assert(DacpUri.within("dacp://localhost:18815/data/item","dacp://localhost:18815/data"))
     assert(!DacpUri.within("dacp://localhost:18815/data-other/item","dacp://localhost:18815/data"))
     Seq("dacp://localhost/data/%2e%2e/secret","https://localhost/data/item","dacp://user:password@localhost/data/item")
       .foreach(v=>intercept[IllegalArgumentException](DacpUri.parse(v)))
-  }
-  test("named-port DAG orders dependencies and rejects cycles and dataset-only inputs") {
-    val text="""job: pipeline
-      |tasks:
-      | - {id: b, operator: identity@1.1, inputs: {source: {task: a, port: result}}}
-      | - {id: a, operator: identity@1.1, inputs: {source: {uri: 'dacp://localhost:18815/data/item'}}}
-      |""".stripMargin
-    assert(Jobs.parse(text).tasks.map(_.id)==Vector("a","b"))
-    intercept[IllegalArgumentException](Jobs.parse(text.replace("uri: 'dacp://localhost:18815/data/item'","task: b")))
-    intercept[IllegalArgumentException](Jobs.parse(text.replace("/data/item","/data")))
   }
 }

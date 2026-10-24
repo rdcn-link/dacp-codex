@@ -40,7 +40,7 @@ def main():
                         assert time.monotonic()<deadline
                         time.sleep(.1)
                 def run(code):
-                    job=json.dumps(dict(job='history-test',tasks=[dict(id='run',operator=dict(runtime='python@1.0',source=code),inputs={'source':{'uri':origin+'/data/input'}})]))
+                    job=json.dumps(dict(job='history-test',tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/input',view='bytes')),dict(id='run',operator=dict(runtime='python@1.0',source=code),inputs={'source':'read'})],outputs={'result':'run'}))
                     return Job.run(origin,job,timeout=30,**CREDS)
                 with run("def process(inputs, params):\n    yield from inputs['source']\n") as stream:
                     assert list(stream)[-1]['type']=='complete'

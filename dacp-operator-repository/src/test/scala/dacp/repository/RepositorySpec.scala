@@ -231,7 +231,7 @@ class RepositorySpec extends AnyFunSuite {
       } finally { Files.delete(outside.resolve("manifest.json")); Files.delete(outside) }
     } finally server.close()
   }}
-  test("zero-input sources publish while missing inputs and empty outputs are rejected") { withRoot { root =>
+  test("sources and sinks publish while missing port mappings are rejected") { withRoot { root =>
     val source=ports.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
     source.putObject("inputs")
     val result=Repository.mapper.readTree(Repository.publish(root,"ticks@1","runtime",source,exporter))
@@ -239,6 +239,8 @@ class RepositorySpec extends AnyFunSuite {
     source.remove("inputs")
     intercept[IllegalArgumentException](Repository.validatePorts(source))
     source.putObject("inputs");source.putObject("outputs")
+    Repository.validatePorts(source)
+    source.remove("outputs")
     intercept[IllegalArgumentException](Repository.validatePorts(source))
   }}
   test("port declarations are mandatory before exporting any runtime") { withRoot { root=>

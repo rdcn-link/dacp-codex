@@ -13,7 +13,7 @@ private[unionserver] final class Dashboard(settings:WebSettings,coordinator:Coor
   private val server=HttpServer.create(new InetSocketAddress(settings.host,settings.port),16)
   private val executor=Executors.newFixedThreadPool(4)
   private val closed=new AtomicBoolean()
-  private val assets=Map("/dag.js"->("dag.js","text/javascript; charset=utf-8"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript; charset=utf-8"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain; charset=utf-8"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"),"/"->("index.html","text/html; charset=utf-8"),"/app.js"->("app.js","text/javascript; charset=utf-8"),"/style.css"->("style.css","text/css; charset=utf-8")).map {case(path,(file,kind))=>
+  private val assets=Map("/topology.js"->("topology.js","text/javascript; charset=utf-8"),"/nodes"->("nodes.html","text/html; charset=utf-8"),"/nodes.js"->("nodes.js","text/javascript; charset=utf-8"),"/attempts.js"->("attempts.js","text/javascript; charset=utf-8"),"/datasets"->("datasets.html","text/html; charset=utf-8"),"/datasets.js"->("datasets.js","text/javascript; charset=utf-8"),"/dag.js"->("dag.js","text/javascript; charset=utf-8"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript; charset=utf-8"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain; charset=utf-8"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"),"/"->("index.html","text/html; charset=utf-8"),"/app.js"->("app.js","text/javascript; charset=utf-8"),"/style.css"->("style.css","text/css; charset=utf-8")).map {case(path,(file,kind))=>
     val stream=Option(getClass.getResourceAsStream("/web/"+file)).getOrElse(throw new IllegalStateException("missing dashboard asset"))
     try path->(stream.readAllBytes(),kind)finally stream.close()
   }
@@ -43,12 +43,16 @@ private[unionserver] final class Dashboard(settings:WebSettings,coordinator:Coor
           val pairs=query.map(_.split("=",2));require(pairs.map(_(0)).distinct.size==pairs.size,"duplicate history query")
           val values=pairs.map(p=>p(0)->p(1).toInt).toMap
           json(e,200,coordinator.historyPage(values.getOrElse("offset",0),values.getOrElse("limit",100)))
+        case "/api/topology"=>json(e,200,coordinator.nodeTopology)
         case "/api/overview"=>json(e,200,coordinator.overview)
         case p if p.startsWith("/api/jobs/")=>
           val id=p.stripPrefix("/api/jobs/")
           coordinator.jobSnapshot(id) match {case Some(n)=>json(e,200,n);case None=>error(e,404,"job unavailable or expired")}
         case _=>error(e,404,"unknown dashboard resource")
       }
+    }else if(path=="/datasets/entries") {
+      if(e.getRequestURI.getRawQuery!=null){error(e,400,"unexpected query parameters");return}
+      json(e,200,coordinator.websiteDirectory)
     }else if(path.startsWith("/members/") && path.endsWith("/datasets")) {
       if(e.getRequestURI.getRawQuery!=null){error(e,400,"unexpected query parameters");return}
       val identity=path.stripPrefix("/members/").stripSuffix("/datasets")
@@ -56,14 +60,10 @@ private[unionserver] final class Dashboard(settings:WebSettings,coordinator:Coor
       coordinator.datasets.entries(identity) match {
         case None=>error(e,404,"member not found")
         case Some(entries)=>
-          def escape(s:String)=s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;")
-          val rows=entries.map(m=>"<tr><td>"+escape(m.getName)+"</td><td>"+"<pre>"+escape(m.getDescription)+"</pre>"+"</td><td>"+escape(m.getUri)+"</td></tr>").mkString
-          val node=coordinator.members.all.find(_.path("identity").asText==identity).map(_.path("url").asText).getOrElse(identity)
-          val input=getClass.getResourceAsStream("/web/datasets.html")
-          val template=try new String(input.readAllBytes(),UTF_8)finally input.close()
-          val table=if(entries.isEmpty)"<tr><td colspan=\"3\">该节点暂无数据集</td></tr>"else rows
-          val page=template.replace("{{node}}",escape(node)).replace("{{identity}}",escape(identity)).replace("{{rows}}",table)
-          send(e,200,page.getBytes(UTF_8),"text/html; charset=utf-8")
+          val n=Json.obj().put("identity",identity).put("observed_at_ms",System.currentTimeMillis())
+          val rows=n.putArray("datasets")
+          entries.foreach(m=>rows.addObject().put("name",m.getName).put("description",m.getDescription).put("uri",m.getUri))
+          json(e,200,n)
       }
     }else assets.get(path) match {case Some((bytes,kind))=>send(e,200,bytes,kind);case None=>error(e,404,"not found")}
   }catch{

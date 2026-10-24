@@ -35,7 +35,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
   private val threads=new ThreadPoolExecutor(4,4,0L,java.util.concurrent.TimeUnit.MILLISECONDS,new ArrayBlockingQueue[Runnable](64),new ThreadPoolExecutor.AbortPolicy())
   private val closed=new AtomicBoolean()
   private val origin=new java.net.URI("dacp",null,config.publicHost,flightPort,null,null,null).toASCIIString
-  private val files=Map("/"->("index.html","text/html"),"/app.js"->("app.js","text/javascript"),"/dag.js"->("dag.js","text/javascript"),"/style.css"->("style.css","text/css"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"))
+  private val files=Map("/attempts.js"->("attempts.js","text/javascript"),"/"->("index.html","text/html"),"/app.js"->("app.js","text/javascript"),"/dag.js"->("dag.js","text/javascript"),"/style.css"->("style.css","text/css"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"))
   server.setExecutor(threads)
   server.createContext("/",(e:HttpExchange)=>handle(e))
   def port:Int=server.getAddress.getPort
@@ -56,6 +56,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
       val plan=Jobs.parse(record.path("job_yaml").asText)
       definitions=plan.tasks.map { t=>
         val d=Json.obj().put("id",t.id).put("title",t.title.getOrElse(t.id)).put("operator",t.source.map(s=>"inline:"+s.runtime).getOrElse(t.operator)).put("node",t.node.getOrElse(origin))
+        val controls=d.putArray("depends_on");t.dependsOn.foreach(controls.add)
         val inputs=d.putObject("inputs");t.inputs.foreach {case(p,b)=>val i=inputs.putObject(p);b.uri.foreach(i.put("uri",_));b.task.foreach(i.put("task",_));i.put("port",b.port).put("view",b.view)};d
       }
       plan.outputs.foreach {case(label,(task,port))=>outputs.putObject(label).put("task",task).put("port",port)}
@@ -71,6 +72,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
       val task=d.path("id").asText;val child=children.filter(_.path("task_id").asText==task).sortBy(c=>(c.path("created_at_ms").asLong,c.path("updated_at_ms").asLong)).lastOption
       val state=if(n.path("skipped_tasks").elements.asScala.exists(_.asText==task))"skipped"else if(n.path("tasks").isObject)n.path("tasks").path(task).asText(n.path("state").asText)else child.map(_.path("state").asText).getOrElse(if(Set("running","accepted")(n.path("state").asText))"unknown"else n.path("state").asText)
       val t=tasks.addObject().put("id",task).put("title",d.path("title").asText(task)).put("operator",d.path("operator").asText).put("node",d.path("node").asText(origin)).put("node_identity","local").put("state",state)
+      val controls=t.putArray("depends_on");d.path("depends_on").elements.asScala.foreach(b=>controls.add(if(b.isTextual)b.asText else b.path("task").asText))
       val bindings=t.putArray("inputs")
       d.path("inputs").fields.asScala.foreach { e=>
         val b=e.getValue;val v=bindings.addObject().put("port",e.getKey).put("view",b.path("view").asText("bytes"))
@@ -90,7 +92,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     val consumed=tasks.elements.asScala.flatMap(_.path("inputs").elements.asScala.filter(_.has("task")).map(b=>b.path("task").asText->b.path("output_port").asText)).toSet
     outputs.fields.asScala.toVector.filter(e=>consumed(e.getValue.path("task").asText->e.getValue.path("port").asText)).foreach(e=>outputs.remove(e.getKey))
     val nodes=n.putObject("graph_nodes");val node=nodes.putObject("local").put("observed_at_ms",current.map(_=>System.currentTimeMillis()).getOrElse(n.path("updated_at_ms").asLong));node.set[JsonNode]("ports",ports)
-    n.put("job_id",id).put("output_route",if(n.path("kind").asText.startsWith("union"))"节点 → 下游 / Union"else "节点 → 客户端")
+    n.put("job_id",id).put("output_route",if(n.path("kind").asText.startsWith("union"))"Node → downstream / Union"else "Node → client")
     n
   }
   private def handle(e:HttpExchange):Unit=try {
@@ -103,6 +105,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     path match {
       case "/api/overview"=>
         val n=Json.obj().put("web_url",publicUrl).put("flight_uri",origin).put("started_at_ms",startedAt).put("uptime_ms",System.currentTimeMillis()-startedAt).put("capacity",config.maxConcurrentTasks).put("reserved_tasks",config.maxConcurrentTasks-config.taskSlots.availablePermits()).put("mode",if(config.debug)"DEBUG"else "NORMAL")
+        n.set[JsonNode]("resources",NodeResources.snapshot())
         val executors=n.putArray("executors");config.plugins.services(classOf[OperatorExecutor]).foreach(x=>executors.add(x.id));json(e,200,n)
       case "/api/datasets"=>
         val n=Json.obj();val a=n.putArray("datasets");config.datasetInfos().foreach { d=>val item=a.addObject().put("name",d.name).put("uri",origin+"/"+d.name).put("description",d.description) };json(e,200,n)

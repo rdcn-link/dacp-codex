@@ -2,6 +2,8 @@
 
 [English](README_en.md) · [文档目录](../README.md) · [用户指南](../users/README.md)
 
+引擎内置 `read_item@1.0` 只负责传输，后端和格式继续由 Dataset/Item 插件提供；流连接和控制依赖契约见[作业说明](../jobs.md).
+
 面向实现算子、Dataset provider、格式处理器、执行器、SDK 或服务端的贡献者。连接节点、浏览数据、配置内置 provider 和运行作业请先阅读用户指南。除非另有说明，命令均从项目根目录执行。
 
 目录级扩展和程序内启动见 [DatasetCatalog](../dataset-catalogs.md)与[嵌入式服务器](../embedded-server.md)。

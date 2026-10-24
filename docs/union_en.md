@@ -10,7 +10,7 @@ Invitations, approvals, rejection, withdrawal, and removal persist locally; indi
 
 ## Execution and streams
 
-Clients submit standard Jobs with public Union input URIs, optional logical task.node and explicit outputs. Administrators can also use specialized asynchronous submission with internal placements. See [Union proxy service](union-proxy_en.md). X reuses DAG validation and groups tasks into node subjobs. Union accepts versioned operators only, without inline source. Inputs reference data Items (uri/view) or upstream task/port pairs; foreign member inputs stream over Flight. Nodes read local inputs directly through DatasetAccess, without downloading through X or Flight. Each output connection has one consumer.
+Clients submit standard Jobs with public Union input URIs, optional logical task.node and explicit outputs. Administrators can also use specialized asynchronous submission with internal placements. See [Union proxy service](union-proxy_en.md). X reuses DAG validation and groups tasks into node subjobs. Union accepts versioned operators only, without inline source. Inputs use upstream `task[:port]` references; external Items enter through `read_item@1.0` with `params.uri/view`. Foreign member streams use Flight. Nodes read local Items through DatasetAccess, without downloading through X or Flight. Each output connection has one consumer.
 
 X prepares every subjob before starting any. Nodes check capacity and authorization and reject plans they cannot execute. A's output binds the execution/task/port to B's certificate identity; B pulls it over mTLS. Local connections use bounded queues; cross-node streams use Flight `DoGet` with backpressure. OperatorFrames are reused: start/data/end is followed by complete only after successful execution; failures terminate with a Flight error. After complete, consumers must still verify successful Flight end-of-stream. Outputs create no Dataset and stream directly by default; explicit policy can materialize selected outputs on the producing node for replay.
 
@@ -34,18 +34,27 @@ Top-level `max_retries` (0–10, default 0) bounds execution retries. Results re
 
 ## Administration website
 
-U can expose a read-only operations dashboard on a separate HTTP listener without changing the Flight collaboration protocol above. The website uses U's cached state; observation neither triggers node RPCs nor claims results. The public read-only dashboard exposes execution metadata across submitters without login or tokens. See the [Union server](../dacp-union-server/README_en.md#management-api-and-dashboard) for configuration and read-only HTTP interfaces.
+U can expose a read-only operations dashboard on a separate HTTP listener without changing the Flight collaboration protocol above. The operations page uses U's cached state without triggering node RPCs or claiming results. The nodes page reads a member's live catalog when its card is expanded. The public read-only dashboard exposes execution metadata across submitters without login or tokens. See the [Union server](../dacp-union-server/README_en.md#management-api-and-dashboard) for configuration and read-only HTTP interfaces.
 
-A task `id` is its unique dependency identifier within the Job, used by input `task` references, final outputs, scheduling, status, and traffic correlation; it is required. Optional `title` describes its purpose, supports Unicode, and must contain 1–256 characters without control characters. Titles need not be unique and do not resolve dependencies. Dashboard cards and DAGs show the title with the ID; execution history retains titles.
+A task `id` is its unique dependency identifier within the Job, used by input `task[:port]` references, `depends_on`, final outputs, scheduling, status, and traffic correlation; it is required. Optional `title` describes its purpose, supports Unicode, and must contain 1–256 characters without control characters. Titles need not be unique and do not resolve dependencies. Dashboard cards and DAGs show the title with the ID; execution history retains titles.
 
 ```yaml
+job: daily-temperature
 tasks:
+  - id: read_observations
+    operator: read_item@1.0
+    inputs: {}
+    params:
+      uri: dacp://localhost:18861/climate/observations
+      view: records
   - id: daily_temperature
     title: Aggregate product quantities
     node: dacp://localhost:18861
     operator: daily_temperature_stats@1.0
     inputs:
-      source: {uri: "dacp://localhost:18861/climate/observations", view: records}
+      source: read_observations
+outputs:
+  result: daily_temperature
 ```
 
 The DAG uses locally bundled AntV G6 5.1.1 without an external CDN. Task cards show `title`, falling back to the ID, together with operator, state and input/output payload. Edges show ports and payload. Click a card or edge to inspect the full title, task ID, server address, cross-node payload, rate between observations and record counts where applicable below the graph. Sending and receiving count separately; missing observations and terminal rates display `—`. Final-output edges use source output-port counters, not confirmed client-received bytes.
@@ -55,3 +64,17 @@ Color, symbols and borders distinguish steps: solid green ✓ for completed, thi
 G6 supports dependency and swimlane layouts, each with horizontal (left to right) or vertical (top to bottom) flow. Swimlanes align dependency stages in server rows or columns. Layout controls are independent; refresh preserves both choices. The default combined layout is: both server groups and their internal tasks are automatically arranged left to right by dependency. Each server region has a contrasting background color and border and a heading with its address and task count. Local inputs and tasks stay within the server region, cross-region edges represent data flow, and final outputs occupy a separate Union → client region. Double-click group backgrounds to collapse or expand them; “Expand all” restores the complete view.
 
 The toolbar offers zoom in/out, fit canvas and 100% display, with 15%–250% zoom. Drag to pan and scroll to zoom around the pointer. State refreshes update content while preserving layout, zoom, pan and collapsed groups. Switching jobs lays out and fits the new graph. Canvas information is also available in the task and port tables below for reading and assistive technology access.
+
+The website separates the operations dashboard `/`, graphical member nodes `/nodes`, and data catalog `/datasets`. Node cards load local dataset names inline; the catalog merges live member directories using Union-assigned public names and Union URIs, with explicit incomplete-directory warnings. Only name mappings are persisted, not catalog lists. Policies and attempts are separate; expandable attempt timelines label missing historical information explicitly.
+
+The nodes page uses a dark topology view with health, capacity and directed data flows. Traffic counts receiver-side `remote_payload_bytes` once, never adding send and receive totals. Its scope is inter-member task edges from the latest attempt of each of the most recent 100 jobs, including persisted history. It excludes protocol overhead, other applications and final output returned to clients. Rates require successive fresh observations for the same attempt and input port; retry resets, stale samples or missing observations show unknown. Transfer animation appears only for observed positive rates. Clicking a topology node expands its local datasets below without consuming result streams.
+
+Node cards show environment CPU, DACP process CPU, environment memory, JVM heap, available processors and thread count. Readings come from JVM management APIs and may reflect container limits. Environment memory is not DACP-exclusive; heap is not total process memory. Unsupported metrics show unknown. Participation counts deduplicate jobs with observed member execution states in this Union’s retained history; steps and retries do not add counts. The topology counts task data payload only, excluding heartbeats, status queries, catalog access and Flight message envelopes. Dashed Union membership links indicate membership rather than data transfer and display no message byte counts.
+
+Node topology edge labels display cumulative traffic and observed rates directly; unknown rates show `—`. Hover over an edge or label for endpoints and task payload statistics. Traffic is not duplicated in a separate list below the topology.
+
+The topology uses an orbital background, distinct member card colors, resource utilization bars and directed links. Only links with a positive observed rate animate; the system reduced-motion preference disables animation.
+
+Web interfaces use English throughout the Union job, node and data catalog pages and the DACP node dashboard. User-provided task titles, scripts, dataset names and descriptions are displayed in their original language.
+
+Click a task, input/output node, edge or server group in the job DAG to highlight the selection and show its details. Click empty canvas space to clear it. Automatic updates and layout changes preserve selections that still exist; changing jobs clears the selection. Node dashboards share this interaction.

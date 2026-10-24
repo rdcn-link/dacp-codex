@@ -1,8 +1,10 @@
 # Item-based operator inputs and stream-only outputs
 
 Status: implemented through Flight DoExchange and the Python shell/SDK and Scala SDK. Current ports support bytes and records. Other scientific representations require explicit contract extensions. Each output port has at most one downstream consumer; use distinct ports for duplication. Consume multiple input ports in lexical order.
-Source operators may declare `inputs: {}`; tasks must also explicitly provide `inputs: {}`. No trigger Item is needed. At least one named output is required. In the shell, use `run live_ticks@1.0 --params '{"max_records":3}'` without `--input`. Local tasks default to the connected node; `node` may explicitly select placement.
+Source operators may declare `inputs: {}`; tasks must also explicitly provide `inputs: {}`. No trigger Item is needed. Sink operators may declare `outputs: {}`. In the shell, use `run live_ticks@1.0 --params '{"max_records":3}'` without `--input`. Local tasks default to the connected node; `node` may explicitly select placement.
 
+
+See [Jobs](jobs_en.md) for the format, control dependencies and sinks.
 
 ## User-facing contract
 
@@ -34,7 +36,7 @@ join:
 
 Every port declares its accepted or produced representation and applicable schema/format constraints. A data item may be a table, file, image, structured scientific object, or multidimensional array. Restricting ports to items does not require flattening structures, materializing the item, or fitting it in memory. New representations must have explicit shared contracts before implementation.
 
-An input binding identifies a specific item, its selected advertised representation, and the operator port receiving it. A pipeline binding identifies a named upstream output port. Reject dataset-only bindings, missing required ports, duplicate bindings, unsupported representations, and schema mismatches explicitly. Do not silently select all dataset items, merge their contents, or invoke the operator repeatedly. A shell item number resolves to a specific path in the current listing before submission.
+Input bindings use only `task[:port]`, defaulting to `result`. External Items enter through `read_item@1.0` with `params.uri` and `params.view`. Connections have no `view` field. Reject dataset-only bindings, missing required ports, duplicate bindings, unsupported representations, and schema mismatches explicitly. Do not silently select all dataset items, merge their contents, or invoke the operator repeatedly. A shell item number resolves to a specific path in the current listing before submission.
 
 Dataset-wide work belongs to job orchestration:
 

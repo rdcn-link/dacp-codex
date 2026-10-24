@@ -2,53 +2,59 @@
 'use strict';
 window.DacpDag=(()=>{
  const palette=[{stroke:'#2563eb',fill:'#dbeafe'},{stroke:'#c2410c',fill:'#ffedd5'},{stroke:'#15803d',fill:'#dcfce7'},{stroke:'#9333ea',fill:'#f3e8ff'},{stroke:'#be123c',fill:'#ffe4e6'},{stroke:'#0e7490',fill:'#cffafe'}];
- const states={skipped:{color:'#94a3b8',fill:'#f1f5f9',label:'↷ 已跳过'},replaying:{color:'#7c3aed',fill:'#f5f3ff',label:'↻ 重放中'},succeeded:{color:'#168264',fill:'#f0faf5',label:'✓ 已完成'},running:{color:'#2563eb',fill:'#eff6ff',label:'▶ 执行中'},failed:{color:'#cc4560',fill:'#fff3f5',label:'! 执行失败'},cancelled:{color:'#cc4560',fill:'#fff3f5',label:'! 已取消'},expired:{color:'#cc4560',fill:'#fff3f5',label:'! 已超时'},interrupted:{color:'#cc4560',fill:'#fff3f5',label:'! 服务中断'},unknown:{color:'#b68424',fill:'#fff9eb',label:'? 状态未知'}};
- const pending={color:'#94a3b8',fill:'#f8fafc',label:'○ 尚未执行',dash:[5,4]};
+ const states={skipped:{color:'#94a3b8',fill:'#f1f5f9',label:'↷ Skipped'},replaying:{color:'#7c3aed',fill:'#f5f3ff',label:'↻ Replaying'},succeeded:{color:'#168264',fill:'#f0faf5',label:'✓ Completed'},running:{color:'#2563eb',fill:'#eff6ff',label:'▶ Running'},failed:{color:'#cc4560',fill:'#fff3f5',label:'! Execution failed'},cancelled:{color:'#cc4560',fill:'#fff3f5',label:'! Cancelled'},expired:{color:'#cc4560',fill:'#fff3f5',label:'! Timed out'},interrupted:{color:'#cc4560',fill:'#fff3f5',label:'! Service interrupted'},unknown:{color:'#b68424',fill:'#fff9eb',label:'? Unknown status'}};
+ const pending={color:'#94a3b8',fill:'#f8fafc',label:'○ Not started',dash:[5,4]};
  const compact=(text,max)=>Array.from(String(text||'')).length>max?Array.from(String(text)).slice(0,max-1).join('')+'…':String(text||'');
  function buildData(job,previous,fmt){
   const nodes=[],edges=[],combos=[],details=new Map(),tasks=new Map(job.tasks.map(t=>[t.id,t])),groups=new Map();
   for(const t of job.tasks)if(!groups.has(t.node)){
    const index=groups.size,id='server:'+index,color=palette[index%palette.length];groups.set(t.node,id);
    const count=job.tasks.filter(other=>other.node===t.node).length;
-   combos.push({id,data:{title:t.node,subtitle:count+' 个步骤',...color},style:{labelText:t.node+'  ·  '+count+' 步',stroke:color.stroke,fill:color.fill}});
-   details.set(id,{title:'执行服务器',lines:[t.node,count+' 个任务步骤','双击分组背景折叠 / 展开']});
+   combos.push({id,data:{title:t.node,subtitle:count+' steps',...color},style:{labelText:t.node+'  ·  '+count+' steps',stroke:color.stroke,fill:color.fill}});
+   details.set(id,{title:'Execution server',lines:[t.node,count+' steps','Double-click group backgrounds to collapse / expand']});
   }
   function metric(task,direction,port){return job.nodes[task?.node_identity]?.ports?.[task?.id+'/'+direction+'/'+port];}
   function aggregate(task,direction){const all=Object.entries(job.nodes[task.node_identity]?.ports||{}).filter(([key])=>key.startsWith(task.id+'/'+direction+'/')).map(([,m])=>m);return all.length?fmt.bytes(all.reduce((sum,m)=>sum+(m.payload_bytes||0),0)):'—';}
   function flow(task,direction,port){
-   const m=metric(task,direction,port);if(!m)return {label:'暂无观测',lines:['暂无流量观测'],remote:false};
+   const m=metric(task,direction,port);if(!m)return {label:'No observation',lines:['No traffic observed'],remote:false};
    const observed=job.nodes[task.node_identity]?.observed_at_ms||0,last=previous.get(job.job_id+'/'+task.node_identity+'/'+task.id+'/'+direction+'/'+port),dt=observed-(last?.at||0);
    const rate=!fmt.terminal.has(job.state)&&last&&dt>0&&m.payload_bytes>=last.value?fmt.bytes((m.payload_bytes-last.value)*1000/dt)+'/s':'—';
-   return {label:fmt.bytes(m.payload_bytes),remote:m.remote_payload_bytes>0,lines:['负载 '+fmt.bytes(m.payload_bytes),'速率 '+rate,'跨节点负载 '+fmt.bytes(m.remote_payload_bytes),...(m.records===undefined?[]:['记录数 '+m.records.toLocaleString()]),'最后活动 '+fmt.time(m.last_activity_ms)]};
+   return {label:fmt.bytes(m.payload_bytes),remote:m.remote_payload_bytes>0,lines:['Payload '+fmt.bytes(m.payload_bytes),'Rate '+rate,'Cross-node payload '+fmt.bytes(m.remote_payload_bytes),...(m.records===undefined?[]:['Records '+m.records.toLocaleString()]),'Last activity '+fmt.time(m.last_activity_ms)]};
   }
   function edge(source,target,label,task,direction,port){
    const traffic=flow(task,direction,port),id='flow:'+target+':'+port+':'+source;
    edges.push({id,source,target,data:{port:label,traffic:traffic.label},style:{targetPort:source.startsWith('task:')&&target.startsWith('task:')?'left':'in',labelText:label+'\n'+traffic.label,stroke:traffic.remote?'#5c7bb5':'#a3b2c5',lineWidth:traffic.remote?1.8:1.3}});
-   details.set(id,{title:'数据流 · '+label,lines:traffic.lines});
+   details.set(id,{title:'Data flow · '+label,lines:traffic.lines});
   }
   for(const t of job.tasks){
-   const state=states[t.state]||{...pending,label:pending.label+' · '+(fmt.labels[t.state]||t.state||'等待')};
+   const state=states[t.state]||{...pending,label:pending.label+' · '+(fmt.labels[t.state]||t.state||'Waiting')};
    const incoming=aggregate(t,'inputs'),outgoing=aggregate(t,'outputs'),observed=job.nodes[t.node_identity]?.observed_at_ms;
-   nodes.push({id:'task:'+t.id,combo:groups.get(t.node),data:{kind:'task',title:t.title||t.id,subtitle:t.operator,stateLabel:state.label,border:t.state==='running'?2:1.2,color:state.color,fill:state.fill,dash:state.dash||[],incoming,outgoing},style:{size:[268,150]}});
-   details.set('task:'+t.id,{title:t.title||t.id,lines:['任务 ID：'+t.id,'算子：'+t.operator,'服务器：'+t.node,'状态：'+(fmt.labels[t.state]||t.state),...(t.replayed?['本次使用已物化结果重放']:[]),'输入负载：'+incoming,'输出负载：'+outgoing,'最近观测：'+fmt.time(observed)]});
+  nodes.push({id:'task:'+t.id,combo:groups.get(t.node),data:{kind:'task',title:t.title||t.id,subtitle:t.operator,stateLabel:state.label,border:t.state==='running'?2:1.2,color:state.color,fill:state.fill,dash:state.dash||[],incoming,outgoing},style:{size:[268,150]}});
+   details.set('task:'+t.id,{title:t.title||t.id,lines:['Task ID: '+t.id,'Operator: '+t.operator,'Server: '+t.node,'Status: '+(fmt.labels[t.state]||t.state),...(t.replayed?['Replaying from materialized results']:[]),'Input payload: '+incoming,'Output payload: '+outgoing,'Last observed: '+fmt.time(observed)]});
   }
   for(const t of job.tasks)for(const binding of t.inputs){
    let source='task:'+binding.task;
    if(!binding.task){
     source='input:'+t.id+':'+binding.port;
-    nodes.push({id:source,combo:groups.get(t.node),data:{kind:'input',title:binding.uri?.split('/').pop()||binding.port,subtitle:(binding.remote?'跨节点输入':'本地输入')+' · '+binding.port,color:'#7f93ad',fill:'#fff',dash:[]},style:{size:[228,76]}});
-    details.set(source,{title:(binding.remote?'跨节点输入':'本地输入')+' · '+binding.port,lines:[binding.uri||'', '表示：'+(binding.view||'bytes'),'服务器：'+t.node]});
+   nodes.push({id:source,combo:groups.get(t.node),data:{kind:'input',title:binding.uri?.split('/').pop()||binding.port,subtitle:(binding.remote?'Cross-node input':'Local input')+' · '+binding.port,color:'#7f93ad',fill:'#fff',dash:[]},style:{size:[228,76]}});
+    details.set(source,{title:(binding.remote?'Cross-node input':'Local input')+' · '+binding.port,lines:[binding.uri||'', 'Meaning: '+(binding.view||'bytes'),'Server: '+t.node]});
    }
    edge(source,'task:'+t.id,binding.task?binding.output_port+' → '+binding.port:binding.port,t,'inputs',binding.port);
   }
+  for(const t of job.tasks)for(const parent of (t.depends_on||[])){
+   const task=typeof parent==='string'?parent:parent.task;
+   const id='control:'+task+':'+t.id;
+   edges.push({id,source:'task:'+task,target:'task:'+t.id,data:{kind:'control'},style:{labelText:'Run after success',stroke:'#9868bd',lineDash:[6,4],lineWidth:1.7}});
+   details.set(id,{title:'Control dependency',lines:[task+' → '+t.id,'Starts after predecessors succeed; transfers no data.']});
+  }
   if(Object.keys(job.outputs).length){
-   combos.push({id:'client',data:{title:'结果出口',subtitle:job.output_route||'Union → 客户端'},style:{labelText:'结果出口 · '+(job.output_route||'Union → 客户端'),stroke:'#a3b2c5',fill:'#f5f7fa'}});
-   details.set('client',{title:'流式结果出口',lines:[job.output_route||'结果经 Union 转发至提交客户端','这里只展示执行元数据，不消费结果流。']});
+   combos.push({id:'client',data:{title:'Result outlet',subtitle:job.output_route||'Union → Client'},style:{labelText:'Result outlet · '+(job.output_route||'Union → Client'),stroke:'#a3b2c5',fill:'#f5f7fa'}});
+   details.set('client',{title:'Streaming result outlet',lines:[job.output_route||'Results forwarded through Union to the submitting client','Only execution metadata is shown; result streams are not consumed.']});
   }
   for(const [label,binding]of Object.entries(job.outputs)){
    const id='output:'+label;
-   nodes.push({id,combo:'client',data:{kind:'output',title:label,subtitle:job.output_route||'Union → 客户端',color:'#6f8ba7',fill:'#fff',dash:[]},style:{size:[228,76]}});
-   details.set(id,{title:'输出 · '+label,lines:[binding.task+'.'+binding.port,job.output_route||'经 Union 转发至提交客户端']});
+  nodes.push({id,combo:'client',data:{kind:'output',title:label,subtitle:job.output_route||'Union → Client',color:'#6f8ba7',fill:'#fff',dash:[]},style:{size:[228,76]}});
+   details.set(id,{title:'Output · '+label,lines:[binding.task+'.'+binding.port,job.output_route||'Forwarded through Union to the submitting client']});
    edge('task:'+binding.task,id,binding.port,tasks.get(binding.task),'outputs',binding.port);
   }
   const topology=JSON.stringify({nodes:nodes.map(n=>[n.id,n.combo]),edges:edges.map(e=>[e.id,e.source,e.target]),combos:combos.map(c=>c.id)});
@@ -84,7 +90,7 @@ window.DacpDag=(()=>{
     if(task){
      text('status',d.stateLabel,left,top+73,11,d.color,600);
      this.upsert('divider','line',{x1:left,x2:width/2-18,y1:top+91,y2:top+91,stroke:'#e1e9f0',lineWidth:1},container);
-     text('input-label','输入',left,top+109,10,'#8291a5');text('output-label','输出',12,top+109,10,'#8291a5');
+     text('input-label','Input',left,top+109,10,'#8291a5');text('output-label','Output',12,top+109,10,'#8291a5');
      text('input',d.incoming,left,top+130,16,'#324c65',600);text('output',d.outgoing,12,top+130,16,'#324c65',600);
     }
    }
@@ -113,17 +119,26 @@ window.DacpDag=(()=>{
    document.querySelectorAll('[data-dag-layout]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.dagLayout===this.layoutMode)));
    document.querySelectorAll('[data-dag-direction]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.dagDirection===this.direction)));
    document.getElementById('dag-expand').disabled=this.layoutMode==='swimlane';
-   document.getElementById('dag-layout-hint').textContent=this.layoutMode==='swimlane'?(this.direction==='vertical'?'按服务器分列 · 流程从上向下':'按服务器分行 · 流程从左向右')+' · 拖动平移 / 滚轮缩放':'拖动画布平移 · 滚轮缩放 · 双击分组折叠';
-   if(this.lastRequest)this.update(...this.lastRequest).catch(error=>{const box=document.getElementById('dag-error');box.textContent='拓扑图布局失败：'+error.message;box.hidden=false;});
+   document.getElementById('dag-layout-hint').textContent=this.layoutMode==='swimlane'?(this.direction==='vertical'?'Columns by server · top-to-bottom flow':'Rows by server · left-to-right flow')+' · drag to pan / scroll to zoom':'Drag to pan · scroll to zoom · double-click groups to collapse';
+   if(this.lastRequest)this.update(...this.lastRequest).catch(error=>{const box=document.getElementById('dag-error');box.textContent='Graph layout failed: '+error.message;box.hidden=false;});
   }
   action(fn){
-   this.pending=this.pending.catch(()=>{}).then(async()=>{if(this.graph){await fn();this.zoomLabel();}}).catch(error=>{const box=document.getElementById('dag-error');box.textContent='拓扑图操作失败：'+error.message;box.hidden=false;});return this.pending;
+   this.pending=this.pending.catch(()=>{}).then(async()=>{if(this.graph){await fn();this.zoomLabel();}}).catch(error=>{const box=document.getElementById('dag-error');box.textContent='Graph interaction failed: '+error.message;box.hidden=false;});return this.pending;
   }
   zoomLabel(){if(!this.graph||!this.ready)return;const zoom=this.graph.getZoom();document.getElementById('dag-zoom-label').textContent=Math.round(zoom*100)+'%';document.getElementById('dag-zoom-out').disabled=zoom<=.15;document.getElementById('dag-zoom-in').disabled=zoom>=2.5;}
   async fit(){this.mode='fit';await this.graph.fitView({when:'always',direction:'both'},false);this.zoomLabel();}
+  select(id){
+   const previous=this.inspected;this.inspect(id);
+   return this.action(async()=>{
+    const states={};
+    if(previous&&this.details.has(previous))states[previous]=[];
+    if(id&&this.details.has(id))states[id]=['selected'];
+    if(Object.keys(states).length)await this.graph.setElementState(states,false);
+   });
+  }
   inspect(id){
    this.inspected=id;const info=this.details.get(id),box=document.getElementById('dag-inspect');box.replaceChildren();
-   if(!info){box.textContent='点击任务、输入或连线，查看完整信息。';return;}
+   if(!info){box.textContent='Click a task, input or edge for full details.';return;}
    const title=document.createElement('strong');title.textContent=info.title;box.append(title);
    for(const line of info.lines){const row=document.createElement('span');row.textContent=line;box.append(row);}
   }
@@ -134,27 +149,28 @@ window.DacpDag=(()=>{
    if(vertical)for(const edge of model.data.edges)edge.style.targetPort='in';
    // Serialize viewport operations and refreshes; a slow render must finish before the next update.
    const work=this.pending.catch(()=>{}).then(async()=>{
-    if(!window.G6)throw new Error('G6 图组件未加载');
+    if(!window.G6)throw new Error('G6 Graph component failed to load');
     if(!registered){registerCard();registered=true;}
     this.details=model.details;
     const rebuild=!this.ready||this.job!==job.job_id||this.topology!==model.topology||this.renderedLayout!==layoutKey;
     if(rebuild){
-     this.destroyGraph();this.renderedLayout=layoutKey;document.getElementById('dag-error').hidden=true;this.host.replaceChildren();this.job=job.job_id;this.topology=model.topology;this.mode='fit';this.inspect(null);
+     const selected=this.job===job.job_id&&model.details.has(this.inspected)?this.inspected:null;
+     this.destroyGraph();this.renderedLayout=layoutKey;document.getElementById('dag-error').hidden=true;this.host.replaceChildren();this.job=job.job_id;this.topology=model.topology;this.mode='fit';this.inspect(selected);
      this.graph=new G6.Graph({
       container:this.host,width:this.host.clientWidth,height:this.host.clientHeight,animation:false,padding:36,zoomRange:[.15,2.5],data:model.data,
       layout:layout==='swimlane'?undefined:{type:'combo-combined',comboPadding:[64,24,24,24],comboSpacing:64,layout:comboId=>({type:'dagre',rankdir:vertical?'TB':'LR',nodesep:comboId?36:70,ranksep:comboId?70:90})},
-      node:{type:'dacp-task-card',style:{card:d=>d.data,fill:d=>d.data.fill,stroke:d=>d.data.color,lineDash:d=>d.data.dash,lineWidth:d=>d.data.border||1.2,radius:12,shadowColor:'#1e3a5f0c',shadowBlur:10,shadowOffsetY:4,label:false,ports:[{key:'in',placement:vertical?'top':'left'},{key:'out',placement:vertical?'bottom':'right'},{key:'left',placement:'left'},{key:'right',placement:'right'}],portR:3,portFill:'#fff',portStroke:'#b5c4d6'}},
-      edge:{type:'polyline',style:{sourcePort:'out',targetPort:d=>d.style?.targetPort||'in',router:d=>({type:'shortest-path',enableObstacleAvoidance:true,offset:16,gridSize:10,startDirections:[vertical?'bottom':'right'],endDirections:[vertical?'top':'left']}),radius:10,endArrow:true,endArrowSize:7,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#6e829b',labelBackground:true,labelBackgroundFill:'#fff',labelBackgroundRadius:5,labelPadding:[4,7],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
-      combo:{type:'rect',style:{radius:18,padding:d=>d.style?.padding||[64,24,24,24],lineWidth:2,fillOpacity:1,labelPlacement:'top-left',labelTextAlign:'left',labelOffsetX:16,labelOffsetY:20,labelFontSize:12,labelFontWeight:600,labelFill:'#526b88',collapsedSize:[268,76]}},
+      node:{type:'dacp-task-card',state:{selected:{stroke:'#2563eb',lineWidth:3.5,shadowColor:'#2563eb66',shadowBlur:20,shadowOffsetY:0}},style:{card:d=>d.data,fill:d=>d.data.fill,stroke:d=>d.data.color,lineDash:d=>d.data.dash,lineWidth:d=>d.data.border||1.2,radius:12,shadowColor:'#1e3a5f0c',shadowBlur:10,shadowOffsetY:4,label:false,ports:[{key:'in',placement:vertical?'top':'left'},{key:'out',placement:vertical?'bottom':'right'},{key:'left',placement:'left'},{key:'right',placement:'right'}],portR:3,portFill:'#fff',portStroke:'#b5c4d6'}},
+      edge:{type:'polyline',state:{selected:{stroke:'#2563eb',lineWidth:4,shadowColor:'#2563eb55',shadowBlur:10,labelFill:'#1d4ed8',labelFontWeight:700,labelBackgroundFill:'#dbeafe'}},style:{sourcePort:'out',targetPort:d=>d.style?.targetPort||'in',router:d=>({type:'shortest-path',enableObstacleAvoidance:true,offset:16,gridSize:10,startDirections:[vertical?'bottom':'right'],endDirections:[vertical?'top':'left']}),radius:10,endArrow:true,endArrowSize:7,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#6e829b',labelBackground:true,labelBackgroundFill:'#fff',labelBackgroundRadius:5,labelPadding:[4,7],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
+      combo:{type:'rect',state:{selected:{stroke:'#2563eb',lineWidth:3.5,shadowColor:'#2563eb44',shadowBlur:16}},style:{radius:18,padding:d=>d.style?.padding||[64,24,24,24],lineWidth:2,fillOpacity:1,labelPlacement:'top-left',labelTextAlign:'left',labelOffsetX:16,labelOffsetY:20,labelFontSize:12,labelFontWeight:600,labelFill:'#526b88',collapsedSize:[268,76]}},
       behaviors:[{type:'drag-canvas',onFinish:()=>{this.mode='manual';}},{type:'zoom-canvas',sensitivity:.5,onFinish:()=>{this.mode='manual';this.zoomLabel();}},{type:'collapse-expand',enable:event=>layout!=='swimlane'&&event.targetType==='combo',animation:false}],
      });
-     for(const type of ['node','edge','combo'])this.graph.on(type+':click',event=>this.inspect(event.target.id));
-     this.graph.on('canvas:click',()=>this.inspect(null));
+     for(const type of ['node','edge','combo'])this.graph.on(type+':click',event=>this.select(event.target.id));
+     this.graph.on('canvas:click',()=>this.select(null));
      this.graph.on('aftertransform',()=>this.zoomLabel());
-     await this.graph.render();this.ready=true;await this.fit();
+     await this.graph.render();if(selected)await this.graph.setElementState({[selected]:['selected']},false);this.ready=true;await this.fit();
     }else{
      // Retain G6-computed coordinates, edge routing, collapsed groups and viewport.
-     this.graph.updateData({nodes:model.data.nodes.map(({style,...node})=>node),edges:model.data.edges.map(e=>({id:e.id,data:e.data,style:{labelText:e.style.labelText,stroke:e.style.stroke,lineWidth:e.style.lineWidth}}))});
+     this.graph.updateData({nodes:model.data.nodes.map(({style,...node})=>node),edges:model.data.edges.map(e=>({id:e.id,data:e.data,style:{labelText:e.style.labelText,stroke:e.style.stroke,lineWidth:e.style.lineWidth,lineDash:e.style.lineDash}}))});
      await this.graph.draw();if(this.inspected)this.inspect(this.inspected);
     }
     this.zoomLabel();

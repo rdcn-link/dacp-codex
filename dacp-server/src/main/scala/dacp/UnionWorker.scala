@@ -82,7 +82,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     require(tasks.map(t=>Json.text(t,"id")).distinct.size==tasks.size,"duplicate task")
     require(tasks.map(t=>t.path("inputs").size()+t.path("outputs").size()).sum<=1024,"subjob exceeds 1024 connected ports")
     tasks.foreach { t=>
-      Json.fields(t,Set("id","operator","params","inputs","outputs"),Set("title","materialize","replay_from"));Json.id(Json.text(t,"id"))
+      Json.fields(t,Set("id","operator","params","inputs","outputs"),Set("title","materialize","replay_from","depends_on","control_consumers","read_source"));Json.id(Json.text(t,"id"))
       if(t.has("title"))require(t.path("title").isTextual && t.path("title").asText.trim.nonEmpty && t.path("title").asText.length<=256 && !t.path("title").asText.exists(_.isControl),"invalid task title")
       val selected=if(t.has("materialize"))Json.strings(t,"materialize")else Vector.empty
       require(selected.distinct.size==selected.size && selected.forall(t.path("outputs").has),"invalid materialization ports")
@@ -97,7 +97,25 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           require(t.path("outputs").fieldNames.asScala.forall(m.path("stored_ports").has),"replay needs all connected outputs materialized")
         }finally artifact.close()
       }
-      val op=Json.text(t,"operator");if(!Json.strings(policy,"operators").contains(op))denied("operator denied")
+      val op=Json.text(t,"operator");if(op!=Jobs.ReadItem && !Json.strings(policy,"operators").contains(op))denied("operator denied")
+      if(op==Jobs.ReadItem){
+        val source=Task(t.path("id").asText,Map.empty,op,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]))
+        val binding=Jobs.readBinding(source).get
+        require(t.path("inputs").isObject && t.path("inputs").size()==0,"read_item has no input ports")
+        if(DacpUri.origin(binding.uri.get)==DacpUri.origin(config.uri(""))){
+          require(!t.has("read_source"),"local read_item must not have a remote source")
+          if(!Json.strings(policy,"input_prefixes").exists(DacpUri.within(binding.uri.get,_)))denied("read_item computation denied")
+        }else {
+          val source=t.path("read_source");Json.fields(source,Set("origin","identity"))
+          require(Json.text(source,"identity")==who && Json.origin(Json.text(source,"origin"))==DacpUri.origin(binding.uri.get),"remote read_item must use the scheduler's pinned stream namespace")
+        }
+      }
+      if(t.has("control_consumers"))Json.strings(t,"control_consumers").foreach(Json.identity)
+      if(t.has("depends_on"))Json.array(t,"depends_on").foreach { b=>
+        Json.fields(b,Set("task"),Set("origin","identity"));Json.id(Json.text(b,"task"))
+        require(b.has("origin")==b.has("identity"),"control source needs origin and identity")
+        if(b.has("origin")){Json.origin(Json.text(b,"origin"));Json.identity(Json.text(b,"identity"))}
+      }
       require(t.path("params").isObject && t.path("inputs").isObject && t.path("inputs").size()<=32 && t.path("outputs").isObject && t.path("outputs").size()<=32,"invalid task ports")
       t.path("inputs").fields.asScala.foreach(e=>{Json.id(e.getKey);validateInput(e.getValue,policy)})
       t.path("outputs").fields.asScala.foreach(e=>{Json.id(e.getKey);Json.identity(e.getValue.asText)})
@@ -108,7 +126,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     })
     var pending=tasks;var done=Set.empty[String]
     while(pending.nonEmpty){
-      val ready=pending.filter(t=>t.has("replay_from") || t.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin")).forall(b=>done(b.path("task").asText)))
+      val ready=pending.filter(t=>(t.has("replay_from") || t.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin")).forall(b=>done(b.path("task").asText))) && (t.has("replay_from") || t.path("depends_on").elements.asScala.filterNot(_.has("origin")).forall(b=>done(b.path("task").asText))))
       require(ready.nonEmpty,"cyclic local task DAG");done++=ready.map(_.path("id").asText);pending=pending.filterNot(ready.contains)
     }
     val localEdges=tasks.filterNot(_.has("replay_from")).flatMap(_.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin")).map(b=>(b.path("task").asText,b.path("port").asText)))
@@ -137,6 +155,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         Json.fields(n,Set("union_id"));val id=Json.text(n,"union_id");val policy=grant(id,who)
         val ownReserved=sessions.values.asScala.filter(s=> !s.terminal && s.union==id && s.owner==who).map(_.size).sum
         val result=Json.obj().put("node_identity",tls.identity).put("data_origin",DacpUri.origin(config.uri(""))).put("reserved_tasks",reserved).put("capacity",config.maxConcurrentTasks).put("union_reserved_tasks",ownReserved).put("union_capacity",policy.path("max_concurrent_tasks").asInt).put("started_at_ms",java.lang.management.ManagementFactory.getRuntimeMXBean.getStartTime).put("uptime_ms",java.lang.management.ManagementFactory.getRuntimeMXBean.getUptime).put("observed_at_ms",Json.now)
+        result.set[JsonNode]("resources",NodeResources.snapshot())
         result.put("web_enabled",config.runningWebUrl.nonEmpty);config.runningWebUrl.foreach(result.put("web_url",_))
         val ids=result.putArray("executors");config.plugins.services(classOf[OperatorExecutor]).foreach(x=>ids.add(x.id));result
       case "materialized_status"=>
@@ -147,6 +166,9 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
             result.put("committed",true).put("expires_at_ms",m.path("expires_at_ms").asLong);result.set[JsonNode]("ports",m.path("stored_ports"))
           }finally a.close()
         };result
+      case "task_status"=>
+        Json.fields(n,Set("execution_id","task"));val session=find(Json.text(n,"execution_id"),who,owner=false)
+        session.controlStatus(Json.id(Json.text(n,"task")),who)
       case "prepare"=>prepare(n,who).snapshot
       case "start"|"execution_status"|"cancel_execution"=>
         Json.fields(n,Set("execution_id"));val id=Json.text(n,"execution_id")
@@ -294,14 +316,23 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     @volatile private var executionMode="isolated_steps"
     @volatile private var fusionReason="not_planned"
     private def grouped():Option[(PreparedOperatorGroup,Map[String,(String,String,JsonNode)],Map[String,(String,String)])]={
+      if(definitions.exists(t=>t.path("depends_on").size()>0)){fusionReason="transport_source_or_control_boundary";return None}
       if(definitions.exists(t=>t.has("replay_from") || t.path("materialize").size()>0)){fusionReason="materialization_boundary";return None}
       if(!allowFusion){fusionReason="node_partition_not_fusible";return None}
       if(runner.nonEmpty || definitions.size<2){fusionReason="single_step_or_test_runner";return None}
+      val readers=definitions.filter(_.path("operator").asText==Jobs.ReadItem).map(t=>t.path("id").asText->t).toMap
+      if(readers.values.exists(t=>t.path("outputs").size()==0 || t.path("outputs").elements.asScala.exists(_.asText!=tls.identity))){fusionReason="selected_transport_source";return None}
       val external=scala.collection.mutable.Map.empty[String,(String,String,JsonNode)]
-      val tasks=definitions.map { t=>
+      val tasks=definitions.filterNot(t=>readers.contains(t.path("id").asText)).map { t=>
         val id=t.path("id").asText
         val bindings=t.path("inputs").fields.asScala.map { e=>
-          val b=e.getValue
+          val original=e.getValue
+          val b=readers.get(original.path("task").asText).map { r=>
+            require(original.path("port").asText=="result","read_item has only result output")
+            val b=Json.obj().put("uri",r.path("params").path("uri").asText).put("view",r.path("params").path("view").asText).put("source_task",r.path("id").asText)
+            if(r.has("read_source"))b.put("origin",r.path("read_source").path("origin").asText).put("identity",r.path("read_source").path("identity").asText)
+            b
+          }.getOrElse(original)
           val binding=if(b.has("uri") || b.has("origin")){
             val marker=config.uri("union","/"+id+"_"+e.getKey);external(marker)=(id,e.getKey,b);InputBinding(uri=Some(marker))
           }else InputBinding(task=Some(b.path("task").asText),port=b.path("port").asText)
@@ -309,7 +340,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         }.toMap
         Task(id,bindings,t.path("operator").asText,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),title=Option(t.get("title")).map(_.asText))
       }
-      val connected=definitions.flatMap(t=>t.path("outputs").fields.asScala.filter(_.getValue.asText!=tls.identity).map(e=>(t.path("id").asText,e.getKey))).zipWithIndex.map{case(pair,i)=>s"p$i"->pair}.toMap
+      val connected=definitions.filterNot(t=>readers.contains(t.path("id").asText)).flatMap(t=>t.path("outputs").fields.asScala.filter(_.getValue.asText!=tls.identity).map(e=>(t.path("id").asText,e.getKey))).zipWithIndex.map{case(pair,i)=>s"p$i"->pair}.toMap
       OperatorGroups.prepare(config,JobPlan(tasks,connected)) match {
         case Left(reason)=>fusionReason=reason;None
         case Right(group)=>executionMode="shared_process";fusionReason="compatible";Some((group,external.toMap,connected))
@@ -320,7 +351,12 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         try {
           val inputs=group.inputs.map {case(port,binding)=>
             val (task,name,b)=external(binding.uri.get)
-            val src=if(b.has("uri"))localInput(b)else remoteInput(b)
+            val raw=if(b.has("uri")){if(b.has("origin"))datasetInput(b)else localInput(b)}else remoteInput(b)
+            val src=if(!b.has("source_task"))raw else new FrameSource {
+              val read=b.path("source_task").asText;states.put(read,"running");taskRecords(read).update("running")
+              def next():Option[OperatorFrame]={val f=raw.next();f.foreach { x=>observed(read,"outputs","result",x,false);if(StreamProtocol.header(x).path("type").asText=="end"){states.put(read,"succeeded");taskRecords(read).update("succeeded")} };f}
+              def close():Unit=raw.close()
+            }
             port->new TrackedInput(src,task,name,b.has("origin"))
           }
           def event(h:JsonNode):Unit={
@@ -348,6 +384,11 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         }catch{case t:Throwable=>stop("failed",Some(Option(t.getMessage).getOrElse(t.getClass.getSimpleName)));throw t}
       }
     }
+    def controlStatus(task:String,who:String):JsonNode={
+      val definition=definitions.find(_.path("id").asText==task).getOrElse(throw UnionFailure(NOT_FOUND,"task unavailable"))
+      if(who!=owner && !Option(definition.get("control_consumers")).exists(_.elements.asScala.exists(_.asText==who)))denied("control status consumer denied")
+      Json.obj().put("task",task).put("state",states.get(task))
+    }
     private[dacp] def executionSnapshots:Vector[JsonNode]=sessions.values.asScala.toVector.map(_.snapshot)
   def start():Unit={
       if(!started.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"execution already started")
@@ -357,6 +398,18 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       val threads=definitions.map { t=>StreamProtocol.thread(cancel){
         val taskId=t.path("id").asText
         try {
+          states.put(taskId,"waiting_dependencies");taskRecords(taskId).update("waiting_dependencies")
+          val controls=if(t.has("replay_from"))Vector.empty else Option(t.get("depends_on")).map(_.elements.asScala.toVector).getOrElse(Vector.empty)
+          controls.foreach { b=>
+            var complete=false
+            while(!complete){
+              cancel.active()
+              val value=if(b.has("origin"))remote.action(b.path("origin").asText,"task_status",Json.obj().put("execution_id",id).put("task",b.path("task").asText),Some(b.path("identity").asText),hops=proxyPath,timeout=math.min(timeoutSeconds,10)).path("state").asText
+                else Option(states.get(b.path("task").asText)).getOrElse(throw new IllegalArgumentException("unknown control task"))
+              if(Set("failed","cancelled","expired")(value))throw new IllegalStateException("control predecessor failed")
+              complete=value=="succeeded";if(!complete)Thread.sleep(50)
+            }
+          }
           if(t.has("replay_from")){
             states.put(taskId,"replaying");taskRecords(taskId).update("replaying")
             val artifact=replayArtifacts(taskId)
@@ -413,7 +466,16 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
             outputs.get((taskId,port)).foreach(out=>{observed(taskId,"outputs",port,f,out.consumer!=tls.identity);out.queue.put(f)})
           }
           try {
-            runner match {case Some(run)=>run(task,inputs,emit,cancel);case None=>executor.execute(task,inputs,emit,cancel)}
+            Jobs.readBinding(task) match {
+              case Some(binding)=>
+                val descriptor=Json.obj().put("uri",binding.uri.get).put("view",binding.view)
+                val source=if(t.has("read_source")){
+                  descriptor.put("origin",t.path("read_source").path("origin").asText).put("identity",t.path("read_source").path("identity").asText)
+                  datasetInput(descriptor)
+                }else localInput(descriptor)
+                try {var f=source.next();while(f.nonEmpty){emit(StreamProtocol.rename(f.get,"result"));f=source.next()}}finally source.close()
+              case None=>runner match {case Some(run)=>run(task,inputs,emit,cancel);case None=>executor.execute(task,inputs,emit,cancel)}
+            }
             // Worker transports must validate upstream success, not only an end frame.
             inputs.values.foreach { s=>
               // End has been consumed by the executor; the next item is completion/queue EOF.

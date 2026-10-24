@@ -2,6 +2,8 @@
 
 [English](README_en.md) · [文档目录](../README.md) · [开发者指南](../developers/README.md)
 
+Job 的输入和最终输出使用 `task[:port]`，端口缺省为 `result`；外部数据通过 `read_item@1.0` 接入，执行时序通过 `depends_on` 表达。详见[数据流与控制依赖作业](../jobs.md).
+
 面向浏览数据、使用 SDK、执行算子，以及使用已有插件配置 DACP 节点的用户。除非另有说明，命令均从项目根目录执行。实现新后端、格式或算子请阅读开发者指南。
 
 ## 数据模型
@@ -54,17 +56,17 @@ export DACP_KEY="$PWD/examples/certs/client.key"
 ls /
 ls /reports
 ls /archive
-show /archive/reports/orders.csv records
+cat /archive/reports/orders.csv records
 ls /images
-show /images/images/pixel.png hex
+cat /images/images/pixel.png hex
 ls /bundle_gzip
-show /bundle_gzip/reports/orders.csv records
+cat /bundle_gzip/reports/orders.csv records
 ls /orders.csv.gz
-show /orders.csv.gz/orders.csv records
-show /orders.csv.gz hex
-show /reports/orders records
-show /events text
-show /image hex
+cat /orders.csv.gz/orders.csv records
+cat /orders.csv.gz hex
+cat /reports/orders records
+cat /events text
+cat /image hex
 count /reports/orders
 quit
 ```
@@ -137,7 +139,7 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 `ls` 以带外边框的表格显示 #、Path、Format、Bytes、Records 和 Modified (UTC)，首列为从 1 开始的条目编号。未知值显示为 `-`，时间格式为 `2026-10-16 06:22:02`；终端中集合路径以加粗青色高亮。
 
-`show` 接受路径或最近一次列表中的编号；默认优先显示记录，否则显示十六进制。记录使用带列名的表格，`text` 显示文本，`hex` 显示偏移量、十六进制及 ASCII。默认最多预览 20 行或 4096 字节，可通过 `--rows` 和 `--bytes` 调整。
+`cat` 接受路径或最近一次列表中的编号；默认优先显示记录，否则显示十六进制。记录使用带列名的表格，`text` 显示文本，`hex` 显示偏移量、十六进制及 ASCII。默认最多预览 20 行或 4096 字节，可通过 `--rows` 和 `--bytes` 调整。
 
 `datasets` 显示 `#`、`Name`、`Description (JSON)` 三列，不显示 URI。使用 `use NAME` 按名称切换同一服务器上的数据集，也可用 `use 1` 选择最近一次 `datasets` 列表中的第 1 行。行号从 1 开始，刷新列表会更新映射，重新连接会清空映射；纯数字参数按行号解释。使用 `connect URI` 连接其他位置，`help` 查看命令。证书也可通过 `--ca`、`--cert`、`--key` 指定。
 
@@ -154,7 +156,7 @@ shell 使用 SQLGlot 将支持的 SQL 子集转换为与 SDK 相同的远程扫�
 
 ### 帮助与命令示例
 
-输入 `help` 查看命令列表及简短示例；输入 `help show`、`help select`、`help run`、`help submit` 查看具体语法和用法。帮助中的路径为示例，请使用 Dataset 实际公布的路径。条目编号对应最近一次 `ls` 的结果。
+输入 `help` 查看命令列表及简短示例；输入 `help cat`、`help select`、`help run`、`help submit` 查看具体语法和用法。帮助中的路径为示例，请使用 Dataset 实际公布的路径。条目编号对应最近一次 `ls` 的结果。
 
 ### Scala SDK
 

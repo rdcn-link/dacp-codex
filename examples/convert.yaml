@@ -1,13 +1,21 @@
 job: demo
 tasks:
-  - id: convert
-    inputs:
-      source: {uri: 'dacp://localhost:8815/data1/reports/orders', view: bytes}
-    operator: format_convert@1.1
-    params:
-      from: csv
-      to: parquet
-      schema: {id: int64, amount: float64}
-      on_conflict: fail
+- id: read_convert_source
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://localhost:8815/data1/reports/orders
+    view: bytes
+- id: convert
+  inputs:
+    source: read_convert_source
+  operator: format_convert@1.1
+  params:
+    from: csv
+    to: parquet
+    schema:
+      id: int64
+      amount: float64
+    on_conflict: fail
 outputs:
-  result: {task: convert, port: result}
+  result: convert

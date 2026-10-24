@@ -32,7 +32,8 @@ object Settings {
 }
 final class Members(settings:Settings) extends AutoCloseable {
   val tls=settings.tls
-  val remote=new Remote(tls)
+  val traffic=new dacp.union.FlightTraffic()
+  val remote=new Remote(tls,Some(traffic))
   private val directory=settings.state.resolve("members")
   Files.createDirectories(directory)
   val unionId:String=Json.locked(settings.state) {

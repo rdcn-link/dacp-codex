@@ -50,7 +50,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         require(previous.isEmpty || request.getJobYaml.isEmpty,"replay uses original job definition")
         val raw=if(!request.getExecutionPolicyJson.isEmpty)Data.mapper.readTree(request.getExecutionPolicyJson.toByteArray)
           else previous.map(_.path("execution_policy")).getOrElse(dacp.union.Json.obj())
-        val plan=Jobs.parse(yaml);val policy=ExecutionPolicy.parse(raw,plan)
+        val plan=Jobs.parse(yaml);plan.tasks.foreach(Jobs.authorizeSource(config,_));val policy=ExecutionPolicy.parse(raw,plan)
         val timeout=policy.timeoutSeconds.getOrElse(config.executionTimeoutSeconds)
         require(timeout<=config.executionTimeoutSeconds,"timeout_seconds exceeds server limit")
         require(policy.maxRetries==0 || request.getRetryAware,"automatic retries require a retry-aware client callback")
@@ -137,32 +137,9 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     }
   }
   protected def source(binding:InputBinding,c:StreamCancel): FrameSource = {
-    val uri=binding.uri.get;val u=DacpUri.parse(uri);val split=u.getPath.stripPrefix("/").split("/",2)
-    val client=c.add(NodeConnection.open(config,allocator,uri))
-    val info=client.getInfo(FlightDescriptor.path("datasets",split(0),"/"+split(1)))
-    val meta=Metadata.Item.parseFrom(info.getAppMetadata)
-    require(meta.getKind=="data" && meta.getViewsList.contains(binding.view),"input must be a data item with the selected view")
-    val ticket=Metadata.Ticket.newBuilder().setDataset(split(0)).setItem("/"+split(1)).setView(binding.view).build()
-    val stream=c.add(client.getStream(new Ticket(ticket.toByteArray)))
-    new FrameSource {
-      private var began=false;private var ended=false;private var pending=Iterator.empty[Array[Byte]]
-      def next():Option[OperatorFrame]={
-        c.active()
-        if(!began){began=true;return Some(StreamProtocol.start("",binding.view,meta.getFormat,if(binding.view=="records")Some(stream.getSchema)else None))}
-        if(ended)return None
-        if(binding.view=="bytes") {
-          while(!pending.hasNext) {
-            if(!stream.next()){ended=true;return Some(StreamProtocol.frame("end"))}
-            val root=stream.getRoot;require(root.getSchema==PluginSchemas.bytes,"invalid byte input schema")
-            pending=(0 until root.getRowCount).iterator.flatMap(i=>root.getVector(0).asInstanceOf[VarBinaryVector].get(i).grouped(65536))
-          }
-          Some(StreamProtocol.frame("data",data=pending.next()))
-        } else if(stream.next())Some(StreamProtocol.frame("data",data=StreamProtocol.batch(stream.getRoot)))
-        else {ended=true;Some(StreamProtocol.frame("end"))}
-      }
-      def close():Unit={stream.close();client.close()}
-    }
+    ItemSource.open(config,allocator,binding,c)
   }
+
   private def coordinate(yaml:String,emit:OperatorFrame=>Unit,c:StreamCancel,record:ExecutionHistory#Record):Unit={
     val plan=Jobs.parse(yaml)
     val details=dacp.union.Json.obj();val tasks=details.putArray("tasks")
@@ -178,10 +155,10 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     require(!plan.outputs.values.exists(p=>edges.exists(e=>(e._1,e._2)==p)),"a consumed output cannot also be a terminal result")
     val queues=edges.map(e=>(e._3,e._4)->new FrameQueue(c)).toMap
     plan.tasks.foreach{t=>
-      val uris=t.inputs.values.toVector.flatMap(b=>b.uri.toVector++b.task.toVector.flatMap(provenance)).distinct
+      val uris=Jobs.readBinding(t).flatMap(_.uri).toVector++t.inputs.values.toVector.flatMap(b=>b.uri.toVector++b.task.toVector.flatMap(provenance)).distinct
       provenance+=t.id->uris
       val anchor=t.inputs.toVector.sortBy(_._1).headOption.map(_._2)
-      val target=t.node.map(DacpUri.node).getOrElse(anchor.map(b=>b.uri.map(DacpUri.origin).getOrElse(targets(b.task.get))).getOrElse(local))
+      val target=t.node.map(DacpUri.node).getOrElse(Jobs.readBinding(t).flatMap(_.uri).map(DacpUri.origin).getOrElse(anchor.map(b=>b.uri.map(DacpUri.origin).getOrElse(targets(b.task.get))).getOrElse(local)))
       require(allowed(target),"FORBIDDEN: task target not in task_peers");targets+=t.id->target
     }
     if(targets.values.toSet.size==1 && targets.values.head!=local){
@@ -209,9 +186,13 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
             val inputs=scala.collection.mutable.Map.empty[String,FrameSource]
             try {
               group.inputs.foreach {case(port,b)=>
-                val raw=source(b,c);val (task,name)=external(port)
+                val raw=source(b,c);val (task,name)=group.transportSources.get(port).map(_->"result").getOrElse(external(port))
+                group.transportSources.get(port).foreach(id=>children(id).update("running"))
                 inputs(port)=new FrameSource {
-                  def next():Option[OperatorFrame]={val f=raw.next();f.foreach(x=>counters.computeIfAbsent(task+"/inputs/"+name,_=>new UnionPortMetrics(allocator)).observe(x,remote=false));f}
+                  def next():Option[OperatorFrame]={val f=raw.next();f.foreach { x=>
+                    counters.computeIfAbsent(task+(if(group.transportSources.contains(port))"/outputs/"else "/inputs/")+name,_=>new UnionPortMetrics(allocator)).observe(x,remote=false)
+                    if(StreamProtocol.header(x).path("type").asText=="end")group.transportSources.get(port).foreach { id=>children(id).update("succeeded");completed.add(id) }
+                  };f}
                   def close():Unit=raw.close()
                 }
               }
@@ -232,7 +213,9 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     }else record.update("running",dacp.union.Json.obj().put("execution_mode","isolated_steps").put("fusion_reason","different_nodes"))
     require(targets.values.count(_==local)<=config.maxConcurrentTasks,"pipeline needs more local task slots; increase max_concurrent_tasks")
     val terminal=new FrameQueue(c)
+    val completed=java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
     val threads=plan.tasks.map{t=>StreamProtocol.thread(c){
+      while(!t.dependsOn.forall(completed.contains)){c.active();Thread.sleep(20)}
       val inputs=t.inputs.map{case(port,b)=>port->b.uri.map(_=>source(b,c)).getOrElse(queues(t.id,port))}
       var seen=Set.empty[String]
       peer(targets(t.id),t,provenance(t.id),inputs,f=>{
@@ -241,12 +224,12 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         edges.find(e=>e._1==t.id && e._2==port) match {
           case Some(e)=>queues(e._3,e._4).put(StreamProtocol.rename(f,e._4))
           case None=>
-            val label=if(plan.outputs.isEmpty)Some(t.id+"."+port)else plan.outputs.find(_._2==(t.id,port)).map(_._1)
+            val label=plan.outputs.find(_._2==(t.id,port)).map(_._1)
             label.foreach(name=>terminal.put(StreamProtocol.rename(f,name,t.id)))
         }
       },c,record.id)
       val required=edges.filter(_._1==t.id).map(_._2).toSet++plan.outputs.values.filter(_._1==t.id).map(_._2)
-      require(required.subsetOf(seen),"unknown upstream/selected output port")
+      require(required.subsetOf(seen),"unknown upstream/selected output port");completed.add(t.id)
     }}
     val completion=StreamProtocol.thread(c){threads.foreach(join(_,c));terminal.end()}
     var next=terminal.next();while(next.nonEmpty){emit(next.get);next=terminal.next()};join(completion,c)

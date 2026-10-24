@@ -44,16 +44,20 @@ END
 ```yaml
 job: uppercase
 tasks:
-  - id: uppercase
-    operator:
-      runtime: python@1.0
-      source: |
-        def process(inputs, params):
-            for chunk in inputs['source']:
-                yield chunk.upper()
-    inputs:
-      source: {uri: 'dacp://localhost:18815/data1/orders', view: bytes}
-    params: {output_format: csv}
+- id: read_uppercase_source
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://localhost:18815/data1/orders
+    view: bytes
+- id: uppercase
+  operator:
+    runtime: python@1.0
+    source: "def process(inputs, params):\n    for chunk in inputs['source']:\n        yield chunk.upper()\n"
+  inputs:
+    source: read_uppercase_source
+  params:
+    output_format: csv
 ```
 
 SDK 使用 `with Job.run(node, yaml_text, **credentials) as events:`，迭代事件消费流，退出上下文时关闭。`run identity@1.1 --input source=/orders` 仍选择仓库算子；算子 ID 与内嵌源码互斥。

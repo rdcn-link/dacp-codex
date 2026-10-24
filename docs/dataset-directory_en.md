@@ -4,7 +4,13 @@
 
 DACP nodes publish local catalogs; Union reads approved members online and exposes its own DACP namespace using short names. SDKs use the `dacp.catalog` Action to obtain a `Directory` with completeness fields. `ListFlights` fails for incomplete catalogs. See [Union proxy service](union-proxy_en.md).
 
-Click “查看数据集” in the Union website member list to open one member’s directory. Opening or refreshing the page queries only that member over Flight, with a 5-second timeout. Directories are never saved, cached, or polled. Failed reads report an error instead of showing old entries.
+The Union website has three independent pages:
+
+- `/`: operations dashboard with jobs, execution states, DAGs, policies and attempt records.
+- `/nodes`: graphical member nodes with health, capacity, startup time, uptime and node website links. Status updates every five seconds. Expanding a node reads its local dataset names and URIs inline with a five-second timeout. Cards expand independently and support manual refresh and retry; dataset lists are not polled.
+- `/datasets`: the data catalog merges approved member catalogs online and displays Union-assigned public `name` values such as `ds-k7m2-9wqr`, JSON descriptions and Union URIs. This is the same namespace returned to clients by `dacp.catalog`. Filtering and manual refresh are available. Unreachable members produce an explicit incomplete-directory warning rather than presenting partial results as complete.
+
+Local names and Union public names belong to different namespaces. Datasets have no separate `id` attribute. Union persists name mappings for stable public names, not dataset lists. Loaded local directories stay only in the current browser page; refreshing the node list clears them.
 
 ## Access boundaries
 
@@ -57,7 +63,7 @@ dacp-shell> use orders
 dacp-shell> ls /
 ```
 
-`datasets` accepts no arguments and shows row numbers, dataset names, and descriptions in the columns `#`, `Name`, and `Description (JSON)`, without URIs. On startup or `connect dacp://host:port`, the shell automatically selects and prints the sole Dataset when the complete catalog contains exactly one Dataset. With zero or multiple Datasets, select one with `use NAME` or `use NUMBER` before `ls`, `count`, `show`, `SELECT`, or `run`. `use` selects a Dataset on the current server; published datasets are readable by default. Union uses automatically assigned public short names, selected directly with `use NAME`. Incomplete catalogs never trigger automatic selection. Row numbers start at 1 and refer to the latest `datasets` output, for example `use 1`. Running `datasets` updates the mapping; reconnecting clears it. Numeric arguments are interpreted as row numbers, with out-of-range values rejected.
+`datasets` accepts no arguments and shows row numbers, dataset names, and descriptions in the columns `#`, `Name`, and `Description (JSON)`, without URIs. On startup or `connect dacp://host:port`, the shell automatically selects and prints the sole Dataset when the complete catalog contains exactly one Dataset. With zero or multiple Datasets, select one with `use NAME` or `use NUMBER` before `ls`, `count`, `cat`, `SELECT`, or `run`. `use` selects a Dataset on the current server; published datasets are readable by default. Union uses automatically assigned public short names, selected directly with `use NAME`. Incomplete catalogs never trigger automatic selection. Row numbers start at 1 and refer to the latest `datasets` output, for example `use 1`. Running `datasets` updates the mapping; reconnecting clears it. Numeric arguments are interpreted as row numbers, with out-of-range values rejected.
 
 ## Python
 

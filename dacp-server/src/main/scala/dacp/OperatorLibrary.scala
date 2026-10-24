@@ -50,7 +50,7 @@ object OperatorLibrary {
     }
     require(configuration.isObject, "executor_config must be a mapping")
     val settings = Data.mapper.convertValue(configuration,classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap
-    val inputs = OperatorPorts.read(ports.path("inputs"), allowEmpty = true); val outputs = OperatorPorts.read(ports.path("outputs"))
+    val inputs = OperatorPorts.read(ports.path("inputs")); val outputs = OperatorPorts.read(ports.path("outputs"))
     val program=OperatorProgram(reference,entrypoint,artifact,settings,
       inputs.map { case(k,v)=>k->v.representations },outputs.map { case(k,v)=>k->v.representations })
     val command=config.plugins.byId(classOf[OperatorExecutor],executor).command(program,target)

@@ -196,6 +196,6 @@ final class OperatorContext(directory:Path,paramsFile:Path,out:OutputStream,
       try {writer.start();writer.writeBatch();writer.end();frame("data",name,bytes.toByteArray)}finally writer.close()
     }
   }
-  private[operator] def finish():Unit={active();require(index==names.size,"all inputs must be consumed to Arrow EOS");require(outputs.nonEmpty,"operator must declare outputs");outputs.values.foreach(_.flushStream());outputs.keys.foreach(p=>frame("end",p));finished=true}
+  private[operator] def finish():Unit={active();require(index==names.size,"all inputs must be consumed to Arrow EOS");outputs.values.foreach(_.flushStream());outputs.keys.foreach(p=>frame("end",p));finished=true}
   def close():Unit=if(!closed){closed=true;var failure:Throwable=null;opened.values.foreach(i=>try i.closeReader()catch{case scala.util.control.NonFatal(t)=>if(failure==null)failure=t else failure.addSuppressed(t)});try allocator.close()catch{case scala.util.control.NonFatal(t)=>if(failure==null)failure=t else failure.addSuppressed(t)};if(failure!=null)throw failure}
 }

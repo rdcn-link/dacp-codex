@@ -1,10 +1,18 @@
 job: filter-amount-demo
 tasks:
-  - id: filter
-    title: Filter orders and calculate scaled amounts
-    operator: filter_amount@1.0
-    inputs:
-      source: {uri: 'dacp://localhost:8815/data1/orders', view: records}
-    params: {min_amount: 20, factor: 2}
+- id: read_filter_source
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://localhost:8815/data1/orders
+    view: records
+- id: filter
+  title: Filter orders and calculate scaled amounts
+  operator: filter_amount@1.0
+  inputs:
+    source: read_filter_source
+  params:
+    min_amount: 20
+    factor: 2
 outputs:
-  result: {task: filter, port: result}
+  result: filter

@@ -2,6 +2,8 @@
 
 [中文](README.md) · [Project home](../README_en.md)
 
+For job format, stream dependencies and control dependencies, see [Jobs](jobs_en.md).
+
 Protocol overview: [DACP (Data Access and Collaboration Protocol)](protocol_en.md).
 
 Dynamic catalogs and application embedding: [DatasetCatalog](dataset-catalogs_en.md), [embedded server](embedded-server_en.md).

@@ -1,17 +1,31 @@
 job: eastern-station-temperature-anomalies
 tasks:
-  - id: daily
-    title: 质控过滤并计算站点每日气温统计
-    node: dacp://localhost:18861
-    operator: daily_temperature_stats@1.0
-    inputs:
-      source: {uri: 'dacp://localhost:18861/climate/observations', view: records}
-  - id: anomalies
-    title: 融合站点气候基准并计算气温距平
-    node: dacp://localhost:18862
-    operator: station_temperature_anomaly@1.0
-    inputs:
-      baselines: {uri: 'dacp://localhost:18862/climate/station_baselines', view: records}
-      statistics: {task: daily, port: result}
+- id: read_daily_source
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://localhost:18861/climate/observations
+    view: records
+  node: dacp://localhost:18861
+- id: daily
+  title: 质控过滤并计算站点每日气温统计
+  node: dacp://localhost:18861
+  operator: daily_temperature_stats@1.0
+  inputs:
+    source: read_daily_source
+- id: read_anomalies_baselines
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://localhost:18862/climate/station_baselines
+    view: records
+  node: dacp://localhost:18862
+- id: anomalies
+  title: 融合站点气候基准并计算气温距平
+  node: dacp://localhost:18862
+  operator: station_temperature_anomaly@1.0
+  inputs:
+    baselines: read_anomalies_baselines
+    statistics: daily
 outputs:
-  temperature_anomalies: {task: anomalies, port: result}
+  temperature_anomalies: anomalies

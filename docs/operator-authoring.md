@@ -35,10 +35,10 @@ manifest 由框架生成，必须按端口查找，不要硬编码文件编号�
 Shell 绑定示例：
 
 ```text
-run split_orders@1.0 --input left=/orders_a --input right=/orders_b --view records --params '{"min_amount":20}'
+run split_orders@1.0 --input left=/orders_a --input right=/orders_b --view records --output accepted --output rejected --params '{"min_amount":20}'
 ```
 
-`--view` 应用于全部输入；不同输入需要不同表示时使用作业 YAML。每个输出端口可有独立 schema，必须先声明所有输出再写数据，空输出也需要 start/end。SDK 自动处理这些帧。输入按端口名排序逐个消费到 EOS，避免交替读 FIFO 导致阻塞。Shell 返回终端端口 `run.accepted` / `run.rejected`；作业 YAML 的 `outputs` 可以改成 `qualified` / `other` 等标签。每个输出仅支持一个消费者，复制需显式声明不同端口；DEBUG 内联 Python 帮助器仍只有 `result`，native 执行器仍只有单一 bytes stdin/stdout。
+`--view` 应用于全部输入；不同输入需要不同表示时使用作业 YAML。每个输出端口可有独立 schema，必须先声明所有输出再写数据，空输出也需要 start/end。SDK 自动处理这些帧。输入按端口名排序逐个消费到 EOS，避免交替读 FIFO 导致阻塞。Shell 返回所选端口 `accepted` / `rejected`；作业 YAML 的 `outputs` 可以改成 `qualified` / `other` 等标签。每个输出仅支持一个消费者，复制需显式声明不同端口；DEBUG 内联 Python 帮助器仍只有 `result`，native 执行器仍只有单一 bytes stdin/stdout。
 
 
 ## 先分清输入数据、参数和输出
@@ -229,14 +229,22 @@ Shell 等待结果，随批次到达显示前面的两行结果，结束后显�
 ```yaml
 job: filter-amount-demo
 tasks:
-  - id: filter
-    title: Filter orders and calculate scaled amounts
-    operator: filter_amount@1.0
-    inputs:
-      source: {uri: 'dacp://localhost:8815/data1/orders', view: records}
-    params: {min_amount: 20, factor: 2}
+- id: read_filter_source
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://localhost:8815/data1/orders
+    view: records
+- id: filter
+  title: Filter orders and calculate scaled amounts
+  operator: filter_amount@1.0
+  inputs:
+    source: read_filter_source
+  params:
+    min_amount: 20
+    factor: 2
 outputs:
-  result: {task: filter, port: result}
+  result: filter
 ```
 
 ```text

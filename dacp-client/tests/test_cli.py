@@ -66,7 +66,7 @@ def browser(monkeypatch):
 
 def test_record_preview_is_bounded_and_cancels(browser):
     b, ds, out = browser
-    b.onecmd('show 1')
+    b.onecmd('cat 1')
     assert '| 2  |' in out.getvalue()
     assert '| 3  |' not in out.getvalue()
     assert '3 rows shown' in out.getvalue()
@@ -75,7 +75,7 @@ def test_record_preview_is_bounded_and_cancels(browser):
 
 def test_text_preview_escapes_terminal_controls_and_closes(browser):
     b, ds, out = browser
-    b.onecmd('show "/file name" text')
+    b.onecmd('cat "/file name" text')
     assert ds.opened == '/file name'
     assert '\x1b' not in out.getvalue()
     assert r'\x1b' in out.getvalue()
@@ -94,8 +94,8 @@ def test_failed_switch_keeps_existing_connection(browser, monkeypatch):
 
 def test_invalid_selection_and_mode_do_not_exit(browser):
     b, ds, out = browser
-    b.onecmd('show 0')
-    b.onecmd('show 1 unknown')
+    b.onecmd('cat 0')
+    b.onecmd('cat 1 unknown')
     assert 'out of range' in out.getvalue()
     assert 'view must be' in out.getvalue()
     assert not ds.closed
@@ -119,7 +119,7 @@ def test_switch_dataset_encodes_name(browser, monkeypatch):
 def test_byte_preview_limit(browser):
     b, ds, out = browser
     b.byte_limit = 5
-    b.onecmd('show 2 hex')
+    b.onecmd('cat 2 hex')
     assert '68 65 6c 6c 6f' in out.getvalue()
     assert '5 bytes shown' in out.getvalue()
     assert ds.stream.reader.closed
@@ -146,7 +146,7 @@ def test_folder_browsing_and_data_only_previews(browser):
     b.onecmd('ls /reports')
     assert ds.listed_path == '/reports'
     b.items = [SimpleNamespace(path='/reports', kind='folder', format='', views=())]
-    b.onecmd('show 1')
+    b.onecmd('cat 1')
     assert 'use ls /reports' in out.getvalue()
 
 
@@ -218,7 +218,7 @@ def test_folder_highlighting_preserves_table_and_escapes_paths(browser, monkeypa
     assert [cell.strip() for cell in plain.split('|')[1:-1]][2:] == ['-', '-', '-', '-']
 
 
-@pytest.mark.parametrize('command,headers', [('show 1', ['id'])])
+@pytest.mark.parametrize('command,headers', [('cat 1', ['id'])])
 def test_show_has_outer_border_and_column_headers(browser, command, headers):
     b, ds, out = browser
     out.seek(0)
@@ -236,7 +236,7 @@ def test_nonrecord_previews_keep_plain_display(browser, mode):
     b, ds, out = browser
     out.seek(0)
     out.truncate()
-    b.onecmd('show 2 ' + mode)
+    b.onecmd('cat 2 ' + mode)
     rendered = out.getvalue()
     assert not rendered.startswith('+')
     if mode == 'text':
@@ -248,7 +248,7 @@ def test_nonrecord_previews_keep_plain_display(browser, mode):
 def test_auto_preview_uses_advertised_views_for_new_formats(browser):
     b, ds, out = browser
     b.items[0].format = 'excel'
-    b.onecmd('show 1')
+    b.onecmd('cat 1')
     assert '3 rows shown' in out.getvalue()
 
 
@@ -256,7 +256,7 @@ def test_auto_preview_does_not_infer_records_from_filename(browser):
     b, ds, out = browser
     ds.stream.views = ('bytes',)
     b.items[0].path = '/orders.csv'
-    b.onecmd('show 1')
+    b.onecmd('cat 1')
     assert '68 65 6c 6c 6f' in out.getvalue()
     assert 'rows shown' not in out.getvalue()
 
@@ -265,7 +265,7 @@ def test_zip_folder_supports_bytes_preview(browser):
     b, ds, out = browser
     b.items = [SimpleNamespace(path='/archive', kind='folder', format='zip', views=('bytes',))]
     ds.stream.views = ('bytes',)
-    b.onecmd('show 1 hex')
+    b.onecmd('cat 1 hex')
     assert 'folder has no content' not in out.getvalue()
     assert ds.opened == '/archive'
     assert 'Error:' not in out.getvalue()
@@ -341,9 +341,11 @@ def test_run_heredoc_source_preserves_indentation(browser, monkeypatch):
     monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
     b.onecmd('run --runtime python@1.0 --input source=1 <<STOP')
     import json
-    task = json.loads(calls[0][1])['tasks'][0]
+    task = json.loads(calls[0][1])['tasks'][-1]
     assert task['operator'] == {'runtime':'python@1.0', 'source':"def process(inputs, params):\n    yield b'hi'\n"}
-    assert task['inputs']['source']['uri'] == 'dacp://localhost/data1/orders'
+    assert task['inputs']['source'] == 'read_1'
+    reader = json.loads(calls[0][1])['tasks'][0]
+    assert reader == {'id':'read_1','operator':'read_item@1.0','inputs':{},'params':{'uri':'dacp://localhost/data1/orders','view':'bytes'}}
 
 
 @pytest.mark.parametrize('command', [
@@ -383,7 +385,7 @@ def test_run_repository_id(browser, monkeypatch):
     monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
     b.onecmd('run identity@1.1 --input source=1')
     import json
-    assert json.loads(calls[0][1])['tasks'][0]['operator'] == 'identity@1.1'
+    assert json.loads(calls[0][1])['tasks'][-1]['operator'] == 'identity@1.1'
 
 
 class JobEvents:
@@ -490,7 +492,7 @@ def test_connect_requires_server_and_resets_selection(browser):
     assert b.dataset is ds and not ds.closed
     b.onecmd('connect dacp://other:8815')
     assert b.dataset is None and ds.closed
-    for command in ('ls', 'count', 'show', 'select', 'run'):
+    for command in ('ls', 'count', 'cat', 'select', 'run'):
         b.onecmd(command)
     assert out.getvalue().count('select a Dataset first') == 5
 
@@ -614,3 +616,45 @@ def test_dataset_numbers_follow_last_display_and_reset_on_connect(browser, monke
     entries.clear()
     b.onecmd('datasets');b.onecmd('use 1')
     assert b.dataset_names == [] and len(opened) == 3
+
+
+def test_run_builds_only_stream_references_with_explicit_item_sources(browser, monkeypatch):
+    import json
+    b, ds, out = browser
+    calls = []
+    monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
+    b.onecmd('run join@1 --input left=1 --input right=2 --view records')
+    job = json.loads(calls[0][1])
+    assert job['outputs'] == {'result': 'run'}
+    assert job['tasks'][-1]['inputs'] == {'left':'read_1','right':'read_2'}
+    assert [t['params']['view'] for t in job['tasks'][:-1]] == ['records','records']
+    assert all(t['inputs'] == {} and t['operator'] == 'read_item@1.0' for t in job['tasks'][:-1])
+
+
+@pytest.mark.parametrize('options, expected', [
+    ('--output left --output right', {'left': 'run:left', 'right': 'run:right'}),
+    ('--no-output', {}),
+])
+def test_run_explicit_results_and_sink(browser, monkeypatch, options, expected):
+    import json
+    b, ds, out = browser
+    calls = []
+    monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
+    b.onecmd('run example@1 ' + options)
+    assert json.loads(calls[0][1])['outputs'] == expected
+
+
+def test_run_rejects_conflicting_output_options(browser, monkeypatch):
+    b, ds, out = browser
+    calls = []
+    monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
+    b.onecmd('run example@1 --output result --no-output')
+    assert not calls
+    assert 'cannot be combined' in out.getvalue()
+
+
+def test_cat_replaces_show_without_alias(browser):
+    b, ds, out = browser
+    assert hasattr(b, 'do_cat') and not hasattr(b, 'do_show')
+    b.onecmd('help cat')
+    assert 'Usage: cat ITEM' in out.getvalue()

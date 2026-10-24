@@ -35,10 +35,10 @@ The framework generates the manifest. Look up ports by name rather than hardcodi
 Shell binding example:
 
 ```text
-run split_orders@1.0 --input left=/orders_a --input right=/orders_b --view records --params '{"min_amount":20}'
+run split_orders@1.0 --input left=/orders_a --input right=/orders_b --view records --output accepted --output rejected --params '{"min_amount":20}'
 ```
 
-`--view` applies to all inputs; use job YAML for different representations per input. Each output may have its own schema. Declare every output before writing data; even empty outputs need start/end events. The SDK handles these frames. Consume inputs in lexical port-name order through EOS to avoid blocking from alternating FIFO reads. The shell returns terminal ports `run.accepted` / `run.rejected`; job YAML `outputs` can rename them to labels such as `qualified` / `other`. Each output supports only one consumer; duplication requires explicit separate ports. The DEBUG inline Python helper still has only `result`, and the native executor still has one bytes stdin/stdout pair.
+`--view` applies to all inputs; use job YAML for different representations per input. Each output may have its own schema. Declare every output before writing data; even empty outputs need start/end events. The SDK handles these frames. Consume inputs in lexical port-name order through EOS to avoid blocking from alternating FIFO reads. The shell returns the selected ports `accepted` / `rejected`; job YAML `outputs` can rename them to labels such as `qualified` / `other`. Each output supports only one consumer; duplication requires explicit separate ports. The DEBUG inline Python helper still has only `result`, and the native executor still has one bytes stdin/stdout pair.
 
 
 ## Distinguish data inputs, parameters and outputs
@@ -229,14 +229,22 @@ The shell waits and displays the two result rows as batches arrive, then shows e
 ```yaml
 job: filter-amount-demo
 tasks:
-  - id: filter
-    title: Filter orders and calculate scaled amounts
-    operator: filter_amount@1.0
-    inputs:
-      source: {uri: 'dacp://localhost:8815/data1/orders', view: records}
-    params: {min_amount: 20, factor: 2}
+- id: read_filter_source
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://localhost:8815/data1/orders
+    view: records
+- id: filter
+  title: Filter orders and calculate scaled amounts
+  operator: filter_amount@1.0
+  inputs:
+    source: read_filter_source
+  params:
+    min_amount: 20
+    factor: 2
 outputs:
-  result: {task: filter, port: result}
+  result: filter
 ```
 
 ```text

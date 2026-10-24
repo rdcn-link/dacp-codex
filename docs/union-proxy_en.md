@@ -25,7 +25,7 @@ dacp-shell dacp://union.example:19860
 dacp-shell> datasets
 dacp-shell> use ds-k7m2-9wqr
 dacp-shell> ls /
-dacp-shell> show /observations records
+dacp-shell> cat /observations records
 ```
 
 Shell startup binds the server address; `datasets` accepts no address argument. A complete, single-entry directory is selected automatically. `use NAME` selects the exact published name, such as `use ds-k7m2-9wqr`; after `datasets`, `use 1` selects the corresponding row. The list shows row numbers, names, and JSON descriptions, without URIs. SDK `Source.datasets(...)` returns an iterable directory with completeness fields. Item reads, record scans and bytes streams use ordinary DACP interfaces. S3 defaults to anonymous read-only access, using public names as buckets and Item logical paths as keys. Disable it with `s3: {enabled: false}`. Incomplete bucket listings return 503 because S3 cannot express partial directory completeness.
@@ -37,15 +37,19 @@ Submit ordinary Jobs through standard `Job.run` or shell `submit`, using only pu
 ```yaml
 job: climate-summary
 tasks:
-  - id: summarize
-    title: Summarize observations
-    operator: identity@1.3
-    inputs:
-      source:
-        uri: dacp://union.example:19860/ds-k7m2-9wqr/observations
-        view: bytes
+- id: read_summarize_source
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: dacp://union.example:19860/ds-k7m2-9wqr/observations
+    view: bytes
+- id: summarize
+  title: Summarize observations
+  operator: identity@1.3
+  inputs:
+    source: read_summarize_source
 outputs:
-  result: {task: summarize, port: result}
+  result: summarize
 ```
 
 The example operator must be installed or available from a repository and its exact version approved by the member. Ordinary tasks may omit `node`. Union filters locations by approval, operator version and capacity, preferring input or upstream locations. When all raw input sizes are known, it chooses the location minimizing transferred bytes; otherwise it follows input declaration order. A multi-input operator executes at one member and reads other members' inputs as Flight streams. Explicit placement uses `node: nd-xxxx-xxxx`; public tasks cannot specify internal addresses.

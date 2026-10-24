@@ -82,7 +82,7 @@ object Rpc {
   }
 }
 trait BinarySource extends AutoCloseable { def next():Option[Array[Byte]] }
-final class Remote(tls:Tls) extends AutoCloseable {
+final class Remote(tls:Tls,traffic:Option[FlightTraffic]=None) extends AutoCloseable {
   private val allocator=new RootAllocator()
   private final class Connection(val client:FlightClient,val peer:AtomicReference[String])
   private val connections=new ConcurrentHashMap[String,Connection]()
@@ -96,7 +96,11 @@ final class Remote(tls:Tls) extends AutoCloseable {
       val u=java.net.URI.create(canonical);val peer=new AtomicReference[String]()
       val ssl=GrpcSslContexts.configure(SslContextBuilder.forClient(),SslProvider.JDK)
         .trustManager(tls.trustManager(pin,id=>peer.set(id))).keyManager(tls.cert.toFile,tls.key.toFile).build()
-      val channel=NettyChannelBuilder.forAddress(u.getHost,u.getPort).sslContext(ssl).maxInboundMessageSize(Rpc.MaxMessage).build()
+      val interceptor=new io.grpc.ClientInterceptor {
+        def interceptCall[ReqT,RespT](method:io.grpc.MethodDescriptor[ReqT,RespT],options:io.grpc.CallOptions,next:io.grpc.Channel):io.grpc.ClientCall[ReqT,RespT]=
+          next.newCall(method,traffic.map(t=>options.withStreamTracerFactory(t.factory(canonical,method.getFullMethodName))).getOrElse(options))
+      }
+      val channel=NettyChannelBuilder.forAddress(u.getHost,u.getPort).sslContext(ssl).maxInboundMessageSize(Rpc.MaxMessage).intercept(interceptor).build()
       new Connection(FlightGrpcUtils.createFlightClient(allocator,channel),peer)
     })
   }

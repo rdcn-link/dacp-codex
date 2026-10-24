@@ -2,6 +2,8 @@
 
 [English](README_en.md) · [项目首页](../README.md)
 
+作业格式及流依赖、控制依赖见[作业说明](jobs.md).
+
 协议总览：[DACP（Data Access and Collaboration Protocol）](protocol.md)。
 
 动态数据集目录与程序内启动：[DatasetCatalog](dataset-catalogs.md)、[嵌入式服务器](embedded-server.md)。
