@@ -658,3 +658,30 @@ def test_cat_replaces_show_without_alias(browser):
     assert hasattr(b, 'do_cat') and not hasattr(b, 'do_show')
     b.onecmd('help cat')
     assert 'Usage: cat ITEM' in out.getvalue()
+
+
+def test_submit_loads_variables_json_alongside_policy(browser, monkeypatch, tmp_path):
+    b, ds, out = browser
+    workflow = tmp_path / 'job.yaml'
+    variables = tmp_path / 'vars.json'
+    policy = tmp_path / 'policy.json'
+    workflow.write_text('job: demo\ntasks: [{params: {limit: $LIMIT}}]')
+    variables.write_text('{"LIMIT":123}')
+    policy.write_text('{"timeout_seconds":120}')
+    calls = []
+    monkeypatch.setattr(b, 'print_job', lambda *args, **options: calls.append(options))
+    b.onecmd(f'submit {workflow} --vars {variables} --policy {policy}')
+    assert calls[0]['variables'] == {'LIMIT': 123}
+    assert calls[0]['execution_policy'] == {'timeout_seconds': 120}
+
+
+@pytest.mark.parametrize('value', ['null', '[]', '123'])
+def test_submit_rejects_nonobject_variable_files(browser, monkeypatch, tmp_path, value):
+    b, ds, out = browser
+    job = tmp_path / 'job.yaml'
+    variables = tmp_path / 'vars.json'
+    job.write_text('job: demo')
+    variables.write_text(value)
+    monkeypatch.setattr(b, 'print_job', lambda *a, **k: pytest.fail('must not submit'))
+    b.onecmd(f'submit {job} --vars {variables}')
+    assert 'variables must be a JSON object' in out.getvalue()

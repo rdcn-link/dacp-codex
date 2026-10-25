@@ -18,6 +18,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'dacp-client'))
 from dacp.jobs import Job
+from security_test_support import authorize
 
 PYTHON = '''from dacp_operator import OperatorContext
 def process(ctx):
@@ -25,16 +26,20 @@ def process(ctx):
     upper = ctx.params['upper']
     for chunk in ctx.input('source').bytes():
         out.write(chunk.upper() if upper else chunk.lower())
+def infer_outputs(inputs, params):
+    from dacp_operator import descriptor, result
+    return result({'result': descriptor(['bytes'], ['text'], certainty='known')})
 if __name__ == '__main__':
-    with OperatorContext() as ctx:
-        process(ctx)
+    from dacp_operator import run_operator
+    run_operator(process, infer_outputs)
 '''
 
 
 def wheel(path):
     with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as z:
         z.writestr('bench.py', PYTHON)
-        z.write(ROOT / 'dacp-operator-sdk/python/dacp_operator/__init__.py', 'dacp_operator/__init__.py')
+        for source in (ROOT / 'dacp-operator-sdk/python/dacp_operator').glob('*.py'):
+            z.write(source, 'dacp_operator/' + source.name)
         z.writestr('dacp_bench-1.0.dist-info/METADATA', 'Metadata-Version: 2.1\nName: dacp-bench\nVersion: 1.0\n')
         z.writestr('dacp_bench-1.0.dist-info/WHEEL', 'Wheel-Version: 1.0\nGenerator: dacp-benchmark\nRoot-Is-Purelib: true\nTag: py3-none-any\n')
         z.writestr('dacp_bench-1.0.dist-info/RECORD', '')
@@ -75,7 +80,7 @@ def main():
     for language, image, entry, artifact in [('jvm', 'dacp/operator-jvm:1.1', 'bench.Transform', jar), ('python', 'dacp/operator-python:1.0', 'bench', bundle)]:
         target = d / 'operators' / language / '1'
         target.mkdir(parents=True)
-        (target / 'operator.yaml').write_text(json.dumps(dict(name=language, version='1', image=image, executor=language, entrypoint=entry, artifact=str(artifact), inputs={'source':dict(representations=['bytes'], formats=[])}, outputs={'result':dict(representations=['bytes'], formats=['text'])})))
+        (target / 'operator.yaml').write_text(json.dumps(dict(name=language, version='1', image=image, executor=language, entrypoint=entry, artifact=str(artifact), inputs={'source':dict(representations=['bytes'], formats=[])})))
     result = dict(started_at=datetime.now(timezone.utc).isoformat(), host=platform.platform(), cpu_count=os.cpu_count(), datasets=datasets, steps=3, repetitions=args.repeats, samples=[], warmups=[], methodology='Same code, image, params, data and client; server operator_fusion_enabled only differs. Alternating order; one warmup per language/mode; wall time includes Flight submission through complete result drain and client SHA-256/row validation. Each row is 64 bytes; CSV text is transported as a byte stream, not Arrow records.')
     result['images'] = json.loads(subprocess.check_output(docker_prefix + ['docker', 'image', 'inspect', 'dacp/operator-jvm:1.1', 'dacp/operator-python:1.0'], text=True))
     # Retain only reproducibility metadata, not the entire image configuration.
@@ -84,6 +89,7 @@ def main():
     result['working_tree_modified'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True))
     processes = []
     nodes = {}
+    tokens = {}
     def save():
         (d / 'results.json').write_text(json.dumps(result, indent=2))
     try:
@@ -94,6 +100,7 @@ def main():
             work = d / mode
             work.mkdir()
             config = dict(host='127.0.0.1', public_host='localhost', port=port, datasets={'data':dict(provider='mixed', items={'/' + str(n):dict(file=str(d / f'{n}.txt')) for n in args.rows})}, tls_cert=str(cert / 'node-a.crt'), tls_key=str(cert / 'node-a.key'), tls_ca=str(cert / 'ca.crt'), local_operator_library=str(d / 'operators'), max_concurrent_tasks=4, operator_fusion_enabled=mode == 'fused', execution_store=dict(provider='file', settings=dict(directory=str(work / 'history'))))
+            tokens[mode] = authorize(config, work)
             (work / 'node.yaml').write_text(json.dumps(config, indent=2))
             with (work / 'server.log').open('w') as log:
                 p = subprocess.Popen(docker_prefix + [str(ROOT / 'dacp-server/target/universal/stage/bin/dacp-server'), str(work / 'node.yaml')], cwd=work, stdout=log, stderr=subprocess.STDOUT)
@@ -118,7 +125,7 @@ def main():
             since = datetime.now(timezone.utc).isoformat()
             start = time.perf_counter()
             sha, size, count, first = hashlib.sha256(), 0, 0, None
-            with Job.run(origin, json.dumps(job), timeout=900, **tls) as stream:
+            with Job.run(origin, json.dumps(job), timeout=900, token=tokens[mode], **tls) as stream:
                 for event in stream:
                     if event['type'] == 'data':
                         if first is None: first = time.perf_counter() - start

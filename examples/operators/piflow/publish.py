@@ -59,6 +59,7 @@ def build(name, runtime_catalog, destination):
     module = 'dacp_piflow_' + name
     files = {module + '.py': (HERE / 'operators' / (name + '.py')).read_bytes(),
              'dacp_operator/__init__.py': (ROOT / 'dacp-operator-sdk/python/dacp_operator/__init__.py').read_bytes()}
+    files['dacp_operator/inference.py'] = (ROOT / 'dacp-operator-sdk/python/dacp_operator/inference.py').read_bytes()
     if (HERE / 'operators/support.py').exists():
         files['dacp_piflow_support.py'] = (HERE / 'operators/support.py').read_bytes()
     if spec.get('uses_sql'):
@@ -101,7 +102,7 @@ def build(name, runtime_catalog, destination):
         except OSError:
             shutil.copyfile(original, target)
     manifest = dict(api_version=2, name=item['operator'], version='1.0',
-                    description=spec['description'], inputs=spec['inputs'], outputs=spec['outputs'],
+                    description=spec['description'], inputs=spec['inputs'],
                     execution=dict(executor='python', entrypoint=module, config={}),
                     runtime=runtime, artifact=artifact,
                     provenance=dict(source_archive=source, license='Apache-2.0', license_file=license_blob,

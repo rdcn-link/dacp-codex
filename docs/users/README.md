@@ -2,7 +2,7 @@
 
 [English](README_en.md) · [文档目录](../README.md) · [开发者指南](../developers/README.md)
 
-Job 的输入和最终输出使用 `task[:port]`，端口缺省为 `result`；外部数据通过 `read_item@1.0` 接入，执行时序通过 `depends_on` 表达。详见[数据流与控制依赖作业](../jobs.md).
+Job 的输入和最终输出使用 `task[:port]`，端口缺省为 `result`；外部数据通过 `read_item@1.0` 接入，仅通过流连接建立依赖。详见[流式作业](../jobs.md).
 
 面向浏览数据、使用 SDK、执行算子，以及使用已有插件配置 DACP 节点的用户。除非另有说明，命令均从项目根目录执行。实现新后端、格式或算子请阅读开发者指南。
 
@@ -33,7 +33,13 @@ python3 -m venv .venv
 .venv/bin/pip install -e './dacp-client[test]'
 bash scripts/certs.sh
 cd dacp-server
-sbt run
+sbt stage
+(umask 077
+ mkdir -p .dacp-security/8815
+ target/universal/stage/bin/dacp-server credentials .dacp-security/8815 create --subject alice > .dacp-security/8815/alice-issued.json
+ python3 -c 'import json,pathlib; p=pathlib.Path(".dacp-security/8815"); (p/"alice.token").write_text(json.loads((p/"alice-issued.json").read_text())["token"]); (p/"alice-issued.json").unlink()'
+)
+target/universal/stage/bin/dacp-server
 ```
 
 默认服务地址为 `localhost:8815`，配置见 [examples/server.yaml](../../examples/server.yaml)。可先连接服务器根地址，在 Shell 中使用无参数 `datasets` 列出目录，再选择数据集；目标服务器只有一个数据集时会自动选中。节点发布本地目录，Union 在线合并公开目录，管理 Web 可按指定成员查看目录；见[数据集目录](../dataset-directory.md)。
@@ -42,8 +48,7 @@ sbt run
 
 ```bash
 export DACP_CA="$PWD/examples/certs/ca.crt"
-export DACP_CERT="$PWD/examples/certs/client.crt"
-export DACP_KEY="$PWD/examples/certs/client.key"
+export DACP_TOKEN_FILE="$PWD/dacp-server/.dacp-security/8815/alice.token"
 .venv/bin/dacp-shell dacp://localhost:8815
 # shell:
 # datasets
@@ -289,7 +294,7 @@ sbt 'run ../examples/server.yaml'
 
 ## 安全与运行边界
 
-所有 Flight 连接强制 mTLS。已发布的数据集及其 Items 默认可浏览和读取，无需额外的 URI 白名单。公开元数据、ticket 和数据服务错误隐藏私有存储绑定；数据内容仍包含源数据自身的字段和值。Python 的 `DacpError` 和 Scala 的 `DacpException` 提供错误码和可读消息，shell 显示简洁提示。
+普通 Flight 使用 TLS 与 Token；Union 协作使用双向 TLS 与服务凭据。已发布的数据集及其 Items 默认可浏览和读取，无需额外的 URI 白名单。公开元数据、ticket 和数据服务错误隐藏私有存储绑定；数据内容仍包含源数据自身的字段和值。Python 的 `DacpError` 和 Scala 的 `DacpException` 提供错误码和可读消息，shell 显示简洁提示。
 
 未发布的物理文件和数据库表不会自动公开。读取失败后从头重开，不支持流内重试、checkpoint 或恢复。任务输出仅为实时流，客户端须消费或取消；不提供保存的结果 URI，重启不恢复任务。完整配置和协议说明见 [技术参考](../../docs/reference.md#协议与配置)。
 
@@ -324,7 +329,7 @@ docker image ls
 
 ## Union 协作作业
 
-通过 [Union 服务器](../../dacp-union-server/README.md) 提交显式节点 DAG、订阅执行状态和流量，并读取最终流。节点邀请和审批、Python 与 Scala 用法见模块文档；[双节点示例](../../examples/union/README.md) 演示本地销量汇总与跨节点价格融合。
+通过 [Union 服务器](../../dacp-union-server/README.md) 提交显式节点 DAG、订阅执行状态和流量，并读取最终流。成员配置与服务凭据、Python 与 Scala 用法见模块文档；[双节点示例](../../examples/union/README.md) 演示跨节点气象观测与气候基准融合。
 
 DACP 与 Union 默认持久化全部执行记录；Union 看板支持重启后的历史查询。本地查询命令及保存目录见 [执行记录](../execution-history.md)。
 

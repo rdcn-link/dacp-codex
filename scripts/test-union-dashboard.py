@@ -28,7 +28,6 @@ def fixture():
         tasks += [dict(id='sum_' + region, title=region + '：汇总商品销量', node=f'dacp://localhost:{port}', node_identity=identity, operator='quantity_sum@1.0', state='succeeded', inputs=[dict(port='source', uri=f'dacp://localhost:{port}/data/sales', view='bytes')]),
                   dict(id='revenue_' + region, title=region + '：融合价格计算收入', node='dacp://localhost:18862', node_identity='b', operator='revenue_join@1.0', state='succeeded', inputs=[dict(port='prices', uri='dacp://localhost:18862/data/prices', view='bytes'), dict(port='quantities', task='sum_' + region, output_port='result')])]
     tasks.append(dict(id="prepare", title="准备目标表", node="dacp://localhost:18862", node_identity="b", operator="prepare@1.0", state="succeeded", inputs=[]))
-    tasks[1]["depends_on"] = ["prepare"]
     for t in tasks:
         node = nodes.setdefault(t['node_identity'], dict(observed_at_ms=now, ports={}))
         for direction, ports in [('inputs', [b['port'] for b in t['inputs']]), ('outputs', ['result'])]:
@@ -108,7 +107,6 @@ def main():
             assert page.locator('#job-attempts script').count() == 0
             assert page.locator('#dag canvas').count() >= 1
             assert page.locator('#dag-error').is_hidden()
-            assert page.evaluate("dagViewer.graph.getEdgeData('control:prepare:revenue_east').style.lineDash.length") > 0
             assert page.evaluate('dagViewer.graph.getComboData().length') == 4
             # All dependencies flow left to right, within and across server groups.
             assert page.evaluate('''() => {
@@ -150,7 +148,6 @@ def main():
             page.evaluate('refresh()')
             page.evaluate('dagViewer.pending')
             after = page.evaluate('''() => ({zoom:dagViewer.graph.getZoom(),position:dagViewer.graph.getPosition(),nodes:dagViewer.graph.getNodeData().map(n=>[n.id,n.style.x,n.style.y])})''')
-            assert page.evaluate("dagViewer.graph.getEdgeData('control:prepare:revenue_east').style.lineDash.length") > 0
             assert page.locator('#job-attempts details').first.get_attribute('open') is not None
             assert before == after
             assert page.evaluate('originalGraph === dagViewer.graph')

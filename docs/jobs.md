@@ -1,63 +1,121 @@
-# 数据流与控制依赖作业
+# 流式作业
 
 [English](jobs_en.md)
 
-DACP Server 与 Union 使用相同的 Job 格式。`tasks` 描述步骤，`inputs` 只连接其他步骤的输出流，`depends_on` 描述执行前置条件，Job 的 `outputs` 选择返回客户端的结果流。列表顺序不代表执行顺序。
+DACP Server 与 Union 使用同一种 Job 格式。步骤通过 `inputs` 引用其他步骤的输出流建立关联，列表顺序不代表执行顺序。不支持 `depends_on` 控制依赖。
 
 ```yaml
-job: weather-ingestion
+job: weather-copy
 tasks:
-  - id: prepare
-    title: 初始化目标表
-    operator: prepare_weather_table@1.0
-    inputs: {}
   - id: read
-    title: 读取观测记录流
+    title: Read weather observations
     operator: read_item@1.0
     inputs: {}
     params:
       uri: dacp://localhost:18861/weather/observations
       view: records
-  - id: write
-    title: 增量写入观测
-    operator: write_weather_table@1.0
+  - id: copy
+    title: Stream observation records
+    operator: identity@1.3
     inputs:
       source: read
-    depends_on: [prepare]
 outputs:
-  summary: write:summary
+  result: copy
 ```
 
-`prepare_weather_table` 和 `write_weather_table` 是业务算子名称示意，使用前需要自行实现并发布；前者可声明 `outputs: {}`，后者的 `summary` 返回完成后的写入摘要。通过 Union 的普通客户端提交时，读取 URI 必须使用 Union 公开的数据集名称，省略 `node` 或使用 `dacp.nodes` 返回的逻辑节点名称。管理员可指定成员的实际地址。
+## 字段与流连接
 
-## 流连接
+`job` 是工作流名称。每个 task 包含唯一 `id`、可选说明 `title`、带版本的 `operator`、命名输入 `inputs`，以及可选的参数 `params` 和执行位置 `node`。输入值和 Job 输出使用 `task` 或 `task:port`，省略端口时使用 `result`。不支持对象形式连接或连接级 `view`。每个输出最多有一个消费者；分发数据需要显式复制算子或不同输出端口。
 
-输入值必须是字符串 `task` 或 `task:port`；省略端口表示 `result`。Job 最终输出采用相同写法。不存在默认端口时明确报错，不选择其他端口。不再支持 `{uri, view}`、`{task, port}` 对象或连接处的 `view`。
+`read_item@1.0` 是无需算子容器的内置传输源。它没有输入，参数 `uri` 指向一个 Item，`view` 为 `bytes` 或 `records`，输出端口为 `result`。`live_ticks` 等生成器的输入也为空。处理算子消费上游输出，表示形式转换必须显式完成。
 
-源算子声明 `inputs: {}`，可以读取外部数据或自行生成数据；普通步骤只消费其他步骤的输出。输出元数据包含实际表示和 schema，接收端按算子声明验证；不做隐式 bytes/records 转换。每个输出最多有一个消费者，不能同时作为下游输入和客户端结果；复制应使用显式复制算子或多个输出端口。
+向 Union 提交时，数据 URI 使用 Union 公开的数据集名称。省略 `node` 时自动调度，也可使用 `dacp.nodes` 返回的逻辑节点。用户提交的工作流不能直接使用成员实际地址。
 
-## 内置读取源
+## 结构推导与无输出步骤
 
-`read_item@1.0` 是服务端内置的传输算子，无需下载容器。`params` 必须包含且只包含字符串 `uri`、`view`；URI 定位单个 Item，`view` 为 `records` 或 `bytes`。输入为空，输出为 `result`。读取通过公共 Dataset/Item 插件接口完成，保留结构、背压、取消及资源释放语义；不物化完整输入。读取目标参与权限校验与数据就近放置，不能通过参数绕过成员授权或任务输入前缀。
+所有算子必须实现[结构推导](structure-inference.md)，输出描述由该方法给出，不在清单中声明。无输出算子可以推导出空输出映射，并成功结束而不发送数据帧。Job 可设 `outputs: {}`，客户端等待整体完成而不接收数据。未选入最终结果的分支仍会执行。
+
+上下游以有界缓冲并发运行。故障、取消、超时会终止本次尝试并释放资源。重试与物化通过独立的[执行策略 JSON](materialization.md) 配置。重试可能重复外部副作用，业务算子需要提供适当的幂等机制。
+
+## Shell
 
 ```text
-run identity@1.1 --input source=/observations --view records
+submit job.yaml
+submit job.yaml --vars variables.json
+run identity@1.3 --input source=/observations --view records
+run live_ticks@1.0
 ```
 
-Shell 自动生成 `read_item` 步骤，并把 `run` 的输入连接到读取步骤。`--view` 只选择 Item 读取表示；生成的连接不携带 `view`。零输入生成器仍可直接 `run live_ticks@1.0`。
+Shell 将 Item 输入转换为 `read_item` 步骤，逐块打印结果。连接节点或 Union 使用 [TLS 与 Token](security.md)。多输出可重复指定 `--output PORT`，无输出步骤使用 `--no-output`。源码 heredoc 仅允许 DEBUG 模式，见[源码提交](operator-source.md)。
 
-Shell 默认接收 `result`；多输出可重复指定 `--output PORT`，无输出步骤使用 `--no-output`。
+## 工作流变量
 
-## 控制依赖与零输出
+提交工作流时，可以通过独立 JSON 文件设置变量，无需修改工作流模板。JSON 文件的顶层必须是对象，例如 `{"VAR_NAME": 123}`；它不是 YAML 的 `VAR_NAME: 123` 写法。
 
-数据连接允许上下游同时运行。`depends_on: [prepare]` 则等待前置步骤成功退出后才启动，不以最后一帧或输出 EOS 作为成功证明。本机使用执行状态；跨节点通过带证书身份校验、限定接收者的 Flight 状态请求确认，不需要创建假的数据流。两个节点之间仍直接传输数据，Union 不转发中间数据。
+工作流中，将需要替换的完整值写为 `$VAR_NAME`：
 
-两类依赖共同参与未知引用、重复引用和环检测。控制前置不能同时位于该步骤的流式上游路径，否则可能因背压死锁，应拆分任务并显式使用物化/重放边界。DAG 中实线表示流连接，紫色虚线表示控制依赖。
+```yaml
+params:
+  limit: $VAR_NAME
+  schema: $SCHEMA
+```
 
-算子可声明 `outputs: {}`，Python/Scala SDK 允许成功结束时不输出帧；原生命令可将 `executor_config.stdin` 或 `stdout` 设为 `null`，同时将对应端口声明设为 `{}`。无输出步骤、独立分支和控制前置都需要执行，不能因未选入最终结果而丢弃。Job 可以设置 `outputs: {}`，客户端等待整体成功或失败，不接收数据结果。
+对应的 `variables.json`：
 
-## 故障、重试与资源
+```json
+{
+  "VAR_NAME": 123,
+  "SCHEMA": {"temperature": "float64"}
+}
+```
 
-前置失败会阻止下游启动，并取消本次执行的关联任务和流；取消、超时及成员撤销沿用执行策略。重试以新的执行尝试运行，控制依赖也重新检查。物化只保存数据输出，不保存外部系统的副作用，也不代表数据库事务；重试可能重复执行建表、写入或通知，业务算子必须自行保证幂等性。重放已物化的步骤不会重新执行其已被替代的前置工作。
+在已连接服务器的 shell 中执行：
 
-控制依赖和传输源是执行边界，不把它们当作普通容器算子合并。内存队列、Flight 和 FIFO 维持背压；日志、代码缓存和显式物化属于独立的存储用途。详细策略见[物化和重放](materialization.md)。
+```text
+submit workflow.yaml --vars variables.json
+submit workflow.yaml --vars variables.json --policy policy.json
+```
+
+也支持交互输入：`submit --vars variables.json`，输入工作流后以单独一行 `END` 结束。完整的转换示例为：
+
+```text
+submit examples/convert-variables.yaml --vars examples/convert-variables.json
+```
+
+示例路径相对于 shell 工作目录；请将变量文件的 `INPUT_URI` 改为目标服务器可访问的 Item URI，并确保所引用的算子可用。
+
+变量名区分大小写，匹配 `[A-Za-z_][A-Za-z0-9_]*`。提供变量对象后，客户端解析 YAML/JSON，递归替换完整的字符串值，保留 JSON 的数字、布尔、字符串、数组、对象和 `null` 类型，随后将解析后的工作流提交给服务器。字典键不替换；`prefix-$VAR_NAME` 不进行局部拼接；变量值中的 `$OTHER` 不再次展开。不会读取环境变量或执行 Shell 命令。缺失变量或无效变量文件会在提交前报错，多余变量允许存在。不提供 `--vars` / SDK `variables` 参数时保持原有提交行为。
+
+Python SDK 对单机和 Union 提交均接受变量字典：
+
+```python
+import json
+from pathlib import Path
+from dacp import Job
+
+workflow = Path("workflow.yaml").read_text()
+variables = json.loads(Path("variables.json").read_text())
+with Job.run("dacp://localhost:18861", workflow, variables=variables) as result:
+    for event in result:
+        print(event)
+
+# union 为已连接的 dacp.union.Union 实例
+execution = union.submit(workflow, variables=variables)
+```
+
+Scala SDK 使用相同规则：
+
+```scala
+import dacp.client.Job
+import com.fasterxml.jackson.databind.ObjectMapper
+import java.nio.file.{Files, Path}
+
+val workflow = Files.readString(Path.of("workflow.yaml"))
+val variables = new ObjectMapper().readTree(Files.readString(Path.of("variables.json")))
+val result = Job.run("dacp://localhost:18861", workflow, variables = variables)
+try result.foreach(println) finally result.close()
+// union 为已连接的 dacp.client.Union 实例
+val execution = union.submit(workflow, variables = variables)
+```
+
+变量文件在客户端读取，不需要上传至节点文件系统。服务器记录和执行的是替换后的工作流，因此自动重试和重放沿用首次提交的具体值；重放不能覆盖变量。需要使用新变量时重新提交。替换后的内容也可能出现在任务历史和看板中，不应将密码等秘密放入变量。

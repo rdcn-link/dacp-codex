@@ -24,7 +24,7 @@ target/universal/stage/bin/dacp-website --host 0.0.0.0 --port 8830 --downloads /
 python3 scripts/prepare-website-downloads.py --output /srv/dacp/downloads
 ```
 
-脚本需要 sbt、Python 3.10+、pip 和网络。默认构建 `dacp-server`、`dacp-union-server`、`dacp-operator-repository`、`dacp-website` 的 ZIP 安装包，Scala 客户端／算子 SDK 依赖包，包含 `dacp-shell` 的 Python wheel，以及源码 ZIP。生成 `SHA256SUMS` 用于校验。产物均为开发快照，不宣称正式发布；JVM SDK ZIP 包含运行时依赖，Python wheel 的依赖由 pip 安装。
+脚本需要 sbt、Python 3.10+、pip 和网络。默认构建 `dacp-server`、`dacp-union-server`、`dacp-operator-repository`、`dacp-website` 的 ZIP 安装包，Scala 普通客户端／协作客户端／算子 SDK 依赖包，包含 `dacp-shell` 的 Python 普通客户端 wheel 及独立协作客户端 wheel，以及源码 ZIP。生成 `SHA256SUMS` 用于校验。产物均为开发快照，不宣称正式发布；JVM SDK ZIP 包含运行时依赖，Python wheel 的依赖由 pip 安装。
 
 已经构建过的环境可以使用 `--skip-build` 重用应用 ZIP 和 SDK 类路径导出；Python wheel 与源码 ZIP 仍重新生成。任一缺失组件都会导致失败，不会悄悄跳过。文件准备好后逐个原子替换，正在运行的网站无需重启即可显示新文件；更新过程中整个目录不保证事务一致，请在发布完成后校验。
 

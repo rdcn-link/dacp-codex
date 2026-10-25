@@ -17,9 +17,12 @@ verifyOperators := {
 }
 // Bundle the small SDK itself; Arrow/Jackson/Scala remain in the shared runtime.
 Compile / packageBin / mappings ++= {
-  val sdk = (Compile / dependencyClasspath).value.map(_.data).find(_.getName.startsWith("dacp-operator-sdk_")).get
-  val unpack = target.value / "bundled-sdk"
-  IO.delete(unpack)
-  IO.unzip(sdk, unpack)
-  (unpack ** "*.class").get.map(f => f -> IO.relativize(unpack, f).get)
+  val jars = (Compile / dependencyClasspath).value.map(_.data).filter(f =>
+    f.getName.startsWith("dacp-operator-sdk_") || f.getName.startsWith("dacp-plugin-api_"))
+  jars.flatMap { jar =>
+    val unpack = target.value / ("bundled-" + jar.getName)
+    IO.delete(unpack)
+    IO.unzip(jar, unpack)
+    (unpack ** "*.class").get.map(f => f -> IO.relativize(unpack, f).get)
+  }
 }

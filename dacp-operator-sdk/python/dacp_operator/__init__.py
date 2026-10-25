@@ -8,6 +8,7 @@ import struct
 import sys
 
 import pyarrow as pa
+from .inference import descriptor, result, records_schema, run_inference, run_operator
 
 
 class OperatorContext:
@@ -193,8 +194,24 @@ def _valid_name(name):
     return isinstance(name, str) and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]{0,127}', name) is not None
 
 
-class BytesOperator:
+class Operator:
+    def infer_outputs(self, inputs, params):
+        raise NotImplementedError('every operator must implement infer_outputs')
+
+    def process(self, ctx):
+        raise NotImplementedError
+
+    def main(self):
+        run_operator(self.process, self.infer_outputs)
+
+
+class BytesOperator(Operator):
     output_format = 'binary'
+
+    def infer_outputs(self, inputs, params):
+        if set(inputs) != {'source'} or (inputs['source']['representations'] and 'bytes' not in inputs['source']['representations']):
+            raise ValueError('expected source bytes input')
+        return result({'result': descriptor(['bytes'], [self.output_format], certainty='known')})
 
     def transform(self, chunk, params):
         raise NotImplementedError
@@ -204,12 +221,16 @@ class BytesOperator:
         for chunk in ctx.input('source').bytes():
             output.write(self.transform(chunk, ctx.params))
 
-    def main(self):
-        with OperatorContext() as ctx:
-            self.process(ctx)
 
 
-class RecordsOperator:
+class RecordsOperator(Operator):
+    def infer_outputs(self, inputs, params):
+        if set(inputs) != {'source'} or (inputs['source']['representations'] and 'records' not in inputs['source']['representations']):
+            raise ValueError('expected source records input')
+        schema = records_schema(inputs['source'])
+        schema = self.output_schema(schema, params) if schema is not None else None
+        return result({'result': descriptor(['records'], ['arrow'], schema, 'known' if schema is not None else 'unknown')})
+
     def output_schema(self, input_schema, params):
         return input_schema
 
@@ -223,7 +244,3 @@ class RecordsOperator:
             result = self.transform(batch, ctx.params)
             if result is not None:
                 output.write(result)
-
-    def main(self):
-        with OperatorContext() as ctx:
-            self.process(ctx)

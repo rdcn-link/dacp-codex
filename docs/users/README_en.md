@@ -2,7 +2,7 @@
 
 [中文](README.md) · [Documentation](../README_en.md) · [Developer guide](../developers/README_en.md)
 
-Job inputs and outputs use `task[:port]`, defaulting to `result`. External data enters through `read_item@1.0`; `depends_on` declares execution prerequisites. See [streaming jobs and control dependencies](../jobs_en.md).
+Job inputs and outputs use `task[:port]`, defaulting to `result`. External data enters through `read_item@1.0`; only stream connections establish dependencies. See [streaming jobs](../jobs_en.md).
 
 For people browsing data, using SDKs, running operators, and configuring DACP nodes with existing plugins. Commands below run from the project root unless stated otherwise. To implement a new backend, format, or operator, use the developer guide.
 
@@ -33,7 +33,13 @@ python3 -m venv .venv
 .venv/bin/pip install -e './dacp-client[test]'
 bash scripts/certs.sh
 cd dacp-server
-sbt run
+sbt stage
+(umask 077
+ mkdir -p .dacp-security/8815
+ target/universal/stage/bin/dacp-server credentials .dacp-security/8815 create --subject alice > .dacp-security/8815/alice-issued.json
+ python3 -c 'import json,pathlib; p=pathlib.Path(".dacp-security/8815"); (p/"alice.token").write_text(json.loads((p/"alice-issued.json").read_text())["token"]); (p/"alice-issued.json").unlink()'
+)
+target/universal/stage/bin/dacp-server
 ```
 
 The default server listens on `localhost:8815`; its configuration is [examples/server.yaml](../../examples/server.yaml). Connect to the server origin and use the argument-free shell command `datasets` to list its directory before selecting a Dataset; a sole Dataset is selected automatically. Nodes publish local catalogs; Union merges them online, and its management website also displays selected members separately. See [dataset directories](../dataset-directory_en.md).
@@ -42,8 +48,7 @@ In another terminal, connect from the project root:
 
 ```bash
 export DACP_CA="$PWD/examples/certs/ca.crt"
-export DACP_CERT="$PWD/examples/certs/client.crt"
-export DACP_KEY="$PWD/examples/certs/client.key"
+export DACP_TOKEN_FILE="$PWD/dacp-server/.dacp-security/8815/alice.token"
 .venv/bin/dacp-shell dacp://localhost:8815
 # shell:
 # datasets
@@ -77,7 +82,7 @@ The example Dataset contains `/events`, `/reports/orders`, `/image`, and the emp
 
 ### Python SDK
 
-Using the certificate environment variables from the quick start:
+Using the CA and token-file environment variables from the quick start:
 
 ```python
 from dacp import Source
@@ -289,7 +294,7 @@ Operators can share a dependency environment and a code bundle. The starter oper
 
 ## Security and operating limits
 
-All Flight connections require mTLS. Published datasets and their Items are browsable and readable by default, without an additional URI allowlist. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
+Ordinary Flight uses TLS and tokens; Union collaboration uses mutual TLS and service credentials. Published datasets and their Items are browsable and readable by default, without an additional URI allowlist. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
 
 Unpublished physical files and database tables are not automatically exposed. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and tasks are not restored after restart. See the [technical reference](../../docs/reference_en.md#protocol-and-configuration) for full configuration and protocol details.
 
@@ -324,7 +329,7 @@ Publish optional source archives, repository revisions, license declarations/tex
 
 ## Union collaboration jobs
 
-Submit explicit-placement DAGs through the [Union server](../../dacp-union-server/README_en.md), subscribe to execution status and traffic, and read final streams. Module documentation covers invitation, approval, Python, and Scala usage; the [two-node example](../../examples/union/README_en.md) combines local sales aggregation with cross-node price analysis.
+Submit explicit-placement DAGs through the [Union server](../../dacp-union-server/README_en.md), subscribe to execution status and traffic, and read final streams. Module documentation covers member configuration, service credentials, Python and Scala usage; the [two-node example](../../examples/union/README_en.md) combines meteorological observations and climate baselines across nodes.
 
 DACP and Union persist all execution records by default; the Union dashboard can query history after restart. For local query commands and storage directories, see [execution history](../execution-history_en.md).
 

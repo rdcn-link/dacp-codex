@@ -25,33 +25,47 @@ final case class OutputEvent(kind:String, port:String, task:Option[String], repr
 }
 
 object Job {
+  def infer(node:String,yaml:String,tls:TlsConfig=TlsConfig(),variables:com.fasterxml.jackson.databind.JsonNode=null):com.fasterxml.jackson.databind.JsonNode =
+    inferAction(node,"dacp.infer_job",dacp.union.Json.obj().put("job_yaml",WorkflowVariables.resolve(yaml,variables)),tls)
+  def inferOperator(node:String,operator:String,inputs:com.fasterxml.jackson.databind.JsonNode,
+    params:com.fasterxml.jackson.databind.JsonNode=dacp.union.Json.obj(),tls:TlsConfig=TlsConfig()):com.fasterxml.jackson.databind.JsonNode={
+    val n=dacp.union.Json.obj().put("operator",operator);n.set[com.fasterxml.jackson.databind.JsonNode]("inputs",inputs);n.set[com.fasterxml.jackson.databind.JsonNode]("params",params)
+    inferAction(node,"dacp.infer",n,tls)
+  }
+  private def inferAction(node:String,action:String,body:com.fasterxml.jackson.databind.JsonNode,tls:TlsConfig):com.fasterxml.jackson.databind.JsonNode={
+    import scala.jdk.CollectionConverters._
+    val uri=new URI(node)
+    require(uri.getScheme=="dacp" && uri.getHost!=null && uri.getUserInfo==null && uri.getQuery==null && uri.getFragment==null &&
+      Set("", "/")(Option(uri.getPath).getOrElse("")),"expected DACP origin")
+    val bytes=dacp.union.Json.mapper.writeValueAsBytes(body);require(bytes.length<=1024*1024,"inference request exceeds 1 MiB")
+    val (client,allocator)=Source.connection(uri,tls)
+    try {
+      val results=client.doAction(new Action(action,bytes),CallOptions.timeout(120,TimeUnit.SECONDS)).asScala
+      require(results.hasNext,"missing inference response");val raw=results.next().getBody
+      require(raw.length<=1024*1024 && !results.hasNext,"invalid inference response")
+      dacp.union.Json.mapper.readTree(raw)
+    }finally Resources.closeAll(Seq(client,allocator))
+  }
+
   def run(node:String, yaml:String, tls:TlsConfig=TlsConfig(), timeoutSeconds:Long=3600, executionPolicy:com.fasterxml.jackson.databind.JsonNode=JobStream.mapper.createObjectNode(),
-    onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None, replayFrom:Option[String]=None):JobStream = {
+    onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None, replayFrom:Option[String]=None, variables:com.fasterxml.jackson.databind.JsonNode=null):JobStream = {
+    require(replayFrom.isEmpty || variables==null,"replay uses the original resolved variables")
+    val resolved=WorkflowVariables.resolve(yaml,variables)
     val u=new URI(node)
     require(u.getScheme=="dacp" && u.getHost!=null && u.getUserInfo==null && u.getQuery==null && u.getFragment==null &&
       Set("", "/")(Option(u.getPath).getOrElse("")) && (u.getPort == -1 || u.getPort>0 && u.getPort<=65535),"expected node origin dacp://host[:port]")
     require(timeoutSeconds>0,"timeoutSeconds must be positive")
     require(executionPolicy.isObject,"executionPolicy must be an object")
-    val builder=Metadata.OperatorRequest.newBuilder().setJobYaml(yaml).setRetryAware(onRetry.nonEmpty)
+    val builder=Metadata.OperatorRequest.newBuilder().setJobYaml(resolved).setRetryAware(onRetry.nonEmpty)
 
     if(replayFrom.isEmpty || executionPolicy.size()>0)builder.setExecutionPolicyJson(com.google.protobuf.ByteString.copyFromUtf8(executionPolicy.toString))
     replayFrom.foreach(builder.setReplayFrom)
     val request=builder.build().toByteArray
     require(request.length<=1024*1024,"control request exceeds 1 MiB")
-    def credential(p:Option[Path],env:String)=p.orElse(sys.env.get(env).map(Path.of(_)))
-    val ca=credential(tls.ca,"DACP_CA");val cert=credential(tls.cert,"DACP_CERT");val key=credential(tls.key,"DACP_KEY")
-    require(cert.isDefined==key.isDefined,"client certificate and key must be provided together")
-    val allocator=new RootAllocator()
-    var client:FlightClient=null
+    val (client,allocator)=Source.connection(u,tls)
     try {
-      client=Using.Manager {use=>
-        val builder=FlightClient.builder(allocator,Location.forGrpcTls(u.getHost,if(u.getPort<0)8815 else u.getPort))
-        ca.foreach(p=>builder.trustedCertificates(use(Files.newInputStream(p))))
-        cert.foreach(p=>builder.clientCertificate(use(Files.newInputStream(p)),use(Files.newInputStream(key.get))))
-        builder.build()
-      }.get
       open(client,allocator,request,timeoutSeconds,onRetry)
-    } catch {case t:Throwable=>if(client!=null)try client.close()catch{case _:Throwable=>()};allocator.close();throw DacpErrors.translate(t)}
+    } catch {case t:Throwable=>try client.close()catch{case _:Throwable=>()};allocator.close();throw DacpErrors.translate(t)}
   }
   def replay(node:String,executionId:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=3600,
     onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None):JobStream =

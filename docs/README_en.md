@@ -59,6 +59,8 @@ Commands run from the project root unless a document specifies otherwise. Relati
 
 Official website builds, deployment and software download publication: [dacp-website](../dacp-website/README_en.md). Website content is English-only.
 
-[S3-compatible reads](s3-service_en.md): dataset buckets and Item objects exposed at node startup, with anonymous read-only downloads.
+[S3-compatible reads](s3-service_en.md): dataset buckets and Item objects exposed at node startup, with SigV4-authenticated read-only downloads.
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](union-proxy_en.md).
+
+[Authentication and access control](security_en.md): Flight tokens, Union service credentials, S3 SigV4, revocation and audit. [Structure inference](structure-inference_en.md): mandatory operator output inference and workflow validation.

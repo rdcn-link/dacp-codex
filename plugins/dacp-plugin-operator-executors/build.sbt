@@ -10,8 +10,10 @@ Test / fork := true
 Test / javaOptions ++= Seq("--add-opens=java.base/java.nio=ALL-UNNAMED", "-Dio.netty.tryReflectionSetAccessible=true")
 
 Compile / resourceGenerators += Def.task {
-  val source = baseDirectory.value / "../../dacp-operator-sdk/python/dacp_operator/__init__.py"
-  val destination = (Compile / resourceManaged).value / "group-sdk.py"
-  IO.copyFile(source, destination)
-  Seq(destination)
+  Seq("__init__.py" -> "group-sdk.py", "inference.py" -> "inference.py").map { case (file, name) =>
+    val source = baseDirectory.value / "../../dacp-operator-sdk/python/dacp_operator" / file
+    val destination = (Compile / resourceManaged).value / name
+    IO.copyFile(source, destination)
+    destination
+  }
 }.taskValue

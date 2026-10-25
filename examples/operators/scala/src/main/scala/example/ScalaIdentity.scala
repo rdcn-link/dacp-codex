@@ -9,6 +9,12 @@ import org.apache.arrow.vector.ipc.ArrowStreamReader
 
 object ScalaIdentity {
   def main(args: Array[String]): Unit = {
+    if(args.headOption.contains("infer")) {
+      dacp.operator.OperatorRunner.infer(args)((inputs,params)=>{
+        require(inputs.keySet==Set("source") && params.isEmpty,"expected source and no params")
+        dacp.InferenceResult(Map("result"->inputs("source")))
+      });return
+    }
     val mapper = new ObjectMapper()
     val input = Paths.get(args(1))
     val manifest = mapper.readTree(Files.readAllBytes(input.resolve("manifest.json")))

@@ -55,8 +55,9 @@ object Repository {
     mapper.createObjectNode().put("sha256", hash).put("size", Files.size(source)).put("filename", filename)
   }
   def validatePorts(ports: com.fasterxml.jackson.databind.JsonNode): Unit = {
-    Seq("inputs","outputs").foreach { key=>
-      val n=ports.path(key);require(n.isObject,"input/output port mappings required")
+    require(!ports.has("outputs"),"outputs must be inferred by the operator method")
+    Seq("inputs").foreach { key=>
+      val n=ports.path(key);require(n.isObject,"input port mapping required")
       n.fields.asScala.foreach { e=>
         require(e.getKey.matches("[A-Za-z_][A-Za-z0-9_-]{0,127}"),"invalid port name")
         val v=e.getValue
@@ -99,8 +100,8 @@ object Repository {
       val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
       val in = Files.newInputStream(file)
       val d = try new org.yaml.snakeyaml.Yaml(options).load[java.util.Map[String, Object]](in).asScala.toMap finally in.close()
-      require(Set("name", "version", "image", "inputs", "outputs").subsetOf(d.keySet) &&
-        d.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "outputs", "executor_config", "provenance")), "invalid operator definition")
+      require(Set("name", "version", "image", "inputs").subsetOf(d.keySet) &&
+        d.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "executor_config", "provenance")), "invalid operator definition")
       val reference = s"${d("name")}@${d("version")}"
       val (name, version) = parts(reference)
       require(name == file.getParent.getParent.getFileName.toString && version == file.getParent.getFileName.toString,
@@ -163,7 +164,6 @@ object Repository {
         val manifest = mapper.createObjectNode()
         manifest.put("api_version", 2).put("name", name).put("version", version).put("description", description)
         manifest.set[com.fasterxml.jackson.databind.JsonNode]("inputs",ports.path("inputs"))
-        manifest.set[com.fasterxml.jackson.databind.JsonNode]("outputs",ports.path("outputs"))
         manifest.putObject("execution").put("executor", executor).put("entrypoint", entrypoint)
           .set[com.fasterxml.jackson.databind.JsonNode]("config", configuration)
         val runtime = manifest.putObject("runtime"); runtime.put("image", id); runtime.set[com.fasterxml.jackson.databind.JsonNode]("archive", archive)

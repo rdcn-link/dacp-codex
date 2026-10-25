@@ -38,6 +38,11 @@ def process(ctx):
         output.write((json.dumps(dict(station_id=station, date=day, sample_count=count, temperature_sum_c=total, min_temperature_c=low, max_temperature_c=high), allow_nan=False) + '\n').encode())
 
 
+def infer_outputs(inputs, params):
+    from dacp_operator import descriptor, result
+    return result({'result': descriptor(['bytes'], ['ndjson'], None, certainty='known')})
+
+
 if __name__ == '__main__':
-    with OperatorContext() as context:
-        process(context)
+    from dacp_operator import run_operator
+    run_operator(process, infer_outputs)

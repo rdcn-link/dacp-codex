@@ -203,7 +203,7 @@ The shell displays the execution ID, explicitly invalidates preceding attempt ou
 
 ## Developers: Flight protocol and storage plugins
 
-Use the existing Arrow Flight mTLS transport; there is no HTTP write interface. All Action names use the `dacp.union.` prefix:
+Use the existing Arrow Flight TLS / Token transport; there is no HTTP write interface. All Action names use the `dacp.union.` prefix:
 
 | Action | Request JSON | Response |
 |---|---|---|

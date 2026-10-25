@@ -32,7 +32,8 @@ class DacpServerSpec extends AnyFunSuite {
     server.start()
     val allocator=new RootAllocator()
     val caIn=Files.newInputStream(cert);val certIn=Files.newInputStream(cert);val keyIn=Files.newInputStream(key)
-    val client=try FlightClient.builder(allocator,server.location).trustedCertificates(caIn).clientCertificate(certIn,keyIn).build()
+    val token=c.credentials.create("alice")._2
+    val client=try dacp.union.ClientTransport.open(allocator,c.uri(""),Some(cert),None,None,()=>Some(token))
       finally {caIn.close();certIn.close();keyIn.close()}
     try assert(client.listFlights(Criteria.ALL).asScala.map(_.getDescriptor.getPath.get(1)).toSeq==Seq("public"))
     finally {client.close();allocator.close();server.close()}
@@ -144,8 +145,11 @@ web: {host: localhost, port: 0}
     val c=config(dir,cert,key)
     val server=DacpServer.builder().config(c).build().start()
     val s3Port=server.s3Port.get
-    val http=java.net.http.HttpClient.newHttpClient()
-    val response=http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"http://localhost:$s3Port/")).GET().build(),java.net.http.HttpResponse.BodyHandlers.ofString())
+    val http=SecurityTestSupport.client(cert)
+    val anonymous=http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"https://localhost:$s3Port/")).GET().build(),java.net.http.HttpResponse.BodyHandlers.ofString())
+    assert(anonymous.statusCode()==403)
+    SecurityTestSupport.register(s3Port,c)
+    val response=http.send(SecurityTestSupport.signed(s3Port,"/"),java.net.http.HttpResponse.BodyHandlers.ofString())
     assert(response.statusCode()==200 && response.body.contains("ListAllMyBucketsResult"))
     server.close();val freed=new ServerSocket(s3Port);freed.close()
     val disabled=DacpServer.builder().config(config(dir,cert,key).copy(s3=S3Settings(enabled=false))).build().start()

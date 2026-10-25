@@ -16,13 +16,11 @@ executor_config:
   stdout: {port: result, representation: bytes, format: text}
 inputs:
   source: {representations: [bytes], formats: []}
-outputs:
-  result: {representations: [bytes], formats: [text]}
 ```
 
 The runtime must provide `/usr/local/bin/python`, PyArrow, the executable, and its OS/architecture-compatible dependencies. The bridge reuses the existing Python runtime; it does not require Python or Arrow dependencies in the native program. `dacp/operator-python:1.0` can run the [C artifact example](../examples/operators/native/README_en.md), but does not necessarily contain tools such as `tr`. Install required tools in a derived image before publishing.
 
-`entrypoint` is an absolute executable path. `args` is a list of literal strings, passed directly without shell interpretation, expansion, or substitution of job parameters. All three settings `args`, `stdin`, and `stdout` are required; unknown keys fail. Input and output declarations must each contain exactly the corresponding port and exclusively the `bytes` representation. Stdout requires `port`, `representation: bytes`, and a nonempty `format`; that format must also satisfy the declared output contract. Formats label content; the adapter does not convert it.
+`entrypoint` is an absolute executable path. `args` is a list of literal strings, passed directly without shell interpretation, expansion, or substitution of job parameters. All three settings `args`, `stdin`, and `stdout` are required; unknown keys fail. Declare the stdin port in `inputs` with only the `bytes` representation. Set `stdin: null` for a source operator or `stdout: null` for a sink. Do not declare `outputs` in the manifest: the mandatory executor inference method derives it from `executor_config.stdout`. A non-null stdout requires `port`, `representation: bytes`, and a nonempty `format`. Formats label content; the adapter does not convert it.
 
 To publish a separate executable artifact, set `artifact: path/to/program` and `entrypoint: /operator/program`, matching the artifact filename. Paths in local definitions are relative to `operator.yaml`. The downloaded artifact is verified and mounted read-only. Because content-addressed storage does not preserve executable permission bits, the bridge copies it into private container `/operator-work`, sets executable permissions, and launches that copy. The plugin requests a bounded 512 MiB executable tmpfs for this copy; ordinary `/tmp` stays non-executable. Shared libraries must already be in the runtime. There is no dependency download or native compilation during execution.
 
@@ -32,7 +30,7 @@ The adapter unwraps Arrow IPC byte cells from the named input FIFO, writes their
 
 Output `end` is emitted only after successful program exit and successful input delivery. A nonzero exit or broken input delivery fails the job; previously delivered data is partial. Cancellation or timeout uses the server's existing container removal lifecycle, terminating the program and its child processes. Commands should consume their complete stdin; early stdin closure is not a successful truncation/preview mechanism. Use shell preview flags to cancel a job intentionally.
 
-This first adapter supports one bytes input and one bytes output. Records serialization, multiple pipes, filename arguments, seekable temporary input files, and shell pipelines are not implemented. Use a custom operator wrapper for these cases; do not implicitly flatten structured or multidimensional data.
+The adapter supports zero or one bytes input and zero or one bytes output. Records serialization, multiple pipes, filename arguments, seekable temporary input files, and shell pipelines are not implemented. Use a custom operator wrapper for these cases; do not implicitly flatten structured or multidimensional data.
 
 ## Publication and execution
 

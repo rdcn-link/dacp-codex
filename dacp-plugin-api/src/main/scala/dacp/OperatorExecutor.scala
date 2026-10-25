@@ -20,6 +20,11 @@ trait OperatorExecutor extends Plugin {
   /** Source compilers/launchers execute exclusively inside the isolated runtime container. */
   def sourceCommand(program: OperatorProgram, artifactPath: String): OperatorCommand =
     throw new IllegalArgumentException(s"executor $id does not support source")
+  /** Metadata-only invocation, in the same isolated runtime as execution. */
+  def inferenceCommand(program:OperatorProgram, artifactPath:Option[String]):OperatorCommand =
+    command(program,artifactPath).copy(arguments=Vector("infer","/input/inference.json"))
+  def sourceInferenceCommand(program:OperatorProgram,artifactPath:String):OperatorCommand =
+    sourceCommand(program,artifactPath).copy(arguments=Vector("infer","/input/inference.json"))
   /** Return None unless every step supports the plugin's in-process contract. */
   def groupCommand(group: OperatorGroup): Option[OperatorCommand] = None
   def id: String

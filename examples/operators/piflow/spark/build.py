@@ -82,9 +82,11 @@ def build(spark_home, name):
     # fusion: each owns a SparkContext and its temporary storage lifecycle.
     wrapper.write_text('package dacp.ecoflow\nobject Op_' + name + ' {\n'
         ' def main(args:Array[String]):Unit={\n'
+        '  val op=new org.apache.spark.sql.dacp.EcoFlowOperator('
+        + json.dumps(item['upstream_class']) + ',Map(' + ports + '),Set(' + params + ')){}\n'
         '  val protocol=System.out;System.setOut(System.err)\n'
-        '  try dacp.operator.OperatorRunner.run(args,protocol)(new org.apache.spark.sql.dacp.EcoFlowOperator('
-        + json.dumps(item['upstream_class']) + ',Map(' + ports + '),Set(' + params + ')){}.process)\n'
+        '  try {if(args.headOption.contains("infer")) dacp.operator.OperatorRunner.infer(args,protocol)(op.inferOutputs)\n'
+        '       else dacp.operator.OperatorRunner.run(args,protocol)(op.process)}\n'
         '  finally System.setOut(protocol)\n }\n}\n')
     subprocess.run(['java', '-cp', str(jars / '*'), 'scala.tools.nsc.Main', '-classpath', cp + ':' + str(classes), '-d', str(classes),
                     str(HERE / 'Contracts.scala'), str(HERE / 'EcoFlowOperator.scala'), str(wrapper), *map(str, sources)], check=True)
@@ -92,10 +94,11 @@ def build(spark_home, name):
     with zipfile.ZipFile(artifact, 'w', zipfile.ZIP_DEFLATED) as z:
         for p in classes.rglob('*.class'):
             z.write(p, p.relative_to(classes).as_posix())
-        with zipfile.ZipFile(sdk) as sdk_zip:
-            for n in sdk_zip.namelist():
-                if n.endswith('.class'):
-                    z.writestr(n, sdk_zip.read(n))
+        for dependency in (sdk, api):
+            with zipfile.ZipFile(dependency) as dependency_zip:
+                for n in dependency_zip.namelist():
+                    if n.endswith('.class'):
+                        z.writestr(n, dependency_zip.read(n))
     print(artifact, flush=True)
     return artifact
 

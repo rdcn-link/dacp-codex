@@ -24,7 +24,7 @@ From the repository root, run the following command to build components sequenti
 python3 scripts/prepare-website-downloads.py --output /srv/dacp/downloads
 ```
 
-The script requires sbt, Python 3.10+, pip and network access. By default it builds ZIP distributions of `dacp-server`, `dacp-union-server`, `dacp-operator-repository` and `dacp-website`, dependency bundles for the Scala client / operator SDKs, a Python wheel including `dacp-shell`, and a source ZIP. It generates `SHA256SUMS` for verification. Artifacts are development snapshots, not official releases; JVM SDK ZIPs include runtime dependencies, while pip installs Python wheel dependencies.
+The script requires sbt, Python 3.10+, pip and network access. By default it builds ZIP distributions of `dacp-server`, `dacp-union-server`, `dacp-operator-repository` and `dacp-website`, dependency bundles for the Scala ordinary client / collaboration client / operator SDKs, Python ordinary and collaboration client wheels, including `dacp-shell`, and a source ZIP. It generates `SHA256SUMS` for verification. Artifacts are development snapshots, not official releases; JVM SDK ZIPs include runtime dependencies, while pip installs Python wheel dependencies.
 
 After an initial build, `--skip-build` reuses application ZIPs and SDK classpath exports; the Python wheel and source ZIP are still regenerated. Missing components fail the operation rather than being silently skipped. Prepared files replace published files atomically one by one; the running website discovers them without restarting. The directory update is not transactional as a whole; verify checksums after publication completes.
 

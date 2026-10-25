@@ -39,7 +39,7 @@ class ExecutorSpec extends AnyFunSuite {
     assert(c.entrypoint.get.head=="/opt/java/bin/java")
     assert(c.entrypoint.get.contains("scala.tools.nsc.MainGenericRunner"))
     assert(c.entrypoint.get.exists(_.contains("scala.tools.nsc.Main.process")))
-    assert(c.arguments.isEmpty)
+    assert(c.arguments==Vector("operator","/input","/input/params.json"))
     intercept[IllegalArgumentException](new ContainerExecutor().sourceCommand(p,"/operator/operator.source"))
   }
 

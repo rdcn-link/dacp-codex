@@ -20,7 +20,7 @@ class PublishingSpec extends AnyFunSuite {
     HttpClient.newHttpClient().send(b.method(method,HttpRequest.BodyPublishers.ofByteArray(body)).build(),HttpResponse.BodyHandlers.ofByteArray())
   }
   private def manifest(root:Path):com.fasterxml.jackson.databind.node.ObjectNode={
-    val ports=Repository.mapper.readTree("""{"inputs":{"source":{"representations":["bytes"],"formats":[]}},"outputs":{"result":{"representations":["bytes"],"formats":[]}}}""")
+    val ports=Repository.mapper.readTree("""{"inputs":{"source":{"representations":["bytes"],"formats":[]}}}""")
     val code=root.resolve("code.jar");Files.writeString(code,"operator")
     val source=root.resolve("sources.zip");Files.writeString(source,"source archive")
     val exporter=new Repository.ImageExporter {

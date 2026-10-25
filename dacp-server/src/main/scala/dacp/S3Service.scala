@@ -1,6 +1,6 @@
 package dacp
 
-import com.sun.net.httpserver.{HttpExchange,HttpServer}
+import com.sun.net.httpserver.{HttpExchange,HttpsServer,HttpsConfigurator}
 import java.net.{InetSocketAddress,URLDecoder,URLEncoder}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.concurrent.{ArrayBlockingQueue,ThreadPoolExecutor,TimeUnit}
@@ -13,7 +13,7 @@ import org.apache.arrow.vector.ipc.message.IpcOption
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
-/** Public, anonymous read-only S3 transport. Dataset plugins remain responsible for content. */
+/** Authenticated read-only S3 transport. Dataset plugins remain responsible for content. */
 case class S3Settings(enabled:Boolean=true,host:String="0.0.0.0",port:Option[Int]=None) {
   require(host.nonEmpty && port.forall(p=>p>=0 && p<=65535),"invalid s3 address")
   def bindPort(flightPort:Int):Int={val p=port.getOrElse(flightPort+2000);require(p>=0 && p<=65535,"set s3.port when Flight port exceeds 63535");p}
@@ -34,13 +34,14 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
   private case class Failure(status:Int,code:String) extends RuntimeException(code)
   private case object RangeComplete extends RuntimeException with scala.util.control.NoStackTrace
   private val closed=new AtomicBoolean()
-  private val server=HttpServer.create(new InetSocketAddress(config.s3.host,config.s3.bindPort(flightPort)),32)
+  private val server=HttpsServer.create(new InetSocketAddress(config.s3.host,config.s3.bindPort(flightPort)),32)
+  server.setHttpsConfigurator(new HttpsConfigurator(new dacp.union.Tls(config.cert,config.key,config.ca).sslContext))
   private val threads=new ThreadPoolExecutor(8,8,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue[Runnable](64),new ThreadPoolExecutor.AbortPolicy())
   private val active=java.util.concurrent.ConcurrentHashMap.newKeySet[HttpExchange]()
   server.setExecutor(threads)
   server.createContext("/",(e:HttpExchange)=>handle(e))
   def port:Int=server.getAddress.getPort
-  def start():Unit={server.start();org.slf4j.LoggerFactory.getLogger("dacp.Main").info(s"dacp public read-only S3 listening on http://${config.s3.host}:$port")}
+  def start():Unit={server.start();org.slf4j.LoggerFactory.getLogger("dacp.Main").info(s"dacp authenticated read-only S3 listening on https://${config.s3.host}:$port")}
   def close():Unit=if(closed.compareAndSet(false,true)){active.asScala.foreach(_.close());server.stop(0);threads.shutdownNow();threads.awaitTermination(5,TimeUnit.SECONDS)}
   private def check():Unit=if(closed.get() || Thread.currentThread().isInterrupted)throw new java.util.concurrent.CancellationException()
   private def xml(s:String):String=s.flatMap {case '&'=>"&amp;";case '<'=>"&lt;";case '>'=>"&gt;";case '"'=>"&quot;";case '\''=>"&apos;";case c=>c.toString}
@@ -56,13 +57,14 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
     var success=false
     try {
       check()
-      // This endpoint has no access-key identity store. Never pretend to authenticate signed requests.
-      val rawQuery=Option(e.getRequestURI.getRawQuery).getOrElse("")
-      val pairs=rawQuery.split("&").filter(_.nonEmpty).map { p=>val a=p.split("=",2);URLDecoder.decode(a(0),UTF_8)->URLDecoder.decode(if(a.length==2)a(1)else "",UTF_8) }
+      if(!Set("GET","HEAD")(e.getRequestMethod))throw Failure(405,"MethodNotAllowed")
+      val credential=try dacp.union.SigV4.authenticate(e.getRequestMethod,e.getRequestURI,
+        e.getRequestHeaders.asScala.map{case(k,v)=>k->v.asScala.toVector}.toMap,config.credentials)
+        catch{case NonFatal(_)=>throw Failure(403,"AccessDenied")}
+      audit.actor(credential.subject)
+      val pairs=dacp.union.SigV4.query(e.getRequestURI).filterNot(_._1.startsWith("X-Amz-"))
       require(pairs.map(_._1).distinct.length==pairs.length,"duplicate parameter")
       val q=pairs.toMap
-      if(e.getRequestHeaders.containsKey("Authorization") || q.keys.exists(_.startsWith("X-Amz-")))throw Failure(403,"AccessDenied")
-      if(!Set("GET","HEAD")(e.getRequestMethod))throw Failure(405,"MethodNotAllowed")
       val path=URLDecoder.decode(e.getRequestURI.getRawPath.replace("+","%2B"),UTF_8)
       val parts=path.stripPrefix("/").split("/",2)
       val bucket=parts(0);val key=if(parts.length==2)parts(1)else ""

@@ -12,7 +12,3 @@ inputs:
   statistics:
     representations: [bytes]
     formats: [ndjson]
-outputs:
-  result:
-    representations: [bytes]
-    formats: [ndjson]

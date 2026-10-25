@@ -22,12 +22,12 @@ java.nio.file.Files.copy(java.nio.file.Path.of(args(0)),source)
 val ok=Console.withOut(System.err) { scala.tools.nsc.Main.process(Array("-usejavacp","-d",target.toString,source.toString)) }
 require(ok,"Scala compilation failed")
 val loader=new java.net.URLClassLoader(Array(target.toUri.toURL),Thread.currentThread.getContextClassLoader)
-try { loader.loadClass(args(1)).getMethod("main",classOf[Array[String]]).invoke(null,Array("operator","/input","/input/params.json").asInstanceOf[Object]) }
+try { loader.loadClass(args(1)).getMethod("main",classOf[Array[String]]).invoke(null,args.drop(2).asInstanceOf[Object]) }
 finally loader.close()
 """
     OperatorCommand(Some(Vector("/opt/java/bin/java","--add-opens=java.base/java.nio=ALL-UNNAMED",
       "-Dio.netty.tryReflectionSetAccessible=true","-cp","/opt/lib/*","scala.tools.nsc.MainGenericRunner",
-      "-usejavacp","-e",script,path,p.entrypoint)),arguments=Vector.empty)
+      "-usejavacp","-e",script,path,p.entrypoint)),arguments=Vector("operator","/input","/input/params.json"))
   }
   def command(p: OperatorProgram, path: Option[String]): OperatorCommand = {
     require(p.configuration.isEmpty,"executor does not accept configuration")
@@ -41,7 +41,7 @@ final class PythonExecutor extends OperatorExecutor {
   override def groupCommand(group:dacp.OperatorGroup):Option[OperatorCommand]=PythonGroup.command(group)
   val id = "python"
   override def sourceCommand(p: OperatorProgram, path: String): OperatorCommand =
-    OperatorCommand(Some(Vector("/usr/local/bin/python","-c",PythonSource.launcher,path)),arguments=Vector.empty,
+    OperatorCommand(Some(Vector("/usr/local/bin/python","-c",PythonSource.launcher,path)),arguments=Vector("operator","/input","/input/params.json"),
       environment=Map("PYTHONDONTWRITEBYTECODE"->"1"))
   // Install the wheel offline into writable ephemeral storage, using dependencies supplied by the runtime.
   // pip validates wheel tags; its failure is fatal. No package index or network dependency resolution occurs.
@@ -81,7 +81,7 @@ def frame(kind, data=b'', **meta):
     sys.stdout.buffer.flush()
 
 def chunks(entry):
-    with open('/input/'+entry['file'],'rb',buffering=0) as stream:
+    with open('/input/'+entry['file'],'rb') as stream:
         with ipc.open_stream(stream) as reader:
             for batch in reader:
                 if entry['representation']=='bytes':
@@ -90,18 +90,25 @@ def chunks(entry):
                 else:
                     yield batch
 
-with open('/input/manifest.json') as f:
-    manifest=json.load(f)
-with open('/input/params.json') as f:
-    params=json.load(f)
 namespace={'__name__':'dacp_inline'}
 with open(sys.argv[1]) as f:
     source=f.read()
-# stdout belongs exclusively to protocol frames, including during module initialization.
 protocol=sys.stdout
 sys.stdout=sys.stderr
 try:
     exec(compile(source,'<operator>','exec'),namespace)
+finally:
+    sys.stdout=protocol
+if len(sys.argv)>2 and sys.argv[2]=='infer':
+    from dacp_operator.inference import run_inference
+    run_inference(namespace['infer_outputs'],sys.argv[2:])
+    sys.exit(0)
+with open('/input/manifest.json') as f:
+    manifest=json.load(f)
+with open('/input/params.json') as f:
+    params=json.load(f)
+sys.stdout=sys.stderr
+try:
     result=iter(namespace['process']({entry['port']:chunks(entry) for entry in manifest},params))
     first=next(result,None)
 finally:

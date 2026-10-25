@@ -137,7 +137,7 @@ Dataset providers construct datasets, container readers browse archives, and for
 
 ## Task execution and operators
 
-Task inputs reference only upstream outputs as `task[:port]`, defaulting to `result`. External Items enter through `read_item@1.0` with `params.uri/view`; `depends_on` waits for successful predecessors. See [Job format](jobs_en.md). Outputs are named streams, never saved datasets. The shell supports `run OP --input source=/item` and `submit job.yaml`, and prints results incrementally. Jobs use mTLS Flight DoExchange; pipeline tasks run concurrently with bounded queues. Each output port has at most one downstream consumer; consume multiple inputs in lexical port order.
+Task inputs reference only upstream outputs as `task[:port]`, defaulting to `result`. External Items enter through `read_item@1.0` with `params.uri/view`. See [Job format](jobs_en.md). Outputs are named streams, never saved datasets. The shell supports `run OP --input source=/item` and `submit job.yaml`, and prints results incrementally. Ordinary jobs use TLS and bearer-authenticated Flight DoExchange; pipeline tasks run concurrently with bounded queues. Each output port has at most one downstream consumer; consume multiple inputs in lexical port order.
 
 Operator launch arguments are `operator /input /input/params.json`. Inputs are Arrow IPC FIFOs described by `/input/manifest.json`. Stdout carries framed start/data/end events; diagnostics go to stderr. No output directory, output registration, TTL, or result-dataset URI is used. Parquet conversion uses private ephemeral scratch to complete the footer, then streams bytes.
 
@@ -188,7 +188,7 @@ Configuration in `examples/server.yaml`:
 | `host` / `port` | Listening address / port |
 | `public_host` | Hostname for external URIs; allowlists use this name and an explicit port |
 | `datasets` | Dataset name → provider, source, and items; names occupy one URI path segment |
-| `tls_cert` / `tls_key` / `tls_ca` | PEM certificate, private key, and trusted client CA; mTLS is mandatory |
+| `tls_cert` / `tls_key` / `tls_ca` | PEM server certificate, private key and trusted CA; ordinary clients use TLS / tokens, collaboration uses mutual TLS |
 | `count_file_records_on_startup` | Populate directly published record file counts at startup; defaults to false and adds startup scanning cost |
 | `batch_size` | Maximum rows per batch in file records views |
 | `byte_chunk` | Maximum bytes per binary row in bytes views |
@@ -200,7 +200,7 @@ Configuration in `examples/server.yaml`:
 | `task_input_prefixes` | Optional execution-node input URI prefix restriction; omitted or empty means no additional prefix restriction |
 | `max_concurrent_tasks` | Concurrency limit for local tasks and control requests (default 2); returns UNAVAILABLE immediately when full |
 
-Published node datasets are public to mTLS-verified clients, without an additional data-read allowlist. Task executors initiate mTLS using the node's configured certificates. Multiple nodes must trust the corresponding CAs.
+Published node datasets are available to authenticated TLS / token clients without an additional data-read allowlist. Union collaboration uses node-issued service credentials and mutual TLS; peer streams must also match exact execution plans.
 
 Service errors use Flight/gRPC statuses and explicit dacp error names: missing resources return `NOT_FOUND`; denied access returns `UNAUTHORIZED` with `FORBIDDEN`; schema conflicts return `INVALID_ARGUMENT` with `SCHEMA_CONFLICT`. Protobuf also defines error codes for protocol extensions. Any transport failure invalidates the current reader, and callers must reopen from the beginning; there are no retries within a stream.
 
@@ -212,4 +212,4 @@ Server `mode` defaults to `NORMAL`. Inline source requires `DEBUG` at both coord
 
 ## S3-compatible endpoint
 
-Nodes enable an anonymous, read-only HTTP S3 endpoint by default: datasets are buckets, and Items advertising `bytes` are objects. Configure `s3.enabled` (default true), `s3.host` (default `0.0.0.0`), and `s3.port` (default actual Flight port plus 2000). Use path-style URLs and unsigned requests. See the [S3-compatible service](s3-service_en.md) for supported operations, clients, and plugin examples.
+Nodes enable a SigV4-authenticated, read-only HTTPS S3 endpoint by default: datasets are buckets, and Items advertising `bytes` are objects. Configure `s3.enabled` (default true), `s3.host` (default `0.0.0.0`), and `s3.port` (default actual Flight port plus 2000). Use path-style URLs and SigV4-signed requests. See the [S3-compatible service](s3-service_en.md) for supported operations, clients, and plugin examples.

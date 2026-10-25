@@ -3,6 +3,7 @@
 import json, socket, subprocess, tempfile, time, urllib.request
 from pathlib import Path
 from dacp import Job, Source
+from security_test_support import authorize
 ROOT=Path(__file__).resolve().parents[1]
 creds={name:(ROOT/'examples/certs'/file).read_bytes() for name,file in [('tls_root_certs','ca.crt'),('cert_chain','client.crt'),('private_key','client.key')]}
 with tempfile.TemporaryDirectory(prefix='dacp-repository-example-check-') as temp:
@@ -18,6 +19,7 @@ with tempfile.TemporaryDirectory(prefix='dacp-repository-example-check-') as tem
   local_operator_library=str(base/'no-local-operators'),
   remote_operator_library_urls=['http://localhost:8820'],operator_cache=str(base/'cache'),
   tls_cert=str(ROOT/'examples/certs/server.crt'),tls_key=str(ROOT/'examples/certs/server.key'),tls_ca=str(ROOT/'examples/certs/ca.crt'))
+ creds['token']=authorize(config,base)
  (base/'config.json').write_text(json.dumps(config))
  with (base/'server.log').open('w+') as log:
   server=subprocess.Popen([str(ROOT/'dacp-server/target/universal/stage/bin/dacp-server'),str(base/'config.json')],cwd=ROOT/'dacp-server',stdin=subprocess.DEVNULL,stdout=log,stderr=log)

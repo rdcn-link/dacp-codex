@@ -11,7 +11,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 APPS = ('dacp-server', 'dacp-union-server', 'dacp-operator-repository', 'dacp-website')
-SDKS = ('dacp-client-scala', 'dacp-operator-sdk')
+SDKS = ('dacp-client-scala', 'dacp-collaboration-client-scala', 'dacp-operator-sdk')
 
 def run(args, cwd):
     subprocess.run(args, cwd=cwd, check=True)
@@ -39,7 +39,10 @@ def publish(destination, build=True):
         # SDK bundles contain their complete runtime classpath, not just a thin JAR.
         for module in SDKS:
             if build:
-                result = subprocess.check_output(['sbt', 'export Runtime/fullClasspath'], cwd=ROOT / module, text=True)
+                completed = subprocess.run(['sbt', 'export Runtime/fullClasspath'], cwd=ROOT / module, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                if completed.returncode:
+                    raise RuntimeError(f'{module} classpath export failed:\n{completed.stdout}')
+                result = completed.stdout
                 paths = [line.strip() for line in result.splitlines() if line.strip().startswith('/')]
                 if not paths:
                     raise RuntimeError(f'Could not export {module} runtime classpath')
@@ -57,10 +60,11 @@ def publish(destination, build=True):
                             if f.is_file():
                                 archive.write(f, f'{module}/classes/{f.relative_to(p)}')
                 archive.writestr(f'{module}/INSTALL.txt', 'Development SDK bundle. JDK 17+. Add classes/ and lib/* to your JVM classpath.\nSee https://github.com/rdcn-link/dacp-codex for API documentation.\n')
-        python_source = Path(tmp) / 'python-source'
-        shutil.copytree(ROOT / 'dacp-client', python_source, ignore=shutil.ignore_patterns('build', 'target', '*.egg-info', '__pycache__', '.pytest_cache', '.venv'))
-        run([os.environ.get('PYTHON', 'python3'), '-m', 'pip', 'wheel', '--no-deps', '--wheel-dir', str(staging), '.'], python_source)
-        tracked = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode().split('\0')
+        for module in ('dacp-client', 'dacp-collaboration-client'):
+            python_source = Path(tmp) / module
+            shutil.copytree(ROOT / module, python_source, ignore=shutil.ignore_patterns('build', 'target', '*.egg-info', '__pycache__', '.pytest_cache', '.venv'))
+            run([os.environ.get('PYTHON', 'python3'), '-m', 'pip', 'wheel', '--no-deps', '--wheel-dir', str(staging), '.'], python_source)
+        tracked = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd=ROOT).decode().split('\0')
         # Include the new module before it is committed; omit generated artifacts.
         website = [str(p.relative_to(ROOT)) for p in (ROOT / 'dacp-website').rglob('*') if p.is_file() and not any(x in p.parts for x in ('target', 'downloads', '.bsp'))]
         with zipfile.ZipFile(staging / 'dacp-source-development.zip', 'w', zipfile.ZIP_DEFLATED) as archive:

@@ -17,7 +17,7 @@ private[operators] object PythonGroup {
     if(group.steps.flatMap(_.program.artifact).distinct.size!=1 || !group.steps.forall(s=>s.program.configuration.isEmpty && s.program.artifact.nonEmpty && s.artifactPath.exists(p=>p.endsWith(".py")||p.endsWith(".whl")) && supported(s)))return None
     Some(OperatorCommand(Some(Vector("/usr/local/bin/python","-u","/input/python-group.py")),arguments=Vector("/input"),
       environment=Map("PYTHONDONTWRITEBYTECODE"->"1","PIP_DISABLE_PIP_VERSION_CHECK"->"1"),
-      files=Map("python-group.py"->resource("python-group.py"),"group-sdk.py"->resource("group-sdk.py"),"group.json"->JvmGroup.definition(group)),
+      files=Map("python-group.py"->resource("python-group.py"),"group-sdk.py"->resource("group-sdk.py"),"inference.py"->resource("inference.py"),"group.json"->JvmGroup.definition(group)),
       mounts=group.steps.flatMap(s=>s.program.artifact.zip(s.artifactPath).map{case(file,path)=>path->file}).toMap))
   }
 }

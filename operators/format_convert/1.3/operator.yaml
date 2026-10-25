@@ -10,11 +10,6 @@ inputs:
   source:
     representations: [bytes]
     formats: [csv, ndjson]
-outputs:
-  result:
-    representations: [bytes]
-    formats: [parquet]
-
 provenance:
   source_archive: ../../../.operator-sources/dacp-sources.zip
   source_repository: https://github.com/rdcn-link/dacp-codex

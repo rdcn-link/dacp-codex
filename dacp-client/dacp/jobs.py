@@ -8,6 +8,7 @@ import pyarrow as pa
 import pyarrow.flight as flight
 from . import dacp_pb2 as pb
 from .source import _flight_client
+from .variables import resolve_variables
 
 
 class JobStream:
@@ -111,8 +112,22 @@ class JobStream:
 
 class Job:
     @staticmethod
+    def infer(node, yaml, *, variables=None, **credentials):
+        """Infer every step and selected result without opening data streams."""
+        from .inference import infer
+        return infer(node, {'job_yaml': resolve_variables(yaml, variables)}, workflow=True, **credentials)
+
+    @staticmethod
+    def infer_operator(node, operator, inputs, params=None, **credentials):
+        from .inference import infer
+        return infer(node, {'operator': operator, 'inputs': inputs, 'params': {} if params is None else params}, **credentials)
+
+    @staticmethod
     def run(node, yaml, *, tls_root_certs=None, cert_chain=None, private_key=None, timeout=3600,
-            execution_policy=None, on_retry=None, replay_from=None):
+            execution_policy=None, on_retry=None, replay_from=None, variables=None, token=None):
+        if replay_from is not None and variables is not None:
+            raise ValueError("replay uses the original resolved variables")
+        yaml = resolve_variables(yaml, variables)
         u = urlsplit(node)
         if (u.scheme != 'dacp' or not u.hostname or u.username or u.password
                 or u.path not in ('', '/') or u.query or u.fragment):
@@ -127,7 +142,7 @@ class Job:
                                                          if execution_policy is not None else b'')).SerializeToString()
         if len(body) > 1024*1024:
             raise ValueError('control request exceeds 1 MiB')
-        client = _flight_client(u, tls_root_certs, cert_chain, private_key)
+        client = _flight_client(u, tls_root_certs, cert_chain, private_key, **({"token": token} if token is not None else {}))
         try:
             writer, reader = client.do_exchange(flight.FlightDescriptor.for_command(body),
                                                options=flight.FlightCallOptions(timeout=timeout))

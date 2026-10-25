@@ -1,63 +1,121 @@
-# Streaming jobs and control dependencies
+# Streaming jobs
 
 [中文](jobs.md)
 
-DACP Server and Union share one Job format. `tasks` declares steps, `inputs` connects only other steps' output streams, `depends_on` declares execution prerequisites, and Job `outputs` selects streams returned to the client. List order does not define execution order.
+DACP Server and Union share the same Job format. Steps connect through output streams referenced in `inputs`. List order does not define execution order. Control dependencies (`depends_on`) are not supported.
 
 ```yaml
-job: weather-ingestion
+job: weather-copy
 tasks:
-  - id: prepare
-    title: Initialize the target table
-    operator: prepare_weather_table@1.0
-    inputs: {}
   - id: read
-    title: Read observation records
+    title: Read weather observations
     operator: read_item@1.0
     inputs: {}
     params:
       uri: dacp://localhost:18861/weather/observations
       view: records
-  - id: write
-    title: Write observations incrementally
-    operator: write_weather_table@1.0
+  - id: copy
+    title: Stream observation records
+    operator: identity@1.3
     inputs:
       source: read
-    depends_on: [prepare]
 outputs:
-  summary: write:summary
+  result: copy
 ```
 
-`prepare_weather_table` and `write_weather_table` are illustrative business operators that must be implemented and published before use. The former may declare `outputs: {}`; the latter returns a final write summary on `summary`. Ordinary Union clients must use public Union dataset names in read URIs, omitting `node` or using logical node names returned by `dacp.nodes`. Administrators may specify actual member addresses.
+## Fields and stream connections
 
-## Stream connections
+`job` names the workflow. Each task has a unique `id`, optional descriptive `title`, versioned `operator`, named `inputs`, and optional `params` and placement `node`. Input values and Job outputs use `task` or `task:port`; omitted ports mean `result`. Object bindings and connection-level `view` are not supported. Each output has at most one consumer. Use explicit duplication operators or separate ports for fan-out.
 
-Input values must be strings, either `task` or `task:port`; an omitted port means `result`. Job outputs use the same syntax. A missing default port is an error; no other port is selected. `{uri, view}` and `{task, port}` objects and connection-level `view` are not supported.
+`read_item@1.0` is a built-in transport source requiring no operator container. It takes no inputs and requires `params.uri` addressing one Item and `params.view` set to `bytes` or `records`; its output is `result`. Zero-input generators such as `live_ticks` also have empty inputs. Processing operators consume upstream outputs. Representation conversion is explicit.
 
-Source operators declare `inputs: {}` and read external data or generate data themselves. Processing steps consume other steps' outputs. Stream metadata identifies the actual representation and schema, checked against the receiving operator's contract; bytes/records conversion is never implicit. Each output has at most one consumer and cannot feed both another task and the client. Duplication requires an explicit operator or separate output ports.
+On Union, use public Union dataset URIs. Omit `node` for automatic placement or use a logical node returned by `dacp.nodes`. Physical member addresses are not accepted in user submissions.
 
-## Built-in Item source
+## Structure inference and sinks
 
-`read_item@1.0` is a built-in server transport operator requiring no downloaded container. Its `params` must contain exactly the string values `uri` and `view`. The URI addresses one Item, and `view` is `records` or `bytes`. Inputs are empty; the output is `result`. Reads use public Dataset/Item plugin interfaces, preserving structure, backpressure, cancellation and resource cleanup without materializing the complete input. Read targets participate in authorization and data-local placement; parameters cannot bypass member grants or task input prefixes.
+Every operator must implement [structure inference](structure-inference_en.md). Output descriptors come from this method, not manifest output declarations. A sink may infer an empty output map and finish successfully without emitting frames. A Job may set `outputs: {}`; the client then waits for completion without receiving result data. Unselected branches still execute.
+
+Upstream and downstream steps run concurrently with bounded buffering. Failure, cancellation and timeout cancel the attempt and release resources. Retries and materialization are configured in a separate [execution policy JSON](materialization_en.md). Retries can repeat external side effects; operators must provide appropriate idempotency.
+
+## Shell
 
 ```text
-run identity@1.1 --input source=/observations --view records
+submit job.yaml
+submit job.yaml --vars variables.json
+run identity@1.3 --input source=/observations --view records
+run live_ticks@1.0
 ```
 
-The shell generates `read_item` steps and connects `run` inputs to them. `--view` selects the Item representation only; generated connections carry no `view`. Zero-input generators still support `run live_ticks@1.0` directly.
+The shell converts Item inputs into `read_item` steps and prints results incrementally. It connects to either a node or Union using [TLS and a token](security_en.md). Repeat `--output PORT` to select multiple ports, or use `--no-output` for a sink. Inline heredoc source is DEBUG-only; see [source submission](operator-source_en.md).
 
-Shell receives `result` by default; repeat `--output PORT` for multiple outputs, or use `--no-output` for a sink.
+## Workflow variables
 
-## Control dependencies and sinks
+Supply variables in a separate JSON file when submitting a workflow, without editing the template. The file must contain a JSON object, for example `{"VAR_NAME": 123}`, rather than the YAML notation `VAR_NAME: 123`.
 
-Data connections allow upstream and downstream steps to run concurrently. `depends_on: [prepare]` instead waits for successful predecessor termination, never treating the last frame or output EOS as proof of success. Local execution uses task state; cross-node execution uses certificate-pinned, consumer-authorized Flight status requests without manufacturing a data stream. Intermediate data still travels directly between nodes rather than through Union.
+Write a complete value as `$VAR_NAME` in the workflow:
 
-Both dependency types participate in unknown-reference, duplicate-reference and cycle validation. A control predecessor cannot also lie on the task's streaming ancestor path: backpressure could deadlock execution. Split the work and use explicit materialization/replay boundaries instead. DAG solid edges represent streams, and purple dashed edges represent control dependencies.
+```yaml
+params:
+  limit: $VAR_NAME
+  schema: $SCHEMA
+```
 
-Operators may declare `outputs: {}`. Python/Scala SDKs allow successful termination with no output frames. Native commands may set `executor_config.stdin` or `stdout` to `null`, with the corresponding port declaration set to `{}`. Sinks, independent branches and control prerequisites execute even when not selected as final results. A Job may specify `outputs: {}`; the client waits for overall success or failure without receiving result data.
+The matching `variables.json` is:
 
-## Failures, retries and resources
+```json
+{
+  "VAR_NAME": 123,
+  "SCHEMA": {"temperature": "float64"}
+}
+```
 
-Predecessor failure prevents downstream startup and cancels related tasks and streams in the execution attempt. Cancellation, timeouts and membership withdrawal retain their execution-policy semantics. Retries run a new attempt and recheck control dependencies. Materialization stores data outputs, not external side effects or database transactions. Retries may repeat initialization, writes or notifications; business operators must provide idempotency. Replaying a materialized step does not rerun predecessor work replaced by that replay.
+In a shell already connected to the server, run:
 
-Control dependencies and transport sources form execution boundaries rather than ordinary container operators to fuse. Memory queues, Flight and FIFOs preserve backpressure; logs, code caches and explicit materialization have separate storage purposes. See [materialization and replay](materialization_en.md) for execution policies.
+```text
+submit workflow.yaml --vars variables.json
+submit workflow.yaml --vars variables.json --policy policy.json
+```
+
+Interactive input also works: run `submit --vars variables.json`, enter the workflow, and finish with `END` alone on a line. A complete conversion example is provided:
+
+```text
+submit examples/convert-variables.yaml --vars examples/convert-variables.json
+```
+
+Paths are relative to the shell's working directory. Change `INPUT_URI` in the variable file to an Item URI accessible to the target server and ensure the referenced operators are available.
+
+Variable names are case-sensitive and match `[A-Za-z_][A-Za-z0-9_]*`. When a variable object is supplied, the client parses YAML/JSON and recursively substitutes complete string values, preserving JSON numbers, booleans, strings, arrays, objects, and `null`, then submits the resolved workflow. Mapping keys are unchanged; `prefix-$VAR_NAME` is not interpolated; `$OTHER` inside an inserted value is not expanded again. Environment variables are not read and Shell commands are not executed. Missing variables or invalid variable files fail before submission; unused variables are allowed. Omitting `--vars` / the SDK `variables` argument preserves the existing submission behavior.
+
+The Python SDK accepts variable dictionaries for both node and Union submissions:
+
+```python
+import json
+from pathlib import Path
+from dacp import Job
+
+workflow = Path("workflow.yaml").read_text()
+variables = json.loads(Path("variables.json").read_text())
+with Job.run("dacp://localhost:18861", workflow, variables=variables) as result:
+    for event in result:
+        print(event)
+
+# union is an already connected dacp.union.Union instance
+execution = union.submit(workflow, variables=variables)
+```
+
+The Scala SDK uses the same rules:
+
+```scala
+import dacp.client.Job
+import com.fasterxml.jackson.databind.ObjectMapper
+import java.nio.file.{Files, Path}
+
+val workflow = Files.readString(Path.of("workflow.yaml"))
+val variables = new ObjectMapper().readTree(Files.readString(Path.of("variables.json")))
+val result = Job.run("dacp://localhost:18861", workflow, variables = variables)
+try result.foreach(println) finally result.close()
+// union is an already connected dacp.client.Union instance
+val execution = union.submit(workflow, variables = variables)
+```
+
+The client reads the variable file; it need not exist on the node filesystem. The server records and executes the resolved workflow, so automatic retries and replays retain the original resolved values. Replays cannot override variables; submit a new workflow to use new values. Resolved values may appear in job history and dashboards, so do not put passwords or other secrets in variables.

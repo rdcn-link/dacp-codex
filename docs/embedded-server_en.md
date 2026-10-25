@@ -2,7 +2,7 @@
 
 [中文](embedded-server.md) · [Dynamic catalogs](dataset-catalogs_en.md)
 
-`dacp.DacpServer` is the embeddable Scala/JVM API. The `dacp.Main` CLI uses the same implementation, so both modes include Flight mTLS, ordinary tasks, optional Union workers, execution records, and identical authorization checks.
+`dacp.DacpServer` is the embeddable Scala/JVM API. The `dacp.Main` CLI uses the same implementation, so both modes include Flight TLS / Token, ordinary tasks, optional Union workers, execution records, and identical authorization checks.
 
 ## Startup and shutdown
 

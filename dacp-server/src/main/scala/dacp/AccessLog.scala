@@ -46,6 +46,7 @@ final class AccessEvent(log:AccessLog,operation:String) {
   private var ended=false
   private var rows=0L
   private var bytes=0L
+  def actor(subject:String):Unit=n.put("identity",subject)
   def add(count:Long,payload:Long):Unit=synchronized {rows+=count;bytes+=payload}
   def resource(dataset:String,item:String="",view:String=""):Unit={n.put("dataset",dataset);n.put("item",item);n.put("view",view)}
   def finish(status:String):Unit=synchronized {if(!ended){ended=true;n.put("rows",rows).put("bytes",bytes).put("status",status).put("finished_at",Instant.now().toString).put("elapsed_ms",(System.nanoTime()-started)/1000000);log.append(n)}}

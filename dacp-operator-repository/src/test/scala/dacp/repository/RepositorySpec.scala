@@ -14,7 +14,7 @@ class RepositorySpec extends AnyFunSuite {
       try paths.iterator.asScala.toSeq.sortBy(_.getNameCount).reverse.foreach(Files.delete(_)) finally paths.close()
     }
   }
-  private val ports=Repository.mapper.readTree("""{"inputs":{"source":{"representations":["bytes"],"formats":[]}},"outputs":{"result":{"representations":["bytes"],"formats":[]}}}""")
+  private val ports=Repository.mapper.readTree("""{"inputs":{"source":{"representations":["bytes"],"formats":[]}}}""")
   private def publish(root:Path, reference:String, image:String, exporter:Repository.ImageExporter, description:String="",
     executor:String="container",entrypoint:String="",artifact:Option[Path]=None):String =
     Repository.publish(root,reference,image,ports,exporter,description,executor,entrypoint,artifact)
@@ -36,7 +36,6 @@ class RepositorySpec extends AnyFunSuite {
     val node=Repository.mapper.createObjectNode().put("name","seeded").put("version","1").put("image","native:1")
       .put("executor","command").put("entrypoint","/usr/bin/tr")
     node.set[com.fasterxml.jackson.databind.JsonNode]("inputs",ports.path("inputs"))
-    node.set[com.fasterxml.jackson.databind.JsonNode]("outputs",ports.path("outputs"))
     node.set[com.fasterxml.jackson.databind.JsonNode]("executor_config",settings)
     Files.writeString(definition,node.toString)
     assert(Repository.seed(root,root.resolve("definitions"),exporter)==Seq("seeded@1"))
@@ -72,10 +71,10 @@ class RepositorySpec extends AnyFunSuite {
     val definitions = root.resolve("definitions")
     val definition = definitions.resolve("custom/2.0/operator.yaml")
     Files.createDirectories(definition.getParent)
-    Files.writeString(definition, "name: custom\nversion: '2.0'\nimage: custom:2\ninputs: {source: {representations: [bytes], formats: []}}\noutputs: {result: {representations: [bytes], formats: []}}\n")
+    Files.writeString(definition, "name: custom\nversion: '2.0'\nimage: custom:2\ninputs: {source: {representations: [bytes], formats: []}}\n")
     val catalog = root.resolve("catalog")
     assert(Repository.seed(catalog, definitions, exporter) == Seq("custom@2.0"))
-    Files.writeString(definition, "name: other\nversion: '2.0'\nimage: custom:2\ninputs: {source: {representations: [bytes], formats: []}}\noutputs: {result: {representations: [bytes], formats: []}}\n")
+    Files.writeString(definition, "name: other\nversion: '2.0'\nimage: custom:2\ninputs: {source: {representations: [bytes], formats: []}}\n")
     intercept[IllegalArgumentException](Repository.seed(catalog, definitions, exporter))
     Files.writeString(definition, "name: custom\nversion: '2.0'\nimage: custom:2\nimage: replaced\n")
     intercept[org.yaml.snakeyaml.error.YAMLException](Repository.seed(catalog, definitions, exporter))
@@ -238,9 +237,9 @@ class RepositorySpec extends AnyFunSuite {
     assert(result.path("inputs").isObject && result.path("inputs").size()==0)
     source.remove("inputs")
     intercept[IllegalArgumentException](Repository.validatePorts(source))
-    source.putObject("inputs");source.putObject("outputs")
+    source.putObject("inputs")
     Repository.validatePorts(source)
-    source.remove("outputs")
+    source.putObject("outputs")
     intercept[IllegalArgumentException](Repository.validatePorts(source))
   }}
   test("port declarations are mandatory before exporting any runtime") { withRoot { root=>

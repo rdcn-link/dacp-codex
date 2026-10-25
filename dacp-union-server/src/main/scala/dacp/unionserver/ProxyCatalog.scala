@@ -31,12 +31,13 @@ private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,
     val path=hops;val current=members.all;routes.retainMembers(current.map(_.path("identity").asText).toSet)
     var failures=0
     val entries=current.flatMap { member=>
-      check();val id=member.path("identity").asText
+      check()
       try {
         if(System.nanoTime()>deadline)throw new java.util.concurrent.TimeoutException("directory deadline")
         val inspection=members.inspect(member);check()
         if(inspection.path("state").asText!="approved") {failures+=1;Vector.empty}
         else {
+          val id=inspection.path("identity").asText
           val values=directories.entries(id,check,path).getOrElse(throw new IllegalStateException("member removed"))
           require(values.size<=10000,"member catalog exceeds limit")
           routes.reconcile(id,values.map(_.getName).toSet)

@@ -28,25 +28,51 @@ object Rpc {
     require(hops.size<=8 && hops.forall(_.matches("[a-zA-Z0-9_-]+")),"invalid proxy path")
     val headers=new FlightCallHeaders();headers.insert("x-dacp-proxy-hops",hops.mkString(","));new HeaderCallOption(headers)
   }
-  private val peerKey:Context.Key[String]=Context.key("dacp-verified-tls-peer")
-  def identity:String=Option(peerKey.get()).getOrElse(throw UnionFailure(FlightStatusCode.UNAUTHENTICATED,"verified TLS identity required"))
-  val interceptor:ServerInterceptor=new ServerInterceptor {
+  final case class Principal(subject:String,kind:String,certificate:Option[String],credentialId:Option[String]=None,unionId:Option[String]=None,active:()=>Boolean=()=>true)
+  private val principalKey:Context.Key[Principal]=Context.key("dacp-principal")
+  def principal:Principal=Option(principalKey.get()).getOrElse(throw UnionFailure(FlightStatusCode.UNAUTHENTICATED,"authenticated principal required"))
+  def identity:String={val p=principal;if(p.kind=="token")p.subject else p.certificate.getOrElse(p.subject)}
+  def isAuthenticatedCall:Boolean=principalKey.get()!=null
+  def clientOperation():Unit=if(isAuthenticatedCall && !Set("token","union")(principal.kind))throw CallStatus.UNAUTHORIZED.withDescription("client credential required").toRuntimeException
+  def requireClient():Unit=if(!Set("token","union")(principal.kind))throw UnionFailure(FlightStatusCode.UNAUTHORIZED,"client credential required")
+  def requireUnion(id:String):Unit={val p=principal;if(p.kind!="union" || !p.unionId.contains(id))throw UnionFailure(FlightStatusCode.UNAUTHORIZED,"Union service credential required")}
+  def checkService():Unit={val p=principal;if(p.kind=="union" && !p.active())throw UnionFailure(FlightStatusCode.UNAUTHORIZED,"Union credential revoked or expired")}
+  def interceptor(credentials:Option[Credentials]):ServerInterceptor=new ServerInterceptor {
     override def interceptCall[A,B](call:ServerCall[A,B],headers:Metadata,next:ServerCallHandler[A,B]):ServerCall.Listener[A]={
+      val started=System.nanoTime()
+      val operation=call.getMethodDescriptor.getBareMethodName
+      def audit(subject:String,status:String):Unit=credentials.foreach(_.auditAccess(operation,subject,status,(System.nanoTime()-started)/1000000))
+      def reject(message:String):ServerCall.Listener[A]={audit("unknown","UNAUTHENTICATED");call.close(io.grpc.Status.UNAUTHENTICATED.withDescription(message),new Metadata());new ServerCall.Listener[A]() {}}
       val session=call.getAttributes.get(Grpc.TRANSPORT_ATTR_SSL_SESSION)
-      if(session==null){call.close(io.grpc.Status.UNAUTHENTICATED.withDescription("mTLS required"),new Metadata());new ServerCall.Listener[A]() {}}
-      else {
-        val who=try Tls.fingerprint(session.getPeerCertificates.head) catch {
-          case NonFatal(_)=>
-            call.close(io.grpc.Status.UNAUTHENTICATED.withDescription("verified peer certificate required"),new Metadata())
-            return new ServerCall.Listener[A]() {}
-        }
-        Contexts.interceptCall(Context.current().withValue(peerKey,who).withValue(hopsKey,Option(headers.get(Metadata.Key.of("x-dacp-proxy-hops",Metadata.ASCII_STRING_MARSHALLER))).getOrElse("")),call,headers,next)
+      if(session==null)return reject("TLS required")
+      val peer=try Some(Tls.fingerprint(session.getPeerCertificates.head))catch{case NonFatal(_)=>None}
+      val auth=Option(headers.get(Metadata.Key.of("authorization",Metadata.ASCII_STRING_MARSHALLER)))
+      val actor=auth match {
+        case Some(header) if header.startsWith("Bearer ") && header.length<=1024=>
+          credentials.flatMap(_.authenticate(header.substring(7),peer)).map { c=>
+            Principal(c.subject,c.kind,peer,Some(c.id),Option(c.unionId).filter(_.nonEmpty),()=>credentials.exists(_.valid(c.id)))
+          }
+        case Some(_)=>None
+        case None=>peer.map(id=>Principal(id,"peer",peer))
       }
+      if(actor.isEmpty)return reject("valid credential required")
+      if(actor.get.kind=="peer" && !Set("DoGet","DoAction")(call.getMethodDescriptor.getBareMethodName))return reject("client credential required")
+      val hops=Option(headers.get(Metadata.Key.of("x-dacp-proxy-hops",Metadata.ASCII_STRING_MARSHALLER))).getOrElse("")
+      val audited=new io.grpc.ForwardingServerCall.SimpleForwardingServerCall[A,B](call) {
+        override def close(status:io.grpc.Status,trailers:Metadata):Unit={
+          try audit(actor.get.subject,status.getCode.toString)finally super.close(status,trailers)
+        }
+      }
+      Contexts.interceptCall(Context.current().withValue(principalKey,actor.get).withValue(hopsKey,hops),audited,headers,next)
     }
   }
-  def secure(builder:FlightServer.Builder,tls:Tls):FlightServer.Builder=
-    builder.useTls(tls.cert.toFile,tls.key.toFile).useMTlsClientVerification(tls.ca.toFile)
-      .transportHint("grpc.builderConsumer",new java.util.function.Consumer[NettyServerBuilder]{def accept(b:NettyServerBuilder):Unit={b.intercept(interceptor);()}})
+  def secure(builder:FlightServer.Builder,tls:Tls,credentials:Option[Credentials]=None):FlightServer.Builder=
+    builder.useTls(tls.cert.toFile,tls.key.toFile)
+      .transportHint("grpc.builderConsumer",new java.util.function.Consumer[NettyServerBuilder]{def accept(b:NettyServerBuilder):Unit={
+        val ssl=GrpcSslContexts.configure(SslContextBuilder.forServer(tls.cert.toFile,tls.key.toFile),SslProvider.JDK)
+          .trustManager(tls.ca.toFile).clientAuth(io.netty.handler.ssl.ClientAuth.OPTIONAL).build()
+        b.sslContext(ssl);b.intercept(interceptor(credentials));()
+      }})
   def parse(bytes:Array[Byte]):JsonNode={require(bytes.length<=MaxJson,"control message exceeds 1 MiB");val n=Json.mapper.readTree(bytes);require(n!=null && n.isObject,"Union request must be an object");n}
   def bytes(n:JsonNode):Array[Byte]={val b=Json.mapper.writeValueAsBytes(n);require(b.length<=MaxJson,"control message exceeds 1 MiB");b}
   def ticket(kind:String,n:JsonNode):Ticket={val v=n.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();v.put("type",Prefix+kind);new Ticket(bytes(v))}
@@ -82,7 +108,7 @@ object Rpc {
   }
 }
 trait BinarySource extends AutoCloseable { def next():Option[Array[Byte]] }
-final class Remote(tls:Tls,traffic:Option[FlightTraffic]=None) extends AutoCloseable {
+final class Remote(tls:Option[Tls],traffic:Option[FlightTraffic]=None,credential:String=>Option[String]=_=>None,ca:Option[java.nio.file.Path]=None) extends AutoCloseable {
   private val allocator=new RootAllocator()
   private final class Connection(val client:FlightClient,val peer:AtomicReference[String])
   private val connections=new ConcurrentHashMap[String,Connection]()
@@ -94,14 +120,8 @@ final class Remote(tls:Tls,traffic:Option[FlightTraffic]=None) extends AutoClose
     val canonical=Json.origin(origin);pin.foreach(Json.identity)
     connections.computeIfAbsent(canonical+"/"+pin.getOrElse(""),_=>{
       val u=java.net.URI.create(canonical);val peer=new AtomicReference[String]()
-      val ssl=GrpcSslContexts.configure(SslContextBuilder.forClient(),SslProvider.JDK)
-        .trustManager(tls.trustManager(pin,id=>peer.set(id))).keyManager(tls.cert.toFile,tls.key.toFile).build()
-      val interceptor=new io.grpc.ClientInterceptor {
-        def interceptCall[ReqT,RespT](method:io.grpc.MethodDescriptor[ReqT,RespT],options:io.grpc.CallOptions,next:io.grpc.Channel):io.grpc.ClientCall[ReqT,RespT]=
-          next.newCall(method,traffic.map(t=>options.withStreamTracerFactory(t.factory(canonical,method.getFullMethodName))).getOrElse(options))
-      }
-      val channel=NettyChannelBuilder.forAddress(u.getHost,u.getPort).sslContext(ssl).maxInboundMessageSize(Rpc.MaxMessage).intercept(interceptor).build()
-      new Connection(FlightGrpcUtils.createFlightClient(allocator,channel),peer)
+      val client=ClientTransport.open(allocator,canonical,tls.map(_.ca).orElse(ca),tls.map(_.cert),tls.map(_.key),()=>credential(canonical),pin,id=>peer.set(id),traffic)
+      new Connection(client,peer)
     })
   }
   /** Public catalog discovery uses transport trust only, without Union execution grants. */
@@ -147,11 +167,11 @@ final class Remote(tls:Tls,traffic:Option[FlightTraffic]=None) extends AutoClose
   }}
 }
 /** Standalone U listener. Workers install these operations on their existing Flight listener. */
-final class Endpoint(host:String,port:Int,tls:Tls,allocator:BufferAllocator,producer:FlightProducer) extends AutoCloseable {
+final class Endpoint(host:String,port:Int,tls:Tls,allocator:BufferAllocator,producer:FlightProducer,credentials:Option[Credentials]=None) extends AutoCloseable {
   private val threads=Executors.newFixedThreadPool(128)
-  private val server=Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(host,port),producer),tls)
+  private val server=Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(host,port),producer),tls,credentials)
     .maxInboundMessageSize(Rpc.MaxMessage).executor(threads).build()
   def start():Unit={server.start();()}
   def boundPort:Int=server.getPort
-  def close():Unit={server.close();threads.shutdownNow()}
+  def close():Unit={server.close();threads.shutdownNow();require(threads.awaitTermination(10,TimeUnit.SECONDS),"Flight handlers failed to stop")}
 }

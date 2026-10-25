@@ -1,7 +1,7 @@
 # 基于 Item 的算子输入与纯流式输出
 
 已通过 Flight DoExchange、Python Shell/SDK 和 Scala SDK 实现。当前端口支持 bytes 和 records；其他科学数据表示需要明确扩展契约。每个输出端口最多有一个下游消费者，需要复制时使用独立端口。多个输入端口按名称字典序消费。
-源算子可以声明 `inputs: {}`，任务也显式填写 `inputs: {}`；不需要虚构触发 Item。汇算子可以声明 `outputs: {}`。Shell 直接使用 `run live_ticks@1.0 --params '{"max_records":3}'`，省略 `--input`。本地任务默认在所连接节点执行，也可显式指定 `node`。
+源算子可以声明 `inputs: {}`，任务也显式填写 `inputs: {}`；不需要虚构触发 Item。汇算子的必选推导方法返回空的输出映射。Shell 直接使用 `run live_ticks@1.0 --params '{"max_records":3}'`，省略 `--input`。本地任务默认在所连接节点执行，也可显式指定 `node`。
 
 
 详细格式、控制依赖和零输出步骤见[作业说明](jobs.md)。

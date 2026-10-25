@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live mTLS/Docker contract check against examples/source-debug.yaml (port 18815)."""
+"""Live TLS/token/Docker contract check against examples/source-debug.yaml (port 18815)."""
 import io
 import json
 from pathlib import Path
@@ -15,6 +15,8 @@ NODE = 'dacp://localhost:18815'
 
 
 def job(code, runtime='python@1.0', view='bytes', entrypoint=None):
+    if runtime.startswith('python') and 'def infer_outputs(' not in code:
+        code += "\ndef infer_outputs(inputs, params):\n    return {'outputs': {'result': inputs['source']}, 'diagnostics': []}\n"
     operator = dict(runtime=runtime, source=code)
     if entrypoint:
         operator['entrypoint'] = entrypoint
@@ -28,7 +30,7 @@ def events(text):
 
 def main():
     expected = (ROOT/'examples/data/nested/orders.csv').read_bytes().upper()
-    code = "def process(inputs, params):\n    for chunk in inputs['source']:\n        yield chunk.upper()\n"
+    code = "def process(inputs, params):\n    for chunk in inputs['source']:\n        yield chunk.upper()\ndef infer_outputs(inputs, params):\n    return {'outputs': {'result': inputs['source']}, 'diagnostics': []}\n"
     result = events(job(code))
     assert b''.join(e['data'] for e in result if e['type']=='data') == expected
     assert result[-1]['type'] == 'complete'
@@ -60,7 +62,7 @@ def main():
         browser.onecmd('run --runtime python@1.0 --input source=/orders --params \'{"output_format":"csv"}\' <<STOP')
         assert 'ID,AMOUNT' in output.getvalue() and 'Job complete.' in output.getvalue(), output.getvalue()
         failing = "def process(inputs, params):\n    yield b'partial'\n    raise ValueError('deliberate failure')\n"
-        browser.stdin = io.StringIO(failing+'END\n')
+        browser.stdin = io.StringIO(failing+"def infer_outputs(inputs, params):\n    return {'outputs': {'result': inputs['source']}, 'diagnostics': []}\n"+'END\n')
         browser.onecmd('run --runtime python@1.0 --input source=/orders <<END')
         assert 'results above are partial' in output.getvalue()
         assert 'Error:' in output.getvalue()

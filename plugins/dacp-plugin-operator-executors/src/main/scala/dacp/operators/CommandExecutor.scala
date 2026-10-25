@@ -28,7 +28,6 @@ final class CommandExecutor extends OperatorExecutor {
     val port=output.getOrElse("port",null);val format=output.getOrElse("format",null)
     require(output.isEmpty || (port.isInstanceOf[String] && format.isInstanceOf[String] && format.toString.nonEmpty),"invalid stdout metadata")
     require(p.inputs == (if(input==null)Map.empty[String,Set[String]]else Map(input -> Set("bytes"))),"command inputs must match stdin (a bytes port or null)")
-    require(p.outputs == (if(port==null)Map.empty[String,Set[String]]else Map(port.toString -> Set("bytes"))),"command outputs must match stdout (a bytes port mapping or null)")
     require(p.artifact.isDefined==artifactPath.isDefined,"missing executable artifact path")
     require(p.entrypoint.startsWith("/") && !p.entrypoint.contains('\u0000'),"command entrypoint must be an absolute executable path")
     require(p.artifact.isEmpty || p.entrypoint==artifactPath.get,"artifact entrypoint must equal its /operator/<filename> path")
@@ -45,6 +44,17 @@ private[operators] object CommandBridge {
 import pyarrow.ipc as ipc
 
 config=json.loads(sys.argv[1])
+if len(sys.argv)>2 and sys.argv[2]=='infer':
+    from dacp_operator.inference import descriptor,result,run_inference
+    def infer_outputs(inputs,params):
+        expected=set() if config['stdin'] is None else {config['stdin']}
+        if set(inputs)!=expected:
+            raise ValueError('command input ports do not match stdin')
+        if expected and inputs[config['stdin']]['representations'] and inputs[config['stdin']]['representations']!=['bytes']:
+            raise ValueError('command requires bytes input')
+        return result({} if config['port'] is None else {config['port']:descriptor(['bytes'],[config['format']],certainty='known')})
+    run_inference(infer_outputs,sys.argv[2:])
+    sys.exit(0)
 with open('/input/manifest.json') as f:
     manifest=json.load(f)
 if (config['stdin'] is None and manifest) or (config['stdin'] is not None and (len(manifest)!=1 or manifest[0]['port']!=config['stdin'] or manifest[0]['representation']!='bytes')):

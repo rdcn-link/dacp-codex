@@ -18,7 +18,7 @@ import pyarrow as pa
 
 def main(directory):
     directory=Path(directory)
-    sdk=importlib.util.spec_from_file_location('dacp_operator',directory/'group-sdk.py')
+    sdk=importlib.util.spec_from_file_location('dacp_operator',directory/'group-sdk.py',submodule_search_locations=[str(directory)])
     module=importlib.util.module_from_spec(sdk);sys.modules['dacp_operator']=module;sdk.loader.exec_module(module)
     spec=json.loads((directory/'group.json').read_text())
     external={x['port']:x for x in json.loads((directory/'manifest.json').read_text())}

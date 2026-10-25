@@ -41,12 +41,6 @@ window.DacpDag=(()=>{
    }
    edge(source,'task:'+t.id,binding.task?binding.output_port+' → '+binding.port:binding.port,t,'inputs',binding.port);
   }
-  for(const t of job.tasks)for(const parent of (t.depends_on||[])){
-   const task=typeof parent==='string'?parent:parent.task;
-   const id='control:'+task+':'+t.id;
-   edges.push({id,source:'task:'+task,target:'task:'+t.id,data:{kind:'control'},style:{labelText:'Run after success',stroke:'#9868bd',lineDash:[6,4],lineWidth:1.7}});
-   details.set(id,{title:'Control dependency',lines:[task+' → '+t.id,'Starts after predecessors succeed; transfers no data.']});
-  }
   if(Object.keys(job.outputs).length){
    combos.push({id:'client',data:{title:'Result outlet',subtitle:job.output_route||'Union → Client'},style:{labelText:'Result outlet · '+(job.output_route||'Union → Client'),stroke:'#a3b2c5',fill:'#f5f7fa'}});
    details.set('client',{title:'Streaming result outlet',lines:[job.output_route||'Results forwarded through Union to the submitting client','Only execution metadata is shown; result streams are not consumed.']});

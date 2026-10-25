@@ -37,7 +37,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
     node.putObject("runtime").put("image",image).putObject("archive").put("size",archive.length).put("sha256",hash(archive)).put("filename","runtime.tar")
     node.putObject("execution").put("executor",executor).put("entrypoint",if(executor == "container") "" else "example.Main")
     if(executor != "container") node.putObject("artifact").put("size",code.length).put("sha256",hash(code)).put("filename","operators.jar")
-    Seq("inputs"->"source","outputs"->"result").foreach {case(key,port)=>
+    Seq("inputs"->"source").foreach {case(key,port)=>
       val p=node.putObject(key).putObject(port);p.putArray("representations").add("bytes");p.putArray("formats")
     }
     // Review evidence is deliberately unavailable: execution must never fetch it.
@@ -76,7 +76,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
       val payload=Data.mapper.readTree(resolved.command.entrypoint.get.last)
       assert(payload.path("argv").get(2).asText=="$(false)")
       assert(payload.path("artifact").asBoolean)
-      assert(resolved.inputs.keySet==Set("source") && resolved.outputs.keySet==Set("result"))
+      assert(resolved.inputs.keySet==Set("source") && resolved.outputs.isEmpty)
       server.stop(0)
       assert(OperatorLibrary.resolve(c,"native@1",docker).command==resolved.command)
     } finally {server.stop(0);cleanup(root)}
@@ -104,7 +104,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
     try {
       installed = true
       val local = c.localOperatorLibrary.resolve("first/1/operator.yaml")
-      Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\nprovenance: {source_archive: missing-sources.zip, license: MIT}\ninputs: {source: {representations: [bytes], formats: []}}\noutputs: {result: {representations: [bytes], formats: []}}\n")
+      Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\nprovenance: {source_archive: missing-sources.zip, license: MIT}\ninputs: {source: {representations: [bytes], formats: []}}\n")
       assert(OperatorLibrary.resolve(c,"first@1",docker).image == image && requests.isEmpty)
       Files.delete(local); installed = false
       val first = OperatorLibrary.resolve(c,"first@1",docker)

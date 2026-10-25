@@ -35,6 +35,7 @@ def build(catalog, output, name="live_ticks"):
         return dict(sha256=digest, size=len(data), filename=filename)
     files = {name + '.py': (HERE / (name + '.py')).read_bytes(),
              'dacp_operator/__init__.py': (ROOT / 'dacp-operator-sdk/python/dacp_operator/__init__.py').read_bytes()}
+    files['dacp_operator/inference.py'] = (ROOT / 'dacp-operator-sdk/python/dacp_operator/inference.py').read_bytes()
     dist = package + '-1.0.dist-info/'
     files[dist + 'METADATA'] = f'Metadata-Version: 2.1\nName: {package.replace(chr(95), chr(45))}\nVersion: 1.0\nRequires-Python: >=3.10\n'.encode()
     files[dist + 'WHEEL'] = b'Wheel-Version: 1.0\nGenerator: dacp\nRoot-Is-Purelib: true\nTag: py3-none-any\n'
@@ -49,7 +50,6 @@ def build(catalog, output, name="live_ticks"):
     manifest = dict(api_version=2, name=name, version='1.0',
                     description=('Decode live_ticks JSONL to Arrow records, emitting each line immediately with a 64 KiB line limit.' if decoder else 'Continuously emit timestamped synthetic weather JSONL. Params: interval_seconds (0.01-60, default 1), max_records (0 means continuous). Zero-input source operator. Cancel or timeout to stop.'),
                     inputs=({'source':dict(representations=['bytes'], formats=[])} if decoder else {}),
-                    outputs={'result':dict(representations=['records' if decoder else 'bytes'], formats=['arrow' if decoder else 'ndjson'])},
                     execution=dict(executor='python', entrypoint=name, config={}), runtime=runtime, artifact=artifact,
                     provenance=dict(source_archive=source, source_repository='https://github.com/rdcn-link/dacp-codex', build_instructions='python3 examples/operators/live-stream/build.py --runtime-catalog CATALOG --output OUTPUT. Reuses piflow_csv_parser@1.0 Python runtime; embeds the DACP Python SDK.'))
     directory = output / name / '1.0'

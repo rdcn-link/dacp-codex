@@ -85,3 +85,7 @@ Operators still need `operator.yaml` declaring runtime, entry point, ports and p
 ## In-process Jobs
 
 JVM templates implement `Operator` and can be invoked inside an isolated shared JVM. Python templates provide `process(ctx)`; modules can expose fusion through `def process(ctx): MyOperator().process(ctx)`. The executor owns context and output lifecycle; do not create or close another context in that entrypoint. See [operator fusion](../docs/operator-fusion_en.md) for eligibility, thread-safety requirements and examples.
+
+## Structure inference
+
+Every operator must implement `inferOutputs` (Scala) or `infer_outputs` (Python). Templates provide implementations; custom operators implement the method alongside processing. Sinks return an empty mapping. Manifests no longer declare outputs. See the [shared protocol and examples](../docs/structure-inference_en.md).

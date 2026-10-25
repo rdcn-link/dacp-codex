@@ -38,7 +38,7 @@ dacp-shell> run live_ticks@1.0 --params '{"interval_seconds":1,"max_records":0}'
 
 Shell 默认没有结果预览上限，数据到达后逐块显示；运行过程中按 Ctrl+C 取消，随后可继续输入命令。`max_records: 0` 表示持续生成，仍受服务器和请求的任务时限约束；不是永久任务。`interval_seconds` 范围为 0.01–60 秒，默认 1；`max_records` 为非负整数，默认 0，设为 5 可自动结束。没有后台调度器，背压会阻塞输出写入，不累积待发送记录。
 
-从 Union 使用时，先以 `datasets` / `use` 选择公开名称，成员还需审批允许 `live_ticks@1.0`；本地节点直接执行不需要 Union 审批。
+从 Union 使用时，先以 `datasets` / `use` 选择公开名称，成员需能获取并执行 `live_ticks@1.0`；本地节点可直接执行。
 
 ## 构建、发布和验证
 
@@ -66,7 +66,7 @@ use weather
 submit examples/operators/live-stream/workflow.yaml --policy examples/operators/live-stream/stream-only-policy.json
 ```
 
-终端会持续输出 `sequence,station_id,timestamp,air_temperature_c` 的 CSV 行，按 Ctrl+C 停止。生成器不需要输入 Item。工作流不指定 node，直接提交给所连接节点；通过 Union 提交需审批全部五个算子版本，由调度器选择执行节点。
+终端会持续输出 `sequence,station_id,timestamp,air_temperature_c` 的 CSV 行，按 Ctrl+C 停止。生成器不需要输入 Item。工作流不指定 node，直接提交给所连接节点；通过 Union 提交时，成员需能获取全部五个算子版本，由调度器选择执行节点。
 
 构建和发布解码算子：
 

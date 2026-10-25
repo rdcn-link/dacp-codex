@@ -10,11 +10,6 @@ inputs:
   source:
     representations: [bytes, records]
     formats: []
-outputs:
-  result:
-    representations: [bytes, records]
-    formats: []
-
 provenance:
   source_archive: ../../../../../.operator-sources/dacp-sources.zip
   source_repository: https://github.com/rdcn-link/dacp-codex

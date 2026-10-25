@@ -14,12 +14,17 @@ import time
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'dacp-client'))
 from dacp.jobs import Job
+from security_test_support import authorize
 PYTHON='''from dacp_operator import OperatorContext
 def process(ctx):
     out=ctx.bytes_output('result','text')
     for b in ctx.input('source').bytes():out.write(b.upper() if ctx.params.get('upper') else b)
+def infer_outputs(inputs, params):
+    from dacp_operator import descriptor, result
+    return result({'result': descriptor(['bytes'], ['text'], certainty='known')})
 if __name__=='__main__':
-    with OperatorContext() as ctx:process(ctx)
+    from dacp_operator.inference import run_operator
+    run_operator(process, infer_outputs)
 '''
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--docker-prefix',default='');a=p.parse_args();prefix=shlex.split(a.docker_prefix)
@@ -30,11 +35,12 @@ def main():
         if not jar.exists():raise RuntimeError('build the common Scala example JAR first')
         for name,executor,image,entry,artifact in [('upper','jvm','dacp/operator-jvm:1.1','dacp.common.Op_text_uppercase',jar),('strip','jvm','dacp/operator-jvm:1.1','dacp.common.Op_text_strip',jar),('python','python','dacp/operator-python:1.0','ops',d/'ops.py'),('legacy','python','dacp/operator-python:1.0','identity',ROOT/'examples/operators/python/identity_python/1.1/identity.py')]:
             target=d/'operators'/name/'1';target.mkdir(parents=True)
-            (target/'operator.yaml').write_text(json.dumps(dict(name=name,version='1',image=image,executor=executor,entrypoint=entry,artifact=str(artifact),inputs={'source':dict(representations=['bytes'],formats=[])},outputs={'result':dict(representations=['bytes'],formats=['text'])})))
+            (target/'operator.yaml').write_text(json.dumps(dict(name=name,version='1',image=image,executor=executor,entrypoint=entry,artifact=str(artifact),inputs={'source':dict(representations=['bytes'],formats=[])})))
         cert=ROOT/'examples/certs'
         config=dict(host='127.0.0.1',public_host='localhost',port=port,datasets={'data':dict(provider='mixed',items={'/message':dict(file=str(d/'message.txt'))})},tls_cert=str(cert/'node-a.crt'),tls_key=str(cert/'node-a.key'),tls_ca=str(cert/'ca.crt'),local_operator_library=str(d/'operators'),max_concurrent_tasks=4,execution_store=dict(provider='file',settings=dict(directory=str(d/'history'))),access_log=dict(directory=str(d/'access')))
         # Access log settings are optional; use the server defaults without assuming a shape.
         config.pop('access_log')
+        token = authorize(config, d)
         (d/'node.yaml').write_text(json.dumps(config))
         since=datetime.now(timezone.utc).isoformat()
         with (d/'server.log').open('w') as log:
@@ -46,7 +52,7 @@ def main():
                     with socket.create_connection(('127.0.0.1',port),timeout=.1):break
                 except OSError:time.sleep(.1)
             else:raise RuntimeError('server startup timeout')
-            tls=dict(tls_root_certs=(cert/'ca.crt').read_bytes(),cert_chain=(cert/'client.crt').read_bytes(),private_key=(cert/'client.key').read_bytes())
+            tls=dict(token=token,tls_root_certs=(cert/'ca.crt').read_bytes(),cert_chain=(cert/'client.crt').read_bytes(),private_key=(cert/'client.key').read_bytes())
             for language,ops,expected in [('jvm',['upper@1','strip@1'],b'HELLO DACP'),('python',['python@1','python@1'],b'HELLO DACP\n'),('mixed',['upper@1','legacy@1'],b'HELLO DACP\n')]:
                 tasks=[dict(id='a',operator=ops[0],inputs={'source':'read'},params={'upper':True} if language=='python' else {}),dict(id='b',operator=ops[1],inputs={'source':'a'},params={})]
                 job=dict(job='fusion-'+language,tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/message',view='bytes'))]+tasks,outputs={'result':'b'})

@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import time
 from dacp import Job
+from security_test_support import authorize
 
 ROOT = Path(__file__).resolve().parents[1]
 NODE = ROOT/'dacp-server/target/universal/stage/bin/dacp-server'
@@ -27,6 +28,7 @@ def main():
             tls_key=str(ROOT/'examples/certs/node-a.key'), tls_ca=str(ROOT/'examples/certs/ca.crt'),
             mode='DEBUG',source_runtimes={'python@1.0': {'executor':'python','image':'dacp/operator-python:1.0'}},
             max_concurrent_tasks=4,execution_store=dict(provider='file',settings=dict(directory=str(state/'executions'))))
+        CREDS['token'] = authorize(config, state)
         path=state/'server.yaml';path.write_text(json.dumps(config))
         with (state/'server.log').open('w+') as log:
             process=subprocess.Popen([str(NODE),str(path)],cwd=ROOT/'dacp-server',stdout=log,stderr=subprocess.STDOUT)
@@ -40,7 +42,7 @@ def main():
                         assert time.monotonic()<deadline
                         time.sleep(.1)
                 def run(code):
-                    job=json.dumps(dict(job='history-test',tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/input',view='bytes')),dict(id='run',operator=dict(runtime='python@1.0',source=code),inputs={'source':'read'})],outputs={'result':'run'}))
+                    job=json.dumps(dict(job='history-test',tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/input',view='bytes')),dict(id='run',operator=dict(runtime='python@1.0',source=code+"\ndef infer_outputs(inputs, params):\n    return {'outputs': {'result': inputs['source']}, 'diagnostics': []}\n"),inputs={'source':'read'},params={'output_format':'csv'})],outputs={'result':'run'}))
                     return Job.run(origin,job,timeout=30,**CREDS)
                 with run("def process(inputs, params):\n    yield from inputs['source']\n") as stream:
                     assert list(stream)[-1]['type']=='complete'
@@ -49,20 +51,22 @@ def main():
                 except Exception:pass
                 else:raise AssertionError('invalid source succeeded')
                 with run("import time\ndef process(inputs, params):\n    yield b'first'\n    time.sleep(15)\n    yield from inputs['source']\n") as stream:
-                    assert next(stream)['type']=='start'
+                    first=next(stream)
+                    while first['type']=='execution': first=next(stream)
+                    assert first['type']=='start'
                     assert next(stream)['data']==b'first'
                 deadline=time.monotonic()+15
                 while True:
                     records=[json.loads(p.read_text()) for p in (state/'executions').glob('*.json')]
-                    if len(records)==6 and all(r['state'] in ('succeeded','failed','cancelled','expired') for r in records):break
+                    if len(records)==7 and all(r['state'] in ('succeeded','failed','cancelled','expired') for r in records):break
                     assert time.monotonic()<deadline, records
                     time.sleep(.1)
                 assert {r['state'] for r in records} >= {'succeeded','failed','cancelled'}
                 workers=[r for r in records if r.get('request_type')=='task']
-                assert len(workers)==3 and all(r.get('parent_execution_id') for r in workers)
-                assert all('def process' not in json.dumps(r) for r in records)
+                assert len(workers)==4 and all(r.get('parent_execution_id') for r in workers)
+                assert all('def process' not in json.dumps(r) for r in workers)
                 listing=subprocess.run([str(NODE),'history','list',str(state/'executions')],capture_output=True,text=True,check=True)
-                assert len(json.loads(listing.stdout))==6
+                assert len(json.loads(listing.stdout))==7
                 print('PASS: ordinary Flight jobs and worker tasks persist success, failure, cancellation, timing, correlation and live CLI history')
             except BaseException:
                 log.flush();log.seek(0);print(log.read()[-15000:]);raise

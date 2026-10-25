@@ -34,24 +34,24 @@ sbt 'run ../examples/server.yaml'
 
 ## 证书与授权
 
-Flight 使用 mTLS，调用方验证服务器，服务器验证客户端。节点参与跨节点调用时需要承担客户端角色。CA 签名不等于业务授权；分别配置节点数据权限、Union 客户端授权及节点对 Union 的计算审批。证书须符合连接主机名和对应 TLS 用途。不要提交私钥或将示例 CA 用于正式部署。
+普通 Flight 客户端使用 TLS 与 Token，无需客户端证书。Union 使用节点签发、绑定 Union ID 与证书指纹的服务凭据及双向 TLS。节点间任务流按执行计划精确授权。凭据本地创建、轮换、撤销并自动加载。操作说明见[认证与访问控制](../security.md)。
 
 ## Union 和仓库
 
-- [Union 手册](../../dacp-union-server/README.md)：配置、邀请、审批、状态轮询、作业提交和管理看板。
+- [Union 手册](../../dacp-union-server/README.md)：配置、服务凭据、状态轮询、作业提交和管理看板。
 - [双节点示例](../../examples/union/README.md)：证书、节点、Union 和客户端的完整演示。
 - [算子仓库手册](../../dacp-operator-repository/README.md)：初始化、发布、源码材料、HTTP 服务和下载。
 
-Union 维护一个 Union，主动邀请独立节点并轮询状态。成员加入需要节点审批。HTTP 管理看板展示任务脚本和执行元数据；公开只读，无需登录或 token。计算操作仍通过受授权保护的 Flight 接口进行。
+Union 从配置构建唯一的 Union，使用节点签发的凭据连接独立节点并轮询状态。HTTP 管理看板展示任务脚本和执行元数据；公开只读，无需登录或 token。计算操作仍通过受授权保护的 Flight 接口进行。
 
 ## 监控、记录与停机
 
-看板展示节点健康、启动时间、运行时间、作业 DAG、状态及流量；无法连接的节点状态可能为未知。节点和 Union 保存执行元数据，结果内容不落为历史结果文件。存储位置、历史查询和重启处理见[执行记录](../execution-history.md)。备份应包含持久配置、成员审批状态和执行记录；停止服务后复制可避免跨文件不一致。
+看板展示节点健康、启动时间、运行时间、作业 DAG、状态及流量；无法连接的节点状态可能为未知。节点和 Union 保存执行元数据，结果内容不落为历史结果文件。存储位置、历史查询和重启处理见[执行记录](../execution-history.md)。备份应包含持久配置、成员身份与凭据和执行记录；停止服务后复制可避免跨文件不一致。
 
 使用前台进程的 Ctrl+C 或发送 SIGTERM 停机。重启不会恢复中断的结果流。算子镜像可通过 `docker image ls` 检查；本地运行时配置与仓库制品是不同资源。日志中的 DEBUG 级别与允许源码提交的 DEBUG 运行模式分别配置。
 
 节点默认同时开启只读 HTTP 看板，端口为 Flight 端口加 1000；可通过 `web.enabled: false` 关闭。配置和 DAG 展示见[节点 Web 看板](../node-web.md)。
 
-节点默认同时启用 [S3 兼容读取服务](../s3-service.md)，端口为 Flight 端口加 2000；它公开下载 bytes Item，独立于 Flight mTLS。可通过 `s3: {enabled: false}` 关闭。
+节点默认同时启用 [S3 兼容读取服务](../s3-service.md)，端口为 Flight 端口加 2000；它通过 HTTPS 与 SigV4 认证下载 bytes Item，凭据独立于 Flight。可通过 `s3: {enabled: false}` 关闭。
 
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy.md)。

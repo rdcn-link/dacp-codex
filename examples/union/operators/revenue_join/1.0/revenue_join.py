@@ -49,5 +49,14 @@ def main():
     emit('end')
 
 
+def infer_outputs(inputs, params):
+    from dacp_operator import descriptor, result
+    return result({'result': descriptor(['bytes'], ['json'], certainty='known')})
+
+
 if __name__ == '__main__':
-    main()
+    from dacp_operator import run_inference
+    if len(sys.argv) > 1 and sys.argv[1] == 'infer':
+        run_inference(infer_outputs)
+    else:
+        main()

@@ -29,7 +29,7 @@ function card(member,index,version){
  if(resource)facts.append(element('span','CPU cores '+resource.processors+' · JVM threads '+resource.threads));
  facts.append(element('span','Executors: '+(state?.executors?.join(', ')||'—')));
  facts.append(element('span','Started: '+(state?.started_at_ms?new Date(state.started_at_ms).toLocaleString('en-US'):'Not observed')));
- facts.append(element('span','Uptime: '+(state?.uptime_ms!==undefined?(state.uptime_ms/1000).toFixed(0)+' s':'Not observed')));
+ facts.append(element('span','Uptime: '+(state?.uptime_ms!==undefined?window.DacpDuration(state.uptime_ms):'Not observed')));
  if(state?.web_enabled&&state.web_url){try{const url=new URL(state.web_url);if(['http:','https:'].includes(url.protocol)&&!url.username&&!url.password){const link=element('a','Node web ↗','job-link member-web-link');link.href=url.href;link.target='_blank';link.rel='noopener';facts.append(link);}}catch(_){}}
  else facts.append(element('span',state?'Node web disabled':'Node web unknown'));
  facts.append(element('span','Observed: '+(member.observed_at_ms?new Date(member.observed_at_ms).toLocaleString('en-US'):'Not observed')));
@@ -56,7 +56,7 @@ function card(member,index,version){
 }
 async function refreshNodes(){
  const version=++generation,button=document.getElementById('refresh-nodes');button.disabled=true;directoryError.hidden=true;directoryNodes.replaceChildren(element('p','Loading members…','muted'));
- try{const data=await request('/api/topology');if(version!==generation)return;healthWindow=data.stale_after_ms||10000;document.getElementById('directory-count').textContent=data.members.length+' nodes';directoryNodes.replaceChildren(...data.members.map((m,i)=>card(m,i,version)));renderTopology(data);setParticipation(data);if(!data.members.length)directoryNodes.append(element('p','No members yet. Invite a node to join Union.','empty'));}
+ try{const data=await request('/api/topology');if(version!==generation)return;healthWindow=data.stale_after_ms||10000;document.getElementById('directory-count').textContent=data.members.length+' nodes';directoryNodes.replaceChildren(...data.members.map((m,i)=>card(m,i,version)));renderTopology(data);setParticipation(data);if(!data.members.length)directoryNodes.append(element('p','No members configured. Add member entries to the Union configuration.','empty'));}
  catch(error){directoryError.textContent=error.message;directoryError.hidden=false;directoryNodes.replaceChildren();}finally{button.disabled=false;}
 }
 function setParticipation(data){for(const card of directoryNodes.querySelectorAll('.directory-node')){let label=card.querySelector('.participation-count');if(!label){label=element('span',undefined,'participation-count');card.querySelector('.node-facts').prepend(label);}label.textContent='Union jobs participated: '+(data.participation?.[card.dataset.identity]??'—')+' times';label.title='Distinct jobs in retained Union history; steps and retries do not increase this count.';}}

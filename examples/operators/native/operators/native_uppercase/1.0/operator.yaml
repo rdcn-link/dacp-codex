@@ -11,5 +11,3 @@ executor_config:
   stdout: {port: result, representation: bytes, format: text}
 inputs:
   source: {representations: [bytes], formats: []}
-outputs:
-  result: {representations: [bytes], formats: [text]}

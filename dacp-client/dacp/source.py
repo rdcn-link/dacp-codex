@@ -1,5 +1,6 @@
 """Pull-only Flight SDK. A failed reader is terminal; reopen the source to retry."""
 import io
+from pathlib import Path
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -11,18 +12,28 @@ from .expressions import scan_options
 from .errors import public_errors, translate, TRANSPORT_ERRORS
 
 @public_errors
-def _flight_client(u, tls_root_certs=None, cert_chain=None, private_key=None):
+def _flight_client(u, tls_root_certs=None, cert_chain=None, private_key=None, token=None, use_env_token=True):
     def credential(value, env):
         if value is not None: return value
         path = os.environ.get(env)
         if path:
             with open(path, "rb") as f: return f.read()
+    if token is None and use_env_token:
+        token_path = os.environ.get('DACP_TOKEN_FILE')
+        token = Path(token_path).read_text().strip() if token_path else None
+    if token is not None and (not isinstance(token, str) or not token or any(c.isspace() for c in token)):
+        raise ValueError('invalid bearer token')
+    class AuthMiddleware(flight.ClientMiddleware):
+        def sending_headers(self):
+            return {'authorization': 'Bearer ' + token} if token else {}
+    class AuthFactory(flight.ClientMiddlewareFactory):
+        def start_call(self, info): return AuthMiddleware()
     host = f"[{u.hostname}]" if ":" in u.hostname else u.hostname
     return flight.FlightClient(
         f"grpc+tls://{host}:{u.port or 8815}",
         tls_root_certs=credential(tls_root_certs, "DACP_CA"),
         cert_chain=credential(cert_chain, "DACP_CERT"),
-        private_key=credential(private_key, "DACP_KEY"))
+        private_key=credential(private_key, "DACP_KEY"), middleware=[AuthFactory()])
 
 def _logical_path(path):
     if (not isinstance(path, str) or not path.startswith("/") or "\\" in path
@@ -78,20 +89,20 @@ def _dataset_infos(client, timeout=30):
 class Source:
     @staticmethod
     @public_errors
-    def datasets(url, *, tls_root_certs=None, cert_chain=None, private_key=None, timeout=30):
+    def datasets(url, *, tls_root_certs=None, cert_chain=None, private_key=None, token=None, timeout=30):
         """Read public metadata from dacp-server."""
         u = urlsplit(url)
         if (u.scheme != "dacp" or not u.hostname or u.username is not None or u.query or u.fragment
                 or u.path not in ("", "/") or u.port is not None and not 0 < u.port <= 65535 or timeout <= 0):
             raise ValueError("expected dacp://host[:port] origin and positive timeout")
-        client = _flight_client(u, tls_root_certs, cert_chain, private_key)
+        client = _flight_client(u, tls_root_certs, cert_chain, private_key, **({"token": token} if token is not None else {}))
         try:
             return _dataset_infos(client, timeout)
         finally:
             client.close()
 
     @staticmethod
-    def open(uri, *, tls_root_certs=None, cert_chain=None, private_key=None):
+    def open(uri, *, tls_root_certs=None, cert_chain=None, private_key=None, token=None):
         u = urlsplit(uri)
         if u.scheme != "dacp" or not u.hostname or u.username or u.password or u.query or u.fragment:
             raise ValueError("expected dacp://host[:port]/dataset[/item]")
@@ -101,7 +112,7 @@ class Source:
                 or any(x in ("", ".", "..") for x in path[1:].split("/"))
                 or "\\" in path or any(ord(c) < 32 or ord(c) == 127 for c in path)):
             raise ValueError("invalid dataset path")
-        client = _flight_client(u, tls_root_certs, cert_chain, private_key)
+        client = _flight_client(u, tls_root_certs, cert_chain, private_key, **({"token": token} if token is not None else {}))
         ds = DataSet(client, parts[0], uri)
         if len(parts) == 2:
             try: stream = ds.open("/" + parts[1])

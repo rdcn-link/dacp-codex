@@ -45,20 +45,18 @@ class CollaborationSpec extends AnyFunSuite {
     }
     intercept[IllegalArgumentException](Jobs.parse(text.replace("result: b","result: {task: b, port: result}")))
   }
-  test("control and streaming dependencies share cycle validation but distinct semantics") {
-    val text="""job: controlled
+  test("stream dependencies define the graph and depends_on is rejected") {
+    val text="""job: stream
       |tasks:
-      | - {id: consume, operator: sink@1, inputs: {source: generate}, depends_on: [prepare]}
-      | - {id: prepare, operator: init@1, inputs: {}}
+      | - {id: consume, operator: sink@1, inputs: {source: generate}}
       | - {id: generate, operator: generate@1, inputs: {}}
       |outputs: {}
       |""".stripMargin
-    val plan=Jobs.parse(text);assert(plan.tasks.last.id=="consume")
-    assert(Jobs.dependencies(plan.tasks.last).toSet==Set("generate","prepare"))
+    val plan=Jobs.parse(text)
+    assert(Jobs.dependencies(plan.tasks.last).toSet==Set("generate"))
     assert(Jobs.roots(plan)==Set("consume"))
-    for(replacement<-Seq("[missing]","[generate]","[prepare, prepare]","consume"))
-      intercept[IllegalArgumentException](Jobs.parse(text.replace("[prepare]",replacement)))
-    intercept[IllegalArgumentException](Jobs.parse(text.replace("id: prepare, operator: init@1, inputs: {}","id: prepare, operator: init@1, inputs: {}, depends_on: [consume]")))
+    intercept[IllegalArgumentException](Jobs.parse(text.replace("source: generate}","source: generate}, depends_on: [generate]")))
+    intercept[IllegalArgumentException](Jobs.parse(text.replace("id: generate, operator: generate@1, inputs: {}","id: generate, operator: generate@1, inputs: {source: consume}")))
   }
   test("read_item requires an Item URI and explicit view") {
     val text="""job: read

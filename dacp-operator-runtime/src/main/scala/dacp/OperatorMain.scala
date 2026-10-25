@@ -8,7 +8,22 @@ private[dacp] object RuntimeJson {
   val mapper = new com.fasterxml.jackson.databind.ObjectMapper()
 }
 object OperatorMain {
+  def inferOutputs(inputs:Map[String,StreamDescriptor],params:com.fasterxml.jackson.databind.JsonNode):InferenceResult={
+    require(inputs.keySet==Set("source"),"expected source input")
+    sys.env.getOrElse("DACP_OPERATOR",throw new IllegalArgumentException("DACP_OPERATOR is required")).takeWhile(_!='@') match {
+      case "identity"=>InferenceResult(Map("result"->inputs("source")))
+      case "format_convert"=>
+        require(inputs("source").representations.isEmpty || inputs("source").representations==Set("bytes"),"format_convert requires bytes")
+        require(params.path("to").asText=="parquet","format_convert output must be parquet")
+        require(Set("csv","json","jsonl","ndjson")(params.path("from").asText),"unsupported input format")
+        InferenceResult(Map("result"->StreamDescriptor(Set("bytes"),Set("parquet"),certainty="known")))
+      case _=>throw new IllegalArgumentException("unknown operator")
+    }
+  }
   def main(args: Array[String]): Unit = {
+    if(args.headOption.contains("infer")) {
+      dacp.operator.OperatorRunner.infer(args)(inferOutputs);return
+    }
     require(args.length == 3 && args(0) == "operator", "expected operator INPUT PARAMS")
     val allocator = new RootAllocator(Long.MaxValue)
     try sys.env.getOrElse("DACP_OPERATOR", throw new IllegalArgumentException("DACP_OPERATOR is required")).takeWhile(_ != '@') match {

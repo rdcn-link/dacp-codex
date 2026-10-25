@@ -38,7 +38,7 @@ Example output:
 
 Shell results have no preview limit by default and print as chunks arrive. Press Ctrl+C during execution to cancel and return to the prompt. `max_records: 0` generates continuously but remains subject to server and request timeouts; it is not a permanent job. `interval_seconds` ranges from 0.01 to 60 seconds, default 1. `max_records` is a nonnegative integer, default 0; set it to 5 to finish automatically. No background scheduler accumulates pending records; backpressure blocks output writes.
 
-For Union, select a public name through `datasets` / `use`, and ensure a member grants `live_ticks@1.0`. Direct local node execution needs no Union approval.
+For Union, select a public name through `datasets` / `use`, and ensure a member can resolve and execute `live_ticks@1.0`. Local nodes can execute directly.
 
 ## Build, publish and validate
 
@@ -66,7 +66,7 @@ use weather
 submit examples/operators/live-stream/workflow.yaml --policy examples/operators/live-stream/stream-only-policy.json
 ```
 
-The terminal continuously prints CSV rows with `sequence,station_id,timestamp,air_temperature_c`. Press Ctrl+C to stop. The generator needs no input Item. The workflow omits node placement and runs on the connected node. For Union, approve all five operator versions; the scheduler selects execution nodes.
+The terminal continuously prints CSV rows with `sequence,station_id,timestamp,air_temperature_c`. Press Ctrl+C to stop. The generator needs no input Item. The workflow omits node placement and runs on the connected node. For Union, members must be able to resolve all five operator versions; the scheduler selects execution nodes.
 
 Build and publish the decoder:
 

@@ -78,7 +78,7 @@ example.JdbcCatalogProvider
 - 已取得的租约须保持有效，即使目录记录之后被删除或刷新。文件或数据库本身消失仍可能导致读取失败；这不是内容快照或持久结果保证。
 - 覆盖带 `check` 参数的重载，在查询循环和耗时步骤中检查取消；数据读取仍遵守现有背压和取消契约。
 - 服务器关闭目录实例。目录仅释放自己拥有的资源；用户注入的共享连接池由用户管理。
-- 目录信息无需额外的数据或 Union 执行授权，仍使用 Flight mTLS。已发布的数据集默认允许读取，仍验证命名空间和资源路径。
+- 目录信息无需额外的数据或 Union 执行授权，仍使用 Flight TLS / Token。已发布的数据集默认允许读取，仍验证命名空间和资源路径。
 
 目录发现使用 Flight `dacp.catalog` Action，返回目录条目及完整性标记；标准 `ListFlights` 提供完整目录，不完整时返回错误。每条 `FlightInfo.app_metadata` 为 `DataSet` protobuf，包含公开名称、URI 和包含用户自定义 JSON 对象字符串的 `description`，不包含 Item 内容。公开描述、Shell 和 Union Web 按节点查看目录见[数据集目录](dataset-directory.md)。
 

@@ -50,7 +50,8 @@ object OperatorLibrary {
     }
     require(configuration.isObject, "executor_config must be a mapping")
     val settings = Data.mapper.convertValue(configuration,classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap
-    val inputs = OperatorPorts.read(ports.path("inputs")); val outputs = OperatorPorts.read(ports.path("outputs"))
+    require(!ports.has("outputs"),"output declarations belong in inferOutputs, not the manifest")
+    val inputs = OperatorPorts.read(ports.path("inputs")); val outputs = Map.empty[String,PortContract]
     val program=OperatorProgram(reference,entrypoint,artifact,settings,
       inputs.map { case(k,v)=>k->v.representations },outputs.map { case(k,v)=>k->v.representations })
     val command=config.plugins.byId(classOf[OperatorExecutor],executor).command(program,target)
@@ -64,7 +65,7 @@ object OperatorLibrary {
       val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
       val in = Files.newInputStream(local)
       val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala.toMap finally in.close()
-      require(m.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "outputs", "executor_config", "provenance")), "unknown operator setting")
+      require(m.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "executor_config", "provenance")), "unknown operator setting")
       require(m("name").toString == p(0) && m("version").toString == p(1), "operator identity mismatch")
       val artifact = m.get("artifact").map(v => local.getParent.resolve(v.toString).toAbsolutePath.normalize)
       artifact.foreach(f => require(Files.isRegularFile(f) && Files.size(f) > 0 && Files.size(f) <= config.operatorMaxBytes, "invalid operator artifact size"))

@@ -31,8 +31,8 @@ Official website module: [dacp-website](dacp-website/README_en.md), providing an
 | `dacp-server` | Publishes data, handles Flight requests, and executes local and distributed tasks |
 | `dacp-shell` | Interactive browsing, SQL queries, operator execution, and job-file submission; installed with the Python SDK |
 | `dacp-client` / `dacp-client-scala` | Python / Scala applications access data, execute Jobs, and submit Union jobs |
-| [dacp-union-server](dacp-union-server/README_en.md) | Manages one Union, invites nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
-| [Union web dashboard](dacp-union-server/README_en.md#management-api-and-dashboard) | Management view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
+| [dacp-union-server](dacp-union-server/README_en.md) | Manages one Union, connects configured nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
+| [Union web dashboard](dacp-union-server/README_en.md#execution-and-interfaces) | Management view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
 | [dacp-operator-repository](dacp-operator-repository/README_en.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; administrators publish through the CLI |
 | `dacp-operator-runtime` / `plugins/dacp-plugin-operator-executors` | Shared operator environments, JVM / Python / container launchers, and native-command stream bridging |
 | `dacp-plugin-api` / `dacp-union-protocol` | Public plugin contracts and shared Union Flight transport utilities |
@@ -47,4 +47,4 @@ Servers use JDK 17 and Scala 2.13; the Python SDK requires Python 3.10+. Browsin
 - Distributed demonstration: run the [two-node Union example](examples/union/README_en.md).
 - Custom computation: read [writing and publishing operators](docs/operator-authoring_en.md).
 
-Data access and task execution use Flight mTLS; the operator repository and read-only dashboard use HTTP/HTTPS. Union CA trust, client allowlists, and node compute approval are configured separately. Operators use isolated runtime environments; eligible node subjobs share one process. See [in-process operator fusion](docs/operator-fusion_en.md). Outputs are not registered as Datasets. Servers persist execution metadata, while result contents are delivered through single-consumption streams.
+Ordinary data access and execution use Flight TLS and tokens; Union collaboration uses mutual TLS and node-issued service credentials. S3 uses independent SigV4 authentication. Repository downloads are public, publication requires a token, and internal dashboards are publicly read-only. See [authentication and access control](docs/security_en.md). Operators use isolated runtime environments; eligible node subjobs share one process. See [in-process operator fusion](docs/operator-fusion_en.md). Outputs are not registered as Datasets. Servers persist execution metadata, while result contents are delivered through single-consumption streams.

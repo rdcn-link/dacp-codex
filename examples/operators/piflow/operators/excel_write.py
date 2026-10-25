@@ -64,7 +64,16 @@ def process(ctx):
         wb.close()
 
 
+def infer_outputs(inputs, params):
+    import pyarrow as pa
+    from dacp_operator import descriptor, result, records_schema
+    expected = {'source'}
+    if set(inputs) != expected:
+        raise ValueError('unexpected input ports')
+    outputs = {'result': {'representations': ['bytes'], 'formats': ['xlsx'], 'certainty': 'known'}}
+    return result(outputs)
+
+
 if __name__ == '__main__':
-    from dacp_operator import OperatorContext
-    with OperatorContext() as context:
-        process(context)
+    from dacp_operator import run_operator
+    run_operator(process, infer_outputs)

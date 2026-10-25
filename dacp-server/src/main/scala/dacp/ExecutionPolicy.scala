@@ -33,5 +33,5 @@ object ExecutionPolicy {
     ExecutionPolicy(raw.deepCopy[JsonNode](),effective,selected,maxRetries,timeout)
   }
   def key(execution:String,task:String):String=java.security.MessageDigest.getInstance("SHA-256").digest(Json.mapper.writeValueAsBytes(Json.obj().put("execution_id",Json.id(execution)).put("task",Json.id(task)))).map(b=>f"${b & 255}%02x").mkString
-  def signature(task:JsonNode):JsonNode={val n=Json.obj();Seq("id","operator","params","inputs","depends_on").foreach(k=>n.set[JsonNode](k,task.path(k)));n}
+  def signature(task:JsonNode):JsonNode={val n=Json.obj();Seq("id","operator","params","inputs").foreach(k=>n.set[JsonNode](k,task.path(k)));n}
 }

@@ -116,3 +116,19 @@ def test_policy_and_replay_are_separate_flight_fields(monkeypatch):
     with Job.replay('dacp://node-a', 'job1', on_retry=lambda e: None) as stream:
         list(stream)
     assert client.request.replay_from == 'job1' and not client.request.execution_policy_json
+
+
+def test_job_resolves_variables_before_flight_and_replay_cannot_override(monkeypatch):
+    client = setup(monkeypatch, [])
+    client.expected_yaml = json.dumps({'job': 'demo', 'tasks': [{'params': {'limit': 123}}]})
+    with Job.run('dacp://node-a', 'job: demo\ntasks: [{params: {limit: $LIMIT}}]', variables={'LIMIT': 123}):
+        pass
+    assert json.loads(client.request.job_yaml)['tasks'][0]['params']['limit'] == 123
+    with pytest.raises(ValueError, match='original resolved variables'):
+        Job.replay('dacp://node-a', 'previous', variables={'LIMIT': 456})
+
+
+def test_missing_variables_do_not_open_connection(monkeypatch):
+    monkeypatch.setattr(jobs, '_flight_client', lambda *args: pytest.fail('must not connect'))
+    with pytest.raises(ValueError, match='missing workflow variable'):
+        Job.run('dacp://node-a', 'params: {limit: $LIMIT}', variables={})

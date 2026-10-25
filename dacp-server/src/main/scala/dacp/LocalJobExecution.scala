@@ -18,7 +18,6 @@ private[dacp] final class LocalJobExecution(config:Config,executor:TaskExecutor,
       val n=Json.obj().put("id",t.id).put("operator",t.operator)
       n.set[JsonNode]("params",Data.mapper.valueToTree(t.params))
       t.source.foreach(x=>n.putObject("source").put("runtime",x.runtime).put("source",x.source).put("entrypoint",x.entrypoint))
-      val controls=n.putArray("depends_on");t.dependsOn.foreach(controls.add)
       val ins=n.putObject("inputs");t.inputs.toVector.sortBy(_._1).foreach{case(p,b)=>val v=ins.putObject(p).put("port",b.port).put("view",b.view);b.uri.foreach(v.put("uri",_));b.task.foreach(v.put("task",_))};n
     }
     val reusable=scala.collection.mutable.Map.empty[String,String]
@@ -99,8 +98,6 @@ private[dacp] final class LocalJobExecution(config:Config,executor:TaskExecutor,
               }
             }
             try {
-              if(t.dependsOn.nonEmpty)child.update("waiting_dependencies")
-              while(!attemptReuse.contains(t.id) && !t.dependsOn.forall(completed.contains)){token.active();Thread.sleep(20)}
               child.update(if(attemptReuse.contains(t.id))"replaying"else "running")
               attemptReuse.get(t.id) match {
                 case Some(previous)=>

@@ -75,5 +75,16 @@ def main():
     emit('end')
 
 
+def infer_outputs(inputs, params):
+    from dacp_operator import descriptor, result
+    if set(inputs) != {'source'} or set(params) - {'min_amount', 'factor'}:
+        raise ValueError('expected source and min_amount/factor parameters')
+    return result({'result': descriptor(['records'], ['arrow'], OUTPUT_SCHEMA, certainty='known')})
+
+
 if __name__ == '__main__':
-    main()
+    from dacp_operator import run_inference
+    if len(sys.argv) > 1 and sys.argv[1] == 'infer':
+        run_inference(infer_outputs)
+    else:
+        main()

@@ -137,7 +137,7 @@ Dataset provider、容器 reader、格式 handler 分别负责构建数据集、
 
 ## 任务执行与算子
 
-任务输入只引用上游步骤的输出，使用 `task[:port]`，省略端口时为 `result`。外部数据项通过 `read_item@1.0` 的 `params.uri/view` 读取；`depends_on` 声明等待前置步骤成功的控制依赖，详见[作业格式](jobs.md)。输出为命名流，不保存数据集。shell 支持 `run OP --input source=/item` 和 `submit job.yaml`，并逐块打印结果。任务通过 mTLS Flight DoExchange 协作；流水线任务使用有界队列并发执行。每个输出端口最多有一个下游消费者；多个输入按端口名称字典序消费。
+任务输入只引用上游步骤的输出，使用 `task[:port]`，省略端口时为 `result`。外部数据项通过 `read_item@1.0` 的 `params.uri/view` 读取，详见[作业格式](jobs.md)。输出为命名流，不保存数据集。shell 支持 `run OP --input source=/item` 和 `submit job.yaml`，并逐块打印结果。普通任务通过 TLS 与 Token 的 Flight DoExchange 协作；流水线任务使用有界队列并发执行。每个输出端口最多有一个下游消费者；多个输入按端口名称字典序消费。
 
 算子启动参数为 `operator /input /input/params.json`。输入为 Arrow IPC FIFO，由 `/input/manifest.json` 描述。stdout 写 start/data/end 协议帧，stderr 写诊断。无输出目录、输出注册、TTL 或结果数据集 URI。Parquet 转换使用私有临时空间完成 footer 后流式发送字节。
 
@@ -188,7 +188,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | `host` / `port` | 监听地址 / 端口 |
 | `public_host` | 对外公布的 URI 主机名 |
 | `datasets` | Dataset 名称 → provider、source 及 items；名称为一个 URI 路径段 |
-| `tls_cert` / `tls_key` / `tls_ca` | PEM 证书、私钥、可信客户端 CA；强制 mTLS |
+| `tls_cert` / `tls_key` / `tls_ca` | PEM 服务器证书、私钥与信任 CA；普通客户端使用 TLS / Token，协作使用双向 TLS |
 | `count_file_records_on_startup` | 启动时填充直接发布的记录文件数量，默认 false；增加启动扫描成本 |
 | `batch_size` | 文件记录视图每个 batch 的最大行数 |
 | `byte_chunk` | 字节视图每个 binary 行的最大字节数 |
@@ -200,7 +200,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | `task_input_prefixes` | 可选的执行节点输入 URI 前缀限制；省略或为空时不增加前缀限制 |
 | `max_concurrent_tasks` | 本地任务及控制请求并发上限（默认 2）；满载立即返回 UNAVAILABLE |
 
-节点发布的数据集默认对通过 mTLS 验证的客户端公开；不另设数据读取白名单。任务执行器使用节点配置的证书发起 mTLS；多节点须互相信任相应 CA。
+节点发布的数据集默认对通过 TLS / Token 认证的客户端开放；不另设数据读取白名单。Union 协作使用节点签发的服务凭据和双向 TLS；节点间流还须匹配精确执行计划。
 
 服务错误使用 Flight/gRPC 状态和明确的 dacp 错误名称：资源不存在为 `NOT_FOUND`；禁止访问为 `UNAUTHORIZED` 且消息含 `FORBIDDEN`；schema 冲突为 `INVALID_ARGUMENT` 且消息含 `SCHEMA_CONFLICT`。protobuf 同时定义错误码供协议扩展。任何传输失败使当前 reader 作废，调用方从头 open；没有流内重试。算子结果只通过流返回，不注册输出数据集或使用输出 TTL。
 
@@ -212,4 +212,4 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 
 ## S3 兼容端口
 
-节点默认启动匿名只读 HTTP S3 服务：dataset 为 bucket，支持 `bytes` 的 Item 为 object。配置 `s3.enabled`（默认 true）、`s3.host`（默认 `0.0.0.0`）与 `s3.port`（默认实际 Flight 端口加 2000）。使用 path-style 与 unsigned 请求。操作范围、客户端与插件示例见 [S3 兼容服务](s3-service.md)。
+节点默认启动SigV4 认证的只读 HTTPS S3 服务：dataset 为 bucket，支持 `bytes` 的 Item 为 object。配置 `s3.enabled`（默认 true）、`s3.host`（默认 `0.0.0.0`）与 `s3.port`（默认实际 Flight 端口加 2000）。使用 path-style 与 SigV4 签名请求。操作范围、客户端与插件示例见 [S3 兼容服务](s3-service.md)。

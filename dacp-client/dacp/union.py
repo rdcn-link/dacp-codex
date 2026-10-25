@@ -1,4 +1,5 @@
-"""Arrow Flight mTLS client for one DACP Union."""
+"""Ordinary Flight client for one DACP Union: TLS and a user bearer token."""
+from .variables import resolve_variables
 import base64
 from contextlib import suppress
 import json
@@ -7,21 +8,23 @@ from urllib.parse import urlsplit
 from pathlib import Path
 import pyarrow as pa
 import pyarrow.flight as flight
+from .source import _flight_client
+from .flight_control import FlightControl
 
 
-class Union:
-    def __init__(self, url, *, cert, key, ca, timeout=1800):
+class Union(FlightControl):
+    def __init__(self, url, *, token=None, ca=None, cert=None, key=None, timeout=1800):
         origin = urlsplit(url)
         if origin.scheme != 'dacp' or not origin.hostname or origin.path not in ('', '/') or origin.query or origin.fragment or origin.username is not None or origin.port == 0:
             raise ValueError('expected DACP origin')
         if timeout <= 0:
             raise ValueError('timeout must be positive')
         self.timeout = timeout
-        self.client = flight.FlightClient(
-            flight.Location.for_grpc_tls(origin.hostname, origin.port if origin.port is not None else 8815),
-            tls_root_certs=Path(ca).read_bytes(), cert_chain=Path(cert).read_bytes(),
-            private_key=Path(key).read_bytes(),
-            generic_options=[('grpc.max_receive_message_length', 9*1024*1024)])
+        if (cert is None) != (key is None):
+            raise ValueError('client certificate and key must be provided together')
+        self.client = _flight_client(origin, Path(ca).read_bytes() if ca else None,
+                                     Path(cert).read_bytes() if cert else None, Path(key).read_bytes() if key else None,
+                                     **({'token': token} if token is not None else {}))
 
     def __enter__(self):
         return self
@@ -32,27 +35,13 @@ class Union:
     def close(self):
         self.client.close()
 
-    def _action(self, name, body=None):
-        raw = json.dumps(body or {}).encode()
-        if len(raw) > 1024*1024:
-            raise ValueError('Union request exceeds 1 MiB')
-        responses = iter(self.client.do_action(flight.Action('dacp.union.' + name, raw), flight.FlightCallOptions(timeout=self.timeout)))
-        response = next(responses, None)
-        if response is None or len(response.body) > 1024*1024 or next(responses, None) is not None:
-            raise ValueError('invalid Union response')
-        return json.loads(response.body.to_pybytes())
+    def infer(self, job_yaml, *, variables=None):
+        from .inference import infer_client
+        raw = json.dumps({'job_yaml': resolve_variables(job_yaml, variables)}).encode()
+        return infer_client(self.client, raw, workflow=True, timeout=self.timeout)
 
-    def _stream(self, kind, body):
-        raw = json.dumps(dict(body, type='dacp.union.' + kind)).encode()
-        if len(raw) > 1024*1024:
-            raise ValueError('Union ticket exceeds 1 MiB')
-        return self.client.do_get(flight.Ticket(raw), flight.FlightCallOptions(timeout=self.timeout))
-
-    def members(self):
-        return self._action('members')
-
-    def submit(self, job_yaml, *, execution_policy=None):
-        body = {'job_yaml': job_yaml}
+    def submit(self, job_yaml, *, execution_policy=None, variables=None):
+        body = {'job_yaml': resolve_variables(job_yaml, variables)}
         if execution_policy is not None:
             if not isinstance(execution_policy, dict):
                 raise ValueError('execution_policy must be a JSON object')

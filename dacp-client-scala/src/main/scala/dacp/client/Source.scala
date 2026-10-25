@@ -28,7 +28,7 @@ private[client] object Resources {
 }
 
 /** PEM credentials; omitted values fall back to DACP_CA, DACP_CERT, and DACP_KEY. */
-final case class TlsConfig(ca: Option[Path] = None, cert: Option[Path] = None, key: Option[Path] = None)
+final case class TlsConfig(ca: Option[Path] = None, cert: Option[Path] = None, key: Option[Path] = None, token:Option[String]=None,tokenFile:Option[Path]=None)
 final case class Item(path: String, format: String, schema: Option[Schema], kind: String, views: Seq[String],
                       lastModifiedTimeMs: Option[Long] = None, totalSizeBytes: Option[Long] = None,
                       recordCount: Option[Long] = None) {
@@ -84,7 +84,7 @@ object Source {
     finally Resources.closeAll(Seq(client,allocator))
   }
 
-  private def connection(u:URI,tls:TlsConfig):(FlightClient,RootAllocator)={
+  private[client] def connection(u:URI,tls:TlsConfig):(FlightClient,RootAllocator)={
     def credential(value: Option[Path], env: String): Option[Path] = value.orElse(sys.env.get(env).map(Path.of(_)))
     val ca = credential(tls.ca, "DACP_CA")
     val cert = credential(tls.cert, "DACP_CERT")
@@ -92,14 +92,10 @@ object Source {
     require(cert.isDefined == key.isDefined, "client certificate and key must be provided together")
     val allocator = new RootAllocator(Long.MaxValue)
     try {
-      val client = Using.Manager { use =>
-        val builder = FlightClient.builder(allocator, Location.forGrpcTls(u.getHost, if (u.getPort < 0) 8815 else u.getPort))
-        ca.foreach(p => builder.trustedCertificates(use(Files.newInputStream(p))))
-        cert.foreach(p => builder.clientCertificate(use(Files.newInputStream(p)), use(Files.newInputStream(key.get))))
-        builder.build()
-      }.get
+      val client=dacp.union.ClientTransport.open(allocator,new URI("dacp",null,u.getHost,if(u.getPort<0)8815 else u.getPort,null,null,null).toString,
+        ca,cert,key,()=>tls.token.orElse(credential(tls.tokenFile,"DACP_TOKEN_FILE").map(p=>Files.readString(p).trim)))
       (client,allocator)
-    } catch { case t: Throwable => allocator.close(); throw DacpErrors.translate(t) }
+    }catch{case t:Throwable=>allocator.close();throw DacpErrors.translate(t)}
   }
 
   /** Direct item access; closing the item also closes its private connection. */

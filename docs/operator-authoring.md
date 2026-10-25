@@ -1,5 +1,7 @@
 # 编写、发布和运行算子
 
+输出结构统一由必选推导方法提供，清单只声明输入契约；详见[结构推导](structure-inference.md)。
+
 算子是一个数据处理程序：接收命名的 Item 输入流和一份 JSON 业务参数，处理后返回命名输出流。下面先用一个完整的 Python 示例串起开发过程，再说明 Scala、打包发布和底层协议。
 
 ## 优先使用算子模板
@@ -98,10 +100,6 @@ inputs:
   source:
     representations: [records]
     formats: []
-outputs:
-  result:
-    representations: [records]
-    formats: [arrow]
 ```
 
 `source` 只接受 records，`formats: []` 表示不限制输入格式；程序仍必须校验列和类型。`result` 输出 records，格式标为 arrow。也可在端口定义中声明 Arrow schema JSON 值，见[端口契约](reference.md#任务执行与算子)。业务参数由程序校验，`params` 不是此定义中的参数 schema。
@@ -323,10 +321,6 @@ entrypoint: identity
 artifact: identity.py
 inputs:
   source:
-    representations: [bytes, records]
-    formats: []
-outputs:
-  result:
     representations: [bytes, records]
     formats: []
 ```

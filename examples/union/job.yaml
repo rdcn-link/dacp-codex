@@ -4,12 +4,10 @@ tasks:
   operator: read_item@1.0
   inputs: {}
   params:
-    uri: dacp://localhost:18861/climate/observations
+    uri: $OBSERVATIONS_URI
     view: records
-  node: dacp://localhost:18861
 - id: daily
   title: 质控过滤并计算站点每日气温统计
-  node: dacp://localhost:18861
   operator: daily_temperature_stats@1.0
   inputs:
     source: read_daily_source
@@ -17,12 +15,10 @@ tasks:
   operator: read_item@1.0
   inputs: {}
   params:
-    uri: dacp://localhost:18862/climate/station_baselines
+    uri: $BASELINES_URI
     view: records
-  node: dacp://localhost:18862
 - id: anomalies
   title: 融合站点气候基准并计算气温距平
-  node: dacp://localhost:18862
   operator: station_temperature_anomaly@1.0
   inputs:
     baselines: read_anomalies_baselines

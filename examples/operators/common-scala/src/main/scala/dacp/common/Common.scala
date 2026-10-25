@@ -14,6 +14,13 @@ import scala.jdk.CollectionConverters._
 
 /** Document operators explicitly buffer at most 16 MiB; Arrow transport remains streamed. */
 abstract class DocumentOperator(val operation:String) extends Operator {
+  final def inferOutputs(inputs:Map[String,dacp.StreamDescriptor],params:JsonNode):dacp.InferenceResult={
+    require(inputs.keySet==Set("source"),"expected source input")
+    require(inputs("source").representations.isEmpty || inputs("source").representations==Set("bytes"),"bytes input required")
+    val spec=Common.specs.get(operation)
+    require(params.fieldNames.asScala.toSet--Set("max_input_bytes")==spec.get("params").fieldNames.asScala.toSet,"unexpected or missing parameters")
+    dacp.InferenceResult(Map("result"->dacp.StreamDescriptor(Set("bytes"),Set(spec.get("format").asText),certainty="known")))
+  }
   final def process(ctx:OperatorContext):Unit={
     val p=ctx.params
     val spec=Common.specs.get(operation)

@@ -5,12 +5,12 @@ import scala.jdk.CollectionConverters._
 import org.yaml.snakeyaml.Yaml
 
 case class InputBinding(uri: Option[String] = None, task: Option[String] = None, port: String = "result", view: String = "bytes")
-case class Task(id: String, inputs: Map[String,InputBinding], operator: String, params: java.util.Map[String,Object], node: Option[String] = None, source: Option[SourceOperator] = None, title: Option[String] = None, outputPorts:Seq[String]=Seq.empty, proxyPath:Vector[String]=Vector.empty, dependsOn:Vector[String]=Vector.empty)
+case class Task(id: String, inputs: Map[String,InputBinding], operator: String, params: java.util.Map[String,Object], node: Option[String] = None, source: Option[SourceOperator] = None, title: Option[String] = None, outputPorts:Seq[String]=Seq.empty, proxyPath:Vector[String]=Vector.empty)
 case class JobPlan(tasks: Vector[Task], outputs: Map[String,(String,String)])
 case class SourceOperator(runtime: String, source: String, entrypoint: String = "Main")
 object Jobs {
   val ReadItem = "read_item@1.0"
-  def dependencies(t:Task):Vector[String]=(t.inputs.values.flatMap(_.task).toVector++t.dependsOn).distinct
+  def dependencies(t:Task):Vector[String]=t.inputs.values.flatMap(_.task).toVector.distinct
   def roots(plan:JobPlan):Set[String]={val upstream=plan.tasks.flatMap(dependencies).toSet;plan.tasks.map(_.id).filterNot(upstream).toSet++plan.outputs.values.map(_._1)}
   def reference(value:Any):(String,String)={
     require(value.isInstanceOf[String],"stream binding must be task[:port]")
@@ -63,7 +63,6 @@ object Jobs {
       b.task.foreach(name)
       b.uri.foreach { u => val parsed=DacpUri.parse(u); require(parsed.getPath.stripPrefix("/").split("/",2).length == 2,"operator input must address an item, not a dataset") }
     }
-    require(t.dependsOn.distinct.size==t.dependsOn.size,"duplicate control dependency");t.dependsOn.foreach(name)
     readBinding(t)
     t.node.foreach(n=>if(n.startsWith("nd-"))require(n.matches("nd-[a-z2-9]{4}-[a-z2-9]{4}"),"invalid logical node")else DacpUri.node(n))
   }
@@ -77,7 +76,7 @@ object Jobs {
     require(doc.get("tasks").exists(_.isInstanceOf[java.util.List[_]]),"tasks must be a list")
     val tasks=doc("tasks").asInstanceOf[java.util.List[Object]].asScala.map { raw =>
       val m=mapping(raw,"task")
-      require(m.keySet.subsetOf(Set("id","title","inputs","operator","params","node","depends_on")) && Set("id","inputs","operator").subsetOf(m.keySet),"invalid task settings")
+      require(m.keySet.subsetOf(Set("id","title","inputs","operator","params","node")) && Set("id","inputs","operator").subsetOf(m.keySet),"invalid task settings")
       val inputs=mapping(m("inputs"),"inputs").map { case (port,raw) =>
         val (task,output)=reference(raw)
         port -> InputBinding(task=Some(task),port=output)
@@ -85,17 +84,11 @@ object Jobs {
       val params=new java.util.LinkedHashMap[String,Object](); m.get("params").foreach(v => mapping(v,"params").foreach{case(k,v)=>params.put(k,v)})
       val inline=if(m("operator").isInstanceOf[java.util.Map[_,_]])Some(source(m("operator")))else None
       require(m.get("title").forall(_.isInstanceOf[String]),"title must be a string")
-      val t=Task(m("id").toString,inputs,if(inline.isDefined)""else m("operator").toString,params,m.get("node").map(_.toString),inline,m.get("title").map(_.toString),dependsOn=m.get("depends_on").map { v=>require(v.isInstanceOf[java.util.List[_]],"depends_on must be a list");v.asInstanceOf[java.util.List[Object]].asScala.map(x=>{require(x.isInstanceOf[String],"control dependency must be a task name");x.toString}).toVector }.getOrElse(Vector.empty));validate(t);t
+      val t=Task(m("id").toString,inputs,if(inline.isDefined)""else m("operator").toString,params,m.get("node").map(_.toString),inline,m.get("title").map(_.toString));validate(t);t
     }.toVector
     require(tasks.nonEmpty && tasks.size <= 64 && tasks.map(_.id).distinct.size == tasks.size,"empty, oversized, or duplicate task list")
     val ids=tasks.map(_.id).toSet
-    tasks.foreach(t=>dependencies(t).foreach(id=>require(ids(id),"unknown upstream/control task")))
-    def streamingAncestors(id:String):Set[String]=tasks.find(_.id==id).get.inputs.values.flatMap(_.task).toSet
-    tasks.foreach { t=>
-      var seen=Set.empty[String];var pending=streamingAncestors(t.id)
-      while(pending.nonEmpty){val next=pending--seen;seen++=next;pending=next.flatMap(streamingAncestors)--seen}
-      require(!t.dependsOn.exists(seen),"control dependency cannot also be a streaming ancestor; use a materialization boundary")
-    }
+    tasks.foreach(t=>dependencies(t).foreach(id=>require(ids(id),"unknown upstream task")))
     var left=tasks; var done=Set.empty[String]; val result=Vector.newBuilder[Task]
     while(left.nonEmpty) {
       val ready=left.filter(t=>dependencies(t).forall(done))

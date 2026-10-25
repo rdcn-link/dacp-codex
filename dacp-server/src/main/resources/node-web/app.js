@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
 function cell(row,value){const td=el('td');td.append(value instanceof Node?value:document.createTextNode(String(value)));row.append(td);}
 const time=ms=>ms?new Date(ms).toLocaleString('en-US',{hour12:false}):'—';
-const duration=ms=>ms<1000?ms+' ms':(ms/1000).toFixed(1)+' s';
+const duration=window.DacpDuration;
 function bytes(n){if(n===undefined)return '—';const u=['B','KiB','MiB','GiB'];let i=0;while(n>=1024&&i<3){n/=1024;i++;}return n.toFixed(i?1:0)+' '+u[i];}
 const terminal=new Set(['succeeded','failed','cancelled','expired','interrupted','rejected']);
 const labels={retrying:'Retrying',replaying:'Replaying',skipped:'Skipped',accepted:'Accepted',prepared:'Prepared',running:'Running',waiting_inputs:'Waiting for input',waiting_dependencies:'Waiting for predecessors',succeeded:'Succeeded',failed:'Failed',cancelled:'Cancelled',expired:'Timed out',interrupted:'Service interrupted',unknown:'Unknown'};

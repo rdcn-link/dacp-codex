@@ -48,9 +48,8 @@ object DacpUri {
 object NodeConnection {
   def open(config: Config, allocator: BufferAllocator, value: String): FlightClient = {
     val u = DacpUri.parse(value,false)
-    val ca = Files.newInputStream(config.ca); val cert = Files.newInputStream(config.cert); val key = Files.newInputStream(config.key)
-    try FlightClient.builder(allocator,Location.forGrpcTls(u.getHost,if (u.getPort < 0) 8815 else u.getPort))
-      .trustedCertificates(ca).clientCertificate(cert,key).build()
-    finally {ca.close();cert.close();key.close()}
+    val origin=DacpUri.origin(value)
+    dacp.union.ClientTransport.open(allocator,origin,Some(config.ca),Some(config.cert),Some(config.key),
+      ()=>if(origin==DacpUri.origin(config.uri("")))Some(config.internalToken)else None)
   }
 }

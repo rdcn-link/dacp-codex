@@ -11,9 +11,6 @@ executor_config:
   stdout: {port: result, representation: bytes, format: text}
 inputs:
   source: {representations: [bytes], formats: []}
-outputs:
-  result: {representations: [bytes], formats: [text]}
-
 provenance:
   source_archive: ../../../../../../.operator-sources/dacp-sources.zip
   source_repository: https://github.com/rdcn-link/dacp-codex

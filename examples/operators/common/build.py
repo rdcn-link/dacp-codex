@@ -30,8 +30,9 @@ def build(runtime_catalog,destination,version="1.1"):
     base=json.loads((runtime_catalog/'identity_python/1.1/manifest.json').read_text())
     files={'dacp_common/__init__.py':b'', 'dacp_common/catalog.py':(HERE/'catalog.py').read_bytes(),
            'dacp_operator/__init__.py':(ROOT/'dacp-operator-sdk/python/dacp_operator/__init__.py').read_bytes()}
+    files['dacp_operator/inference.py'] = (ROOT / 'dacp-operator-sdk/python/dacp_operator/inference.py').read_bytes()
     for name in CATALOG:
-        files[f'dacp_common/{name}.py']=(f'from dacp_operator import OperatorContext\nfrom .catalog import execute\ndef process(ctx):\n    execute({name!r}, ctx)\nif __name__ == "__main__":\n    with OperatorContext() as ctx:\n        process(ctx)\n').encode()
+        files[f'dacp_common/{name}.py']=(f'from dacp_operator import run_operator\nfrom .catalog import execute, infer_outputs as infer\ndef process(ctx):\n    execute({name!r}, ctx)\ndef infer_outputs(inputs, params):\n    return infer({name!r}, inputs, params)\nif __name__ == "__main__":\n    run_operator(process, infer_outputs)\n').encode()
     dist=f'dacp_common_operators-{version}.dist-info/'
     files[dist+'METADATA']=f'Metadata-Version: 2.1\nName: dacp-common-operators\nVersion: {version}\nRequires-Python: >=3.10\nRequires-Dist: pyarrow>=23.0.1\n'.encode()
     files[dist+'WHEEL']=b'Wheel-Version: 1.0\nGenerator: dacp\nRoot-Is-Purelib: true\nTag: py3-none-any\n'
@@ -57,7 +58,6 @@ def build(runtime_catalog,destination,version="1.1"):
         desc=s['description']+'; params='+json.dumps(s['params'],ensure_ascii=False,separators=(',',':'))
         m=dict(api_version=2,name=name,version=version,description=desc,
                inputs={'source':{'representations':[s['representation']],'formats':[]}},
-               outputs={'result':{'representations':[s['representation']],'formats':[s['format']]}},
                execution={'executor':'python','entrypoint':'dacp_common.'+name,'config':{}},runtime=runtime,artifact=artifact,
                provenance={'source_archive':source,'source_repository':'https://github.com/rdcn-link/dacp-codex',
                            'build_instructions':'Run .venv/bin/python examples/operators/common/build.py --runtime-catalog .operator-catalog; see bundled bilingual README files. Requires the shared dacp/operator-python:1.0 runtime; no new image per operator.'})

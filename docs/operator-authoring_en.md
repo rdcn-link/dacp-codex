@@ -1,5 +1,7 @@
 # Write, publish and run an operator
 
+Output structures come exclusively from the mandatory inference method; manifests declare input contracts only. See [structure inference](structure-inference_en.md).
+
 An operator is a data-processing program: it receives named Item input streams and JSON business parameters, then returns named output streams. This guide starts with a complete Python workflow, followed by Scala, packaging, publication and the wire contract.
 
 ## Prefer operator templates
@@ -98,10 +100,6 @@ inputs:
   source:
     representations: [records]
     formats: []
-outputs:
-  result:
-    representations: [records]
-    formats: [arrow]
 ```
 
 `source` accepts records only. `formats: []` imposes no input-format restriction; the program still validates columns and types. `result` emits records labeled arrow. Port definitions may also contain an Arrow schema JSON value; see [port contracts](reference_en.md#task-execution-and-operators). Business parameters are validated by the program; `params` is not a parameter-schema field in this definition.
@@ -323,10 +321,6 @@ entrypoint: identity
 artifact: identity.py
 inputs:
   source:
-    representations: [bytes, records]
-    formats: []
-outputs:
-  result:
     representations: [bytes, records]
     formats: []
 ```

@@ -27,6 +27,7 @@ final class Tls(val cert:Path,val key:Path,val ca:Path) {
   certificates(ca).zipWithIndex.foreach {case(c,i)=>trust.setCertificateEntry(i.toString,c)}
   private val tm=TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm);tm.init(trust)
   private val base=tm.getTrustManagers.collectFirst {case t:X509ExtendedTrustManager=>t}.get
+  def sslContext:SSLContext={val c=SSLContext.getInstance("TLS");c.init(km.getKeyManagers,tm.getTrustManagers,null);c}
   def trustManager(pin:Option[String]=None,observed:String=>Unit=_=>()):X509ExtendedTrustManager={
     val check=new X509ExtendedTrustManager {
       private def pinned(cs:Array[X509Certificate]):Unit={

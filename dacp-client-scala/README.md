@@ -2,7 +2,7 @@
 
 [English](README_en.md)
 
-独立的 Scala 2.13 SDK，通过 Apache Arrow Flight 和 mTLS 读取 DACP Dataset。需要 JDK 17 和 sbt 1.10.x。使用共享的 [protobuf 定义](../proto/dacp.proto)，不依赖 DACP 服务器项目。
+独立的 Scala 2.13 SDK，通过 Apache Arrow Flight 和 TLS/Token 读取 DACP Dataset。需要 JDK 17 和 sbt 1.10.x。使用共享的 [protobuf 定义](../proto/dacp.proto)，不依赖 DACP 服务器项目。
 
 在本目录构建并发布到本地 Ivy 仓库：
 
@@ -25,7 +25,7 @@ javaOptions ++= Seq(
   "-Dio.netty.tryReflectionSetAccessible=true")
 ```
 
-通过 `DACP_CA`、`DACP_CERT`、`DACP_KEY` 配置 PEM 文件路径，或使用 `TlsConfig` 显式传递路径。服务器证书验证保持启用。未指定 CA 时使用默认信任根；客户端证书和密钥必须成对提供。远端 DACP 服务器要求客户端证书。
+通过 `DACP_CA`、`DACP_CERT`、`DACP_KEY` 配置 PEM 文件路径，或使用 `TlsConfig` 显式传递路径。服务器证书验证保持启用。未指定 CA 时使用默认信任根；客户端证书和密钥必须成对提供。普通连接使用 Token，无需客户端证书；通过 `TlsConfig(tokenFile = Some(Path.of("/protected/alice.token")))` 或 `DACP_TOKEN_FILE` 提供。
 
 ```scala
 import dacp.client.{Source, TlsConfig}
@@ -34,8 +34,7 @@ import scala.util.Using
 
 val tls = TlsConfig(
   ca = Some(Path.of("examples/certs/ca.crt")),
-  cert = Some(Path.of("examples/certs/client.crt")),
-  key = Some(Path.of("examples/certs/client.key")))
+  tokenFile = Some(Path.of("/protected/alice.token")))
 
 Using.resource(Source.open("dacp://localhost:8815/data1", tls)) { ds =>
   ds.list("/").foreach(item => println(s"${item.path}: ${item.kind}, ${item.views}"))
@@ -141,4 +140,4 @@ Using.resource(Job.run("dacp://localhost:8815",
 
 ## Union 客户端
 
-`dacp.client.Union` 支持向独立 X 提交作业，分别读取 `results()` 和 `events()`，查询 `status()` 或 `cancel()`。执行和流均用 `Using.resource` 关闭。完整代码及 mTLS 配置见 [Union 服务器](../dacp-union-server/README.md)。
+`dacp.client.Union` 支持向独立 X 提交作业，分别读取 `results()` 和 `events()`，查询 `status()` 或 `cancel()`。执行和流均用 `Using.resource` 关闭。完整代码及认证配置见 [Union 服务器](../dacp-union-server/README.md)。

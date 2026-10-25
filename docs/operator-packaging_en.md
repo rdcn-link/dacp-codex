@@ -1,5 +1,7 @@
 # Operator packaging and shared environments
 
+Output structures come exclusively from the mandatory inference method; manifests declare input contracts only. See [structure inference](structure-inference_en.md).
+
 Operators consist of an immutable `name@version` manifest, a shared runtime image, and an optional small code artifact. Multiple names and versions can reference the same runtime and code bundle. This is implemented for complete containers, thin Java/Scala JARs, Python source files, and Python wheels. Operators always execute in a separate Docker container; public repository artifacts are never loaded into the server JVM.
 
 ## Runtime and dependency ownership
@@ -23,8 +25,6 @@ entrypoint: example.Summary
 artifact: summary.jar
 inputs:
   source: {representations: [records], formats: []}
-outputs:
-  result: {representations: [records], formats: []}
 ```
 
 `jvm` needs a JAR and main class. `python` needs a `.py` or `.whl` artifact and a module name (`entrypoint` selects the module for wheels; source executes the script). `command` adapts native stdin/stdout programs; see [native commands](native-commands_en.md). `container` uses its image's existing entrypoint and accepts neither an entrypoint override nor a code artifact. Every executor receives `operator /input /input/params.json` and `DACP_OPERATOR=name@version`, following the existing [Arrow IPC contract](reference_en.md#task-execution-and-operators).
@@ -47,7 +47,6 @@ Manifest schema `api_version: 2` separates execution, runtime, and code:
   "version": "1",
   "description": "Summarize records",
   "inputs": {"source": {"representations": ["records"], "formats": []}},
-  "outputs": {"result": {"representations": ["records"], "formats": []}},
   "execution": {"executor": "jvm", "entrypoint": "example.Summary"},
   "runtime": {
     "image": "sha256:<image ID>",

@@ -7,6 +7,12 @@ import org.apache.arrow.vector.ipc.ArrowStreamReader
 
 object Uppercase {
   def main(args: Array[String]): Unit = {
+    if(args.headOption.contains("infer")) {
+      dacp.operator.OperatorRunner.infer(args)((inputs,params)=>{
+        require(inputs.keySet==Set("source"),"expected source")
+        dacp.InferenceResult(Map("result"->dacp.StreamDescriptor(Set("bytes"),Set("csv"),certainty="known")))
+      });return
+    }
     val mapper = new ObjectMapper()
     val input = Paths.get(args(1))
     val manifest = mapper.readTree(Files.readAllBytes(input.resolve("manifest.json")))

@@ -8,7 +8,7 @@ DACP (Data Access and Collaboration Protocol) defines data access and computatio
 
 Servers organize data into Datasets and describe accessible objects as Items. Clients inspect metadata and advertised capabilities before selecting a view. `bytes` exposes byte content; `records` exposes batches with an Arrow schema. Format and view describe storage representation and access capability separately; clients must not infer supported reads solely from filename extensions. Plugins should explicitly describe scientific groups, tables, and multidimensional variables rather than silently flattening them into records.
 
-A job contains tasks. A task's `id` identifies dependency references; its `title` describes its purpose to users. Operators consume and produce streams through named ports. Inputs may reference data items or upstream outputs. Results are not automatically published as Datasets. Nodes and Union both accept standard Job submission. Union uses its public URIs and optional logical node IDs, and retains dedicated management APIs; see [Union proxy service](union-proxy_en.md).
+A job contains tasks. A task's `id` identifies dependency references; its `title` describes its purpose to users. Operators consume and produce streams through named ports. Inputs reference only upstream outputs; read_item source operators read external Items. Results are not automatically published as Datasets. Nodes and Union both accept standard Job submission. Union uses its public URIs and optional logical node IDs, and retains dedicated management APIs; see [Union proxy service](union-proxy_en.md).
 
 ## Transport responsibilities
 
@@ -16,9 +16,9 @@ A job contains tasks. A task's `id` identifies dependency references; its `title
 |---|---|
 | Dataset discovery | Flight `dacp.catalog` returns completeness, public Dataset URIs and descriptions without additional data grants; plugins can supply a dynamic catalog |
 | Browsing, metadata, and reading | Arrow Flight; see the technical reference and protobuf definitions for messages |
-| S3-compatible object reads | Separate HTTP endpoint, anonymous and read-only; datasets map to buckets and bytes Items to objects; see the [S3 service](s3-service_en.md) |
+| S3-compatible object reads | Separate HTTPS endpoint, SigV4-authenticated and read-only; datasets map to buckets and bytes Items to objects; see the [S3 service](s3-service_en.md) |
 | Ordinary node job execution | Flight `DoExchange` carrying control messages and result streams |
-| Union invitations, approval, members, status, and job control | Flight `DoAction` with the `dacp.union.` action prefix and JSON messages |
+| Union membership validation, status and job control | Flight `DoAction` with the `dacp.union.` action prefix and JSON messages |
 | Union final results and inter-node stream reads | Flight `DoGet` with the corresponding tickets |
 | Operator repository search, versions, and artifact downloads | HTTP/HTTPS |
 | Read-only Union management dashboard | HTTP for status and history; it does not authorize computation submission |
@@ -27,17 +27,15 @@ The shared Union transport module limits JSON messages to 1 MiB. For exact actio
 
 ## Identity, trust, and authorization
 
-Flight uses mTLS. Clients verify the server's CA chain and connection identity; servers verify client certificates. A server calling another node also acts as a client. Published datasets are readable by authenticated clients by default; a valid certificate does not automatically grant task execution permission.
-
-Union identifies callers using the SHA-256 fingerprint of the TLS-verified leaf certificate and can pin remote certificates. Access to Union follows its authorization configuration. Each node independently approves Union invitations and local computation permissions, which can restrict data scope, operators, and resources. Self-declared identity in a JSON request cannot override certificate identity or authorization.
+Ordinary Flight clients use TLS and bearer tokens. Union members use mutual TLS and node-issued service credentials. Peer streams are authorized by exact execution plans, not merely CA trust. S3 has independent SigV4 keys. Servers enforce authorization regardless of SDK type. See [security](security_en.md).
 
 ## Cross-center collaboration
 
-One Union Server maintains one Union. Data nodes run independently. Union invites nodes, which join after approval. Union actively polls their status and schedules steps according to declared dependencies.
+One Union Server maintains one Union. Data nodes run independently. Union connects members configured with node-issued credentials. Union actively polls their status and schedules steps according to declared dependencies.
 
 For example, a task on A produces `oa`, and B combines `oa` with local data to produce `ob`. Union schedules A and B; the intermediate stream travels directly between nodes, and Union relays the final `ob` stream to the client. The client need not connect directly to B. Participating nodes still require certificate verification and the corresponding business authorization.
 
-The implementation supports explicitly declared collaboration DAGs. It does not promise arbitrary general pipeline optimization, result replay, or recovery of interrupted streams. The dashboard and execution records expose status, traffic, and task titles.
+The implementation supports explicitly declared collaboration DAGs. It supports configured materialization boundaries and replay; automatic recovery requires an execution policy and retry-aware clients. It does not promise arbitrary general pipeline optimization. The dashboard and execution records expose status, traffic, and task titles.
 
 ## Streaming and persistence
 

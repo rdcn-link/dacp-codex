@@ -57,7 +57,7 @@ dependsOn(pluginExecutionFile % "runtime->compile;test->compile")
 Compile / resourceGenerators += Def.task {
   val shared = baseDirectory.value.getParentFile / "dacp-union-server" / "src" / "main" / "resources" / "web"
   val output = (Compile / resourceManaged).value / "node-web"
-  val files = Seq("dag.js", "attempts.js", "style.css", "vendor/g6-5.1.1.min.js", "vendor/G6-LICENSE.txt")
+  val files = Seq("duration.js", "dag.js", "attempts.js", "style.css", "vendor/g6-5.1.1.min.js", "vendor/G6-LICENSE.txt")
   val copied = files.map { name => val target=output / name; IO.copyFile(shared / name,target); target }
   val branding=Seq("dacp-logo.png", "dacp-favicon.png", "dacp-favicon.ico").map { name =>
     val target=output / name
@@ -66,3 +66,6 @@ Compile / resourceGenerators += Def.task {
   }
   copied ++ branding
 }.taskValue
+
+lazy val collaborationClient=RootProject(file("../dacp-collaboration-client-scala"))
+dependsOn(collaborationClient)

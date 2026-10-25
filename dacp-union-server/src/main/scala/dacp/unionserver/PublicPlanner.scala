@@ -9,7 +9,7 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
   def logicalNode(member:String):String="nd-"+routes.assign(member,"").stripPrefix("ds-")
   def nodes:com.fasterxml.jackson.databind.JsonNode={
     val n=Json.obj();val nodes=n.putArray("nodes")
-    members.all.foreach { m=>val status=members.inspect(m);if(status.path("state").asText=="approved")nodes.addObject().put("id",logicalNode(m.path("identity").asText)).put("capacity",status.path("status").path("capacity").asInt) };n
+    members.all.foreach { m=>val status=members.inspect(m);if(status.path("state").asText=="approved")nodes.addObject().put("id",logicalNode(status.path("identity").asText)).put("capacity",status.path("status").path("capacity").asInt) };n
   }
   def plan(input:JobPlan,check:()=>Unit):JobPlan={
     val candidates=members.all.map(m=>members.inspect(m)).filter(_.path("state").asText=="approved")
@@ -33,8 +33,8 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
       val preference=(sources.map(_._2)++Jobs.dependencies(t).flatMap(placements.get)).distinct
       val eligible=candidates.filter { m=>
         val id=m.path("identity").asText;val status=m.path("status");val grant=m.path("grant")
-        val capacity=math.min(status.path("capacity").asInt-status.path("reserved_tasks").asInt,status.path("union_capacity").asInt-status.path("union_reserved_tasks").asInt)
-        (t.operator==Jobs.ReadItem || grant.path("operators").elements.asScala.exists(_.asText==t.operator)) && (sources.isEmpty || sources.forall(_._2==id)) && capacity>used(id)
+        val capacity=math.min(status.path("capacity").asInt,status.path("union_capacity").asInt)
+        (sources.isEmpty || sources.forall(_._2==id)) && capacity>used(id)
       }
       val selected=t.node match {
         case Some(id)=>eligible.find(m=>logicalNode(m.path("identity").asText)==id).getOrElse(throw new IllegalArgumentException("requested logical node unavailable"))

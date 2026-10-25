@@ -10,7 +10,3 @@ inputs:
   source:
     representations: [bytes, records]
     formats: []
-outputs:
-  result:
-    representations: [bytes, records]
-    formats: []

@@ -21,3 +21,4 @@ execution_store:
   provider: file
   settings:
     directory: ../.union-demo/a-executions
+credential_directory: ../.union-demo/a-credentials

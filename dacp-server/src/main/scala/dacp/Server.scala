@@ -20,8 +20,10 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
                   remoteOperatorLibraryUrls: Seq[String] = Seq.empty, operatorCache: Path = Path.of(".operator-cache"),
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
                   sources: Map[String, SourceDefinition] = Map.empty, countFileRecordsOnStartup: Boolean = false, debug: Boolean = false, sourceRuntimes: Map[String, SourceRuntime] = Map.empty, union: Option[NodeUnionSettings] = None, executionStore: Option[ExecutionStoreDefinition] = None,
-                  datasetCatalog: Option[DatasetCatalogDefinition] = None, catalogOverride: Option[DatasetCatalog] = None, pluginEnvironment: Option[PluginEnvironment] = None, pluginDirectory: Option[Path] = None, ownsPluginEnvironment:Boolean=false, accessLogDirectory:Option[Path]=None, accessLogMaxBytes:Long=64L*1024*1024, operatorFusionEnabled:Boolean=true, web:NodeWebSettings=NodeWebSettings(), materializationStore:Option[MaterializationStoreDefinition]=None, executionTimeoutSeconds:Long=1800, s3:S3Settings=S3Settings()) extends CatalogContext with AutoCloseable {
+                  datasetCatalog: Option[DatasetCatalogDefinition] = None, catalogOverride: Option[DatasetCatalog] = None, pluginEnvironment: Option[PluginEnvironment] = None, pluginDirectory: Option[Path] = None, ownsPluginEnvironment:Boolean=false, accessLogDirectory:Option[Path]=None, accessLogMaxBytes:Long=64L*1024*1024, operatorFusionEnabled:Boolean=true, web:NodeWebSettings=NodeWebSettings(), materializationStore:Option[MaterializationStoreDefinition]=None, executionTimeoutSeconds:Long=1800, s3:S3Settings=S3Settings(),credentialDirectory:Option[Path]=None,providedCredentials:Option[dacp.union.Credentials]=None) extends CatalogContext with AutoCloseable {
   require(executionTimeoutSeconds>0 && executionTimeoutSeconds<=86400,"invalid execution_timeout_seconds")
+  lazy val credentials=providedCredentials.getOrElse(new dacp.union.Credentials(credentialDirectory.getOrElse(Path.of(".dacp-security",port.toString))))
+  lazy val internalToken:String=credentials.internalToken()
   @volatile private[dacp] var runningWebUrl:Option[String]=None
   private var suppliedPlugins=pluginEnvironment
   private var ownsPlugins=ownsPluginEnvironment || pluginEnvironment.isEmpty
@@ -65,6 +67,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
     var failure:Throwable=null
     val owned=synchronized {Option(activeCatalog).orElse(suppliedCatalog).toSeq++Option(historyStore).toSeq++materializationStores.values.toSeq++Option(accessLogger).toSeq++(if(ownsPlugins)Option(activePlugins).orElse(suppliedPlugins).toSeq else Seq.empty)}
     owned.foreach(p=>try p.close() catch{case scala.util.control.NonFatal(e)=>if(failure==null)failure=e else failure.addSuppressed(e)})
+    if(providedCredentials.isEmpty)credentials.close()
     if(failure!=null)throw failure
   }
   def configuredDatasets:Map[String,DatasetDefinition]=datasets
@@ -122,7 +125,7 @@ object Config {
     val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
     val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala finally in.close()
     val settings = Set("host", "port", "public_host", "datasets", "sources",
-      "tls_cert", "tls_key", "tls_ca", "batch_size", "byte_chunk", "infer_sample",
+      "tls_cert", "tls_key", "tls_ca", "credential_directory", "batch_size", "byte_chunk", "infer_sample",
       "operator_fusion_enabled", "local_operator_library", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
       "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "mode", "source_runtimes", "union", "execution_store", "dataset_catalog", "access_log", "web", "s3", "materialization_store", "execution_timeout_seconds")
     require(m.keySet.subsetOf(settings), "unknown server setting")
@@ -164,7 +167,7 @@ object Config {
       Path.of(m.get("local_operator_library").map(_.toString).getOrElse("../operators")), strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), strings("remote_operator_library_urls"),
       Path.of(m.get("operator_cache").map(_.toString).getOrElse(".operator-cache")),
       m.get("operator_max_bytes").map(_.toString.toLong).getOrElse(8L * 1024 * 1024 * 1024), sources,
-      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), mode=="DEBUG", runtimes, m.get("union").map(v=>NodeUnionSettings.read(Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),m.get("execution_store").map {v=>val raw=v.asInstanceOf[java.util.Map[String,Object]].asScala;require(raw.keySet==Set("provider","settings"),"execution_store requires provider and settings");ExecutionStoreDefinition(raw("provider").toString,raw("settings").asInstanceOf[java.util.Map[String,Object]].asScala.toMap)},catalogDefinition,catalogOverride,Some(environment),ownsPluginEnvironment=providedPlugins.isEmpty || ownsProvidedPlugins,accessLogDirectory=access.get("directory").map(v=>Path.of(v.toString)),accessLogMaxBytes=access.get("max_bytes").map(_.toString.toLong).getOrElse(64L*1024*1024),operatorFusionEnabled=m.get("operator_fusion_enabled").map { value=>require(value.isInstanceOf[java.lang.Boolean],"operator_fusion_enabled must be a boolean");value.asInstanceOf[java.lang.Boolean].booleanValue }.getOrElse(true),web=web,s3=S3Settings.read(m.get("s3")),executionTimeoutSeconds=m.get("execution_timeout_seconds").map(v=>dacp.union.Json.number(Data.mapper.createObjectNode().set[com.fasterxml.jackson.databind.JsonNode]("timeout",Data.mapper.valueToTree(v)),"timeout",1,86400)).getOrElse(1800L),materializationStore=m.get("materialization_store").map { v=>
+      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), mode=="DEBUG", runtimes, m.get("union").map(v=>NodeUnionSettings.read(Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),m.get("execution_store").map {v=>val raw=v.asInstanceOf[java.util.Map[String,Object]].asScala;require(raw.keySet==Set("provider","settings"),"execution_store requires provider and settings");ExecutionStoreDefinition(raw("provider").toString,raw("settings").asInstanceOf[java.util.Map[String,Object]].asScala.toMap)},catalogDefinition,catalogOverride,Some(environment),ownsPluginEnvironment=providedPlugins.isEmpty || ownsProvidedPlugins,accessLogDirectory=access.get("directory").map(v=>Path.of(v.toString)),accessLogMaxBytes=access.get("max_bytes").map(_.toString.toLong).getOrElse(64L*1024*1024),operatorFusionEnabled=m.get("operator_fusion_enabled").map { value=>require(value.isInstanceOf[java.lang.Boolean],"operator_fusion_enabled must be a boolean");value.asInstanceOf[java.lang.Boolean].booleanValue }.getOrElse(true),web=web,s3=S3Settings.read(m.get("s3")),credentialDirectory=m.get("credential_directory").map(v=>Path.of(v.toString)),executionTimeoutSeconds=m.get("execution_timeout_seconds").map(v=>dacp.union.Json.number(Data.mapper.createObjectNode().set[com.fasterxml.jackson.databind.JsonNode]("timeout",Data.mapper.valueToTree(v)),"timeout",1,86400)).getOrElse(1800L),materializationStore=m.get("materialization_store").map { v=>
         val n=Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v)
         dacp.union.Json.fields(n,Set("provider","settings"));require(n.path("settings").isObject,"materialization settings must be object")
         MaterializationStoreDefinition(dacp.union.Json.text(n,"provider"),Data.mapper.convertValue(n.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap)
@@ -175,14 +178,20 @@ object Config {
 }
 class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskService] = None, union: Option[UnionWorker] = None) extends NoOpFlightProducer {
   override def doExchange(ctx: FlightProducer.CallContext, reader: FlightStream, writer: FlightProducer.ServerStreamListener): Unit = {
+    dacp.union.Rpc.clientOperation()
     val audit=config.accessLog.begin("do_exchange");val out=AccessLogging.stream(audit,writer)
     try tasks match {
       case Some(service)=>service.exchange(ctx,reader,out)
       case None=>out.error(CallStatus.UNIMPLEMENTED.withDescription("task execution disabled").toRuntimeException)
     }catch{case scala.util.control.NonFatal(t)=>out.error(fail(t))}
   }
+  protected def inferTask(task:Task,inputs:Map[String,StreamDescriptor],cancel:StreamCancel):InferenceResult=WorkflowInference.task(config,allocator,task,inputs,cancel)
   private def adapter(ds: String, item: String, ctx: FlightProducer.CallContext): DatasetAccess = {
-    def active(): Unit = if (ctx.isCancelled) throw new java.util.concurrent.CancellationException()
+    val serviceLease=if(dacp.union.Rpc.isAuthenticatedCall && dacp.union.Rpc.principal.kind=="union")Some(dacp.union.Rpc.principal.active)else None
+    def active(): Unit = {
+      if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()
+      if(serviceLease.exists(check=> !check()))throw CallStatus.UNAUTHORIZED.withDescription("Union credential revoked or expired").toRuntimeException
+    }
     config.openDataset(ds,() => active())
   }
 
@@ -216,6 +225,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     b.build()
   }
   override def getFlightInfo(ctx: FlightProducer.CallContext, desc: FlightDescriptor): FlightInfo = {
+    dacp.union.Rpc.clientOperation()
     val audit=config.accessLog.begin("get_flight_info")
     try {
     val p = desc.getPath.asScala.toSeq
@@ -240,7 +250,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     } else {
       val description = a.describe(item)
       require(config.plugins.views(description).nonEmpty, "folder has no content stream")
-      val schema = description.schema.get
+      val schema = description.schema.getOrElse {require(config.plugins.views(description).head=="bytes","records view requires schema");PluginSchemas.bytes}
       val ticket = Metadata.Ticket.newBuilder().setDataset(ds).setItem(item).setView(config.plugins.views(description).head).build()
       new FlightInfo(schema,desc,List(new FlightEndpoint(new Ticket(ticket.toByteArray))).asJava,-1,-1,false,
         org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,
@@ -250,6 +260,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
   } catch { case t: Throwable => audit.finish(AccessLogging.status(t));throw fail(t) }finally audit.finish(if(ctx.isCancelled)"cancelled" else "completed")
   }
   override def listFlights(ctx:FlightProducer.CallContext,criteria:Criteria,raw:FlightProducer.StreamListener[FlightInfo]):Unit={
+    dacp.union.Rpc.clientOperation()
     val audit=config.accessLog.begin("list_flights");val listener=AccessLogging.results(audit,raw)
     try {
     def check():Unit=if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()
@@ -263,6 +274,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
   }catch{case scala.util.control.NonFatal(t)=>listener.onError(fail(t))}
   }
   override def doAction(ctx:FlightProducer.CallContext,action:Action,raw:FlightProducer.StreamListener[Result]):Unit={
+    if(!action.getType.startsWith(dacp.union.Rpc.Prefix))dacp.union.Rpc.clientOperation()
     val audit=config.accessLog.begin("do_action");val listener=AccessLogging.results(audit,raw)
     try if(action.getType=="dacp.catalog") {
       require(action.getBody.isEmpty,"catalog action takes no body")
@@ -270,12 +282,30 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
       val directory=Metadata.Directory.newBuilder().setComplete(snapshot.complete).setUnavailableSources(snapshot.unavailableSources)
       snapshot.entries.foreach(i=>directory.addDatasets(DatasetDiscovery.metadata(config,i)))
       listener.onNext(new Result(directory.build().toByteArray));listener.onCompleted()
+    } else if(Set("dacp.infer","dacp.infer_job")(action.getType)) {
+      require(action.getBody.length<=StructureInference.MaxBytes,"inference request exceeds 1 MiB")
+      val n=Data.mapper.readTree(action.getBody)
+      val c=new StreamCancel(()=>ctx.isCancelled,timeoutSeconds=120)
+      try {
+        val result=if(action.getType=="dacp.infer") {
+          val t=WorkflowInference.parseTask(n)
+          StructureInference.json(inferTask(t,StructureInference.ports(n.path("inputs")),c))
+        }else {
+          require(n.isObject && n.size==1 && n.path("job_yaml").isTextual,"expected job_yaml")
+          WorkflowInference.plan(config,allocator,Jobs.parse(n.path("job_yaml").asText),c)
+        }
+        val bytes=Data.mapper.writeValueAsBytes(result);require(bytes.length<=StructureInference.MaxBytes,"inference result exceeds 1 MiB")
+        listener.onNext(new Result(bytes));listener.onCompleted()
+      }catch{case scala.util.control.NonFatal(t)=>
+        org.slf4j.LoggerFactory.getLogger(classOf[Producer]).warn("structure inference failed",t);throw t
+      }finally c.close()
     } else union match {
       case Some(worker) if action.getType.startsWith(dacp.union.Rpc.Prefix)=>worker.doAction(ctx,action,listener)
       case _=>listener.onError(CallStatus.UNIMPLEMENTED.withDescription("unknown action").toRuntimeException)
     }catch{case scala.util.control.NonFatal(t)=>listener.onError(fail(t))}
   }
   override def getStream(ctx: FlightProducer.CallContext, ticket: Ticket, raw: FlightProducer.ServerStreamListener): Unit = {
+    if(!dacp.union.Rpc.isTicket(ticket.getBytes))dacp.union.Rpc.clientOperation()
     val audit=config.accessLog.begin("get_stream");val listener=AccessLogging.stream(audit,raw)
     if(dacp.union.Rpc.isTicket(ticket.getBytes)){
       union match {case Some(worker)=>worker.getStream(ctx,ticket,listener);case None=>listener.error(CallStatus.UNIMPLEMENTED.withDescription("Union disabled").toRuntimeException)}
@@ -291,8 +321,10 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
       val lock = new Object
       listener.setOnReadyHandler(() => lock.synchronized(lock.notifyAll()))
       listener.setOnCancelHandler(() => lock.synchronized(lock.notifyAll()))
+      val serviceLease=if(dacp.union.Rpc.isAuthenticatedCall && dacp.union.Rpc.principal.kind=="union")Some(dacp.union.Rpc.principal.active)else None
       def ready(): Unit = lock.synchronized {
-        while (!listener.isReady && !listener.isCancelled) lock.wait(100)
+        if(serviceLease.exists(check=> !check()))throw CallStatus.UNAUTHORIZED.withDescription("Union credential revoked or expired").toRuntimeException
+        while (!listener.isReady && !listener.isCancelled) {if(serviceLease.exists(check=> !check()))throw CallStatus.UNAUTHORIZED.withDescription("Union credential revoked or expired").toRuntimeException;lock.wait(100)}
         if (listener.isCancelled) throw new java.util.concurrent.CancellationException()
       }
       if(t.hasScan) {
@@ -310,7 +342,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
 object Main {
   def main(args: Array[String]): Unit = {
     if(args.headOption.contains("history")){ExecutionHistoryAdmin.main(args.drop(1));return}
-    if(args.headOption.contains("union")){UnionNodeAdmin.main(args.drop(1));return}
+    if(args.headOption.contains("credentials")){dacp.union.CredentialAdmin.main(args.drop(1));return}
     require(args.length<=1,"submit jobs through the shell or SDK")
     val server=DacpServer.builder().configFile(args.headOption.getOrElse("../examples/server.yaml")).build()
     val stopped=new AtomicBoolean()

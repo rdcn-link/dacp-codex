@@ -44,16 +44,33 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     catalogOverride=Some(proxyCatalog),pluginEnvironment=Some(plugins),maxConcurrentTasks=64,
     union=Some(NodeUnionSettings(settings.state.resolve("upstream"),settings.timeout,settings.retention,settings.materializationStore)),
     executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->settings.state.resolve("incoming-executions").toString))),
-    accessLogDirectory=Some(settings.state.resolve("access")),s3=settings.s3)
+    accessLogDirectory=Some(settings.state.resolve("access")),s3=settings.s3,credentialDirectory=Some(settings.credentials.directory),providedCredentials=Some(settings.credentials))
   private val worker=new UnionWorker(publicConfig,publicConfig.union.get,allocator,Some((task,inputs,emit,cancel)=>nested(task,inputs,emit,cancel)))
   private val standard=new Producer(publicConfig,allocator,union=Some(worker))
-  private val workerActions=Set("invite","membership","withdraw","node_status","materialized_status","prepare","start","execution_status","task_status","cancel_execution")
+  private val workerActions=Set("membership","node_status","materialized_status","prepare","start","execution_status","cancel_execution")
   private val producer=new NoOpFlightProducer {
     override def listFlights(ctx:CallContext,c:Criteria,out:StreamListener[FlightInfo]):Unit=standard.listFlights(ctx,c,out)
     override def getFlightInfo(ctx:CallContext,d:FlightDescriptor):FlightInfo=standard.getFlightInfo(ctx,d)
     override def doExchange(ctx:CallContext,r:FlightStream,out:ServerStreamListener):Unit=publicExchange(ctx,r,out)
     override def doAction(ctx:CallContext,a:Action,out:StreamListener[Result]):Unit={
-      if(a.getType=="dacp.nodes")try {require(settings.clients(Rpc.identity) || settings.administrators(Rpc.identity));out.onNext(new Result(Json.mapper.writeValueAsBytes(planner.nodes)));out.onCompleted()}catch{case scala.util.control.NonFatal(_)=>out.onError(CallStatus.UNAUTHORIZED.withDescription("access denied").toRuntimeException)}
+      if(a.getType=="dacp.nodes")try {require(Set("token","union")(Rpc.principal.kind));out.onNext(new Result(Json.mapper.writeValueAsBytes(planner.nodes)));out.onCompleted()}catch{case scala.util.control.NonFatal(_)=>out.onError(CallStatus.UNAUTHORIZED.withDescription("access denied").toRuntimeException)}
+      else if(Set("dacp.infer","dacp.infer_job")(a.getType))try {
+        require(Set("token","union")(Rpc.principal.kind),"access denied")
+        require(a.getBody.length<=StructureInference.MaxBytes,"inference request exceeds 1 MiB")
+        val n=Json.mapper.readTree(a.getBody)
+        val result=if(a.getType=="dacp.infer_job") {
+          require(n.isObject && n.size==1 && n.path("job_yaml").isTextual,"expected job_yaml")
+          val input=Jobs.parse(n.path("job_yaml").asText)
+          inferPlan(planner.plan(input,()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()))
+        }else {
+          val task=WorkflowInference.parseTask(n)
+          require(task.source.isEmpty,"Union requires versioned operators")
+          val planned=planner.plan(JobPlan(Vector(task),Map.empty),()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()).tasks.head
+          StructureInference.json(inferTask(planned,StructureInference.ports(n.path("inputs"))))
+        }
+        val bytes=Json.mapper.writeValueAsBytes(result);require(bytes.length<=StructureInference.MaxBytes,"inference result exceeds 1 MiB")
+        out.onNext(new Result(bytes));out.onCompleted()
+      }catch{case scala.util.control.NonFatal(t)=>out.onError(CallStatus.INVALID_ARGUMENT.withDescription(t.getMessage).toRuntimeException)}
       else if(a.getType=="dacp.catalog")standard.doAction(ctx,a,out)
       else if(workerActions(a.getType.stripPrefix(Rpc.Prefix))) {
         if(Rpc.proxyHops.contains(members.unionId) || Rpc.proxyHops.size>=8)out.onError(CallStatus.INVALID_ARGUMENT.withDescription("proxy cycle or depth limit").toRuntimeException)
@@ -71,7 +88,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   }
   private var s3:Option[S3Service]=None
   def s3Port:Option[Int]=s3.map(_.port)
-  private val endpoint=new Endpoint(settings.host,settings.port,members.tls,allocator,producer)
+  private val endpoint=new Endpoint(settings.host,settings.port,members.tls,allocator,producer,Some(settings.credentials))
   private var dashboard:Option[Dashboard]=None
   private val closed=new AtomicBoolean()
   private[unionserver] def memberSnapshots:Vector[JsonNode]=members.all.map { m=>
@@ -109,7 +126,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     val audit=publicConfig.accessLog.begin("do_exchange")
     val sink=new Rpc.Sink(allocator,out,Rpc.Frames)
     try {
-      val owner=Rpc.identity;if(!settings.clients(owner) && !settings.administrators(owner))denied()
+      Rpc.requireClient();val owner=Rpc.identity
       require(reader.getDescriptor.isCommand && reader.getDescriptor.getCommand.length<=Rpc.MaxJson,"invalid job request")
       val request=dacp.protocol.Metadata.OperatorRequest.parseFrom(reader.getDescriptor.getCommand)
       require(request.hasJobYaml,"submit a job definition")
@@ -158,14 +175,14 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     val n=Json.obj().put("job","union-execution");val tasks=n.putArray("tasks")
     plan.tasks.foreach { t=>
       val v=tasks.addObject().put("id",t.id).put("operator",t.operator);t.title.foreach(v.put("title",_));t.node.foreach(v.put("node",_))
-      v.set[JsonNode]("params",Json.mapper.valueToTree(t.params));val control=v.putArray("depends_on");t.dependsOn.foreach(control.add)
+      v.set[JsonNode]("params",Json.mapper.valueToTree(t.params))
       val inputs=v.putObject("inputs");t.inputs.foreach{case(p,b)=>require(b.task.nonEmpty,"job inputs require upstream tasks");inputs.put(p,b.task.get+":"+b.port)}
     }
     val outputs=n.putObject("outputs");plan.outputs.foreach{case(p,(t,o))=>outputs.put(p,t+":"+o)};n.toString
   }
 
   private def nested(task:Task,inputs:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel):Unit={
-    val candidates=members.all.map(m=>members.inspect(m)).filter(m=>m.path("state").asText=="approved" && m.path("grant").path("operators").elements.asScala.exists(_.asText==task.operator))
+    val candidates=members.all.map(m=>members.inspect(m)).filter(m=>m.path("state").asText=="approved")
     require(candidates.nonEmpty,"no execution node for delegated task")
     val member=candidates.sortBy(_.path("identity").asText).head
     val upload=uploads.register(member.path("identity").asText,inputs)
@@ -176,7 +193,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         val params=new java.util.LinkedHashMap[String,Object]();params.put("uri",settings.publicUrl.stripSuffix("/")+"/"+upload+"/"+p);params.put("view",inputsView(upload,p))
         Task("read_"+i,Map.empty,Jobs.ReadItem,params,node=Some(member.path("data_origin").asText))
       }
-      val t=task.copy(node=Some(member.path("data_origin").asText),inputs=inputs.keys.toVector.sorted.zip(readers).map{case(p,r)=>p->InputBinding(task=Some(r.id))}.toMap,dependsOn=Vector.empty)
+      val t=task.copy(node=Some(member.path("data_origin").asText),inputs=inputs.keys.toVector.sorted.zip(readers).map{case(p,r)=>p->InputBinding(task=Some(r.id))}.toMap)
       val plan=JobPlan(readers:+t,ports.map(p=>p->(t.id,p)).toMap)
       j=submit(plan,members.tls.identity,render(plan),ExecutionPolicy.parse(Json.obj().put("timeout_seconds",math.min(settings.timeout,cancel.remainingSeconds)),plan),path=task.proxyPath)
       val current=j
@@ -185,19 +202,27 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       while(f.nonEmpty){cancel.active();if(StreamProtocol.header(f.get).path("type").asText!="complete")emit(f.get);f=j.output.next()}
     }finally {if(j!=null && !j.terminal)j.stop("cancelled");uploads.remove(upload)}
   }
+  private def inferTask(task:Task,inputs:Map[String,StreamDescriptor]):InferenceResult={
+    val node=task.node.getOrElse(throw new IllegalArgumentException("inference requires placement"))
+    val member=members.all.find(_.path("data_origin").asText==DacpUri.node(node)).getOrElse(throw new IllegalArgumentException("unknown inference node"))
+    require(members.inspect(member).path("state").asText=="approved","inference member is not approved")
+    val client=remote.dataClient(member.path("url").asText,Some(member.path("identity").asText))
+    val rs=client.doAction(new Action("dacp.infer",Json.mapper.writeValueAsBytes(WorkflowInference.taskJson(task,inputs))),CallOptions.timeout(20,TimeUnit.SECONDS))
+    require(rs.hasNext,"missing member inference response");val raw=rs.next().getBody
+    require(raw.length<=StructureInference.MaxBytes && !rs.hasNext,"invalid member inference response")
+    StructureInference.result(Json.mapper.readTree(raw))
+  }
+  private def inferPlan(plan:JobPlan):JsonNode=WorkflowInference.propagate(plan)(inferTask)
   private def inputsView(upload:String,port:String):String=uploads.view(upload,port)
   private def denied():Nothing=throw UnionFailure(UNAUTHORIZED,"client identity denied")
   private def owned(id:String,who:String):Execution={val j=Option(jobs.get(Json.id(id))).getOrElse(throw UnionFailure(NOT_FOUND,"job unavailable"));if(j.owner!=who)denied();j}
   private def action(op:String,n:JsonNode,who:String):JsonNode={
-    if(!settings.clients(who) && !settings.administrators(who))denied()
+    Rpc.requireClient()
     val result=op match {
-      case "invite_member"=>if(!settings.administrators(who))denied();Json.fields(n,Set("url"));members.invite(Json.text(n,"url"))
-      case "remove_member"=>if(!settings.administrators(who))denied();Json.fields(n,Set("identity"));members.remove(Json.text(n,"identity"));Json.obj().put("removed",true)
-      case "members"=>if(!settings.administrators(who))denied();Json.fields(n,Set.empty);val result=Json.obj().put("union_id",members.unionId);val a=result.putArray("members");observed.values.asScala.foreach(a.add);result
       case "submit"=>
         Json.fields(n,Set("job_yaml"),Set("execution_policy"));val script=Json.text(n,"job_yaml");val plan=Jobs.parse(script)
-        val executionPlan=if(settings.administrators(who))plan else planner.plan(plan,()=>())
-        submit(executionPlan,who,if(settings.administrators(who))script else render(executionPlan),ExecutionPolicy.parse(Option(n.get("execution_policy")).getOrElse(Json.obj()),executionPlan),path=Rpc.proxyHops).snapshot
+        val executionPlan=planner.plan(plan,()=>())
+        submit(executionPlan,who,render(executionPlan),ExecutionPolicy.parse(Option(n.get("execution_policy")).getOrElse(Json.obj()),executionPlan),path=Rpc.proxyHops).snapshot
       case "replay_job"=>
         Json.fields(n,Set("job_id"),Set("tasks","execution_policy"));val source=history.get(Json.id(Json.text(n,"job_id"))).getOrElse(throw UnionFailure(NOT_FOUND,"source execution unavailable"))
         if(source.path("owner").asText!=who)denied()
@@ -209,7 +234,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         def sourceId(task:String):String=source.path("materialized_sources").path(task).asText(source.path("job_id").asText)
         val available=eligible.filter { task=>
           val origin=plan.tasks.find(_.id==task).get.node.get
-          val member=members.all.find(_.path("data_origin").asText==DacpUri.node(origin)).getOrElse(throw new IllegalArgumentException("replay node is no longer invited"))
+          val member=members.all.find(_.path("data_origin").asText==DacpUri.node(origin)).getOrElse(throw new IllegalArgumentException("replay node is no longer configured"))
           remote.action(member.path("url").asText,"materialized_status",Json.obj().put("union_id",members.unionId).put("execution_id",sourceId(task)).put("task",task),Some(member.path("identity").asText)).path("committed").asBoolean
         }
         val selected=if(n.has("tasks")){val values=Json.strings(n,"tasks");require(values.distinct.size==values.size,"duplicate replay task");values.toSet}else available
@@ -221,22 +246,26 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         if(op=="cancel_job")j.stop("cancelled");j.snapshot
       case _=>throw UnionFailure(UNIMPLEMENTED,"unknown Union action")
     }
-    if(settings.administrators(who))result else publicStatus(result)
+    if(Set("submit","replay_job","job_status","cancel_job")(op))publicStatus(result)else result
   }
   private def publicStatus(value:JsonNode):JsonNode={
     val n=value.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
     n.remove("nodes");n.remove("error");n.remove("message");n.remove("job_yaml");n.remove("task_definitions")
-    n.remove("attempts")
+    val attempts=n.putArray("attempts")
+    value.path("attempts").elements.asScala.foreach { attempt=>
+      val safe=Json.obj()
+      Seq("attempt_id","state","started_at_ms","finished_at_ms","retry_index").foreach(k=>Option(attempt.get(k)).foreach(v=>safe.set[JsonNode](k,v)))
+      attempts.add(safe)
+    }
     val states=n.putArray("steps")
     value.path("nodes").elements.asScala.foreach(v=>v.path("tasks").fields.asScala.foreach(e=>states.addObject().put("id",e.getKey).put("state",e.getValue.asText)))
     n
   }
   private def stream(n:JsonNode,who:String,listener:ServerStreamListener):Unit={
-    if(!settings.clients(who) && !settings.administrators(who))denied()
+    Rpc.requireClient()
     val kind=Json.text(n,"type")
     kind match {
       case "dacp.union.events"=>
-        if(!settings.administrators(who))denied()
         Json.fields(n,Set("type","job_id","after"));val after=Json.number(n,"after",0,Long.MaxValue);val j=owned(Json.text(n,"job_id"),who);j.validateCursor(after)
         val sink=new Rpc.Sink(allocator,listener,Rpc.Events)
         try {sink.start();j.events(after,sink);sink.completed()}finally sink.close()
@@ -251,7 +280,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         try {
           sink.start();var f=j.output.next()
           while(f.nonEmpty){
-            val frame=if(settings.administrators(who))f.get else {val h=StreamProtocol.header(f.get).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();if(h.has("message"))h.put("message","execution attempt failed; discard partial output before retry");if(h.has("error"))h.put("error","task execution failed");OperatorFrame(Json.mapper.writeValueAsBytes(h),f.get.data)}
+            val frame={val h=StreamProtocol.header(f.get).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();if(h.has("message"))h.put("message","execution attempt failed; discard partial output before retry");if(h.has("error"))h.put("error","task execution failed");OperatorFrame(Json.mapper.writeValueAsBytes(h),f.get.data)}
             sink.frame(frame);f=j.output.next()
           }
           complete.set(true);sink.completed()
@@ -264,10 +293,12 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     require(timeout<=settings.timeout,"timeout_seconds exceeds Union server limit")
     val effective=policy.effective.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]().put("timeout_seconds",timeout)
-    val j=new Execution(Json.uuid(),owner,plan,script,policy.copy(effective=effective),replaySources,replayOf,path)
+    val inference=replayOf.map(id=>history.get(id).get.path("structure_inference")).getOrElse(inferPlan(plan))
+    require(inference.isObject,"original structure inference unavailable")
+    val j=new Execution(Json.uuid(),owner,plan,script,policy.copy(effective=effective),replaySources,replayOf,path,inference)
     jobs.put(j.id,j);j.start();j
   }
-  private[unionserver] final class Execution(val id:String,val owner:String,plan:JobPlan,script:String,policy:ExecutionPolicy,initialReplaySources:Map[String,String],replayOf:Option[String],incomingPath:Vector[String]) {
+  private[unionserver] final class Execution(val id:String,val owner:String,plan:JobPlan,script:String,policy:ExecutionPolicy,initialReplaySources:Map[String,String],replayOf:Option[String],incomingPath:Vector[String],inference:JsonNode) {
     private val proxyPath={require(!incomingPath.contains(members.unionId) && incomingPath.size<8,"proxy cycle or depth limit");incomingPath:+members.unionId}
     private val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     def requiresRetryAwareness:Boolean=policy.maxRetries>0
@@ -285,7 +316,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     }
     private def activeTasks=plan.tasks.filter(t=>needed(t.id))
     private val known=members.all.map(n=>n.path("data_origin").asText->n).toMap
-    private val placements=plan.tasks.map(t=>t.id->known.getOrElse(DacpUri.node(t.node.get),throw new IllegalArgumentException("task node is not invited"))).toMap
+    private val placements=plan.tasks.map(t=>t.id->known.getOrElse(DacpUri.node(t.node.get),throw new IllegalArgumentException("task node is not configured"))).toMap
     plan.tasks.foreach { t=>Jobs.readBinding(t).foreach { b=>
       val origin=DacpUri.origin(b.uri.get)
       require(origin==settings.publicUrl || known.contains(origin),"unknown read_item source node")
@@ -335,6 +366,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     }
     def dashboardSnapshot:JsonNode={
       val n=snapshot.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
+      n.set[JsonNode]("structure_inference",inference)
       n.put("job_yaml",script)
       n.set[JsonNode]("execution_policy",policy.submitted);n.set[JsonNode]("effective_execution_policy",policy.effective)
       replayOf.foreach(n.put("replay_of",_))
@@ -345,7 +377,6 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         val node=placements(t.id);val task=ts.addObject().put("id",t.id).put("node",url(node)).put("node_identity",identity(node)).put("operator",t.operator)
         t.title.foreach(task.put("title",_))
         task.put("replayed",replaySources.contains(t.id));task.put("state",if(!needed(t.id))"skipped"else Option(nodeStates.get(identity(node))).map(_.path("tasks").path(t.id).asText("unknown")).getOrElse(if(state=="queued" || state=="waiting_resources")"waiting"else state))
-        val controls=task.putArray("depends_on");t.dependsOn.foreach(controls.add)
         val inputs=task.putArray("inputs")
         t.inputs.toVector.sortBy(_._1).foreach {case(port,b)=>
           val input=inputs.addObject().put("port",port)
@@ -377,12 +408,6 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       activeTasks.filter(t=>identity(placements(t.id))==identity(n)).foreach { t=>
         val j=tasks.addObject().put("id",t.id).put("operator",t.operator)
         t.title.foreach(j.put("title",_))
-        val controls=j.putArray("depends_on")
-        t.dependsOn.foreach { parent=>
-          val b=controls.addObject().put("task",parent)
-          if(identity(placements(parent))!=identity(n))b.put("origin",url(placements(parent))).put("identity",identity(placements(parent)))
-        }
-        val controlConsumers=j.putArray("control_consumers");activeTasks.filter(_.dependsOn.contains(t.id)).map(x=>identity(placements(x.id))).distinct.foreach(controlConsumers.add)
         val materialize=j.putArray("materialize");policy.materialized.toVector.sorted.filter(p=>p._1==t.id && consumers.contains(p)).foreach(p=>materialize.add(p._2))
         replaySources.get(t.id).foreach(j.put("replay_from",_))
         Jobs.readBinding(t).foreach { b=>
@@ -392,6 +417,10 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
             j.putObject("read_source").put("origin",settings.publicUrl).put("identity",members.tls.identity)
           }
         }
+        val descriptors=t.inputs.map {case(port,b)=>
+          port->StructureInference.descriptor(inference.path("tasks").path(b.task.get).path("outputs").path(b.port))
+        }
+        j.set[JsonNode]("input_descriptors",StructureInference.portsJson(descriptors))
         j.set[JsonNode]("params",Json.mapper.valueToTree[JsonNode](t.params));val inputs=j.putObject("inputs")
         t.inputs.foreach {case(port,b)=>
           val v=inputs.putObject(port)
@@ -541,7 +570,11 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
             val gap=Json.obj().put("type","gap").put("sequence",sequence);gap.set[JsonNode]("snapshot",snapshot);Vector(gap)
           }else ring.filter(_.path("sequence").asLong>cursor).toVector
         }
-        batch.foreach { n=>sink.event(n);cursor=n.path("sequence").asLong }
+        batch.foreach { n=>
+          val safe=n.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
+          if(safe.has("snapshot"))safe.set[JsonNode]("snapshot",publicStatus(safe.path("snapshot")))
+          sink.event(safe);cursor=n.path("sequence").asLong
+        }
         done=synchronized {if(terminal && cursor>=sequence)true else {wait(1000);false}}
       }
     }
@@ -560,7 +593,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       try {
         val current=members.all;val ids=current.map(_.path("identity").asText).toSet
         observed.keySet.asScala.filterNot(ids).foreach(observed.remove)
-        current.foreach(m=>observed.put(m.path("identity").asText,members.inspect(m)))
+        current.foreach(m=>{val inspected=members.inspect(m);observed.put(inspected.path("identity").asText,inspected)})
       }catch{case scala.util.control.NonFatal(t)=>System.err.println(s"union polling failed: ${t.getClass.getSimpleName}")}
     }},0,settings.pollMs,TimeUnit.MILLISECONDS)
     timer.scheduleWithFixedDelay(new Runnable{def run():Unit=jobs.values.asScala.foreach { j=>
@@ -571,6 +604,6 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   def close():Unit=if(closed.compareAndSet(false,true)){
     s3.foreach(_.close());dashboard.foreach(_.close());worker.close();timer.shutdownNow();jobs.values.asScala.foreach(_.stop("cancelled"));endpoint.close();jobs.values.asScala.foreach(_.release())
     cleanup.shutdown();if(!cleanup.awaitTermination(5,TimeUnit.SECONDS))cleanup.shutdownNow()
-    publicConfig.close();routes.close();members.close();history.close();if(providedPlugins.isEmpty)plugins.close();allocator.close()
+    publicConfig.close();routes.close();members.close();settings.credentials.close();history.close();if(providedPlugins.isEmpty)plugins.close();allocator.close()
   }
 }

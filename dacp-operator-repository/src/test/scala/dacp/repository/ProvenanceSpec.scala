@@ -12,7 +12,7 @@ class ProvenanceSpec extends AnyFunSuite {
     val root=Files.createTempDirectory("provenance-")
     try f(root) finally {val paths=Files.walk(root);try paths.iterator.asScala.toVector.sortBy(_.getNameCount).reverse.foreach(Files.delete(_))finally paths.close()}
   }
-  val ports=Repository.mapper.readTree("""{"inputs":{"source":{"representations":["bytes"],"formats":[]}},"outputs":{"result":{"representations":["bytes"],"formats":[]}}}""")
+  val ports=Repository.mapper.readTree("""{"inputs":{"source":{"representations":["bytes"],"formats":[]}}}""")
   val exporter=new Repository.ImageExporter {
     def inspect(image:String):String="sha256:"+"a"*64
     def save(image:String,file:Path):Unit={Files.writeString(file,"runtime");()}
@@ -81,7 +81,6 @@ class ProvenanceSpec extends AnyFunSuite {
     val source=archive(dir)
     val definition=Repository.mapper.createObjectNode().put("name","example").put("version","1").put("image","runtime")
     definition.set[com.fasterxml.jackson.databind.JsonNode]("inputs",ports.path("inputs"))
-    definition.set[com.fasterxml.jackson.databind.JsonNode]("outputs",ports.path("outputs"))
     definition.putObject("provenance").put("source_archive",source.getFileName.toString)
       .put("source_repository","https://example.org/repo").put("source_revision","123abc").put("build_instructions","step 1\nstep 2")
     Files.writeString(dir.resolve("operator.yaml"),definition.toString)

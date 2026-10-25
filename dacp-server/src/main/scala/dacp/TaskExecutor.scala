@@ -32,7 +32,7 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
     var callback: ResultCallback.Adapter[Frame]=null
     val stderr=new StringBuilder
     try {
-      val op=resolved.getOrElse(task.source match {
+      val definition=resolved.getOrElse(task.source match {
         case None=>OperatorLibrary.resolve(config,task.operator,docker)
         case Some(code)=>
           val runtime=config.sourceRuntimes.getOrElse(code.runtime,throw new IllegalArgumentException("source runtime is not configured"))
@@ -40,14 +40,21 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
           Files.writeString(artifact,code.source)
           val command=config.plugins.byId(classOf[OperatorExecutor],runtime.executor).sourceCommand(OperatorProgram(code.runtime,code.entrypoint,Some(artifact)),"/operator/operator.source")
           val contract=PortContract(Set("bytes","records"),Set.empty,None)
-          ResolvedOperator(docker.inspectImageCmd(runtime.image).exec().getId,Some(artifact),Some("/operator/operator.source"),command,inputs.keys.map(_->contract).toMap,Map("result"->contract))
+          ResolvedOperator(docker.inspectImageCmd(runtime.image).exec().getId,Some(artifact),Some("/operator/operator.source"),command,inputs.keys.map(_->contract).toMap,Map.empty,runtime.executor,Some(OperatorProgram(code.runtime,code.entrypoint,Some(artifact))))
       })
-      require(inputs.keySet==op.inputs.keySet,"input ports do not match operator declaration")
+      require(inputs.keySet==definition.inputs.keySet,"input ports do not match operator declaration")
       val starts=inputs.toVector.sortBy(_._1).map {case(port,source)=>
         val f=source.next().getOrElse(throw new IllegalArgumentException("missing input metadata"));val h=StreamProtocol.header(f)
-        require(h.path("type").asText=="start","input must start with metadata");op.inputs(port).accept(h)
+        require(h.path("type").asText=="start","input must start with metadata");definition.inputs(port).accept(h)
         (port,source,h)
       }
+      val inferred=if(definition.program.isEmpty)None else {
+        val descriptors=starts.map{case(port,_,h)=>port->StreamDescriptor(Set(h.path("representation").asText),Set(h.path("format").asText),
+          if(h.path("representation").asText=="records")Some(StreamProtocol.schema(h))else None,"known")}.toMap
+        val result=OperatorInference.run(config,docker,definition,InferenceRequest(descriptors,Data.mapper.valueToTree(task.params)),cancel,task.source.nonEmpty)
+        result.requireValid();Some(result)
+      }
+      val op=inferred.map(r=>definition.copy(outputs=r.outputs.view.mapValues(OperatorInference.contract).toMap)).getOrElse(definition)
       val manifest=Data.mapper.createArrayNode()
       starts.zipWithIndex.foreach {case((port,_,h),i)=>
         val filename=s"$i.arrow";val path=temporary.resolve(filename)

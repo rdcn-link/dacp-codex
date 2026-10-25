@@ -66,7 +66,7 @@ class GroupSpec extends AnyFunSuite {
     val base=group(code)
     val model=base.copy(steps=base.steps.map(s=>s.copy(program=s.program.copy(entrypoint="operators",artifact=Some(code)),artifactPath=Some("/operator/operators.py"))))
     val launch=new PythonExecutor().groupCommand(model).get
-    assert(launch.files.keySet==Set("python-group.py","group-sdk.py","group.json"))
+    assert(launch.files.keySet==Set("python-group.py","group-sdk.py","inference.py","group.json"))
     Files.writeString(code,"def main():\n    pass\n")
     assert(new PythonExecutor().groupCommand(model).isEmpty)
     val other=dir.resolve("other.py");Files.writeString(other,"def process(ctx):\n    pass\n")

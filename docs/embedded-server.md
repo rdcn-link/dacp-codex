@@ -2,7 +2,7 @@
 
 [English](embedded-server_en.md) · [动态目录](dataset-catalogs.md)
 
-`dacp.DacpServer` 是可嵌入的 Scala/JVM API。命令行入口 `dacp.Main` 也使用同一实现，因此两种方式都包含 Flight mTLS、普通任务、可选 Union worker、执行记录和相同的授权检查。
+`dacp.DacpServer` 是可嵌入的 Scala/JVM API。命令行入口 `dacp.Main` 也使用同一实现，因此两种方式都包含 Flight TLS / Token、普通任务、可选 Union worker、执行记录和相同的授权检查。
 
 ## 启动与停机
 

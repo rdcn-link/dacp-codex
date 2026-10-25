@@ -2,7 +2,7 @@
 
 [English](union-proxy_en.md)
 
-Union 同时提供标准 DACP 服务、Union 管理 Flight API 和独立 HTTP 运维看板。Python/Scala `Source`、`Job` 和 Shell 可以连接 Union 的公开 Flight 地址。成员节点仍独立运行；Union 主动邀请并轮询，经节点批准后代理数据和分发计算。
+Union 同时提供标准 DACP 服务、Union 管理 Flight API 和独立 HTTP 运维看板。Python/Scala `Source`、`Job` 和 Shell 可以连接 Union 的公开 Flight 地址。成员节点仍独立运行；Union 连接配置中的成员并轮询，使用节点签发的服务凭据代理数据和分发计算。
 
 ## 公开数据集命名
 
@@ -52,30 +52,13 @@ outputs:
   result: summarize
 ```
 
-例中的算子须已安装或可从仓库获取，且成员审批允许该精确版本。普通任务可省略 `node`。Union 按审批、算子版本和容量筛选执行位置，优先数据或上游步骤所在成员；全部原始输入大小已知时选择需要传输总字节数较少的位置，否则按输入声明顺序选择。一个多输入算子只在一个成员执行，其他成员输入通过 Flight 流传输。需要固定位置时设置 `node: nd-xxxx-xxxx`，不能在公开任务中填写内部地址。
+例中的算子须已安装或可从仓库获取。普通任务可省略 `node`。Union 在已认证的配置成员中按容量筛选执行位置，优先数据或上游步骤所在成员；全部原始输入大小已知时选择需要传输总字节数较少的位置，否则按输入声明顺序选择。一个多输入算子只在一个成员执行，其他成员输入通过 Flight 流传输。需要固定位置时设置 `node: nd-xxxx-xxxx`，不能在公开任务中填写内部地址。
 
 执行策略 JSON、结果流、失败尝试通知、取消、超时、成员上的物化和重放沿用现有执行引擎。结果默认流式返回，经 Union 到客户端。Union 作为上级的成员时复用普通 worker 契约，转交本地成员执行；输入使用短期、单消费者、绑定证书身份的流，不落盘。代理路径限制为 8 层并检测循环；取消和剩余执行时间传到下级。
 
 ## 管理边界
 
-`client_identities` 允许提交普通任务，`administrator_identities` 允许 Union 管理 API 和内部拓扑视图。仅持有 CA 签发证书不能提交计算；公开目录不需要额外业务授权。成员审批默认允许 Union 代理其已公开数据，计算仍受成员审批的算子、输入和资源限制。
-
-`dacp.union.members`、`invite_member`（`{"url":"dacp://node:18861"}`）、`remove_member`（`{"identity":"证书指纹"}`）是管理员接口。专用异步 Union 提交 API 对管理员支持内部显式位置；普通客户端只使用公开命名空间，状态和失败消息不会包含内部拓扑。节点审批仍通过节点管理员操作。
-
-运维看板公开只读，可查看真实成员地址、脚本、执行历史和按成员查询的目录，无需登录或 token。配置监听地址即可对外提供访问：
-
-```yaml
-administrator_identities: ["<管理员证书的 SHA-256 指纹>"]
-web:
-  host: 0.0.0.0
-  port: 19880
-s3:
-  enabled: true
-  host: 0.0.0.0
-  port: 20860
-```
-
-没有 `web` 配置则不启用看板；省略 `s3.port` 时按 Flight 端口加 2000 计算。
+成员由 Union 启动配置指定，使用节点签发的服务凭据。普通客户端使用 TLS 与 Token；任务接口及结果、事件流检查所有者。不提供远程成员管理 API。内网 HTTP 看板公开只读，会展示运维拓扑。S3 使用独立 SigV4 凭据。见[安全说明](security.md)及 [Union 配置](../dacp-union-server/README.md)。
 
 ## 开发与验证
 

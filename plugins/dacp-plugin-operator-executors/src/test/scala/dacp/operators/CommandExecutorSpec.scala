@@ -36,7 +36,7 @@ class CommandExecutorSpec extends AnyFunSuite {
     intercept[IllegalArgumentException](new CommandExecutor().command(program.copy(artifact=Some(Path.of("file"))),Some("/operator/program")))
   }
   test("command rejects unsupported ports, implicit conversions and malformed configuration") {
-    val bad=Seq(program.copy(inputs=Map("source"->Set("records"))),program.copy(outputs=Map("other"->Set("bytes"))),
+    val bad=Seq(program.copy(inputs=Map("source"->Set("records"))),
       program.copy(inputs=program.inputs+("extra"->Set("bytes"))),program.copy(entrypoint="tr"),
       program.copy(configuration=program.configuration+("unknown"->"setting")),
       program.copy(configuration=program.configuration+("args"->"a-z A-Z")),

@@ -16,9 +16,9 @@ DACP（Data Access and Collaboration Protocol，数据访问与协作协议）�
 |---|---|
 | Dataset 目录发现 | Flight `ListFlights`，返回公开 Dataset URI 及描述，不额外要求数据授权；目录可由插件动态提供 |
 | 浏览、元数据与数据读取 | Arrow Flight；具体消息见技术参考和 protobuf 定义 |
-| S3 兼容对象读取 | 独立 HTTP 端口，匿名只读；dataset 映射 bucket、bytes Item 映射 object，见 [S3 服务](s3-service.md) |
+| S3 兼容对象读取 | 独立 HTTPS 端口，SigV4 认证，只读；dataset 映射 bucket、bytes Item 映射 object，见 [S3 服务](s3-service.md) |
 | 普通节点作业执行 | Flight `DoExchange`，交换控制消息与结果流 |
-| Union 邀请、审批、成员、状态和作业控制 | Flight `DoAction`，使用 `dacp.union.` 动作前缀及 JSON 消息 |
+| Union 成员凭据验证、状态和作业控制 | Flight `DoAction`，使用 `dacp.union.` 动作前缀及 JSON 消息 |
 | Union 最终结果与节点间流读取 | Flight `DoGet`，使用相应 ticket |
 | 算子仓库搜索、版本与制品下载 | HTTP/HTTPS |
 | Union 管理只读看板 | HTTP；查询运行状态及历史，不能据此提交计算任务 |
@@ -27,17 +27,15 @@ Union 的共享传输模块对 JSON 消息实施 1 MiB 上限。具体动作、t
 
 ## 身份、信任和授权
 
-Flight 使用 mTLS。客户端验证服务器的 CA 信任链和连接身份；服务器验证客户端证书。服务器作为调用方访问另一个节点时也承担客户端角色。已发布的数据集默认允许通过认证的客户端读取；证书有效不自动授予任务执行权限。
-
-Union 使用 TLS 验证后的叶证书 SHA-256 指纹识别调用者，可固定远端证书指纹。客户端访问 Union 受其授权配置约束；节点独立审批 Union 的加入邀请和本地计算权限。节点审批可以限制数据范围、算子和资源。不能通过在 JSON 请求中自报身份绕过证书身份和授权。
+普通 Flight 客户端使用 TLS 和 Bearer Token。Union 访问成员使用双向 TLS 与节点签发的服务凭据。节点间流由精确执行计划授权，仅信任 CA 不授予访问权限。S3 使用独立的 SigV4 密钥。授权由服务器执行，与 SDK 类型无关。详见[安全方案](security.md)。
 
 ## 跨中心协作
 
-一个 Union Server 维护一个 Union。数据节点独立运行；Union 发起邀请，节点同意后加入。Union 主动轮询节点状态，并按任务声明的依赖调度步骤。
+一个 Union Server 维护一个 Union。数据节点独立运行；Union 使用节点签发的凭据连接配置中的成员。Union 主动轮询节点状态，并按任务声明的依赖调度步骤。
 
 例如，A 上的任务产生 `oa`，B 基于 `oa` 和本地数据计算 `ob`：Union 调度 A、B，A 到 B 的中间流直接在节点间传输，最终 `ob` 由 Union 转发给客户端。客户端不必直接连接 B；参与节点仍须满足证书验证及相应业务授权。
 
-当前支持显式声明的协作 DAG；不提供任意通用流水线优化、结果重放或故障后续传承诺。状态、流量和任务标题可在看板及执行记录中查看。
+当前支持显式声明的协作 DAG、可配置物化边界与重放；自动恢复需要执行策略和支持重试的客户端，不提供任意通用流水线优化。状态、流量和任务标题可在看板及执行记录中查看。
 
 ## 流与持久化
 

@@ -1,16 +1,16 @@
 # Single-Union collaboration protocol
 
-Each `dacp-union-server` (X) manages one persistent Union. Independent DACP nodes respond to X's invitation and participate only after local administrator approval. X actively polls members; nodes neither register nor send heartbeats. See the module README for supported commands and implementation limits.
+Each Union maintains one persistent identity and reads its independent members from startup configuration. It polls member health and schedules jobs; nodes do not register or send heartbeats.
 
 ## Identity and authorization
 
-Union uses Arrow Flight mTLS throughout. Nodes reuse their existing Flight data ports; X has its own Flight listener. The operator repository retains HTTP. Identity is the SHA-256 fingerprint of the TLS-verified leaf certificate DER, never an identity claimed in a request. Certificate rotation requires invitation and approval again. X's client identity allowlist limits job submission; jobs and results belong to their submitter. Node approval binds the Union ID and X's identity to compute input prefixes, exact operators, concurrency, and expiry. This does not grant original-data download permission. Nodes can revoke approval, cancelling affected executions. Approval uses local administration rather than a remote approval endpoint.
+Ordinary clients use TLS and bearer tokens. Union-to-member calls use mutual TLS plus node-issued service credentials bound to the Union ID and certificate fingerprint. Trusting a CA alone grants no collaboration permissions. Members trust all operations authorized through their Union service credential. Peer data streams are limited to exact execution plans. Local credential revocation or expiry stops active collaborative work. See [authentication and access control](security_en.md) for credential administration and different ordinary-token revocation semantics.
 
-Invitations, approvals, rejection, withdrawal, and removal persist locally; individual executions are transient sessions with separately persisted execution metadata. Poll failures produce unknown status without automatic member removal. Restarting X or a node does not recover execution; membership persists and explicitly materialized outputs may be replayed through a new execution.
+Membership comes only from configuration, without remote invitation or administration APIs. Union identity, member pins, public namespace routes and execution history persist. Unavailable members do not prevent startup and are retried by polling. Restart does not recover running executions; committed materializations support explicit replay.
 
 ## Execution and streams
 
-Clients submit standard Jobs with public Union input URIs, optional logical task.node and explicit outputs. Administrators can also use specialized asynchronous submission with internal placements. See [Union proxy service](union-proxy_en.md). X reuses DAG validation and groups tasks into node subjobs. Union accepts versioned operators only, without inline source. Inputs use upstream `task[:port]` references; external Items enter through `read_item@1.0` with `params.uri/view`. Foreign member streams use Flight. Nodes read local Items through DatasetAccess, without downloading through X or Flight. Each output connection has one consumer.
+Clients submit standard Jobs with public Union input URIs, optional logical task.node and explicit outputs. Asynchronous submission uses the same public namespace. See [Union proxy service](union-proxy_en.md). X reuses DAG validation and groups tasks into node subjobs. Union accepts versioned operators only, without inline source. Inputs use upstream `task[:port]` references; external Items enter through `read_item@1.0` with `params.uri/view`. Foreign member streams use Flight. Nodes read local Items through DatasetAccess, without downloading through X or Flight. Each output connection has one consumer.
 
 X prepares every subjob before starting any. Nodes check capacity and authorization and reject plans they cannot execute. A's output binds the execution/task/port to B's certificate identity; B pulls it over mTLS. Local connections use bounded queues; cross-node streams use Flight `DoGet` with backpressure. OperatorFrames are reused: start/data/end is followed by complete only after successful execution; failures terminate with a Flight error. After complete, consumers must still verify successful Flight end-of-stream. Outputs create no Dataset and stream directly by default; explicit policy can materialize selected outputs on the producing node for replay.
 
@@ -34,9 +34,9 @@ Top-level `max_retries` (0–10, default 0) bounds execution retries. Results re
 
 ## Administration website
 
-U can expose a read-only operations dashboard on a separate HTTP listener without changing the Flight collaboration protocol above. The operations page uses U's cached state without triggering node RPCs or claiming results. The nodes page reads a member's live catalog when its card is expanded. The public read-only dashboard exposes execution metadata across submitters without login or tokens. See the [Union server](../dacp-union-server/README_en.md#management-api-and-dashboard) for configuration and read-only HTTP interfaces.
+U can expose a read-only operations dashboard on a separate HTTP listener without changing the Flight collaboration protocol above. The operations page uses U's cached state without triggering node RPCs or claiming results. The nodes page reads a member's live catalog when its card is expanded. The public read-only dashboard exposes execution metadata across submitters without login or tokens. See the [Union server](../dacp-union-server/README_en.md#execution-and-interfaces) for configuration and read-only HTTP interfaces.
 
-A task `id` is its unique dependency identifier within the Job, used by input `task[:port]` references, `depends_on`, final outputs, scheduling, status, and traffic correlation; it is required. Optional `title` describes its purpose, supports Unicode, and must contain 1–256 characters without control characters. Titles need not be unique and do not resolve dependencies. Dashboard cards and DAGs show the title with the ID; execution history retains titles.
+A task `id` is its unique dependency identifier within the Job, used by input `task[:port]` references, final outputs, scheduling, status, and traffic correlation; it is required. Optional `title` describes its purpose, supports Unicode, and must contain 1–256 characters without control characters. Titles need not be unique and do not resolve dependencies. Dashboard cards and DAGs show the title with the ID; execution history retains titles.
 
 ```yaml
 job: daily-temperature
@@ -78,3 +78,7 @@ The topology uses an orbital background, distinct member card colors, resource u
 Web interfaces use English throughout the Union job, node and data catalog pages and the DACP node dashboard. User-provided task titles, scripts, dataset names and descriptions are displayed in their original language.
 
 Click a task, input/output node, edge or server group in the job DAG to highlight the selection and show its details. Click empty canvas space to clear it. Automatic updates and layout changes preserve selections that still exist; changing jobs clears the selection. Node dashboards share this interaction.
+
+### Input metadata for shared execution
+
+A prepared task may carry `input_descriptors`, mapping each input port to the shared structure-inference descriptor. Union supplies these descriptors from its workflow inference report. Nodes use them to plan same-process execution without opening placeholder dataset URIs or consuming live streams. If descriptors are omitted, the node executes isolated steps and infers against actual stream headers. Descriptors do not grant data access or bypass operator inference.

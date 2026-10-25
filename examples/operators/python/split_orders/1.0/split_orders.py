@@ -2,7 +2,7 @@
 import pyarrow.compute as pc
 from dacp_operator import OperatorContext
 
-with OperatorContext() as ctx:
+def process(ctx):
     minimum = float(ctx.params.get('min_amount', 20))
     schema = ctx.input('left').schema
     accepted = ctx.records_output('accepted', schema)
@@ -17,3 +17,19 @@ with OperatorContext() as ctx:
                                      (rejected, batch.filter(pc.invert(mask)))):
                 if selected.num_rows:
                     output.write(selected)
+
+
+def infer_outputs(inputs, params):
+    from dacp_operator import records_schema, descriptor, result
+    if set(inputs) != {'left', 'right'}:
+        raise ValueError('expected left and right inputs')
+    left, right = records_schema(inputs['left']), records_schema(inputs['right'])
+    if left is not None and right is not None and left != right:
+        raise ValueError('both input schemas must match')
+    schema = left if left is not None else right
+    return result({p: descriptor(['records'], ['arrow'], schema, 'known' if schema is not None else 'unknown') for p in ('accepted', 'rejected')})
+
+
+if __name__ == '__main__':
+    from dacp_operator import run_operator
+    run_operator(process, infer_outputs)

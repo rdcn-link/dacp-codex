@@ -2,7 +2,7 @@
 
 [中文](README.md)
 
-A standalone Scala 2.13 SDK for reading DACP datasets over Apache Arrow Flight with mTLS. Requires JDK 17 and sbt 1.10.x. It uses the shared [protobuf definition](../proto/dacp.proto) and has no dependency on the DACP server project.
+A standalone Scala 2.13 SDK for reading DACP datasets over Apache Arrow Flight with TLS and tokens. Requires JDK 17 and sbt 1.10.x. It uses the shared [protobuf definition](../proto/dacp.proto) and has no dependency on the DACP server project.
 
 Build and publish to your local Ivy repository from this directory:
 
@@ -25,7 +25,7 @@ javaOptions ++= Seq(
   "-Dio.netty.tryReflectionSetAccessible=true")
 ```
 
-Configure `DACP_CA`, `DACP_CERT`, and `DACP_KEY` with PEM file paths, or pass explicit paths using `TlsConfig`. Server certificate verification remains enabled. A missing CA uses the default trust roots; a client certificate and key must be supplied together. The remote DACP server requires client certificates.
+Configure `DACP_CA`, `DACP_CERT`, and `DACP_KEY` with PEM file paths, or pass explicit paths using `TlsConfig`. Server certificate verification remains enabled. A missing CA uses the default trust roots; a client certificate and key must be supplied together. Ordinary connections use tokens without requiring client certificates. Supply `TlsConfig(tokenFile = Some(Path.of("/protected/alice.token")))` or `DACP_TOKEN_FILE`.
 
 ```scala
 import dacp.client.{Source, TlsConfig}
@@ -34,8 +34,7 @@ import scala.util.Using
 
 val tls = TlsConfig(
   ca = Some(Path.of("examples/certs/ca.crt")),
-  cert = Some(Path.of("examples/certs/client.crt")),
-  key = Some(Path.of("examples/certs/client.key")))
+  tokenFile = Some(Path.of("/protected/alice.token")))
 
 Using.resource(Source.open("dacp://localhost:8815/data1", tls)) { ds =>
   ds.list("/").foreach(item => println(s"${item.path}: ${item.kind}, ${item.views}"))
@@ -141,4 +140,4 @@ For a records data event, call `event.records(allocator)` with your own Arrow al
 
 ## Union client
 
-`dacp.client.Union` submits jobs to independent X, exposes separate `results()` and `events()` streams, and provides `status()` and `cancel()`. Close executions and streams with `Using.resource`. See the [Union server](../dacp-union-server/README_en.md) for complete code and mTLS configuration.
+`dacp.client.Union` submits jobs to independent X, exposes separate `results()` and `events()` streams, and provides `status()` and `cancel()`. Close executions and streams with `Using.resource`. See the [Union server](../dacp-union-server/README_en.md) for complete code and authentication configuration.

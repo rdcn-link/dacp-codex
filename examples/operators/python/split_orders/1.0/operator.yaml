@@ -8,6 +8,3 @@ artifact: split_orders.py
 inputs:
   left: {representations: [records], formats: []}
   right: {representations: [records], formats: []}
-outputs:
-  accepted: {representations: [records], formats: [arrow]}
-  rejected: {representations: [records], formats: [arrow]}

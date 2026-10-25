@@ -1,5 +1,7 @@
 # 算子打包与共享运行环境
 
+输出结构统一由必选推导方法提供，清单只声明输入契约；详见[结构推导](structure-inference.md)。
+
 算子由不可变的 `name@version` 清单、共享运行环境镜像和可选的小型代码文件组成。多个名称和版本可以引用相同运行环境及代码包。已支持完整容器、精简 Java/Scala JAR、Python 源文件和 wheel。算子始终在独立 Docker 容器内运行，公共仓库文件不加载到服务器 JVM。
 
 ## 运行环境和依赖
@@ -23,8 +25,6 @@ entrypoint: example.Summary
 artifact: summary.jar
 inputs:
   source: {representations: [records], formats: []}
-outputs:
-  result: {representations: [records], formats: []}
 ```
 
 `jvm` 需要 JAR 和 main 类。`python` 需要 `.py` 或 `.whl`，wheel 用 `entrypoint` 选择模块，源码直接执行脚本。`command` 适配原生 stdin/stdout 程序，见[原生命令](native-commands.md)。`container` 使用镜像自带入口，不接受入口覆盖或代码文件。每个执行器接收 `operator /input /input/params.json` 和 `DACP_OPERATOR=name@version`，遵守 [Arrow IPC 契约](reference.md#任务执行与算子)。
@@ -47,7 +47,6 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository pub
   "version": "1",
   "description": "Summarize records",
   "inputs": {"source": {"representations": ["records"], "formats": []}},
-  "outputs": {"result": {"representations": ["records"], "formats": []}},
   "execution": {"executor": "jvm", "entrypoint": "example.Summary"},
   "runtime": {
     "image": "sha256:<image ID>",

@@ -9,7 +9,3 @@ inputs:
   source:
     representations: [bytes]
     formats: []
-outputs:
-  result:
-    representations: [bytes]
-    formats: [json]

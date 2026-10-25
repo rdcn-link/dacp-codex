@@ -9,7 +9,3 @@ inputs:
   source:
     representations: [records]
     formats: []
-outputs:
-  result:
-    representations: [records]
-    formats: [arrow]

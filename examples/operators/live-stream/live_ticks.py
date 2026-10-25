@@ -27,7 +27,11 @@ def process(ctx):
             time.sleep(max(0.0, interval - (time.monotonic() - started)))
 
 
+def infer_outputs(inputs, params):
+    from dacp_operator import descriptor, result
+    return result({'result': descriptor(['bytes'], ['ndjson'], None, certainty='known')})
+
+
 if __name__ == '__main__':
-    from dacp_operator import OperatorContext
-    with OperatorContext() as context:
-        process(context)
+    from dacp_operator import run_operator
+    run_operator(process, infer_outputs)

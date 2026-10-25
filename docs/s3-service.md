@@ -2,7 +2,7 @@
 
 [English](s3-service_en.md)
 
-DACP Server 默认同时启动 Flight、Web 看板和一个独立的 HTTP S3 兼容端口。S3 服务复用实时 DatasetCatalog 与 DatasetAccess：dataset 对应 bucket，Item 的逻辑路径去掉开头的 `/` 后对应 object key。例如 `climate` 中的 `/observations/day.csv` 对应 `s3://climate/observations/day.csv`。不复制数据，不产生第二份目录配置。
+DACP Server 默认同时启动 Flight、Web 看板和一个独立的 HTTPS S3 兼容端口。S3 服务复用实时 DatasetCatalog 与 DatasetAccess：dataset 对应 bucket，Item 的逻辑路径去掉开头的 `/` 后对应 object key。例如 `climate` 中的 `/observations/day.csv` 对应 `s3://climate/observations/day.csv`。不复制数据，不产生第二份目录配置。
 
 ## 配置与生命周期
 
@@ -20,7 +20,7 @@ s3:
 
 服务随 `DacpServer.start()` 启动，随 `close()` 关闭；绑定失败会回滚整个节点启动。嵌入式应用通过 `server.s3Port` 获取实际端口。启动日志输出 S3 监听地址；通过 `http://节点主机:S3端口/` 访问。
 
-这是公开、匿名、只读的 HTTP 接口，不使用 Flight 的客户端证书。所有可读取的 bytes Item 均可匿名下载。需要限制访问时，可关闭此服务、绑定内网地址，或通过反向代理配置 HTTPS 与访问控制。当前没有 S3 access key / secret key 管理；携带 Authorization 或 `X-Amz-*` 签名参数的请求返回 `AccessDenied`，客户端应选择 unsigned / no-sign-request。
+S3 是独立认证的只读 HTTPS 端点，使用节点 TLS 证书。所有读取（含列表和元数据）要求 SigV4 认证，不支持匿名访问。密钥与 Flight Token 独立，通过本地凭据工具创建 kind=s3 的密钥；密钥撤销拒绝后续请求，已接纳的下载继续。支持预签名 GET 临时分享对象，不支持预签名列表请求。
 
 ## 数据表示与插件
 
@@ -28,46 +28,47 @@ s3:
 - 普通文件按原始字节传输，包括 CSV、图片、压缩包和 NetCDF 文件；科学文件保持原有维度、分组与变量结构。具有 `bytes` 视图的结构根也可作为完整对象下载。
 - 普通逻辑文件夹不是对象；`prefix` 与 `delimiter` 可按路径分层浏览。
 - 每次请求在线读取目录和元数据，不维护持久化缓存。读取结束、失败或取消时释放请求级 Dataset 租约。
-- 使用 path-style 地址：`http://host:port/bucket/key`，不支持虚拟主机 bucket 地址。保留 Dataset 原名；为兼容 AWS CLI/SDK 的 bucket 校验，建议使用符合 S3 bucket 命名规则的数据集名。
+- 使用 path-style 地址：`https://host:port/bucket/key`，不支持虚拟主机 bucket 地址。保留 Dataset 原名；为兼容 AWS CLI/SDK 的 bucket 校验，建议使用符合 S3 bucket 命名规则的数据集名。
 
 S3 是核心传输适配层，不是存储后端插件。已有 Dataset provider 无需注册第二个实现；外部插件按 [Dataset 访问契约](dataset-access.md) 注册，提供递归 `list()`、`describe`、`bytes` 元数据和流。声明插件原生支持的 `Item.views`，如 `Some(Seq("bytes"))` 或 `Some(Seq("records"))`；节点会为后者补充 JSONL bytes。尽可能提供 `totalSizeBytes` 与 `lastModifiedTimeMs`；内容流使用 `PluginSchemas.bytes`，每批有界分块，遵守 `ready()` 检查，在 `finally` 释放资源。无需修改 S3 代码或客户端。JSONL 回退的大小未知，Item key 不添加 `.jsonl` 后缀；完整语义见 [通用 JSONL bytes 视图](dataset-access.md#通用-jsonl-bytes-视图)。未知大小的对象使用 HTTP chunked 下载，列表不虚构 Size，HEAD 不提供 Content-Length；依赖已知大小的托管下载工具可能无法处理这类对象。
 
 ## 客户端示例
 
-列举 bucket、列举对象、下载与部分读取：
+在服务器本地创建密钥，妥善保存返回的访问密钥 ID 与仅显示一次的秘密：
 
 ```bash
-curl http://localhost:10815/
-curl 'http://localhost:10815/climate?list-type=2&prefix=observations/'
-curl http://localhost:10815/climate/observations/day.csv -o day.csv
-curl -H 'Range: bytes=0-1023' http://localhost:10815/climate/observations/day.csv
-
-aws --no-sign-request --endpoint-url http://localhost:10815 s3api list-buckets
-aws --no-sign-request --endpoint-url http://localhost:10815 s3api list-objects-v2 --bucket climate
-aws --no-sign-request --endpoint-url http://localhost:10815 s3 cp s3://climate/observations/day.csv ./day.csv
+target/universal/stage/bin/dacp-server credentials /protected/node-credentials create --subject download-user --kind s3
 ```
 
-Python：
-
 ```python
+import os
 import boto3
-from botocore import UNSIGNED
 from botocore.config import Config
 
 s3 = boto3.client(
-    's3', endpoint_url='http://localhost:10815', region_name='us-east-1',
-    config=Config(signature_version=UNSIGNED, s3={'addressing_style': 'path'}),
+    's3', endpoint_url='https://localhost:10815', region_name='us-east-1',
+    aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+    aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+    verify='examples/certs/ca.crt',
+    config=Config(signature_version='s3v4', s3={'addressing_style': 'path'}),
 )
-for page in s3.get_paginator('list_objects_v2').paginate(Bucket='climate'):
-    for item in page.get('Contents', []):
-        print(item['Key'], item.get('Size'))
+print(s3.list_buckets())
 response = s3.get_object(Bucket='climate', Key='observations/day.csv')
 try:
     for chunk in response['Body'].iter_chunks(chunk_size=65536):
         print(len(chunk))
 finally:
     response['Body'].close()
+url = s3.generate_presigned_url('get_object',
+    Params={'Bucket': 'climate', 'Key': 'observations/day.csv'}, ExpiresIn=300)
 ```
+
+AWS CLI 使用同样的访问密钥环境变量，并指定 `--endpoint-url https://localhost:10815` 与 `--ca-bundle examples/certs/ca.crt`，不要使用 `--no-sign-request`。也可以通过本地工具生成预签名 URL：
+
+```bash
+target/universal/stage/bin/dacp-server credentials /protected/node-credentials presign ACCESS_KEY_ID https://localhost:10815/climate/observations/day.csv 300
+```
+
 
 ## 支持范围与限制
 

@@ -479,13 +479,34 @@ class Browser(cmd.Cmd):
         self.print_job(coordinator, json.dumps(job), options.timeout, **({"preview_rows":options.preview_rows,"preview_bytes":options.preview_bytes} if options.preview_rows or options.preview_bytes else {}),
                        **({"execution_policy":json.loads(Path(options.policy).read_text())} if options.policy else {}))
 
+    def do_infer(self, arg):
+        """Infer workflow output structures without processing data.
+
+        Usage: infer FILE [--vars FILE]
+        Example: infer examples/convert-variables.yaml --vars examples/convert-variables.json
+        Unknown structures remain explicit. This does not preview or execute the workflow.
+        """
+        parser = argparse.ArgumentParser(prog='infer', exit_on_error=False)
+        parser.add_argument('file')
+        parser.add_argument('--vars', help='workflow variables JSON object file')
+        parser.error = lambda message: (_ for _ in ()).throw(ValueError(message))
+        options = parser.parse_args(shlex.split(arg))
+        variables = json.loads(Path(options.vars).read_text()) if options.vars else None
+        if options.vars and not isinstance(variables, dict):
+            raise ValueError('variables must be a JSON object')
+        u = urlsplit(self.uri)
+        result = Job.infer(urlunsplit((u.scheme, u.netloc, '', '', '')), Path(options.file).read_text(),
+                           variables=variables, **self.credentials)
+        self.write(json.dumps(result, indent=2, ensure_ascii=False))
+
     def do_submit(self, arg):
         """Submit a workflow from a YAML file or interactive input and print its result streams.
 
-        Usage: submit [FILE] [--preview-rows N] [--preview-bytes N]
+        Usage: submit [FILE] [--vars FILE] [--preview-rows N] [--preview-bytes N]
 
         Examples (file paths are relative to the shell working directory):
           submit examples/convert.yaml
+          submit examples/convert.yaml --vars variables.json
           submit examples/convert.yaml --policy policy.json
           submit examples/convert.yaml --preview-bytes 128
 
@@ -494,16 +515,22 @@ class Browser(cmd.Cmd):
           job: demo
           tasks:
             - id: copy
-              operator: identity@1.1
-              inputs:
-                source: {uri: 'dacp://localhost:8815/data1/reports/orders', view: bytes}
+              operator: read_item@1.0
+              inputs: {}
+              params:
+                uri: dacp://localhost:8815/data1/reports/orders
+                view: bytes
+          outputs:
+            result: copy
           END
 
+        --vars replaces complete $NAME values using a JSON object, preserving types.
         Results print incrementally. Preview limits cancel the whole remaining job.
         Execution time is printed after completion, failure or cancellation.
         Ctrl-C cancels entry or execution. Use your node URI and installed operator IDs.
         """
         parser = argparse.ArgumentParser(prog='submit', exit_on_error=False)
+        parser.add_argument('--vars', help='workflow variables JSON object file')
         parser.add_argument('--policy', help='execution policy JSON file')
         parser.add_argument('file', nargs='?')
         parser.add_argument('--preview-rows', type=positive)
@@ -515,9 +542,13 @@ class Browser(cmd.Cmd):
         except (KeyboardInterrupt, EOFError):
             self.write('Job entry cancelled; nothing submitted.')
             return
+        variables = json.loads(Path(options.vars).read_text()) if options.vars else None
+        if options.vars and not isinstance(variables, dict):
+            raise ValueError('variables must be a JSON object')
         u = urlsplit(self.uri)
         self.print_job(urlunsplit((u.scheme,u.netloc,'','','')), text, 3600,
                        preview_rows=options.preview_rows, preview_bytes=options.preview_bytes,
+                       variables=variables,
                        **({"execution_policy":json.loads(Path(options.policy).read_text())} if options.policy else {}))
 
     def do_replay(self, arg):
@@ -534,7 +565,7 @@ class Browser(cmd.Cmd):
         u = urlsplit(self.uri)
         self.print_job(urlunsplit((u.scheme,u.netloc,'','','')), '', 3600, replay_from=tokens[0])
 
-    def print_job(self, node, text, timeout, *, preview_rows=None, preview_bytes=None, execution_policy=None, replay_from=None):
+    def print_job(self, node, text, timeout, *, preview_rows=None, preview_bytes=None, execution_policy=None, replay_from=None, variables=None):
         started = time.perf_counter()
         decoders, counts, offsets = {}, {}, {}
         text_port, line_start = None, True
@@ -571,6 +602,8 @@ class Browser(cmd.Cmd):
         if replay_from is not None:
             options['replay_from'] = replay_from
             options['on_retry'] = on_retry
+        if variables is not None:
+            options['variables'] = variables
         seen_execution = None
         try:
             with Job.run(node, text, timeout=timeout, **options, **self.credentials) as stream:
@@ -667,8 +700,9 @@ def positive(value):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog='dacp-shell', description='Interactive DACP dataset shell (mTLS).')
+    parser = argparse.ArgumentParser(prog='dacp-shell', description='Interactive DACP dataset shell (TLS + bearer token).')
     parser.add_argument('uri', help='dacp-server address: dacp://host[:port] (automatically selects a sole Dataset)')
+    parser.add_argument('--token-file', type=Path, help='bearer token file; defaults to DACP_TOKEN_FILE')
     parser.add_argument('--ca', type=Path, help='CA certificate; defaults to DACP_CA')
     parser.add_argument('--cert', type=Path, help='client certificate; defaults to DACP_CERT')
     parser.add_argument('--key', type=Path, help='client key; defaults to DACP_KEY')
@@ -680,6 +714,8 @@ def main(argv=None):
         credentials = {key: path.read_bytes() for key, path in (
             ('tls_root_certs', args.ca), ('cert_chain', args.cert), ('private_key', args.key)
         ) if path is not None}
+        if args.token_file is not None:
+            credentials['token'] = args.token_file.read_text().strip()
         browser = Browser(args.uri, credentials, args.rows, args.byte_limit)
         browser.cmdloop()
     except KeyboardInterrupt:

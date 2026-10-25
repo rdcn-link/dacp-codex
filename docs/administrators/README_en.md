@@ -34,24 +34,24 @@ Nodes read local operators through `local_operator_library` and search remote re
 
 ## Certificates and authorization
 
-Flight uses mTLS: callers verify servers and servers verify clients. Nodes making cross-node calls also act as clients. CA signatures do not grant business permissions. Configure node data permissions, Union client authorization, and node approval of Union computation separately. Certificates must match connection hostnames and TLS purposes. Do not commit private keys or use the demonstration CA in production.
+Ordinary Flight clients use TLS and tokens without requiring client certificates. Union uses mutual TLS and node-issued service credentials bound to its Union ID and certificate fingerprint. Peer task streams are authorized by exact execution plans. Credentials are created, rotated and revoked locally and reload automatically. See [authentication and access control](../security_en.md).
 
 ## Union and repository
 
-- [Union manual](../../dacp-union-server/README_en.md): configuration, invitations, approval, polling, job submission, and management dashboard.
+- [Union manual](../../dacp-union-server/README_en.md): configuration, service credentials, polling, job submission, and management dashboard.
 - [Two-node example](../../examples/union/README_en.md): complete certificate, node, Union, and client demonstration.
 - [Repository manual](../../dacp-operator-repository/README_en.md): initialization, publication, source materials, HTTP service, and downloads.
 
-Union maintains one Union, inviting independent nodes and polling their status. Joining requires node approval. Its public read-only HTTP dashboard exposes job scripts and execution metadata without login or tokens. Review task parameters for information unsuitable for public viewing. Computation remains protected by authorization on Flight interfaces.
+Union builds one Union from configuration, connects independent members using node-issued credentials and polls their status. Its public read-only HTTP dashboard exposes job scripts and execution metadata without login or tokens. Review task parameters for information unsuitable for public viewing. Computation remains protected by authorization on Flight interfaces.
 
 ## Monitoring, records, and shutdown
 
-The dashboard shows node health, start time, uptime, job DAGs, status, and traffic. Unreachable node status may be unknown. Nodes and Union persist execution metadata, rather than historical result files. See [execution history](../execution-history_en.md) for storage, queries, and restart behavior. Back up persistent configuration, membership approvals, and execution records. Stop services before copying to avoid inconsistency across files.
+The dashboard shows node health, start time, uptime, job DAGs, status, and traffic. Unreachable node status may be unknown. Nodes and Union persist execution metadata, rather than historical result files. See [execution history](../execution-history_en.md) for storage, queries, and restart behavior. Back up persistent configuration, member identities and credentials, and execution records. Stop services before copying to avoid inconsistency across files.
 
 Use Ctrl+C for foreground processes or send SIGTERM. Restarting does not resume interrupted result streams. Inspect operator images with `docker image ls`; local runtime configuration and repository artifacts are separate resources. DEBUG logging and the DEBUG execution mode that allows source submission are configured separately.
 
 Nodes also start a read-only HTTP dashboard by default on the Flight port plus 1000. Disable it with `web.enabled: false`. See the [node web dashboard](../node-web_en.md) for configuration and DAG views.
 
-Nodes also enable the [S3-compatible read service](../s3-service_en.md) by default, on the Flight port plus 2000. It exposes public downloads of bytes Items independently of Flight mTLS. Disable it with `s3: {enabled: false}`.
+Nodes also enable the [S3-compatible read service](../s3-service_en.md) by default, on the Flight port plus 2000. It provides HTTPS and SigV4-authenticated downloads of bytes Items using credentials independent of Flight. Disable it with `s3: {enabled: false}`.
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy_en.md).

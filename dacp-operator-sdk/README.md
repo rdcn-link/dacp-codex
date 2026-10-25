@@ -51,7 +51,7 @@ object Identity extends BytesOperator {
 
 完整示例：[SimpleIdentity.scala](../examples/operators/scala/src/main/scala/example/SimpleIdentity.scala)。表格模板 `RecordsOperator` 实现 `transform(batch, params): Option[VectorSchemaRoot]`；默认保留输入 schema，修改列时覆盖 `outputSchema`。输入 root 由 SDK 复用；输出同步序列化，不接管用户创建的 root，创建者负责关闭它。
 
-多端口继承 `Operator`，实现 `process(ctx)`：用 `ctx.inputNames`、`ctx.input(name).foreachRecords`、`ctx.recordsOutput(name, schema)` 或 bytes 对应方法读写。`ctx.params` 是 Jackson JSON 对象。
+多端口继承 `Operator`，实现 `inferOutputs(inputs, params)` 和 `process(ctx)`：用 `ctx.inputNames`、`ctx.input(name).foreachRecords`、`ctx.recordsOutput(name, schema)` 或 bytes 对应方法读写。`ctx.params` 是 Jackson JSON 对象。
 
 ## Scala 连续字节流模板
 
@@ -72,7 +72,7 @@ object StreamGzip extends ByteStreamOperator {
 }
 ```
 
-完整文件：[StreamGzip.scala](../examples/operators/scala/src/main/scala/example/StreamGzip.scala)。将算子定义的入口设为 `example.StreamGzip`，输入声明 `source` 的 `bytes` 表示，输出声明 `result` 的 `bytes` / `gzip`。参数仍通过 `params` 读取。算子程序必须读到输入 EOF；提前关闭或读取固定长度后未到 EOF 会失败，不会产生成功 end。输出 `flush()` 立即发布缓冲数据；正常返回自动 flush 并发送 end。关闭输出适配器不会关闭协议 stdout，因此可以安全地关闭 `GZIPOutputStream` 等包装器；异常退出不自动发布残留缓冲。
+完整文件：[StreamGzip.scala](../examples/operators/scala/src/main/scala/example/StreamGzip.scala)。将算子定义的入口设为 `example.StreamGzip`，输入声明 `source` 的 `bytes` 表示，输出由模板推导为 `result` 的 `bytes` / `gzip`。参数仍通过 `params` 读取。算子程序必须读到输入 EOF；提前关闭或读取固定长度后未到 EOF 会失败，不会产生成功 end。输出 `flush()` 立即发布缓冲数据；正常返回自动 flush 并发送 end。关闭输出适配器不会关闭协议 stdout，因此可以安全地关闭 `GZIPOutputStream` 等包装器；异常退出不自动发布残留缓冲。
 
 多端口作者也可使用 `ctx.input(name).byteStream()` 与 `ctx.bytesOutput(name, format).byteStream()`；仍需先声明全部输出，并按字典序完整消费每个输入。`BytesOperator` 是逐块数组模板，不把完整 Item 读入内存；它不保留业务记录边界。表格流使用已有的 `RecordsOperator`，按 `VectorSchemaRoot` 批处理并保留 schema，不应先转成字节再解析。
 
@@ -85,3 +85,7 @@ object StreamGzip extends ByteStreamOperator {
 ## 同进程 Job
 
 JVM 模板实现 `Operator`，可由执行器在独立共享 JVM 内调用。Python 模板增加 `process(ctx)` 方法；模块可用顶层 `def process(ctx): MyOperator().process(ctx)` 暴露合并入口。上下文和输出由执行器管理，不要在该入口自行创建或关闭另一个上下文。资格、线程安全要求与示例见 [同进程合并执行](../docs/operator-fusion.md)。
+
+## 结构推导
+
+每个算子必须实现 `inferOutputs`（Scala）或 `infer_outputs`（Python）。模板已经提供实现；自定义算子需与处理方法一同实现。无输出算子返回空映射。清单不再声明输出。详见[统一协议与示例](../docs/structure-inference.md)。

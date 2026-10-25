@@ -71,7 +71,7 @@ def build(runtime_catalog,destination):
     assert hashlib.sha256(target.read_bytes()).hexdigest()==runtime['archive']['sha256']
     for name,s in CATALOG.items():
         m=dict(api_version=2,name='scala_'+name,version='1.0',description=s['description']+'; params='+json.dumps(s['params'],ensure_ascii=False,separators=(',',':')),
-               inputs={'source':{'representations':['bytes'],'formats':[]}},outputs={'result':{'representations':['bytes'],'formats':[s['format']]}},
+               inputs={'source':{'representations':['bytes'],'formats':[]}},
                execution={'executor':'jvm','entrypoint':'dacp.common.Op_'+name,'config':{}},runtime=runtime,artifact=artifact,
                provenance={'source_archive':source,'source_repository':'https://github.com/rdcn-link/dacp-codex','build_instructions':'From the project root publish the plugin API and operator SDK locally, then run .venv/bin/python examples/operators/common-scala/build.py. See bundled bilingual instructions. Runtime dependencies are provided by dacp/operator-jvm:1.1.'})
         p=destination/('scala_'+name)/'1.0';p.mkdir(parents=True,exist_ok=True);(p/'manifest.json').write_text(json.dumps(m,ensure_ascii=False))

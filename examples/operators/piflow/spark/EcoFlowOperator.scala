@@ -18,6 +18,12 @@ import scala.jdk.CollectionConverters._
 
 /** Shared Spark environment, thin wrappers, explicit bounded input materialization. */
 abstract class EcoFlowOperator(className:String,ports:Map[String,String],required:Set[String]) extends Operator {
+  final def inferOutputs(inputs:Map[String,dacp.StreamDescriptor],params:JsonNode):dacp.InferenceResult={
+    require(required.subsetOf(params.fieldNames.asScala.toSet),"missing required parameters")
+    dacp.InferenceResult(Map("result"->dacp.StreamDescriptor(Set("records"),Set("arrow"),certainty="unknown")),
+      Vector(dacp.InferenceDiagnostic("warning","spark_dynamic_schema","Spark output schema requires execution")))
+  }
+
   def process(ctx:OperatorContext):Unit={
     require(ctx.inputNames.toSet==ports.keySet,"unexpected input ports")
     require(ctx.params.fieldNames.asScala.toSet==required,"missing or unexpected parameters")

@@ -49,21 +49,19 @@ class S3ServiceSpec extends AnyFunSuite {
         }
       }
     }
-    val config=Config("localhost",8815,"localhost",Map.empty,dir,dir,dir,catalogOverride=Some(catalog),s3=S3Settings(host="localhost",port=Some(0)),accessLogDirectory=Some(dir.resolve("access")))
-    val service=new S3Service(config,8815,allocator);service.start()
+    val config=Config("localhost",8815,"localhost",Map.empty,SecurityTestSupport.certificate,SecurityTestSupport.key,SecurityTestSupport.certificate,catalogOverride=Some(catalog),s3=S3Settings(host="localhost",port=Some(0)),accessLogDirectory=Some(dir.resolve("access")))
+    val service=new S3Service(config,8815,allocator);service.start();SecurityTestSupport.register(service.port,config)
     try run(config,service,closed,()=>exists=false)finally{service.close();config.close();allocator.close();Data.deleteTree(dir)}
   }
-  private val client=HttpClient.newHttpClient()
+  private lazy val client=SecurityTestSupport.client()
   private def request(s:S3Service,path:String,method:String="GET",headers:Map[String,String]=Map.empty)={
-    val b=HttpRequest.newBuilder(URI.create(s"http://localhost:${s.port}$path")).method(method,HttpRequest.BodyPublishers.noBody())
-    headers.foreach{case(k,v)=>b.header(k,v)}
-    client.send(b.build(),HttpResponse.BodyHandlers.ofString())
+    client.send(SecurityTestSupport.signed(s.port,path,method,headers),HttpResponse.BodyHandlers.ofString())
   }
   test("live buckets, escaped keys, delimiter and bound pagination tokens") {fixture{(_,s,_,remove)=>
     assert(request(s,"/").body.contains("<Name>science</Name>"))
     val listing=request(s,"/science?list-type=2&max-keys=1")
     assert(listing.statusCode()==200 && listing.body.contains("<IsTruncated>true</IsTruncated>"))
-    assert(listing.body.contains("folder/a +&amp;.bin") && !listing.body.contains("records"))
+    assert(listing.body.contains("folder/a +&amp;.bin") && listing.body.contains("folder/"))
     val token="<NextContinuationToken>([^<]+)</NextContinuationToken>".r.findFirstMatchIn(listing.body).get.group(1)
     assert(request(s,"/science?list-type=2&continuation-token="+token).body.contains("folder/b.bin"))
     assert(request(s,"/science?list-type=2&prefix=x&continuation-token="+token).statusCode()==400)
@@ -101,6 +99,20 @@ class S3ServiceSpec extends AnyFunSuite {
     assert(request(s,"/science/z.bin?acl").statusCode()==501)
     assert(request(s,"/science?max-keys=-1").statusCode()==400)
   }}
+  test("anonymous requests, tampering, expired presigns and revoked keys fail closed") {fixture{(c,s,_,_)=>
+    val base=URI.create(s"https://localhost:${s.port}/science/z.bin")
+    assert(client.send(HttpRequest.newBuilder(base).build(),HttpResponse.BodyHandlers.ofString()).statusCode()==403)
+    val (id,secret)=SecurityTestSupport.credentials.get(s.port)
+    val url=dacp.union.SigV4.presignGet(base,id,secret,60)
+    def get(u:URI)=client.send(HttpRequest.newBuilder(u).build(),HttpResponse.BodyHandlers.ofString())
+    assert(get(url).body=="0123456789")
+    assert(get(URI.create(url.toString.replace("/z.bin","/missing"))).statusCode()==403)
+    val expired=dacp.union.SigV4.presignGet(base,id,secret,1,now=java.time.Instant.now.minusSeconds(5))
+    assert(get(expired).statusCode()==403)
+    c.credentials.revoke(id)
+    assert(get(url).statusCode()==403)
+    assert(request(s,"/science/z.bin",headers=Map("Range"->"bytes=0-2")).statusCode()==403)
+  }}
   test("settings validate types and port bounds") {
     assert(S3Settings().enabled && S3Settings().bindPort(8815)==10815)
     def read(json:String)=S3Settings.read(Some(Data.mapper.readValue(json,classOf[java.util.LinkedHashMap[String,Object]])))
@@ -113,16 +125,17 @@ class S3ServiceSpec extends AnyFunSuite {
     val dir=Files.createTempDirectory("s3-plugin-");val allocator=new RootAllocator()
     val path=Files.writeString(dir.resolve("sample.csv"),"station,temp\nA,20\n")
     val empty=Files.createFile(dir.resolve("empty.bin"))
-    val c=Config("localhost",8815,"localhost",Map("climate"->DatasetDefinition("mixed",items=Map("/sample.csv"->Map("file"->path.toString),"/empty.bin"->Map("file"->empty.toString)))),dir,dir,dir,s3=S3Settings(host="localhost",port=Some(0)),accessLogDirectory=Some(dir.resolve("access")))
-    val s=new S3Service(c,8815,allocator);s.start()
+    val c=Config("localhost",8815,"localhost",Map("climate"->DatasetDefinition("mixed",items=Map("/sample.csv"->Map("file"->path.toString),"/empty.bin"->Map("file"->empty.toString)))),SecurityTestSupport.certificate,SecurityTestSupport.key,SecurityTestSupport.certificate,s3=S3Settings(host="localhost",port=Some(0)),accessLogDirectory=Some(dir.resolve("access")))
+    val s=new S3Service(c,8815,allocator);s.start();SecurityTestSupport.register(s.port,c)
     try {assert(request(s,"/climate?list-type=2").body.contains("sample.csv"));assert(request(s,"/climate/sample.csv").body==Files.readString(path));val zero=request(s,"/climate/empty.bin");assert(zero.statusCode()==200 && zero.body.isEmpty && zero.headers.firstValue("Content-Length").get=="0")}
     finally {s.close();c.close();allocator.close();Data.deleteTree(dir)}
   }
-  test("boto3 unsigned path-style client interoperates with the S3 transport") {
+  test("boto3 signed path-style client interoperates with the S3 transport") {
     val python=sys.env.getOrElse("DACP_S3_TEST_PYTHON",cancel("set DACP_S3_TEST_PYTHON to a Python with boto3 installed"))
-    fixture {(_,s,_,_)=>
+    fixture {(c,s,_,_)=>
       import scala.sys.process._
-      val result=Process(Seq(python,"../scripts/test-s3-service.py",s"http://localhost:${s.port}","science","folder/a +&.bin")).!
+      val (id,secret)=SecurityTestSupport.credentials.get(s.port)
+      val result=Process(Seq(python,"../scripts/test-s3-service.py",s"https://localhost:${s.port}","science","folder/a +&.bin"),None,"AWS_ACCESS_KEY_ID"->id,"AWS_SECRET_ACCESS_KEY"->secret,"AWS_CA_BUNDLE"->c.ca.toString).!
       assert(result==0)
     }
   }
@@ -150,10 +163,10 @@ class S3ServiceSpec extends AnyFunSuite {
         }
       }
     }
-    val c=Config("localhost",8815,"localhost",Map.empty,dir,dir,dir,catalogOverride=Some(cat),s3=S3Settings(host="localhost",port=Some(0)),accessLogDirectory=Some(dir.resolve("access")))
-    val s=new S3Service(c,8815,allocator);s.start()
+    val c=Config("localhost",8815,"localhost",Map.empty,SecurityTestSupport.certificate,SecurityTestSupport.key,SecurityTestSupport.certificate,catalogOverride=Some(cat),s3=S3Settings(host="localhost",port=Some(0)),accessLogDirectory=Some(dir.resolve("access")))
+    val s=new S3Service(c,8815,allocator);s.start();SecurityTestSupport.register(s.port,c)
     try {
-      val response=client.send(HttpRequest.newBuilder(URI.create(s"http://localhost:${s.port}/large/stream")).GET().build(),HttpResponse.BodyHandlers.ofInputStream())
+      val response=client.send(SecurityTestSupport.signed(s.port,"/large/stream"),HttpResponse.BodyHandlers.ofInputStream())
       try {assert(response.body.read()>=0);s.close();assert(released.await(5,java.util.concurrent.TimeUnit.SECONDS))}finally response.body.close()
     }finally {s.close();c.close();allocator.close();Data.deleteTree(dir)}
   }

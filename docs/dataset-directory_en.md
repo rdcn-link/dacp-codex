@@ -14,7 +14,7 @@ Local names and Union public names belong to different namespaces. Datasets have
 
 ## Access boundaries
 
-Node directory reads retain mTLS trust and require no data-access or execution grant. See [Union proxy service](union-proxy_en.md) for management Web access boundaries. Union uses its own certificate to query the selected invited member and verifies the member identity. Arbitrary remote addresses are not accepted. Directories show names, URIs and JSON descriptions without reading Items or data contents. Published datasets are readable by default; execution still requires its corresponding authorization.
+Node directory reads authenticate with an ordinary token or Union service credential and require no additional data-access grant. See [Union proxy service](union-proxy_en.md) for management Web access boundaries. Union uses its own certificate to query the selected configured member and verifies the member identity. Arbitrary remote addresses are not accepted. Directories show names, URIs and JSON descriptions without reading Items or data contents. Published datasets are readable by default; execution still requires its corresponding authorization.
 
 ## Administrators: static descriptions
 

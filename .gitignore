@@ -35,3 +35,5 @@ examples/sql/*.trace.db
 .publish-token
 
 .dacp-access/
+
+**/.dacp-security/

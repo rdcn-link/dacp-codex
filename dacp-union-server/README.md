@@ -2,20 +2,21 @@
 
 [English](README_en.md)
 
-`dacp-union-server` 是 Scala 开发的协调服务，一个进程维护一个 Union。成员节点独立运行；Union 主动邀请并轮询，经节点批准后分发计算。节点不需要注册或发送心跳。
+Scala 编写的协调与代理服务，一个进程维护一个 Union。成员节点独立运行；Union 读取成员配置，轮询健康与资源状态并调度流式作业。成员无需注册或发送心跳。
 
-Union 对外提供普通 DACP Flight 服务，包括在线数据集目录、Item 元数据与 records/bytes 流、记录扫描和 Job 执行，也提供 S3 只读访问。公开数据集使用稳定短名称，隐藏成员地址。专用 Union 管理 API 与 HTTP 运维看板保留内部拓扑。完整命名、代理、放置及访问边界见 [Union 代理服务](../docs/union-proxy.md)。
+Union 提供标准 DACP Flight 数据目录、Item 访问与 Job 执行，公开数据集名称隐藏成员实际地址。中间任务流直接在成员间传输，最终结果经 Union 返回。内网 HTTP 看板无需认证，展示成员、流量、执行策略、尝试记录、DAG 与持久执行历史。
 
-## 构建与启动
+## 构建与配置
 
-要求 JDK 17 和 sbt；在本模块目录执行：
+需要 JDK 17 和 sbt，在本模块执行：
 
 ```bash
 sbt test stage
+target/universal/stage/bin/dacp-union-server identity ../.union-demo/x.yaml
 target/universal/stage/bin/dacp-union-server serve ../.union-demo/x.yaml
 ```
 
-配置中的路径相对于进程工作目录：
+配置路径相对于进程工作目录：
 
 ```yaml
 host: 127.0.0.1
@@ -25,117 +26,39 @@ tls_cert: ../examples/certs/server.crt
 tls_key: ../examples/certs/server.key
 tls_ca: ../examples/certs/ca.crt
 state_directory: ../.union-demo/x
-client_identities: ["<客户端叶证书 DER 的 SHA-256 指纹，64 位小写十六进制>"]
-administrator_identities: ["<管理员证书指纹>"]
+credential_directory: ../.union-demo/x/credentials
+members:
+  - url: dacp://localhost:18861
+    credential_file: ../.union-demo/a-union.token
+  - url: dacp://localhost:18862
+    credential_file: ../.union-demo/b-union.token
 poll_interval_ms: 500
 execution_timeout_seconds: 120
 retention_seconds: 60
-web:
-  host: 127.0.0.1
-  port: 19880
-s3:
-  enabled: true
-  host: 0.0.0.0
-  port: 20860
+web: {host: 127.0.0.1, port: 19880}
+s3: {enabled: true, host: 127.0.0.1, port: 21860}
 ```
 
-Flight 使用 mTLS，证书须匹配主机名；Union 和成员兼任客户端，需要 `serverAuth`、`clientAuth` 用途，私钥使用未加密 PKCS#8 PEM。CA 签名不等于计算授权。客户端和管理员使用各自的身份清单；每个作业只允许提交者读取结果或取消。成员连接固定证书指纹。节点证书轮换需重新邀请和审批；Union 证书轮换使用新状态目录。
+## 认证与成员关系
 
-## 邀请与批准
+按[认证与访问控制](../docs/security.md)在本地签发凭据。每个成员签发绑定稳定 Union ID 和证书指纹的服务凭据，将秘密保存到该成员对应的 `credential_file`。成员仅通过配置文件管理，没有远程邀请、审批或成员管理 API。成员不可用不阻止启动，后续轮询重试；凭据撤销会终止运行中的协作。成员证书变更时，需要本地审查 `state_directory/member-identities` 中保存的身份固定记录，必要时重新签发绑定凭据。保留 Union 状态目录以维持身份。
 
-以下是本地 Union 管理命令，可与服务共用状态：
+普通客户端使用 TLS 与 Bearer Token，无需客户端证书。本地创建示例：
 
 ```bash
-target/universal/stage/bin/dacp-union-server identity ../.union-demo/x.yaml
-target/universal/stage/bin/dacp-union-server invite ../.union-demo/x.yaml dacp://localhost:18861
-target/universal/stage/bin/dacp-union-server members ../.union-demo/x.yaml
-target/universal/stage/bin/dacp-union-server remove ../.union-demo/x.yaml NODE_ID
+target/universal/stage/bin/dacp-union-server credentials ../.union-demo/x/credentials create --subject alice
 ```
 
-节点配置启用 `union` 后，由节点管理员批准：
+将返回的 Token 保存到受保护文件，通过 `dacp-shell dacp://localhost:19860 --ca ../examples/certs/ca.crt --token-file /protected/alice.token` 使用。见[客户端示例](../docs/union-proxy.md)。任务使用公开命名空间或逻辑节点名称；状态、取消、重放、结果与事件流检查所有者。
 
-```yaml
-union:
-  state_directory: ../.union-demo/a
-  execution_timeout_seconds: 120
-  retention_seconds: 300
-```
+## 执行与接口
 
-在 `dacp-server` 目录运行：
+Job 通过 `inputs` 连接步骤，不支持控制依赖，允许无输出算子。每个算子必须实现[结构推导](../docs/structure-inference.md)。[执行策略](../docs/materialization.md)控制物化、重放、重试次数与总超时。自动重试要求客户端丢弃失败尝试的部分结果，不强制最终结果物化。流使用有界队列与背压；重启中断的任务不会自动恢复，但已提交的物化结果可重放。
 
-```bash
-target/universal/stage/bin/dacp-server union list ../.union-demo/a
-target/universal/stage/bin/dacp-server union approve ../.union-demo/a UNION_ID ../.union-demo/a-policy.yaml
-target/universal/stage/bin/dacp-server union leave ../.union-demo/a UNION_ID
-```
+前缀 `dacp.union.` 的 Flight Actions 包括 `submit`、`replay_job`、`job_status` 和 `cancel_job`。结果与事件 Ticket 携带 `job_id`，事件还携带 `after`。普通目录使用 `dacp.catalog`，逻辑节点使用 `dacp.nodes`。请求大小上限为 1 MiB。HTTP 看板是内网只读接口，不管理凭据。S3 使用独立 SigV4 认证，见 [S3](../docs/s3-service.md)。
 
-审批策略示例：
+每个 Job 支持 64 步及 1024 个连接端口，每步最多 32 个输入和 32 个连接输出。Union 最多 64 个活动任务及 4096 个内存会话。事件保留最多 128 条、4 MiB，旧游标收到 gap 通知。备份配置、凭据、Union 身份、成员证书固定记录、命名空间路由、执行历史和物化存储；凭据应与公开数据分别保护。
 
-```yaml
-scheduler_identity: "<Union 证书指纹>"
-input_prefixes: [dacp://localhost:18861/climate]
-operators: [daily_temperature_stats@1.0]
-max_concurrent_tasks: 4
-expires_at_ms: 4102444800000
-```
+## 开发
 
-审批绑定 Union ID、证书身份、输入前缀、算子版本、额度和有效期。移除先请求成员撤销，再删除本地记录；网络失败会明确报错并保留记录。撤销或移除停止受影响任务。临时离线标为未知，不自动删除成员。目录按需在线读取，短名称 路由持久化；成功完整列表确认消失后清理旧路由，不保存无限增长的墓碑，递增计数器不回退。
-
-## 客户端与任务
-
-普通客户端可使用 `Source.datasets`、`Source.open`、`Job.run` 和 Shell 连接 Union，使用公开 URI，省略执行位置或使用逻辑节点 ID。多输入在一个成员处理，跨节点输入流式传递。最终流经 Union 返回客户端。详见 [代理服务及任务示例](../docs/union-proxy.md)。
-
-专用异步接口适合独立查询状态、取消及订阅事件：
-
-```python
-from pathlib import Path
-from dacp import Union
-
-with Union('dacp://localhost:19860', cert='examples/certs/client.crt',
-           key='examples/certs/client.key', ca='examples/certs/ca.crt') as union:
-    with union.submit(Path('job.yaml').read_text()) as execution:
-        print(execution.job_id)
-        for event in execution.results():
-            if event['type'] == 'data':
-                print(event.get('batch', event['data']))
-```
-
-`execution.status()`、`cancel()`、`events(after=0)` 分别查询、取消和订阅。Scala 的 `dacp.client.Union` 提供对应方法；关闭 execution 和迭代器以释放资源。结果只能领取一次；断开最终结果连接会取消未完成任务，关闭状态订阅不会取消。普通客户端使用公开命名空间；管理员可通过异步提交明确指定内部成员位置。完整运行实例见 [双节点示例](../examples/union/README.md)。
-
-## 策略、物化和执行语义
-
-独立策略 JSON 控制 `materialization`、`max_retries`（0–10）和 `timeout_seconds`。输出默认只流式传递；显式物化保存到产生输出的节点，通过新的执行重放。自动重试要求客户端感知尝试失败并丢弃前次部分输出，不强制物化最终结果。总超时覆盖排队及全部尝试。配置、调用和插件契约见 [执行策略](../docs/materialization.md)。
-
-引擎先准备所有节点再启动，容量不足时等待。节点间中间流直接传输；每个连接使用有界队列和 Flight 背压。收到 `end` 不代表成功，还要验证 `complete` 和 Flight 正常结束。取消、故障、撤销和超时清理整个作业。Union 可通过普通 worker 契约参与上级协作，不需要专用嵌套协议；路径检测循环并限制深度。
-
-每作业最多 64 个步骤、1024 个连接端口，每步骤最多 32 个输入及 32 个连接输出。Union 最多 64 个活动作业和 4096 个内存会话，成员须同时预留其子任务额度。状态事件最多保留 128 条、4 MiB，旧游标返回 gap。历史元数据持久化，运行中任务不在重启后自动恢复；物化内容可显式重放。当前不支持输出扇出、内联源码和算子内部检查点。备份应包含成员、路由、审批与执行记录。
-
-## 管理 API 与看板
-
-Flight 管理 Action 使用 `dacp.union.` 前缀，JSON 消息上限 1 MiB：
-
-| Action | 请求 |
-| --- | --- |
-| submit | `{"job_yaml":"...","execution_policy":{}}`，策略可选 |
-| replay_job | `{"job_id":"ID","tasks":["ta"]}`，tasks 可选 |
-| job_status / cancel_job | `{"job_id":"ID"}` |
-| members | `{}`，管理员 |
-| invite_member | `{"url":"dacp://node:18861"}`，管理员 |
-| remove_member | `{"identity":"指纹"}`，管理员 |
-
-结果 Ticket 为 `{"type":"dacp.union.results","job_id":"ID"}`，事件 Ticket 为 `{"type":"dacp.union.events","job_id":"ID","after":0}`；事件订阅要求管理员身份。普通 DACP 任务使用 `DoExchange`，目录使用 `dacp.catalog`，逻辑节点使用 `dacp.nodes`。
-
-HTTP 看板展示真实节点、任务脚本、状态、流量、DAG 和分页历史，不领取结果。每两秒刷新；DAG 使用本地 AntV G6，支持水平/垂直依赖布局和泳道、缩放、平移与分组折叠。`GET /api/overview`、`/api/jobs/ID`、`/api/history?offset=0&limit=100` 为只读管理接口。省略 web 则不监听；配置对外监听后可公开只读访问，无需登录或 token。详情见 [管理边界](../docs/union-proxy.md#管理边界)。S3 是独立公开只读数据接口。
-
-## 开发与验证
-
-`dacp-union-protocol` 提供传输、mTLS 与 JSON 契约；`UnionWorker` 复用插件数据访问和执行器。`ProxyCatalog` 通过 `DatasetAccess` 转发，不加入格式或后端分支。领域算子通过现有插件及算子仓库机制扩展。
-
-```bash
-# 本模块目录
-sbt test
-# 项目根目录，需安装 Playwright 和 Chromium
-python scripts/test-union-dashboard.py
-```
-
-网页位于 `src/main/resources/web/`；`dag.js` 维护图及视口，`app.js` 管理只读请求，文本使用 Canvas/DOM 安全渲染。本地 `@antv/g6@5.1.1` 保留 MIT 许可证；升级时同步版本文件名、HTML、静态路由和测试。正常构建不下载前端依赖。协议细节见 [Union 协议](../docs/union.md)，持久化位置见 [执行记录](../docs/execution-history.md)。
+普通 SDK 与协作 SDK 通过 `dacp-union-protocol` 共享传输、证书和流实现，服务端授权不依赖 SDK 类型。数据代理使用插件接口，核心不包含后端专用分支。在本模块运行 `sbt test`，在仓库根目录运行 `scripts/test-union-dashboard.py` 验证网页。

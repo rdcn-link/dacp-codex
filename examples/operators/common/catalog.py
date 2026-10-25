@@ -180,3 +180,13 @@ def execute(name, ctx):
             if len(data)+len(chunk)>limit:raise ValueError('document exceeds max_input_bytes; use smaller items')
             data.extend(chunk)
         output.write(spec['fn'](bytes(data),params))
+
+
+def infer_outputs(name, inputs, params):
+    from dacp_operator import descriptor, result
+    spec = CATALOG[name]
+    if set(inputs) != {'source'} or (inputs['source']['representations'] and inputs['source']['representations'] != [spec['representation']]):
+        raise ValueError('unexpected input representation')
+    if set(params) - {'max_input_bytes'} != set(spec['params']):
+        raise ValueError('unexpected or missing parameters')
+    return result({'result': descriptor([spec['representation']], [spec['format']], certainty='known' if spec['representation']=='bytes' else 'unknown')})

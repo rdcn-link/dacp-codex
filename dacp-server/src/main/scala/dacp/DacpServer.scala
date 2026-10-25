@@ -12,6 +12,7 @@ final class DacpServer private(config:Config) extends AutoCloseable {
   private var tasks:TaskService=null
   private var union:Option[UnionWorker]=None
   private var flight:FlightServer=null
+  private var flightThreads:java.util.concurrent.ExecutorService=null
 
   private var s3:S3Service=null
   def s3Port:Option[Int]=synchronized {Option(s3).map(_.port)}
@@ -28,8 +29,9 @@ final class DacpServer private(config:Config) extends AutoCloseable {
       config.executionHistory
       tasks=new TaskService(config,allocator,new TaskExecutor(config,allocator))
       union=config.union.map(s=>new UnionWorker(config,s,allocator))
-      flight=dacp.union.Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),new Producer(config,allocator,Some(tasks),union)),new dacp.union.Tls(config.cert,config.key,config.ca))
-        .maxInboundMessageSize(dacp.union.Rpc.MaxMessage).build()
+      flightThreads=java.util.concurrent.Executors.newFixedThreadPool(128)
+      flight=dacp.union.Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),new Producer(config,allocator,Some(tasks),union)),new dacp.union.Tls(config.cert,config.key,config.ca),Some(config.credentials))
+        .maxInboundMessageSize(dacp.union.Rpc.MaxMessage).executor(flightThreads).build()
       flight.start();union.foreach(_.start());startedAt=System.currentTimeMillis()
       if(config.web.enabled){dashboard=new NodeDashboard(config,flight.getPort,startedAt,()=>union.toVector.flatMap(_.executionSnapshots));dashboard.start();config.runningWebUrl=Some(dashboard.publicUrl)}
       if(config.s3.enabled){s3=new S3Service(config,flight.getPort,allocator);s3.start()}
@@ -52,7 +54,9 @@ final class DacpServer private(config:Config) extends AutoCloseable {
       state="closed"
       config.runningWebUrl=None
       var failure:Throwable=null
-      val resources=Option(s3).toSeq++Option(dashboard).toSeq++union.toSeq++Option(tasks).toSeq++Option(flight).toSeq++Seq(config)++Option(allocator).toSeq
+      val resources=Option(s3).toSeq++Option(dashboard).toSeq++union.toSeq++Option(tasks).toSeq++Option(flight).toSeq++Option(flightThreads).toSeq.map(pool=>new AutoCloseable {
+        def close():Unit={pool.shutdownNow();require(pool.awaitTermination(10,java.util.concurrent.TimeUnit.SECONDS),"Flight handlers failed to stop")}
+      })++Seq(config)++Option(allocator).toSeq
       resources.foreach(r=>try r.close()catch{case NonFatal(e)=>if(failure==null)failure=e else failure.addSuppressed(e)})
       if(failure!=null)throw failure
     }

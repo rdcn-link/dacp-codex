@@ -14,7 +14,7 @@ window.DacpAttempts={render(container,job){
   const detail=make('details',undefined,'attempt-card');detail.dataset.attempt=a.attempt_id;detail.open=open.has(a.attempt_id);
   const summary=make('summary');summary.append(make('strong','Attempt '+((a.retry_index||0)+1)),make('span',states[a.state]||a.state,'badge '+(a.state==='succeeded'?'good':['failed','cancelled','expired'].includes(a.state)?'bad':'busy')));
   const elapsed=a.started_at_ms?Math.max(0,(a.finished_at_ms||Date.now())-a.started_at_ms):null;
-  summary.append(make('span',date(a.started_at_ms)+' → '+(a.finished_at_ms?date(a.finished_at_ms):['succeeded','failed','cancelled','expired'].includes(a.state)?'Not recorded':'In progress'),'muted'),make('span',elapsed===null?'Duration not recorded':(elapsed/1000).toFixed(1)+' s','attempt-duration'));
+  summary.append(make('span',date(a.started_at_ms)+' → '+(a.finished_at_ms?date(a.finished_at_ms):['succeeded','failed','cancelled','expired'].includes(a.state)?'Not recorded':'In progress'),'muted'),make('span',elapsed===null?'Duration not recorded':window.DacpDuration(elapsed),'attempt-duration'));
   detail.append(summary);const body=make('div',undefined,'attempt-body');body.append(make('p','Attempt ID: '+a.attempt_id,'muted mono'));
   if(a.message)body.append(make('p',a.message,'notice'));
   if(a.retry_index>0)body.append(make('p','Automatic retry after failure · retry '+a.retry_index,'muted'));

@@ -192,3 +192,15 @@ def test_zero_result_job_completes_without_cancelling():
     with UnionExecution(union, 'job1') as execution:
         assert [event['type'] for event in execution.results()] == ['complete']
     assert execution.complete and not union.calls
+
+
+def test_union_submits_resolved_variable_snapshot():
+    client = Union.__new__(Union)
+    calls = []
+    client._action = lambda name, body: (calls.append((name, body)) or {'job_id': 'example'})
+    client.submit('tasks: [{params: {limit: $LIMIT}}]', variables={'LIMIT': 123})
+    import json
+    assert json.loads(calls[0][1]['job_yaml'])['tasks'][0]['params']['limit'] == 123
+    with pytest.raises(ValueError, match='missing workflow variable'):
+        client.submit('params: {limit: $LIMIT}', variables={})
+    assert len(calls) == 1

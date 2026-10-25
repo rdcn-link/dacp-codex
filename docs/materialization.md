@@ -203,7 +203,7 @@ Shell 显示执行 ID，重试前明确标记上一轮输出作废并重置显�
 
 ## 开发者：Flight 协议与存储插件
 
-沿用 Arrow Flight mTLS，无 HTTP 写接口。Action 名均加 `dacp.union.` 前缀：
+沿用 Arrow Flight TLS / Token，无 HTTP 写接口。Action 名均加 `dacp.union.` 前缀：
 
 | Action | 请求 JSON | 返回 |
 |---|---|---|

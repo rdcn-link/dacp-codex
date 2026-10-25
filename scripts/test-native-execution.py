@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import time
 from dacp import Job, Source
+from security_test_support import authorize
 
 ROOT = Path(__file__).resolve().parents[1]
 NODE = 'dacp://localhost:' + os.environ.get('DACP_NATIVE_TEST_PORT', '18817')
@@ -30,8 +31,7 @@ def main():
                               entrypoint='/operator/uppercase', artifact=str(executable),
                               executor_config=dict(args=args, stdin='source', stdout=dict(
                                   port='result', representation='bytes', format='text')),
-                              inputs=dict(source=dict(representations=['bytes'], formats=[])),
-                              outputs=dict(result=dict(representations=['bytes'], formats=['text'])))
+                              inputs=dict(source=dict(representations=['bytes'], formats=[])))
             if name == 'installed':
                 definition.pop('artifact')
                 definition['entrypoint'] = '/usr/local/bin/python'
@@ -51,8 +51,7 @@ def main():
             path.write_text(json.dumps(dict(name=name, version='1', image='dacp/operator-python:1.0',
                 executor='command', entrypoint='/usr/local/bin/python',
                 executor_config=dict(args=['-u', '-c', code], stdin=inp, stdout=out),
-                inputs={} if inp is None else {inp: dict(representations=['bytes'], formats=[])},
-                outputs={} if out is None else dict(result=dict(representations=['bytes'], formats=['text'])))))
+                inputs={} if inp is None else {inp: dict(representations=['bytes'], formats=[])})))
         payload = bytes(range(256)) + b'hello native streams\n' * 65536  # Larger than pipes and bounded bridge buffers.
         (base/'source.txt').write_bytes(payload)
         (base/'empty.bin').write_bytes(b'')
@@ -61,6 +60,7 @@ def main():
                       local_operator_library=str(library), max_concurrent_tasks=4,
                       tls_cert=str(ROOT/'examples/certs/server.crt'), tls_key=str(ROOT/'examples/certs/server.key'),
                       tls_ca=str(ROOT/'examples/certs/ca.crt'))
+        CREDS['token'] = authorize(config, base)
         (base/'server.json').write_text(json.dumps(config))
         with open(base/'server.log', 'w+') as log:
             server = subprocess.Popen([str(ROOT/'dacp-server/target/universal/stage/bin/dacp-server'), str(base/'server.json')],
@@ -86,10 +86,9 @@ def main():
                 with Job.run(NODE, json.dumps(source_job), timeout=30, **CREDS) as stream:
                     generated = list(stream)
                 assert b''.join(e['data'] for e in generated if e['type']=='data') == b'generated\n'
-                sink_job = dict(job='native-control-sink', tasks=[
-                    dict(id='prepare', operator='prepare@1', inputs={}),
+                sink_job = dict(job='native-stream-sink', tasks=[
                     dict(id='generate', operator='generate@1', inputs={}),
-                    dict(id='sink', operator='sink@1', inputs={'source':'generate'}, depends_on=['prepare'])], outputs={})
+                    dict(id='sink', operator='sink@1', inputs={'source':'generate'})], outputs={})
                 with Job.run(NODE, json.dumps(sink_job), timeout=30, **CREDS) as stream:
                     sink_frames = list(stream)
                 assert sink_frames[-1]['type']=='complete' and not any(e['type']=='data' for e in sink_frames)

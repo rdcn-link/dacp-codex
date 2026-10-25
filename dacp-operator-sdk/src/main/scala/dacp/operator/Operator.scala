@@ -7,18 +7,27 @@ import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.{VectorSchemaRoot,VarBinaryVector}
 import org.apache.arrow.vector.ipc.{ArrowStreamReader,ArrowStreamWriter}
 import org.apache.arrow.vector.types.pojo.Schema
-import dacp.{OperatorFrame,OperatorFrames,PluginSchemas}
+import dacp.{OperatorFrame,OperatorFrames,PluginSchemas,StreamDescriptor,InferenceRequest,InferenceResult,StructureInference}
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
 /** Business logic only. The runner owns streams, output framing, end events and cleanup. */
 trait Operator {
+  def inferOutputs(inputs:Map[String,StreamDescriptor],params:JsonNode):InferenceResult
   def process(context:OperatorContext):Unit
-  final def main(args:Array[String]):Unit=OperatorRunner.run(args)(process)
+  final def main(args:Array[String]):Unit={
+    if(args.headOption.contains("infer"))OperatorRunner.infer(args)(inferOutputs)
+    else OperatorRunner.run(args)(process)
+  }
 }
 abstract class BytesOperator extends Operator {
   def transform(chunk:Array[Byte],params:JsonNode):Array[Byte]
   def outputFormat:String="binary"
+  final def inferOutputs(inputs:Map[String,StreamDescriptor],params:JsonNode):InferenceResult={
+    require(inputs.keySet==Set("source"),"expected source input")
+    require(inputs("source").representations.isEmpty || inputs("source").representations("bytes"),"bytes input required")
+    InferenceResult(Map("result"->StreamDescriptor(Set("bytes"),Set(outputFormat),certainty="known")))
+  }
   final def process(ctx:OperatorContext):Unit={
     val out=ctx.bytesOutput("result",outputFormat)
     ctx.input("source").foreachBytes(chunk=>out.write(transform(chunk,ctx.params)))
@@ -28,6 +37,11 @@ abstract class BytesOperator extends Operator {
 abstract class ByteStreamOperator extends Operator {
   def transform(input:InputStream,output:OutputStream,params:JsonNode):Unit
   def outputFormat:String="binary"
+  final def inferOutputs(inputs:Map[String,StreamDescriptor],params:JsonNode):InferenceResult={
+    require(inputs.keySet==Set("source"),"expected source input")
+    require(inputs("source").representations.isEmpty || inputs("source").representations("bytes"),"bytes input required")
+    InferenceResult(Map("result"->StreamDescriptor(Set("bytes"),Set(outputFormat),certainty="known")))
+  }
   final def process(ctx:OperatorContext):Unit={
     val output=ctx.bytesOutput("result",outputFormat).byteStream()
     val input=ctx.input("source").byteStream()
@@ -36,6 +50,12 @@ abstract class ByteStreamOperator extends Operator {
 }
 abstract class RecordsOperator extends Operator {
   def outputSchema(input:Schema,params:JsonNode):Schema=input
+  final def inferOutputs(inputs:Map[String,StreamDescriptor],params:JsonNode):InferenceResult={
+    require(inputs.keySet==Set("source"),"expected source input")
+    val input=inputs("source");require(input.representations.isEmpty || input.representations("records"),"records input required")
+    val schema=input.schema.map(outputSchema(_,params))
+    InferenceResult(Map("result"->StreamDescriptor(Set("records"),Set("arrow"),schema,if(schema.nonEmpty)"known"else "unknown")))
+  }
   /** Returned roots are borrowed; the SDK serializes synchronously and does not close them. */
   def transform(batch:VectorSchemaRoot,params:JsonNode):Option[VectorSchemaRoot]
   final def process(ctx:OperatorContext):Unit={
@@ -45,6 +65,14 @@ abstract class RecordsOperator extends Operator {
   }
 }
 object OperatorRunner {
+  def infer(args:Array[String],out:OutputStream=System.out)(method:(Map[String,StreamDescriptor],JsonNode)=>InferenceResult):Unit={
+    require(args.length==2 && args(0)=="infer","expected infer REQUEST_JSON")
+    val path=Path.of(args(1));require(Files.size(path)<=StructureInference.MaxBytes,"inference request too large")
+    val request=StructureInference.request(StructureInference.mapper.readTree(Files.readAllBytes(path)))
+    val result=Console.withOut(System.err){method(request.inputs,request.params)}
+    val bytes=StructureInference.mapper.writeValueAsBytes(StructureInference.json(result))
+    require(bytes.length<=StructureInference.MaxBytes,"inference result too large");out.write(bytes);out.flush()
+  }
   def runStreams(directory:Path,params:Path,inputs:Map[String,InputStream],emit:OperatorFrame=>Unit)(process:OperatorContext=>Unit):Unit={
     val ctx=new OperatorContext(directory,params,OutputStream.nullOutputStream(),inputs,Some(emit))
     try {Console.withOut(System.err){process(ctx)};ctx.finish()}finally ctx.close()

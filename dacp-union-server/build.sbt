@@ -18,3 +18,6 @@ Compile / resourceGenerators += Def.task {
     output
   }
 }.taskValue
+
+lazy val collaborationClient=RootProject(file("../dacp-collaboration-client-scala"))
+dependsOn(collaborationClient)

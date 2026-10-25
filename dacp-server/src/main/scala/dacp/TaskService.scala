@@ -12,9 +12,11 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
   private val permits=config.taskSlots
   private val jobs=new Semaphore(config.maxConcurrentTasks)
   private val active=java.util.concurrent.ConcurrentHashMap.newKeySet[StreamCancel]()
+  protected def inferPlan(plan:JobPlan,c:StreamCancel):com.fasterxml.jackson.databind.JsonNode=WorkflowInference.plan(config,allocator,plan,c)
   private def join(t:Thread,c:StreamCancel):Unit={while(t.isAlive){c.active();t.join(50)};c.active()}
   def exchange(ctx: FlightProducer.CallContext,reader: FlightStream,writer: FlightProducer.ServerStreamListener): Unit = {
-    val cancel=new StreamCancel(()=>ctx.isCancelled || writer.isCancelled,config.executionTimeoutSeconds)
+    val serviceLease=if(dacp.union.Rpc.isAuthenticatedCall && dacp.union.Rpc.principal.kind=="union")Some(dacp.union.Rpc.principal.active)else None
+    val cancel=new StreamCancel(()=>ctx.isCancelled || writer.isCancelled || serviceLease.exists(check=> !check()),config.executionTimeoutSeconds)
     active.add(cancel)
     val root=VectorSchemaRoot.create(PluginSchemas.bytes,allocator)
     var acquired:Semaphore=null
@@ -55,7 +57,10 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         require(timeout<=config.executionTimeoutSeconds,"timeout_seconds exceeds server limit")
         require(policy.maxRetries==0 || request.getRetryAware,"automatic retries require a retry-aware client callback")
         val scoped=new StreamCancel(()=>{cancel.checkState();false},timeout);cancel.add(scoped)
+        val inferred=previous.map(_.path("structure_inference")).getOrElse(inferPlan(plan,scoped))
+        require(inferred.isObject,"original structure inference unavailable")
         val detail=dacp.union.Json.obj().put("job_yaml",yaml).put("execution_mode","isolated_steps")
+        detail.set[com.fasterxml.jackson.databind.JsonNode]("structure_inference",inferred)
         detail.set[com.fasterxml.jackson.databind.JsonNode]("execution_policy",policy.submitted)
         val effective=policy.effective.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();effective.put("timeout_seconds",timeout)
         detail.set[com.fasterxml.jackson.databind.JsonNode]("effective_execution_policy",effective);replay.foreach(detail.put("replay_of",_));record.update("running",detail)
@@ -215,7 +220,6 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     val terminal=new FrameQueue(c)
     val completed=java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
     val threads=plan.tasks.map{t=>StreamProtocol.thread(c){
-      while(!t.dependsOn.forall(completed.contains)){c.active();Thread.sleep(20)}
       val inputs=t.inputs.map{case(port,b)=>port->b.uri.map(_=>source(b,c)).getOrElse(queues(t.id,port))}
       var seen=Set.empty[String]
       peer(targets(t.id),t,provenance(t.id),inputs,f=>{

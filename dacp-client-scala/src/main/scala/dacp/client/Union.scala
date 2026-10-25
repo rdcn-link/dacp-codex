@@ -10,15 +10,22 @@ import org.apache.arrow.vector.types.pojo.Schema
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
-/** Results and events use independent Flight streams over mTLS. */
-final class Union(url:String,cert:Path,key:Path,ca:Path,timeoutSeconds:Long=1800) extends AutoCloseable {
+/** Results and events use independent Flight streams over TLS with a user token. */
+final class Union(url:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=1800) extends AutoCloseable {
   private[client] val origin=Json.origin(url)
-  private[client] val remote=new Remote(new Tls(cert,key,ca))
+  private[client] val remote=new Remote(None,credential=_=>tls.token.orElse(tls.tokenFile.orElse(sys.env.get("DACP_TOKEN_FILE").map(Path.of(_))).map(p=>java.nio.file.Files.readString(p).trim)),
+    ca=tls.ca.orElse(sys.env.get("DACP_CA").map(Path.of(_))))
   private[client] val timeout=timeoutSeconds
   require(timeoutSeconds>0)
-  def members():JsonNode=remote.action(origin,"members")
-  def submit(yaml:String,executionPolicy:JsonNode=Json.obj()):UnionExecution={
-    val body=Json.obj().put("job_yaml",yaml);body.set[JsonNode]("execution_policy",executionPolicy)
+  def infer(yaml:String,variables:JsonNode=null):JsonNode={
+    val request=Json.obj().put("job_yaml",WorkflowVariables.resolve(yaml,variables))
+    val results=remote.dataClient(origin,None).doAction(new org.apache.arrow.flight.Action("dacp.infer_job",Json.mapper.writeValueAsBytes(request)),
+      org.apache.arrow.flight.CallOptions.timeout(timeout,java.util.concurrent.TimeUnit.SECONDS)).asScala
+    require(results.hasNext,"missing inference response");val raw=results.next().getBody
+    require(raw.length<=1024*1024 && !results.hasNext,"invalid inference response");Json.mapper.readTree(raw)
+  }
+  def submit(yaml:String,executionPolicy:JsonNode=Json.obj(),variables:JsonNode=null):UnionExecution={
+    val body=Json.obj().put("job_yaml",WorkflowVariables.resolve(yaml,variables));body.set[JsonNode]("execution_policy",executionPolicy)
     val n=remote.action(origin,"submit",body)
     new UnionExecution(this,Json.id(Json.text(n,"job_id")))
   }
