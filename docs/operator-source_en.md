@@ -60,7 +60,7 @@ tasks:
     output_format: csv
 ```
 
-Use `with Job.run(node, yaml_text, **credentials) as events:` and iterate events to consume the stream; leaving the context closes it. `run identity@1.1 --input source=/orders` continues to select a repository operator. An operator ID and inline source are mutually exclusive.
+Use `with Job.run(node, yaml_text, **credentials) as events:` and iterate events to consume the stream; leaving the context closes it. `run piflow_csv_parser@1.0 --input source=/observations --view bytes` continues to select a repository operator. An operator ID and inline source are mutually exclusive.
 
 Launch plugins implement `OperatorExecutor.sourceCommand` and register through `META-INF/services/dacp.OperatorExecutor`, the same discovery path as artifact launchers. The default rejects source support; enabling DEBUG alone does not make an arbitrary plugin accept source. Administrators select plugin IDs in `source_runtimes`; adding a language requires no core registry or client changes.
 

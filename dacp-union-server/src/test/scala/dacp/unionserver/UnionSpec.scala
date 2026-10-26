@@ -327,16 +327,18 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(Json.parse(first.body()).path("datasets").get(0).path("description").asText.contains("<script>alert(1)</script>"))
       assert(http(webPort,"/nodes").body().contains("directory-nodes"))
       assert(first.headers().firstValue("Cache-Control").get()=="no-store")
-      val unionDirectory=Json.parse(http(webPort,"/datasets/entries").body())
-      assert(unionDirectory.path("complete").asBoolean && unionDirectory.path("datasets").size()==2)
+      val sources=Json.parse(http(webPort,"/datasets/sources").body()).path("sources")
+      assert(sources.size()==2)
+      val unionDirectory=Json.parse(http(webPort,s"/datasets/sources/$id").body())
+      assert(unionDirectory.path("datasets").size()==1)
       assert(unionDirectory.path("datasets").elements.asScala.forall(d=>d.path("name").asText.startsWith("ds-") && d.path("uri").asText.startsWith(f.settings.publicUrl+"/ds-")))
       assert(http(webPort,"/datasets").body().contains("catalog-rows"))
       f.catalogVisible=false
       assert(Json.parse(http(webPort,path).body()).path("datasets").size()==0)
       f.catalogVisible=true;f.catalogFailure=true
       assert(http(webPort,path).statusCode()==503)
-      val partial=Json.parse(http(webPort,"/datasets/entries").body())
-      assert(!partial.path("complete").asBoolean && partial.path("unavailable_sources").asInt==2)
+      assert(Json.parse(http(webPort,"/datasets/sources").body()).path("sources").size()==2)
+      assert(http(webPort,s"/datasets/sources/$id").statusCode()==503)
       f.catalogFailure=false
       assert(http(webPort,path).body().contains("公开数据说明"))
       assert(http(webPort,"/members/"+("0"*64)+"/datasets").statusCode()==404)

@@ -4,6 +4,8 @@
 
 上游 Scala / Java 原文保存在 `upstream/`，许可证见 [LICENSE](LICENSE)。适配实现、修改说明与输入输出契约随每个算子的源码包提供。这里不是 PiFlow 工作流文件的兼容执行器；任务使用 DACP 自己的端口和参数合同。
 
+当前协作部署仅发布 CSV parser、filter、execute SQL、merge、join、CSV save 这 6 个 `1.0` 算子。可直接使用的参数与工作流见[当前算子库](../../../docs/operator-catalog.md)。下文描述完整源码工程和移植范围，不等于在线仓库已全部发布；实际状态以 `/v1/operators` 为准。
+
 ## 编写和使用
 
 每个 Python 算子位于 `operators/`，实现 `process(ctx)`，使用 DACP SDK 读写 Arrow 流。发布名称采用 `piflow_` 前缀。普通单输入单输出端口为 `source` / `result`，双输入通常为 `left` / `right`；具体以 [specs.json](specs.json) 为准。参数示例和执行模式也记录在该文件。
@@ -35,7 +37,7 @@
 
 ## 移植范围与差异
 
-[移植审阅表](review.md) 列出全部 67 个上游算子的对应名称、状态和限制；[英文表](review_en.md) 同步维护。`inventory.json` 的 `published` 才表示已经发布，其他状态不代表可调用。参数、端口、执行器和执行模式见 `specs.json`。科学 Scala 算子的构建方式见 [spark/README.md](spark/README.md)。
+[移植审阅表](review.md) 列出全部 67 个上游算子的对应名称、状态和限制；[英文表](review_en.md) 同步维护。`inventory.json` 的状态记录移植工程进度，不能替代当前仓库的实际发布清单。参数、端口、执行器和执行模式见 `specs.json`。科学 Scala 算子的构建方式见 [spark/README.md](spark/README.md)。
 
 通用 SQL 和绘图数据算子使用 SQLite，不能直接套用所有 Spark SQL 函数。图表算子输出用于绘图的记录，不生成图片。`Fork` 固定输出 `left/right`，`Route` 固定输出 `result/matched/unmatched`。CSV 读取和 Excel 读取均输出字符串列，不自动猜测类型；Excel 空单元格为 null。文件保存类算子返回字节流，不要求服务端保存结果文件。算子输入输出示例见审阅表。
 

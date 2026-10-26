@@ -310,7 +310,7 @@ Install build tools locally first. Wheels install offline with `--no-index --no-
 
 ## Port declarations and batch publication
 
-`publish --ports FILE` is required and accepts YAML or JSON containing `inputs` and `outputs`. An operator definition can serve as this file:
+`publish --ports FILE` is required and accepts YAML or JSON containing `inputs` only (`outputs` declarations are rejected; the mandatory inference method describes outputs). An operator definition can serve as this file:
 
 ```yaml
 name: identity_python

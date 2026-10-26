@@ -310,7 +310,7 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository pub
 
 ## 端口声明与批量发布
 
-必须提供 `publish --ports FILE`；该文件可为包含 `inputs`、`outputs` 的 YAML 或 JSON，也可直接使用完整算子定义：
+必须提供 `publish --ports FILE`；该文件可为包含 `inputs` 的 YAML 或 JSON（不允许声明 `outputs`，输出由必选推导方法给出），也可直接使用完整算子定义：
 
 ```yaml
 name: identity_python

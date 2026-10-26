@@ -2,11 +2,13 @@
 
 [English](README_en.md) · [项目首页](../README.md)
 
-作业格式及流依赖、控制依赖见[作业说明](jobs.md).
+作业格式及流依赖见[作业说明](jobs.md).
 
 协议总览：[DACP（Data Access and Collaboration Protocol）](protocol.md)。
 
 动态数据集目录与程序内启动：[DatasetCatalog](dataset-catalogs.md)、[嵌入式服务器](embedded-server.md)。
+
+当前协作部署的[算子库清单](operator-catalog.md)：6 个已发布算子的端口、参数、输入输出和 Shell / Job 示例。
 
 ## 按角色阅读
 
@@ -64,3 +66,5 @@
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](union-proxy.md)。
 
 [认证与访问控制](security.md)：Flight Token、Union 服务凭据、S3 SigV4、撤销与审计。[结构推导](structure-inference.md)：算子必选输出推导与工作流校验。
+
+[流传递与逐步物化实测](materialization-benchmark.md)：50 万条气象记录、三轮耗时和实际落盘量。

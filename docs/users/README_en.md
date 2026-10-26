@@ -276,7 +276,7 @@ cd dacp-server
 sbt 'run ../examples/server.yaml'
 ```
 
-In a connected shell started from the project root, run `submit examples/convert.yaml`, or `run format_convert@1.1 --input source=/reports/orders`. The shell waits and prints results incrementally; Ctrl-C cancels execution.
+In a connected shell started from the project root, run the complete weather workflow in the [current operator catalog](../operator-catalog_en.md), or select a weather dataset and run `run piflow_csv_parser@1.0 --input source=/observations --view bytes`. The shell waits and prints results incrementally; Ctrl-C cancels execution.
 
 Further reading:
 

@@ -8,35 +8,80 @@ import java.util.UUID
 import scala.jdk.CollectionConverters._
 import com.fasterxml.jackson.databind.node.ObjectNode
 
-/** One JSON object per completed request. Files are never truncated or reused. */
-final class AccessLog(directory:Path,maxBytes:Long) extends AutoCloseable {
-  require(maxBytes>0,"access_log.max_bytes must be positive")
-  Files.createDirectories(directory)
-  private var channel:FileOutputStream=null
-  private var size=0L
-  private var closed=false
-  private def rotate():Unit={
-    if(channel!=null)channel.close()
-    val name="access-"+Instant.now().toEpochMilli+"-"+UUID.randomUUID().toString+".jsonl"
-    val path=Files.createFile(directory.resolve(name))
-    channel=new FileOutputStream(path.toFile)
-    size=0
+private[dacp] object AccessLogOutput {
+  trait Output extends AutoCloseable {def write(bytes:Array[Byte]):Unit;def sync():Unit}
+  def file(path:Path):Output=new Output {
+    private val stream=new FileOutputStream(path.toFile)
+    def write(bytes:Array[Byte]):Unit=stream.write(bytes)
+    def sync():Unit=stream.getFD.sync()
+    def close():Unit=stream.close()
   }
-  def append(event:ObjectNode):Unit=synchronized {
-    require(!closed,"access log is closed")
-    val bytes=(Data.mapper.writeValueAsString(event)+"\n").getBytes(UTF_8)
-    if(channel==null || (size>0 && size+bytes.length>maxBytes))rotate()
-    val interrupted=Thread.interrupted()
+}
+
+/** Completed requests enqueue bounded records; one writer owns disk IO and rotation. */
+final class AccessLog private[dacp](directory:Path,maxBytes:Long,open:Path=>AccessLogOutput.Output,capacity:Int=1024) extends AutoCloseable {
+  def this(directory:Path,maxBytes:Long)=this(directory,maxBytes,AccessLogOutput.file,1024)
+  require(maxBytes>0,"access_log.max_bytes must be positive")
+  require(capacity>0,"access log queue capacity must be positive")
+  Files.createDirectories(directory)
+  private val queue=new java.util.concurrent.ArrayBlockingQueue[Array[Byte]](capacity)
+  private val failure=new java.util.concurrent.atomic.AtomicReference[Throwable]()
+  @volatile private var closing=false
+  private var channel:AccessLogOutput.Output=null
+  private var size=0L
+  private var dirty=false
+  private var pending=0
+  private var lastSync=System.nanoTime()
+  private val interval=java.util.concurrent.TimeUnit.SECONDS.toNanos(1)
+  private def sync():Unit=if(dirty){channel.sync();dirty=false;pending=0;lastSync=System.nanoTime()}
+  private def rotate():Unit={
+    if(channel!=null){sync();channel.close();channel=null}
+    val name="access-"+Instant.now().toEpochMilli+"-"+UUID.randomUUID().toString+".jsonl"
+    channel=open(Files.createFile(directory.resolve(name)));size=0
+  }
+  // Fail startup immediately when the destination cannot be opened.
+  rotate()
+  private def recordFailure(t:Throwable):Unit=if(failure.compareAndSet(null,t))org.slf4j.LoggerFactory.getLogger(classOf[AccessLog]).error("access log writer failed",t)
+  private def check():Unit=Option(failure.get()).foreach(t=>throw new IllegalStateException("access log writer failed",t))
+  private val writer=new Thread(()=>{
     try {
-      // FileOutputStream does not close the shared file descriptor on thread interruption.
-      // A cancelled RPC must not poison logging for every subsequent request.
-      channel.write(bytes)
-      channel.getFD.sync()
-      size+=bytes.length
+      var done=false
+      while(!done){
+        val wait=if(dirty)math.max(1L,interval-(System.nanoTime()-lastSync))else interval
+        val bytes=queue.poll(wait,java.util.concurrent.TimeUnit.NANOSECONDS)
+        if(bytes!=null && bytes.nonEmpty){
+          if(size>0 && size+bytes.length>maxBytes)rotate()
+          dirty=true;channel.write(bytes);size+=bytes.length;pending+=1
+        }
+        if(dirty && (pending>=256 || System.nanoTime()-lastSync>=interval))sync()
+        done=closing && queue.isEmpty
+      }
+      sync()
+    }catch{case scala.util.control.NonFatal(t)=>recordFailure(t)}
+    finally if(channel!=null)try channel.close()catch{case scala.util.control.NonFatal(t)=>recordFailure(t)}
+  },"dacp-access-log-writer")
+  writer.setDaemon(true);writer.start()
+  def append(event:ObjectNode):Unit={
+    val bytes=(Data.mapper.writeValueAsString(event)+"\n").getBytes(UTF_8)
+    var interrupted=Thread.interrupted()
+    try {
+      var accepted=false
+      while(!accepted){
+        synchronized{check();require(!closing,"access log is closed");accepted=queue.offer(bytes)}
+        // A full bounded queue applies backpressure. Cancellation must not silently drop audit records.
+        if(!accepted)try Thread.sleep(10)catch{case _:InterruptedException=>interrupted=true}
+      }
     }finally if(interrupted)Thread.currentThread().interrupt()
   }
   def begin(operation:String):AccessEvent=new AccessEvent(this,operation)
-  def close():Unit=synchronized {if(!closed){closed=true;if(channel!=null)channel.close()}}
+  def close():Unit={
+    synchronized{if(!closing){closing=true;queue.offer(Array.emptyByteArray)}}
+    var interrupted=Thread.interrupted()
+    try {
+      while(writer.isAlive)try writer.join()catch{case _:InterruptedException=>interrupted=true}
+      check()
+    }finally if(interrupted)Thread.currentThread().interrupt()
+  }
 }
 final class AccessEvent(log:AccessLog,operation:String) {
   private val started=System.nanoTime()

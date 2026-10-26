@@ -195,7 +195,7 @@ Shell 支持：
 
 ```text
 submit workflow.yaml --policy policy.json
-run identity@1.1 --input source=/weather/observations --policy policy.json
+run piflow_csv_parser@1.0 --input source=/observations --view bytes --policy policy.json
 replay EXECUTION_ID
 ```
 

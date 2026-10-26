@@ -276,7 +276,7 @@ cd dacp-server
 sbt 'run ../examples/server.yaml'
 ```
 
-连接 shell 后运行 `submit examples/convert.yaml`（在项目根目录启动 shell），或 `run format_convert@1.1 --input source=/reports/orders`。shell 等待并逐块显示结果；Ctrl-C 取消任务。
+连接 shell 后运行 [当前算子库](../operator-catalog.md)中的完整气象工作流，或在选择气象数据集后运行 `run piflow_csv_parser@1.0 --input source=/observations --view bytes`。shell 等待并逐块显示结果；Ctrl-C 取消任务。
 
 更多说明：
 

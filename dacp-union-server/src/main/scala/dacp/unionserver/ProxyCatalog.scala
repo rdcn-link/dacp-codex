@@ -47,6 +47,18 @@ private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,
     }
     DatasetDirectory((entries++uploads.entries(scala.util.Try(Rpc.identity).getOrElse(""))).sortBy(_.name),failures==0,failures)
   }
+  /** Inspect one member without holding the merged-directory lock or waiting for other members. */
+  private[unionserver] def memberDirectory(identity:String):Option[Seq[DatasetInfo]]={
+    val path=hops
+    members.all.find(_.path("identity").asText==identity).map { member=>
+      if(members.inspect(member).path("state").asText!="approved")
+        throw CallStatus.UNAVAILABLE.withDescription("dataset source unavailable").toRuntimeException
+      val values=directories.entries(identity,()=>(),path).getOrElse(throw CallStatus.NOT_FOUND.toRuntimeException)
+      require(values.size<=10000,"member catalog exceeds limit")
+      routes.reconcile(identity,values.map(_.getName).toSet)
+      values.map(m=>DatasetInfo(routes.assign(identity,m.getName),m.getDescription))
+    }
+  }
   private[unionserver] def target(name:String,check:()=>Unit=()=>()):(com.fasterxml.jackson.databind.JsonNode,String)={
     val row=routes.resolve(name).getOrElse(throw new java.io.FileNotFoundException("dataset not found"))
     val member=members.all.find(_.path("identity").asText==row.path("member").asText).getOrElse(throw new java.io.FileNotFoundException("dataset not found"))

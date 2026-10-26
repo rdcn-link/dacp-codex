@@ -2,11 +2,13 @@
 
 [中文](README.md) · [Project home](../README_en.md)
 
-For job format, stream dependencies and control dependencies, see [Jobs](jobs_en.md).
+For job format and stream dependencies, see [Jobs](jobs_en.md).
 
 Protocol overview: [DACP (Data Access and Collaboration Protocol)](protocol_en.md).
 
 Dynamic catalogs and application embedding: [DatasetCatalog](dataset-catalogs_en.md), [embedded server](embedded-server_en.md).
+
+The [collaboration operator catalog](operator-catalog_en.md) documents the six published operators, ports, parameters, input/output and Shell / Job examples.
 
 ## Read by role
 
@@ -64,3 +66,5 @@ Official website builds, deployment and software download publication: [dacp-web
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](union-proxy_en.md).
 
 [Authentication and access control](security_en.md): Flight tokens, Union service credentials, S3 SigV4, revocation and audit. [Structure inference](structure-inference_en.md): mandatory operator output inference and workflow validation.
+
+[Streaming versus per-step materialization benchmark](materialization-benchmark_en.md): 500,000 weather observations, three measured runs and actual persisted bytes.

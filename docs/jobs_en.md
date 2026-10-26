@@ -5,7 +5,7 @@
 DACP Server and Union share the same Job format. Steps connect through output streams referenced in `inputs`. List order does not define execution order. Control dependencies (`depends_on`) are not supported.
 
 ```yaml
-job: weather-copy
+job: weather-filter
 tasks:
   - id: read
     title: Read weather observations
@@ -15,10 +15,12 @@ tasks:
       uri: dacp://localhost:18861/weather/observations
       view: records
   - id: copy
-    title: Stream observation records
-    operator: identity@1.3
+    title: Filter valid observations
+    operator: piflow_filter@1.0
     inputs:
       source: read
+    params:
+      condition: "quality = '0'"
 outputs:
   result: copy
 ```
@@ -27,7 +29,7 @@ outputs:
 
 `job` names the workflow. Each task has a unique `id`, optional descriptive `title`, versioned `operator`, named `inputs`, and optional `params` and placement `node`. Input values and Job outputs use `task` or `task:port`; omitted ports mean `result`. Object bindings and connection-level `view` are not supported. Each output has at most one consumer. Use explicit duplication operators or separate ports for fan-out.
 
-`read_item@1.0` is a built-in transport source requiring no operator container. It takes no inputs and requires `params.uri` addressing one Item and `params.view` set to `bytes` or `records`; its output is `result`. Zero-input generators such as `live_ticks` also have empty inputs. Processing operators consume upstream outputs. Representation conversion is explicit.
+`read_item@1.0` is a built-in transport source requiring no operator container. It takes no inputs and requires `params.uri` addressing one Item and `params.view` set to `bytes` or `records`; its output is `result`. Zero-input generators also have empty inputs. Processing operators consume upstream outputs. Representation conversion is explicit.
 
 On Union, use public Union dataset URIs. Omit `node` for automatic placement or use a logical node returned by `dacp.nodes`. Physical member addresses are not accepted in user submissions.
 
@@ -37,13 +39,16 @@ Every operator must implement [structure inference](structure-inference_en.md). 
 
 Upstream and downstream steps run concurrently with bounded buffering. Failure, cancellation and timeout cancel the attempt and release resources. Retries and materialization are configured in a separate [execution policy JSON](materialization_en.md). Retries can repeat external side effects; operators must provide appropriate idempotency.
 
+
+See the [operator catalog](operator-catalog_en.md) for currently published collaboration operators, parameters and complete input/output examples.
+
 ## Shell
 
 ```text
 submit job.yaml
 submit job.yaml --vars variables.json
-run identity@1.3 --input source=/observations --view records
-run live_ticks@1.0
+run piflow_filter@1.0 --input source=/observations --view records --params '{"condition":"CAST(quality AS INTEGER) = 0"}'
+run piflow_csv_parser@1.0 --input source=/observations --view bytes
 ```
 
 The shell converts Item inputs into `read_item` steps and prints results incrementally. It connects to either a node or Union using [TLS and a token](security_en.md). Repeat `--output PORT` to select multiple ports, or use `--no-output` for a sink. Inline heredoc source is DEBUG-only; see [source submission](operator-source_en.md).

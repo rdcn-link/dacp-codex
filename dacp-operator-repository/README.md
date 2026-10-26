@@ -6,6 +6,17 @@
 
 Maven 制品名和可执行程序均为 `dacp-operator-repository`（不带 Scala 后缀），源码包名为 `dacp.repository`。
 
+
+## 当前协作算子库
+
+当前示例部署发布 6 个 Python 算子，版本均为 `1.0`：`piflow_csv_parser`、`piflow_filter`、`piflow_execute_sql_stop`、`piflow_merge`、`piflow_join`、`piflow_csv_save`。具体参数、端口和完整工作流见[算子库清单](../docs/operator-catalog.md)。实际发布清单以 `/v1/operators` 为准。`read_item@1.0` 是节点内置步骤，无需仓库发布；其他源码示例不自动安装。
+
+下面的 setup 命令构建并导入 JVM 入门示例，不等于重建当前协作算子库。仅启动已有协作仓库、不增加示例时，使用：
+
+```bash
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820
+```
+
 ## 初始目录
 
 在项目根目录执行：
@@ -19,10 +30,10 @@ curl http://localhost:8820/v1/operators
 
 | 算子 | 用途 |
 |---|---|
-| `format_convert@1.1` | CSV/NDJSON 转 Parquet；参见 [参数](../docs/reference.md#format_convert-参数) |
-| `identity@1.1` | 复制原始字节，用于传输检查和流水线 |
+| `format_convert@1.3` | CSV/NDJSON 转 Parquet；参见 [参数](../docs/reference.md#format_convert-参数) |
+| `identity@1.3` | 复制原始字节，用于传输检查和流水线 |
 
-两者共享薄 Scala JAR 和运行时环境，仓库只导出一次运行时。详见 [运行时构建](../dacp-operator-runtime/README.md)、[用户自定义 Scala 示例](../examples/operators/scala/README.md)、[Python 示例](../examples/operators/python/README.md) 和 [打包契约](../docs/operator-packaging.md)。
+入门示例共享薄 Scala JAR 和运行时环境，仓库只导出一次运行时。详见 [运行时构建](../dacp-operator-runtime/README.md)、[用户自定义 Scala 示例](../examples/operators/scala/README.md)、[Python 示例](../examples/operators/python/README.md) 和 [打包契约](../docs/operator-packaging.md)。
 
 ## 常用算子集
 
@@ -38,7 +49,9 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository see
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820
 ```
 
-`seed` 发现 `<operators>/<name>/<version>/operator.yaml`。必填 `name`、`version`、`image`、`inputs`、`outputs`；可选 `description`、`executor`（默认 `container`）、`entrypoint`、`artifact`（相对文件路径）、`executor_config`、`provenance`。名称和版本匹配 `[A-Za-z0-9_-][A-Za-z0-9_.-]*`。未知字段、重复键、目录身份不符和空定义目录会失败。
+`seed` 发现 `<operators>/<name>/<version>/operator.yaml`。必填 `name`、`version`、`image`、`inputs`；可选 `description`、`executor`（默认 `container`）、`entrypoint`、`artifact`（相对文件路径）、`executor_config`、`provenance`。名称和版本匹配 `[A-Za-z0-9_-][A-Za-z0-9_.-]*`。未知字段、重复键、目录身份不符和空定义目录会失败。
+
+输出由算子的必选推导方法描述；定义文件不允许声明 `outputs`。
 
 手动发布薄 JAR：
 
@@ -61,7 +74,7 @@ operator_cache: /var/lib/dacp/operators
 operator_max_bytes: 8589934592
 ```
 
-任务继续使用 `operator: format_convert@1.1`。解析顺序为本地定义与已安装镜像、完整缓存、配置的远程仓库。仅清单 HTTP 404 会继续下一个仓库。远程与缓存制品均验证大小和 SHA-256，执行使用固定镜像 ID。制品可跨算子和仓库共享，完整缓存支持离线执行。大小限制针对单个制品。参见 [缓存布局与限制](../docs/operator-packaging.md#内容寻址存储)。
+任务使用已发布引用，例如 `operator: piflow_filter@1.0`。解析顺序为本地定义与已安装镜像、完整缓存、配置的远程仓库。仅清单 HTTP 404 会继续下一个仓库。远程与缓存制品均验证大小和 SHA-256，执行使用固定镜像 ID。制品可跨算子和仓库共享，完整缓存支持离线执行。大小限制针对单个制品。参见 [缓存布局与限制](../docs/operator-packaging.md#内容寻址存储)。
 
 ## 公开网站与 HTTP API
 

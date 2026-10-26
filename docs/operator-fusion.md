@@ -20,7 +20,7 @@ DACP 会自动检查 Job 的执行位置、算子环境和执行器能力。满�
 
 ## JVM 算子
 
-现有 SDK 模板可直接使用。例如，已发布的 `scala_text_uppercase@1.0` 和 `scala_text_strip@1.0` 引用相同镜像，均实现 SDK 契约，可按以下方式组成 Job：
+现有 SDK 模板可直接使用。例如，先构建并发布 Scala 常用算子集中的 `scala_text_uppercase@1.0` 和 `scala_text_strip@1.0` 后，两者 引用相同镜像，均实现 SDK 契约，可按以下方式组成 Job。它们不在当前协作示例的六算子仓库中，不能直接假定可用：
 
 ```yaml
 job: clean-text

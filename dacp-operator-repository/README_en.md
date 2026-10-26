@@ -6,6 +6,17 @@ A standalone Scala HTTP/HTTPS repository with public search, version pages, and 
 
 The Maven artifact and executable are `dacp-operator-repository` (no Scala suffix); source package is `dacp.repository`.
 
+
+## Current collaboration catalog
+
+The current example deployment publishes six Python operators at version `1.0`: `piflow_csv_parser`, `piflow_filter`, `piflow_execute_sql_stop`, `piflow_merge`, `piflow_join`, and `piflow_csv_save`. See the [catalog, parameters and runnable workflow](../docs/operator-catalog_en.md). Query `/v1/operators` for the actual published inventory. `read_item@1.0` is built into the node and does not require repository publication. Other source examples are not automatically installed.
+
+The setup command below builds and seeds the JVM starter examples; it does not reproduce the curated collaboration catalog. To start an existing curated repository without adding examples, use:
+
+```bash
+dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820
+```
+
 ## Starter catalog
 
 From the project root:
@@ -19,8 +30,8 @@ Setup builds the shared `dacp/operator-jvm:1.1` environment and optional complet
 
 | Operator | Purpose |
 |---|---|
-| `format_convert@1.1` | Convert CSV/NDJSON to Parquet; see [parameters](../docs/reference_en.md#format_convert-parameters) |
-| `identity@1.1` | Copy bytes for transfer checks and pipelines |
+| `format_convert@1.3` | Convert CSV/NDJSON to Parquet; see [parameters](../docs/reference_en.md#format_convert-parameters) |
+| `identity@1.3` | Copy bytes for transfer checks and pipelines |
 
 Both use the same thin Scala JAR and runtime environment. The repository exports the runtime only once. See the [runtime builder](../dacp-operator-runtime/README_en.md), [user-defined Scala example](../examples/operators/scala/README_en.md), [Python example](../examples/operators/python/README_en.md), and [packaging contracts](../docs/operator-packaging_en.md).
 
@@ -38,7 +49,9 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository see
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository serve --root .operator-catalog --host 0.0.0.0 --port 8820
 ```
 
-`seed` discovers `<operators>/<name>/<version>/operator.yaml`. Definitions require `name`, `version`, `image`, `inputs`, and `outputs`; optional fields are `description`, `executor` (default `container`), `entrypoint`, `artifact` (relative file path), `executor_config`, and `provenance`. Names/versions match `[A-Za-z0-9_-][A-Za-z0-9_.-]*`. Unknown fields, duplicate keys, mismatched directories, and empty definition directories fail.
+`seed` discovers `<operators>/<name>/<version>/operator.yaml`. Definitions require `name`, `version`, `image`, and `inputs`; optional fields are `description`, `executor` (default `container`), `entrypoint`, `artifact` (relative file path), `executor_config`, and `provenance`. Names/versions match `[A-Za-z0-9_-][A-Za-z0-9_.-]*`. Unknown fields, duplicate keys, mismatched directories, and empty definition directories fail.
+
+Outputs are described by the mandatory operator inference method; definition files must not declare `outputs`.
 
 Manual thin-JAR publication:
 
@@ -61,7 +74,7 @@ operator_cache: /var/lib/dacp/operators
 operator_max_bytes: 8589934592
 ```
 
-Tasks retain references such as `operator: format_convert@1.1`. Resolution checks local definitions/installed images, completed caches, then remote repositories in order. Only manifest HTTP 404 advances to another repository. All remote/cached blobs are verified for size and SHA-256; images use pinned IDs. Blobs are shared across operators and repositories; completed caches work offline. Limits apply per artifact. See [cache layout and limitations](../docs/operator-packaging_en.md#content-addressed-storage).
+Tasks use published references such as `operator: piflow_filter@1.0`. Resolution checks local definitions/installed images, completed caches, then remote repositories in order. Only manifest HTTP 404 advances to another repository. All remote/cached blobs are verified for size and SHA-256; images use pinned IDs. Blobs are shared across operators and repositories; completed caches work offline. Limits apply per artifact. See [cache layout and limitations](../docs/operator-packaging_en.md#content-addressed-storage).
 
 ## Public website and HTTP API
 

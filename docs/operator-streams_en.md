@@ -1,20 +1,20 @@
 # Item-based operator inputs and stream-only outputs
 
 Status: implemented through Flight DoExchange and the Python shell/SDK and Scala SDK. Current ports support bytes and records. Other scientific representations require explicit contract extensions. Each output port has at most one downstream consumer; use distinct ports for duplication. Consume multiple input ports in lexical order.
-Source operators may declare `inputs: {}`; tasks must also explicitly provide `inputs: {}`. No trigger Item is needed. Sink operators return an empty output mapping from their mandatory inference method. In the shell, use `run live_ticks@1.0 --params '{"max_records":3}'` without `--input`. Local tasks default to the connected node; `node` may explicitly select placement.
+Source operators may declare `inputs: {}`; tasks must also explicitly provide `inputs: {}`. No trigger Item is needed. Sink operators return an empty output mapping from their mandatory inference method. In the shell, use `run read_item@1.0 --params '{"uri":"dacp://localhost:18861/weather/observations","view":"bytes"}'` without `--input`. Local tasks default to the connected node; `node` may explicitly select placement.
 
 
-See [Jobs](jobs_en.md) for the format, control dependencies and sinks.
+See [Jobs](jobs_en.md) for the format, stream dependencies and sinks.
 
 ## User-facing contract
 
-Every operator output is a stream. There is no save-to-file option, dataset-result mode, or result-mode selector. The shell and SDK consume streams directly; operators do not publish output datasets or return retained dataset URIs. YAML jobs remain useful for pipelines, with output names identifying connections between streams rather than stored datasets.
+Operators return streams; selected boundaries may be materialized through a separate [execution policy](materialization_en.md). There is no save-to-file option, dataset-result mode, or result-mode selector. The shell and SDK consume streams directly; operators do not publish output datasets or return retained dataset URIs. YAML jobs remain useful for pipelines, with output names identifying connections between streams rather than stored datasets.
 
 Shell usage:
 
 ```text
-run scala_identity@1.0 --input source=/reports/orders
-run format_convert@1.1 --input source=/reports/orders --params '{"compression":"zstd"}'
+run piflow_csv_parser@1.0 --input source=/observations --view bytes
+run piflow_filter@1.0 --input source=/observations --view records --params '{"condition":"CAST(temperature AS REAL) >= 30"}'
 submit pipeline.yaml
 ```
 

@@ -5,7 +5,7 @@
 DACP Server 与 Union 使用同一种 Job 格式。步骤通过 `inputs` 引用其他步骤的输出流建立关联，列表顺序不代表执行顺序。不支持 `depends_on` 控制依赖。
 
 ```yaml
-job: weather-copy
+job: weather-filter
 tasks:
   - id: read
     title: Read weather observations
@@ -15,10 +15,12 @@ tasks:
       uri: dacp://localhost:18861/weather/observations
       view: records
   - id: copy
-    title: Stream observation records
-    operator: identity@1.3
+    title: Filter valid observations
+    operator: piflow_filter@1.0
     inputs:
       source: read
+    params:
+      condition: "quality = '0'"
 outputs:
   result: copy
 ```
@@ -27,7 +29,7 @@ outputs:
 
 `job` 是工作流名称。每个 task 包含唯一 `id`、可选说明 `title`、带版本的 `operator`、命名输入 `inputs`，以及可选的参数 `params` 和执行位置 `node`。输入值和 Job 输出使用 `task` 或 `task:port`，省略端口时使用 `result`。不支持对象形式连接或连接级 `view`。每个输出最多有一个消费者；分发数据需要显式复制算子或不同输出端口。
 
-`read_item@1.0` 是无需算子容器的内置传输源。它没有输入，参数 `uri` 指向一个 Item，`view` 为 `bytes` 或 `records`，输出端口为 `result`。`live_ticks` 等生成器的输入也为空。处理算子消费上游输出，表示形式转换必须显式完成。
+`read_item@1.0` 是无需算子容器的内置传输源。它没有输入，参数 `uri` 指向一个 Item，`view` 为 `bytes` 或 `records`，输出端口为 `result`。生成器的输入也为空。处理算子消费上游输出，表示形式转换必须显式完成。
 
 向 Union 提交时，数据 URI 使用 Union 公开的数据集名称。省略 `node` 时自动调度，也可使用 `dacp.nodes` 返回的逻辑节点。用户提交的工作流不能直接使用成员实际地址。
 
@@ -37,13 +39,16 @@ outputs:
 
 上下游以有界缓冲并发运行。故障、取消、超时会终止本次尝试并释放资源。重试与物化通过独立的[执行策略 JSON](materialization.md) 配置。重试可能重复外部副作用，业务算子需要提供适当的幂等机制。
 
+
+当前协作示例已发布的算子、参数和完整输入输出示例见[算子库清单](operator-catalog.md)。
+
 ## Shell
 
 ```text
 submit job.yaml
 submit job.yaml --vars variables.json
-run identity@1.3 --input source=/observations --view records
-run live_ticks@1.0
+run piflow_filter@1.0 --input source=/observations --view records --params '{"condition":"CAST(quality AS INTEGER) = 0"}'
+run piflow_csv_parser@1.0 --input source=/observations --view bytes
 ```
 
 Shell 将 Item 输入转换为 `read_item` 步骤，逐块打印结果。连接节点或 Union 使用 [TLS 与 Token](security.md)。多输出可重复指定 `--output PORT`，无输出步骤使用 `--no-output`。源码 heredoc 仅允许 DEBUG 模式，见[源码提交](operator-source.md)。

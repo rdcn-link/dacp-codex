@@ -29,11 +29,15 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   private[unionserver] val routes=new DatasetRoutes(settings.state.resolve("dataset-routes"))
   private val uploads=new StreamInputs()
   private val proxyCatalog=new ProxyCatalog(members,settings,routes,uploads)
-  private[unionserver] def websiteDirectory:JsonNode={
-    val directory=proxyCatalog.directory(()=>())
-    val n=Json.obj().put("complete",directory.complete).put("unavailable_sources",directory.unavailableSources).put("observed_at_ms",Json.now)
+  private[unionserver] def websiteDirectorySources:JsonNode={
+    val n=Json.obj();val sources=n.putArray("sources")
+    members.all.foreach(m=>sources.addObject().put("identity",m.path("identity").asText).put("url",m.path("url").asText))
+    n
+  }
+  private[unionserver] def websiteMemberDirectory(identity:String):Option[JsonNode]=proxyCatalog.memberDirectory(identity).map { datasets=>
+    val n=Json.obj().put("observed_at_ms",Json.now)
     val entries=n.putArray("datasets")
-    directory.entries.foreach { d=>
+    datasets.foreach { d=>
       val uri=new java.net.URI(settings.publicUrl)
       val publicUri=new java.net.URI("dacp",null,uri.getHost,uri.getPort,"/"+d.name,null,null).toASCIIString
       entries.addObject().put("name",d.name).put("uri",publicUri).put("description",d.description)

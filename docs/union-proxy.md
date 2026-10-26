@@ -44,8 +44,8 @@ tasks:
     uri: dacp://union.example:19860/ds-k7m2-9wqr/observations
     view: bytes
 - id: summarize
-  title: Summarize observations
-  operator: identity@1.3
+  title: Parse observation CSV
+  operator: piflow_csv_parser@1.0
   inputs:
     source: read_summarize_source
 outputs:

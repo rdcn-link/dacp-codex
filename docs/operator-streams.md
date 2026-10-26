@@ -1,20 +1,20 @@
 # 基于 Item 的算子输入与纯流式输出
 
 已通过 Flight DoExchange、Python Shell/SDK 和 Scala SDK 实现。当前端口支持 bytes 和 records；其他科学数据表示需要明确扩展契约。每个输出端口最多有一个下游消费者，需要复制时使用独立端口。多个输入端口按名称字典序消费。
-源算子可以声明 `inputs: {}`，任务也显式填写 `inputs: {}`；不需要虚构触发 Item。汇算子的必选推导方法返回空的输出映射。Shell 直接使用 `run live_ticks@1.0 --params '{"max_records":3}'`，省略 `--input`。本地任务默认在所连接节点执行，也可显式指定 `node`。
+源算子可以声明 `inputs: {}`，任务也显式填写 `inputs: {}`；不需要虚构触发 Item。汇算子的必选推导方法返回空的输出映射。Shell 直接使用 `run read_item@1.0 --params '{"uri":"dacp://localhost:18861/weather/observations","view":"bytes"}'`，省略 `--input`。本地任务默认在所连接节点执行，也可显式指定 `node`。
 
 
-详细格式、控制依赖和零输出步骤见[作业说明](jobs.md)。
+详细格式、流依赖和零输出步骤见[作业说明](jobs.md)。
 
 ## 用户使用契约
 
-所有算子输出都是流。不提供保存文件选项、结果 Dataset 模式或结果模式选择。Shell 和 SDK 直接消费流；算子不发布输出 Dataset，也不返回持久化 Dataset URI。YAML 作业可描述流水线，其中输出名称表示流之间的连接，而不是已保存的数据集。
+算子通过流返回输出；选定边界可通过独立的[执行策略](materialization.md)物化。不提供保存文件选项、结果 Dataset 模式或结果模式选择。Shell 和 SDK 直接消费流；算子不发布输出 Dataset，也不返回持久化 Dataset URI。YAML 作业可描述流水线，其中输出名称表示流之间的连接，而不是已保存的数据集。
 
 Shell 用法：
 
 ```text
-run scala_identity@1.0 --input source=/reports/orders
-run format_convert@1.1 --input source=/reports/orders --params '{"compression":"zstd"}'
+run piflow_csv_parser@1.0 --input source=/observations --view bytes
+run piflow_filter@1.0 --input source=/observations --view records --params '{"condition":"CAST(temperature AS REAL) >= 30"}'
 submit pipeline.yaml
 ```
 

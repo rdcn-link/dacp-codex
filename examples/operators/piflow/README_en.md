@@ -4,6 +4,8 @@ Adapt operators from [PiFlow EcoFlow](https://github.com/cas-bigdatalab/piflow/t
 
 Original Scala / Java sources are retained under `upstream/`; see [LICENSE](LICENSE). Each operator's source archive includes its adaptation, change descriptions, and input/output contracts. This is not a compatibility executor for PiFlow workflow files; tasks use DACP's own port and parameter contracts.
 
+The current collaboration deployment publishes only CSV parser, filter, execute SQL, merge, join and CSV save at version `1.0`. See the [current catalog](../../../docs/operator-catalog_en.md) for runnable parameters and workflows. The sections below describe the full source project and adaptation scope, not a fully published online repository; `/v1/operators` is authoritative.
+
 ## Authoring and usage
 
 Each Python operator under `operators/` implements `process(ctx)` and uses the DACP SDK to read and write Arrow streams. Published names have a `piflow_` prefix. Ordinary single-input/output ports are `source` / `result`, and two-input operators generally use `left` / `right`; [specs.json](specs.json) is authoritative. It also records example parameters and execution modes.
@@ -35,7 +37,7 @@ Publication runs the corresponding test first, builds the wheel, source ZIP, and
 
 ## Scope and semantic differences
 
-The [port review](review_en.md) lists all 67 upstream operators, corresponding names, status, and limitations; the [Chinese review](review.md) is maintained alongside it. Only `published` entries in `inventory.json` have been published; other statuses do not indicate callable implementations. Parameters, ports, executors, and execution modes are in `specs.json`. Build scientific Scala operators using [spark/README_en.md](spark/README_en.md).
+The [port review](review_en.md) lists all 67 upstream operators, corresponding names, status, and limitations; the [Chinese review](review.md) is maintained alongside it. States in `inventory.json` track adaptation work and do not replace the actual inventory of the current repository. Parameters, ports, executors, and execution modes are in `specs.json`. Build scientific Scala operators using [spark/README_en.md](spark/README_en.md).
 
 Generic SQL and chart-data operators use SQLite, so not every Spark SQL function is supported. Chart operators return records for plotting, without rendering images. `Fork` has fixed `left/right` outputs; `Route` has fixed `result/matched/unmatched` outputs. CSV and Excel readers return string columns without type inference; empty Excel cells become null. File-writing operators return byte streams rather than requiring server-side result files. Input/output examples are in the review.
 

@@ -1,0 +1,229 @@
+{
+  "input_rows": 500000,
+  "input_bytes": 18500050,
+  "workflow": {
+    "job": "Stream versus every-step materialization benchmark: 500000 weather observations",
+    "tasks": [
+      {
+        "id": "read",
+        "node": "nd-t8nx-jkw4",
+        "operator": "read_item@1.0",
+        "inputs": {},
+        "params": {
+          "uri": "dacp://localhost:19860/ds-6zmr-crvh/benchmark",
+          "view": "bytes"
+        }
+      },
+      {
+        "id": "parse",
+        "node": "nd-t8nx-jkw4",
+        "operator": "piflow_csv_parser@1.0",
+        "inputs": {
+          "source": "read"
+        }
+      },
+      {
+        "id": "quality",
+        "node": "nd-bhda-5mjy",
+        "operator": "piflow_filter@1.0",
+        "inputs": {
+          "source": "parse"
+        },
+        "params": {
+          "condition": "quality = '0'"
+        }
+      },
+      {
+        "id": "range",
+        "node": "nd-sd97-crkd",
+        "operator": "piflow_filter@1.0",
+        "inputs": {
+          "source": "quality"
+        },
+        "params": {
+          "condition": "CAST(temperature AS REAL) BETWEEN -90 AND 60"
+        }
+      }
+    ],
+    "outputs": {
+      "result": "range"
+    }
+  },
+  "policies": {
+    "stream": {
+      "materialization": {
+        "allowed": false,
+        "default": "stream"
+      }
+    },
+    "materialize": {
+      "materialization": {
+        "allowed": true,
+        "default": "materialize"
+      }
+    }
+  },
+  "samples": [
+    {
+      "mode": "stream",
+      "warmup": true,
+      "repeat": -1,
+      "job_id": "9952959b-65e0-44e9-86f2-15a504d7a0ed",
+      "first_seconds": 18.50227801396977,
+      "drain_seconds": 43.8920771300327,
+      "success_seconds": 43.90057776100002,
+      "rows": 500000,
+      "output_payload_bytes": 29094344,
+      "sha256": "db1cc0a924d3b22be20f55bdab1b8bbd33b899eda0bf6b0355437fb3cd430245",
+      "new_persisted_bytes": 0,
+      "new_persisted_file_count": 0
+    },
+    {
+      "mode": "materialize",
+      "warmup": true,
+      "repeat": -1,
+      "job_id": "bb0907bf-7654-4ecd-a854-4c80d48f17dc",
+      "first_seconds": 19.578043146058917,
+      "drain_seconds": 38.071909173973836,
+      "success_seconds": 38.23516653699335,
+      "rows": 500000,
+      "output_payload_bytes": 29094344,
+      "sha256": "db1cc0a924d3b22be20f55bdab1b8bbd33b899eda0bf6b0355437fb3cd430245",
+      "new_persisted_bytes": 106275999,
+      "committed_steps": [
+        "parse",
+        "quality",
+        "range",
+        "read"
+      ],
+      "new_persisted_file_count": 8
+    },
+    {
+      "mode": "stream",
+      "warmup": false,
+      "repeat": 0,
+      "job_id": "e137d679-071e-4e59-8bc5-584235a428eb",
+      "first_seconds": 13.655342563986778,
+      "drain_seconds": 32.244330293964595,
+      "success_seconds": 32.24705389200244,
+      "rows": 500000,
+      "output_payload_bytes": 29094344,
+      "sha256": "db1cc0a924d3b22be20f55bdab1b8bbd33b899eda0bf6b0355437fb3cd430245",
+      "new_persisted_bytes": 0,
+      "new_persisted_file_count": 0
+    },
+    {
+      "mode": "materialize",
+      "warmup": false,
+      "repeat": 0,
+      "job_id": "36e8c964-98bb-4fd2-9fc4-4eb87bc1e837",
+      "first_seconds": 23.46508830797393,
+      "drain_seconds": 37.334950931952335,
+      "success_seconds": 37.50982654397376,
+      "rows": 500000,
+      "output_payload_bytes": 29094344,
+      "sha256": "db1cc0a924d3b22be20f55bdab1b8bbd33b899eda0bf6b0355437fb3cd430245",
+      "new_persisted_bytes": 106275999,
+      "committed_steps": [
+        "parse",
+        "quality",
+        "range",
+        "read"
+      ],
+      "new_persisted_file_count": 8
+    },
+    {
+      "mode": "materialize",
+      "warmup": false,
+      "repeat": 1,
+      "job_id": "8a7c0bd7-c615-4984-86bc-069cad33a361",
+      "first_seconds": 11.83676270605065,
+      "drain_seconds": 24.841739458963275,
+      "success_seconds": 24.86671991297044,
+      "rows": 500000,
+      "output_payload_bytes": 29094344,
+      "sha256": "db1cc0a924d3b22be20f55bdab1b8bbd33b899eda0bf6b0355437fb3cd430245",
+      "new_persisted_bytes": 106275999,
+      "committed_steps": [
+        "parse",
+        "quality",
+        "range",
+        "read"
+      ],
+      "new_persisted_file_count": 8
+    },
+    {
+      "mode": "stream",
+      "warmup": false,
+      "repeat": 1,
+      "job_id": "fdaba746-0964-47b8-812c-277c3da03f11",
+      "first_seconds": 13.555428839987144,
+      "drain_seconds": 26.418559003039263,
+      "success_seconds": 26.517129993997514,
+      "rows": 500000,
+      "output_payload_bytes": 29094344,
+      "sha256": "db1cc0a924d3b22be20f55bdab1b8bbd33b899eda0bf6b0355437fb3cd430245",
+      "new_persisted_bytes": 0,
+      "new_persisted_file_count": 0
+    },
+    {
+      "mode": "stream",
+      "warmup": false,
+      "repeat": 2,
+      "job_id": "5edc31f1-0711-4136-90f7-33c812f338be",
+      "first_seconds": 10.988690637983382,
+      "drain_seconds": 23.79566226992756,
+      "success_seconds": 23.82686437596567,
+      "rows": 500000,
+      "output_payload_bytes": 29094344,
+      "sha256": "db1cc0a924d3b22be20f55bdab1b8bbd33b899eda0bf6b0355437fb3cd430245",
+      "new_persisted_bytes": 0,
+      "new_persisted_file_count": 0
+    },
+    {
+      "mode": "materialize",
+      "warmup": false,
+      "repeat": 2,
+      "job_id": "37f85f62-aa51-4567-8e4e-305386f30dee",
+      "first_seconds": 9.640370541019365,
+      "drain_seconds": 22.049113610992208,
+      "success_seconds": 22.233241169014946,
+      "rows": 500000,
+      "output_payload_bytes": 29094344,
+      "sha256": "db1cc0a924d3b22be20f55bdab1b8bbd33b899eda0bf6b0355437fb3cd430245",
+      "new_persisted_bytes": 106275999,
+      "committed_steps": [
+        "parse",
+        "quality",
+        "range",
+        "read"
+      ],
+      "new_persisted_file_count": 8
+    }
+  ],
+  "notes": "materialize writes concurrently with streaming and fsync commits; not write-then-read batch barriers. All nodes on one physical host. Timings include submit, startup, transfer, drain and success commit. Alternating order, same operators and no retry.",
+  "stream": {
+    "median_seconds": 26.517129993997514,
+    "median_first_seconds": 13.555428839987144,
+    "seconds": [
+      32.24705389200244,
+      26.517129993997514,
+      23.82686437596567
+    ]
+  },
+  "materialize": {
+    "median_seconds": 24.86671991297044,
+    "median_first_seconds": 11.83676270605065,
+    "seconds": [
+      37.50982654397376,
+      24.86671991297044,
+      22.233241169014946
+    ]
+  },
+  "stream_speedup": 0.9377606067700137,
+  "environment": {
+    "host": "Linux-6.8.0-85-generic-x86_64-with-glibc2.39",
+    "cpus": 16,
+    "placement": "three node processes on one host; loopback Flight; XFS /home on /dev/vdb"
+  }
+}

@@ -60,7 +60,7 @@ tasks:
     output_format: csv
 ```
 
-SDK 使用 `with Job.run(node, yaml_text, **credentials) as events:`，迭代事件消费流，退出上下文时关闭。`run identity@1.1 --input source=/orders` 仍选择仓库算子；算子 ID 与内嵌源码互斥。
+SDK 使用 `with Job.run(node, yaml_text, **credentials) as events:`，迭代事件消费流，退出上下文时关闭。`run piflow_csv_parser@1.0 --input source=/observations --view bytes` 仍选择仓库算子；算子 ID 与内嵌源码互斥。
 
 语言启动插件实现 `OperatorExecutor.sourceCommand`，通过 `META-INF/services/dacp.OperatorExecutor` 注册，与制品启动器共用发现机制。默认实现拒绝源码执行，因此仅开启 DEBUG 不会自动使任意插件接受源码。管理员在 `source_runtimes` 选择插件 ID；新增语言无需修改核心注册表或客户端。
 
