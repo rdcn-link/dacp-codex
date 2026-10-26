@@ -81,9 +81,8 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     require(tasks.map(t=>Json.text(t,"id")).distinct.size==tasks.size,"duplicate task")
     require(tasks.map(t=>t.path("inputs").size()+t.path("outputs").size()).sum<=1024,"subjob exceeds 1024 connected ports")
     tasks.foreach { t=>
-      Json.fields(t,Set("id","operator","params","inputs","outputs"),Set("title","materialize","replay_from","read_source","input_descriptors"));Json.id(Json.text(t,"id"))
+      Json.fields(t,Set("id","operator","params","inputs","outputs"),Set("title","materialize","replay_from","read_source"));Json.id(Json.text(t,"id"))
       if(t.has("title"))require(t.path("title").isTextual && t.path("title").asText.trim.nonEmpty && t.path("title").asText.length<=256 && !t.path("title").asText.exists(_.isControl),"invalid task title")
-      if(t.has("input_descriptors"))require(StructureInference.ports(t.path("input_descriptors")).keySet==t.path("inputs").fieldNames.asScala.toSet,"inference input ports do not match task")
       val selected=if(t.has("materialize"))Json.strings(t,"materialize")else Vector.empty
       require(selected.distinct.size==selected.size && selected.forall(t.path("outputs").has),"invalid materialization ports")
       if(selected.nonEmpty || t.has("replay_from"))require(materialization.nonEmpty,"node materialization_store is not configured")
@@ -314,9 +313,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       if(runner.nonEmpty || definitions.size<2){fusionReason="single_step_or_test_runner";return None}
       val readers=definitions.filter(_.path("operator").asText==Jobs.ReadItem).map(t=>t.path("id").asText->t).toMap
       if(readers.values.exists(t=>t.path("outputs").size()==0 || t.path("outputs").elements.asScala.exists(_.asText!=tls.identity))){fusionReason="selected_transport_source";return None}
-      if(definitions.exists(t=> !t.has("input_descriptors"))){fusionReason="input_metadata_not_provided";return None}
       val external=scala.collection.mutable.Map.empty[String,(String,String,JsonNode)]
-      val descriptors=scala.collection.mutable.Map.empty[String,StreamDescriptor]
       val tasks=definitions.filterNot(t=>readers.contains(t.path("id").asText)).map { t=>
         val id=t.path("id").asText
         val bindings=t.path("inputs").fields.asScala.map { e=>
@@ -329,7 +326,6 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           }.getOrElse(original)
           val binding=if(b.has("uri") || b.has("origin")){
             val marker=config.uri("union","/"+id+"_"+e.getKey);external(marker)=(id,e.getKey,b)
-            descriptors(marker)=StructureInference.descriptor(t.path("input_descriptors").path(e.getKey))
             InputBinding(uri=Some(marker))
           }else InputBinding(task=Some(b.path("task").asText),port=b.path("port").asText)
           e.getKey->binding
@@ -337,7 +333,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         Task(id,bindings,t.path("operator").asText,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),title=Option(t.get("title")).map(_.asText))
       }
       val connected=definitions.filterNot(t=>readers.contains(t.path("id").asText)).flatMap(t=>t.path("outputs").fields.asScala.filter(_.getValue.asText!=tls.identity).map(e=>(t.path("id").asText,e.getKey))).zipWithIndex.map{case(pair,i)=>s"p$i"->pair}.toMap
-      OperatorGroups.prepare(config,JobPlan(tasks,connected),descriptors.toMap) match {
+      OperatorGroups.prepare(config,JobPlan(tasks,connected)) match {
         case Left(reason)=>fusionReason=reason;None
         case Right(group)=>executionMode="shared_process";fusionReason="compatible";Some((group,external.toMap,connected))
       }

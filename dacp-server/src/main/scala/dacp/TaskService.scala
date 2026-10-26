@@ -12,7 +12,6 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
   private val permits=config.taskSlots
   private val jobs=new Semaphore(config.maxConcurrentTasks)
   private val active=java.util.concurrent.ConcurrentHashMap.newKeySet[StreamCancel]()
-  protected def inferPlan(plan:JobPlan,c:StreamCancel):com.fasterxml.jackson.databind.JsonNode=WorkflowInference.plan(config,allocator,plan,c)
   private def join(t:Thread,c:StreamCancel):Unit={while(t.isAlive){c.active();t.join(50)};c.active()}
   def exchange(ctx: FlightProducer.CallContext,reader: FlightStream,writer: FlightProducer.ServerStreamListener): Unit = {
     val serviceLease=if(dacp.union.Rpc.isAuthenticatedCall && dacp.union.Rpc.principal.kind=="union")Some(dacp.union.Rpc.principal.active)else None
@@ -57,10 +56,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         require(timeout<=config.executionTimeoutSeconds,"timeout_seconds exceeds server limit")
         require(policy.maxRetries==0 || request.getRetryAware,"automatic retries require a retry-aware client callback")
         val scoped=new StreamCancel(()=>{cancel.checkState();false},timeout);cancel.add(scoped)
-        val inferred=previous.map(_.path("structure_inference")).getOrElse(inferPlan(plan,scoped))
-        require(inferred.isObject,"original structure inference unavailable")
         val detail=dacp.union.Json.obj().put("job_yaml",yaml).put("execution_mode","isolated_steps")
-        detail.set[com.fasterxml.jackson.databind.JsonNode]("structure_inference",inferred)
         detail.set[com.fasterxml.jackson.databind.JsonNode]("execution_policy",policy.submitted)
         val effective=policy.effective.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();effective.put("timeout_seconds",timeout)
         detail.set[com.fasterxml.jackson.databind.JsonNode]("effective_execution_policy",effective);replay.foreach(detail.put("replay_of",_));record.update("running",detail)

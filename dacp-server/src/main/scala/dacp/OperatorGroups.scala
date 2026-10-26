@@ -6,7 +6,7 @@ import com.github.dockerjava.httpclient5.ApacheDockerHttpClient
 case class PreparedOperatorGroup(task:Task,operator:ResolvedOperator,inputs:Map[String,InputBinding],outputs:Map[String,(String,String)],transportSources:Map[String,String]=Map.empty)
 /** Placement and exact environment identity are core policy; fusion belongs to launch plugins. */
 object OperatorGroups {
-  def prepare(config:Config,plan:JobPlan,externalDescriptors:Map[String,StreamDescriptor]=Map.empty):Either[String,PreparedOperatorGroup]={
+  def prepare(config:Config,plan:JobPlan):Either[String,PreparedOperatorGroup]={
     val readers=plan.tasks.filter(_.operator==Jobs.ReadItem).map(t=>t.id->t).toMap
     if(readers.nonEmpty){
       val consumed=plan.tasks.flatMap(_.inputs.values.flatMap(_.task)).toSet
@@ -17,7 +17,7 @@ object OperatorGroups {
       })})
       val external=lowered.tasks.flatMap(t=>t.inputs.toVector.sortBy(_._1).collect{case(p,b)if b.uri.nonEmpty=>(t.id,p)})
       val sources=external.zipWithIndex.flatMap {case((id,port),i)=>plan.tasks.find(_.id==id).get.inputs(port).task.filter(readers.contains).map(read=>s"i$i"->read)}.toMap
-      return prepare(config,lowered,externalDescriptors).map(_.copy(transportSources=sources))
+      return prepare(config,lowered).map(_.copy(transportSources=sources))
     }
     if(!config.operatorFusionEnabled)return Left("disabled_by_configuration")
     if(plan.outputs.isEmpty)return Left("no_selected_outputs")
@@ -27,28 +27,15 @@ object OperatorGroups {
     val transport=new ApacheDockerHttpClient.Builder().dockerHost(dc.getDockerHost).sslConfig(dc.getSSLConfig).build()
     val docker=DockerClientImpl.getInstance(dc,transport)
     try {
-      val inferred=scala.collection.mutable.Map.empty[String,ResolvedOperator]
-      val cancel=new StreamCancel(timeoutSeconds=120)
-      try {
-        plan.tasks.foreach { t=>
-          val op=OperatorLibrary.resolve(config,t.operator,docker)
-          val inputs=t.inputs.map{case(port,b)=>
-            val d=b.uri match {
-              case Some(uri) if externalDescriptors.contains(uri)=>externalDescriptors(uri)
-              case Some(uri)=>
-                val params=new java.util.LinkedHashMap[String,Object]();params.put("uri",uri);params.put("view",b.view)
-                val allocator=new org.apache.arrow.memory.RootAllocator()
-                try WorkflowInference.task(config,allocator,Task("read",Map.empty,Jobs.ReadItem,params),Map.empty,cancel).outputs("result")finally allocator.close()
-              case None=>OperatorInference.descriptor(inferred(b.task.get).outputs.getOrElse(b.port,throw new IllegalArgumentException("unknown upstream port")))
-            };port->d
-          }
-          val result=OperatorInference.run(config,docker,op,InferenceRequest(inputs,Data.mapper.valueToTree(t.params)),cancel)
-          result.requireValid()
-          inferred(t.id)=op.copy(outputs=result.outputs.view.mapValues(OperatorInference.contract).toMap,
-            program=op.program.map(_.copy(outputs=result.outputs.view.mapValues(_.representations).toMap)))
-        }
-        prepareResolved(config,plan,inferred.toMap)
-      }finally cancel.close()
+      // Connected ports determine routing; actual stream headers supply output metadata.
+      // Planning must never invoke operator code or open input streams.
+      val contracts=plan.tasks.map { t=>
+        val op=OperatorLibrary.resolve(config,t.operator,docker)
+        val ports=plan.tasks.flatMap(_.inputs.values.collect{case b if b.task.contains(t.id)=>b.port}).toSet ++ plan.outputs.values.collect{case(id,p) if id==t.id=>p}
+        val outputs=ports.map(_->PortContract(Set("bytes","records"),Set.empty,None)).toMap
+        t.id->op.copy(outputs=outputs,program=op.program.map(_.copy(outputs=outputs.view.mapValues(_.representations).toMap)))
+      }.toMap
+      prepareResolved(config,plan,contracts)
     }finally{docker.close();transport.close()}
   }
   private[dacp] def prepareResolved(config:Config,plan:JobPlan,operators:Map[String,ResolvedOperator]):Either[String,PreparedOperatorGroup]={

@@ -154,13 +154,12 @@ def main(directory):
             begun=set();ended=set();ports=set(step['outputs'])
             def output(h,payload):
                 active();port=h['port'];key=(task,port)
-                if port not in ports:raise ValueError('undeclared output')
                 kind=h['type']
                 if kind=='start':
                     if port in begun:raise ValueError('duplicate output')
-                    validate(step['outputs'][port],h);begun.add(port)
+                    validate(step['outputs'].get(port,dict(representations=['bytes','records'],formats=[])),h);begun.add(port)
                 elif kind=='data':
-                    if begun!=ports or port in ended:raise ValueError('invalid output data')
+                    if port not in begun or port in ended:raise ValueError('invalid output data')
                 elif kind=='end':
                     if port not in begun or port in ended:raise ValueError('invalid output end')
                     ended.add(port)
@@ -177,7 +176,7 @@ def main(directory):
                             if len(metadata)==len(selected):metadata_ready.set()
             emit(dict(type='task_state',task=task,state='running',runtime_pid=os.getpid()))
             with module.OperatorContext(['operator',str(d),str(d/'params.json')],input_streams=streams,emit=output) as ctx:functions[task](ctx)
-            if ended!=ports:raise ValueError('incomplete output')
+            if ended!=begun or not ports.issubset(ended):raise ValueError('incomplete output')
             emit(dict(type='task_state',task=task,state='succeeded',runtime_pid=os.getpid()))
         except BaseException as e:fail(e);raise
         finally:

@@ -31,11 +31,11 @@ val report = dacp.client.Job.infer("dacp://localhost:18861", workflowText)
 val unionReport = union.infer(workflowText)
 ```
 
-Before execution, inference propagates through steps, checking compatible input representations, formats and known schemas, referenced output existence, and operator error diagnostics. Unknown structures propagate without being treated as validated. Immediately before starting each step, the method is called again using actual input stream headers; output ports, representations, formats and known schemas must satisfy the inferred contracts. Sinks need no artificial output port.
+Structure inference runs only when explicitly requested with `infer`, for workflow authoring, validation, and preview. Submission, scheduling, retries, replay, and step execution do not invoke inference automatically; submitted workflows are assumed valid. Execution uses representations, formats, and schemas from actual stream headers, retaining protocol integrity, connected-port, authorization, and resource checks. Sinks need no artificial output port.
 
 ## Shared request and response
 
-Programs receive `infer /input/inference.json`, read the request file, and write one JSON response to stdout. Logs go to stderr; no Arrow data frames are emitted.
+One-shot command-line inference uses `infer /input/inference.json`, reads the request file, and writes one JSON response to stdout. Servers use the persistent worker protocol below. Logs go to stderr; no Arrow data frames are emitted.
 
 Request:
 
@@ -65,7 +65,7 @@ Diagnostics take the form `{"severity":"error","code":"unknown_column","message"
 
 ## Python authors
 
-`BytesOperator` and `RecordsOperator` implement inference. The records template reuses `output_schema` and preserves unknowns when the input schema is unknown. Custom multiport operators implement `infer_outputs(inputs, params)`, sharing it between editing and execution validation:
+`BytesOperator` and `RecordsOperator` implement inference. The records template reuses `output_schema` and preserves unknowns when the input schema is unknown. Custom multiport operators implement `infer_outputs(inputs, params)`, for explicit use during editing:
 
 ```python
 from dacp_operator import descriptor, result, run_operator
@@ -107,12 +107,43 @@ object Uppercase extends Operator {
 }
 ```
 
-The native `command` executor's adapter method infers bytes ports from stdin/stdout configuration without starting the executable. External executor plugins implement `inferenceCommand` (`sourceInferenceCommand` for source submissions) using the same JSON protocol, without core registry changes. Manifests and plugin settings must not establish a separate output schema source.
+The native `command` executor's adapter method infers bytes ports from stdin/stdout configuration without starting the executable. External executor plugins implement `inferenceWorkerCommand` (`sourceInferenceWorkerCommand` for source submissions) using the same JSON protocol, without core registry changes. Manifests and plugin settings must not establish a separate output schema source.
 
 ## Isolation and limits
 
-Inference methods perform metadata computation only, without reading actual data, contacting external services, or causing side effects. The server invokes them in a networkless container with a read-only root filesystem, limited to 15 seconds, 512 MiB memory, 64 processes, and one CPU. Requests and responses are each limited to 1 MiB. Only inference requests and read-only operator artifacts are mounted, never datasets. The core `read_item` transport operator queries Flight metadata without opening content streams; dataset plugins should also avoid scanning content when describing Items.
+Inference methods perform metadata computation only, without reading actual data, contacting external services, or causing side effects. The server invokes them in isolated worker containers with no network and a read-only root filesystem. Each worker is limited to 512 MiB memory, 64 processes, and one CPU. Requests and responses are each limited to 1 MiB. Only metadata pipes, worker adapter code, and read-only operator artifacts are mounted, never datasets or credentials. The core `read_item` transport operator queries Flight metadata without opening content streams; dataset plugins should also avoid scanning content when describing Items.
 
 Rebuild affected runtime environments and operator packages after SDK/runtime updates. Publication does not execute user code in the repository process; execution nodes verify inference capability by invoking it. Remove old manifest output declarations directly; there is no compatibility path.
 
 Contract tests: `sbt test` in `dacp-operator-sdk` and `dacp-server`, plus `.venv/bin/python scripts/test-operator-inference.py` from the repository root.
+
+## On-demand startup and idle reclamation
+
+Nodes start workers on demand for explicit inference. Requests reuse a worker only within the same node instance, caller identity, operator artifact, runtime image, and launch configuration. Parameters and input structures are excluded from this identity: every request invokes inference again, without a result cache. Different callers, artifact contents, or images never share a worker. Python modules or wheels initialize/install once; JVMs start and load once. SDK template instances are reused inside the worker. Inference methods must be deterministic and independent of previous requests.
+
+Top-level node configuration:
+
+```yaml
+inference_workers:
+  max_workers: 4
+  idle_seconds: 60
+  timeout_seconds: 60
+```
+
+These are the defaults. Integer ranges are 1–64 for `max_workers`, 1–86400 for `idle_seconds`, and 1–120 for `timeout_seconds`. The deadline includes queueing, cold startup, and computation; an enclosing Flight call may have a shorter deadline. Each worker handles requests serially. At capacity, the least recently used idle worker is evicted, or the request waits for capacity. A one-second reaper destroys workers past their idle deadline. Exceptions, malformed responses, timeouts, or cancellation during an active request destroy its worker; the next explicit request starts a new one. The failed inference is not automatically retried. Cancelling a queued request does not destroy a worker serving another request. Node shutdown cleans up all workers.
+
+This reuses runtime resources, never task execution containers. Submission, scheduling, execution, retries, and replay still do not invoke inference automatically. Union forwards explicit inference to members; members manage the workers, and Union never loads their operator code.
+
+## Worker protocol for executor plugins
+
+External executors register through `META-INF/services/dacp.OperatorExecutor`, with JARs and dependencies installed in `plugin_directory`. Implement `inferenceWorkerCommand(program, artifactPath)` and, for source support, `sourceInferenceWorkerCommand(program, artifactPath)` without core registry or client changes. The default implementation replaces ordinary launch arguments with:
+
+```text
+infer-worker /input/requests.fifo /input/responses.fifo
+```
+
+Open the request FIFO for reading and the response FIFO for writing. First write a big-endian 32-bit zero to the response pipe to signal readiness. Then repeatedly read a big-endian 32-bit length followed by UTF-8 JSON, and return a JSON inference result with the same framing. Lengths must be 1–1048576 bytes. Request and result JSON follow the shared protocol above. Keep the process and loaded operator alive between requests. EOF between requests ends the worker; truncation, oversized frames, method exceptions, or invalid results terminate it with stderr diagnostics. Never put logs in the metadata pipes or send/receive actual data streams.
+
+The Java/Scala SDK's `OperatorRunner.infer` and `Operator.main`, and Python's `run_inference`, `run_operator`, and `Operator.main`, support this mode. Built-in JVM, Python, and native command executors supply adapters and the current worker SDK. Source compilation and wheel installation happen only during worker initialization. Operators with custom container entrypoints must include a worker-capable SDK or implement this protocol. The native adapter infers structure without launching the executable.
+
+Verification: `InferenceWorkerPoolSpec` covers reuse, capacity, idle reclamation, recovery, cancellation, timeout, and shutdown. SDK `InferenceSpec` and `scripts/test-operator-inference.py` cover multiple requests and framing limits. `scripts/test-inference-workers.py` uses real containers and Flight to verify Python/JVM process reuse with changing parameters, idle reclamation, and failure recovery.

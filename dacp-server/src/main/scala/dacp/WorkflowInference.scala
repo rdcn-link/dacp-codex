@@ -66,7 +66,7 @@ object WorkflowInference {
               ResolvedOperator(docker.inspectImageCmd(runtime.image).exec().getId,Some(file),Some("/operator/operator.source"),OperatorCommand(),
                 inputs.keys.map(_->contract).toMap,Map.empty,runtime.executor,Some(OperatorProgram(code.runtime,code.entrypoint,Some(file))))
           }
-          OperatorInference.run(config,docker,op,InferenceRequest(inputs,Data.mapper.valueToTree(t.params)),cancel,t.source.nonEmpty)
+          OperatorInference.run(config,op,InferenceRequest(inputs,Data.mapper.valueToTree(t.params)),cancel,t.source.nonEmpty)
         }finally Data.deleteTree(tmp)
       }
     }
@@ -83,7 +83,7 @@ object WorkflowInference {
       else {
         val client=cancel.add(NodeConnection.open(config,allocator,target))
         try {
-          val results=client.doAction(new Action("dacp.infer",Data.mapper.writeValueAsBytes(taskJson(t,inputs))),CallOptions.timeout(20,TimeUnit.SECONDS))
+          val results=client.doAction(new Action("dacp.infer",Data.mapper.writeValueAsBytes(taskJson(t,inputs))),CallOptions.timeout(math.min(120L,cancel.remainingSeconds),TimeUnit.SECONDS))
           require(results.hasNext,"missing remote inference result");val raw=results.next().getBody
           require(raw.length<=StructureInference.MaxBytes && !results.hasNext,"invalid remote inference response")
           StructureInference.result(Data.mapper.readTree(raw))

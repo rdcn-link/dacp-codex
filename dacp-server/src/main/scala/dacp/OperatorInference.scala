@@ -1,16 +1,11 @@
 package dacp
 
 import java.nio.file.{Files,Path}
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
-import scala.jdk.CollectionConverters._
 import com.github.dockerjava.api.DockerClient
-import com.github.dockerjava.api.model.{Bind,Volume,HostConfig,AccessMode,Frame,StreamType,LogConfig}
-import com.github.dockerjava.api.async.ResultCallback
 import com.github.dockerjava.core.{DefaultDockerClientConfig,DockerClientImpl}
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient
 
-/** Untrusted inference methods run in short-lived, networkless containers, never the host JVM. */
+/** Explicit inference reuses isolated workers; operator code never loads into the host JVM. */
 object OperatorInference {
   def withDocker[T](f:DockerClient=>T):T={
     val dc=DefaultDockerClientConfig.createDefaultConfigBuilder().build()
@@ -32,70 +27,34 @@ object OperatorInference {
     }
   }
   def apply(config:Config,op:ResolvedOperator,request:InferenceRequest,cancel:StreamCancel,
-    source:Boolean=false):InferenceResult=withDocker(d=>run(config,d,op,request,cancel,source))
-  def run(config:Config,docker:DockerClient,op:ResolvedOperator,request:InferenceRequest,cancel:StreamCancel,
+    source:Boolean=false):InferenceResult=run(config,op,request,cancel,source)
+  def run(config:Config,op:ResolvedOperator,request:InferenceRequest,cancel:StreamCancel,
     source:Boolean=false):InferenceResult={
     validateInputs(op,request.inputs)
     val program=op.program.getOrElse(throw new IllegalArgumentException("operator has no inference program"))
     val plugin=config.plugins.byId(classOf[OperatorExecutor],op.executor)
-    val command=if(source)plugin.sourceInferenceCommand(program,op.artifactPath.get)else plugin.inferenceCommand(program,op.artifactPath)
-    val tmp=Files.createTempDirectory("dacp-infer-");var id:String=null
-    // Container UIDs may differ from the host service account. Only metadata is
-    // mounted here; credentials and actual input data are never copied into it.
-    Files.setPosixFilePermissions(tmp,java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"))
-    val stdout=new java.io.ByteArrayOutputStream();val stderr=new java.io.ByteArrayOutputStream()
-    val failure=new AtomicReference[Throwable]()
-    try {
-      val body=StructureInference.mapper.writeValueAsBytes(StructureInference.json(request))
-      require(body.length<=StructureInference.MaxBytes,"inference request exceeds 1 MiB")
-      Files.write(tmp.resolve("inference.json"),body)
-      command.files.foreach{case(name,bytes)=>require(name.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*") && name!="inference.json","invalid inference resource");Files.write(tmp.resolve(name),bytes)}
-      val resources=Files.list(tmp)
-      try resources.iterator.asScala.foreach(p=>Files.setPosixFilePermissions(p,java.nio.file.attribute.PosixFilePermissions.fromString("rw-r--r--")))finally resources.close()
-      command.mounts.keys.foreach(p=>require(p.matches("/operator/[A-Za-z0-9_-][A-Za-z0-9_.-]*"),"invalid inference mount"))
-      // Cache files and user artifacts may be 0600/0400. Dropped container
-      // capabilities must not require changing permissions on the originals.
-      val artifacts=Files.createDirectory(tmp.resolve("artifacts"))
-      Files.setPosixFilePermissions(artifacts,java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"))
-      val mounts=op.artifact.zip(op.artifactPath).toVector++command.mounts.toVector.map{case(path,file)=>file->path}
-      val binds=Vector(new Bind(tmp.toAbsolutePath.toString,new Volume("/input"),AccessMode.ro))++mounts.zipWithIndex.map{case((file,path),index)=>
-        val staged=artifacts.resolve(index.toString)
-        Files.copy(file,staged)
-        Files.setPosixFilePermissions(staged,java.nio.file.attribute.PosixFilePermissions.fromString("rw-r--r--"))
-        new Bind(staged.toAbsolutePath.toString,new Volume(path),AccessMode.ro)
-      }
-      val host=HostConfig.newHostConfig().withBinds(binds.asJava).withNetworkMode("none").withReadonlyRootfs(true)
-        .withMemory(512L*1024*1024).withPidsLimit(64L).withNanoCPUs(1000000000L)
-        .withTmpFs(Map("/tmp"->"rw,noexec,nosuid,nodev,size=128m").asJava).withCapDrop(com.github.dockerjava.api.model.Capability.ALL)
-        .withSecurityOpts(Vector("no-new-privileges:true").asJava).withLogConfig(new LogConfig(LogConfig.LoggingType.NONE))
-      val create=docker.createContainerCmd(op.image).withHostConfig(host).withCmd(command.arguments.asJava)
-        .withEnv((command.environment+("DACP_OPERATOR"->program.reference)).map{case(k,v)=>s"$k=$v"}.toVector.asJava)
-        .withLabels(Map("dacp.purpose"->"structure_inference").asJava)
-      command.entrypoint.foreach(v=>create.withEntrypoint(v.asJava))
-      id=create.exec().getId;val container=id
-      val cleanup=new AutoCloseable{def close():Unit=try docker.removeContainerCmd(container).withForce(true).exec()catch{case _:Throwable=>()}}
-      cancel.add(cleanup)
-      val callback=new ResultCallback.Adapter[Frame]{
-        override def onNext(frame:Frame):Unit=try {
-          val out=if(frame.getStreamType==StreamType.STDOUT)stdout else stderr
-          out.synchronized {require(out.size.toLong+frame.getPayload.length<=StructureInference.MaxBytes,"inference output exceeds 1 MiB");out.write(frame.getPayload)}
-        }catch{case t:Throwable=>failure.compareAndSet(null,t)}
-        override def onError(t:Throwable):Unit={failure.compareAndSet(null,t);super.onError(t)}
-      }
-      try {
-        docker.attachContainerCmd(id).withStdOut(true).withStdErr(true).withFollowStream(true).exec(callback).awaitStarted()
-        docker.startContainerCmd(id).exec()
-        val deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(15)
-        while(docker.inspectContainerCmd(id).exec().getState.getRunning){
-          cancel.active();Option(failure.get()).foreach(throw _)
-          require(System.nanoTime()<deadline,"structure inference timed out after 15 seconds");Thread.sleep(25)
-        }
-        require(callback.awaitCompletion(2,TimeUnit.SECONDS),"inference output did not complete")
-        Option(failure.get()).foreach(throw _)
-        require(docker.inspectContainerCmd(id).exec().getState.getExitCodeLong==0L,
-          "operator must implement successful structure inference: "+stderr.toString("UTF-8").take(4096))
-        StructureInference.result(StructureInference.mapper.readTree(stdout.toByteArray))
-      }finally callback.close()
-    }finally{if(id!=null)try docker.removeContainerCmd(id).withForce(true).exec()catch{case _:Throwable=>()};Data.deleteTree(tmp)}
+    val command=if(source)plugin.sourceInferenceWorkerCommand(program,op.artifactPath.get)else plugin.inferenceWorkerCommand(program,op.artifactPath)
+    val body=StructureInference.mapper.writeValueAsBytes(StructureInference.json(request))
+    require(body.length<=StructureInference.MaxBytes,"inference request exceeds 1 MiB")
+    val key=workerKey(op,command,source)
+    val response=config.inferenceWorkerPool.request(key,body,cancel)(()=>new DockerInferenceWorker(op,command))
+    StructureInference.result(StructureInference.mapper.readTree(response))
+  }
+  private[dacp] def workerKey(op:ResolvedOperator,command:OperatorCommand,source:Boolean):String={
+    val digest=java.security.MessageDigest.getInstance("SHA-256")
+    def add(bytes:Array[Byte]):Unit={digest.update(java.nio.ByteBuffer.allocate(8).putLong(bytes.length.toLong).array());digest.update(bytes)}
+    def text(s:String):Unit=add(s.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    def file(path:Path):Unit={val hash=java.security.MessageDigest.getInstance("SHA-256");val in=Files.newInputStream(path);try {val b=new Array[Byte](65536);var n=in.read(b);while(n>=0){if(n>0)hash.update(b,0,n);n=in.read(b)}}finally in.close();add(hash.digest())}
+    text(op.image);text(op.executor);text(source.toString)
+    val program=op.program.get;text(program.reference);text(program.entrypoint)
+    if(dacp.union.Rpc.isAuthenticatedCall){val p=dacp.union.Rpc.principal;text("authenticated");text(p.kind);text(p.subject);text(p.unionId.getOrElse(""));text(p.certificate.getOrElse(""))}else text("embedded")
+    text(op.artifactPath.getOrElse(""));text(op.artifact.isDefined.toString);op.artifact.foreach(file)
+    text(command.executableScratch.toString)
+    def strings(values:Seq[String]):Unit={text(values.size.toString);values.foreach(text)}
+    text(command.entrypoint.isDefined.toString);strings(command.entrypoint.toVector.flatten);strings(command.arguments)
+    text(command.environment.size.toString);command.environment.toVector.sortBy(_._1).foreach{case(k,v)=>text(k);text(v)}
+    text(command.files.size.toString);command.files.toVector.sortBy(_._1).foreach{case(k,v)=>text(k);add(v)}
+    text(command.mounts.size.toString);command.mounts.toVector.sortBy(_._1).foreach{case(k,v)=>text(k);file(v)}
+    digest.digest().map(b=>f"${b&255}%02x").mkString
   }
 }

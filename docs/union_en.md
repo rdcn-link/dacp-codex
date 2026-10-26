@@ -79,6 +79,6 @@ Web interfaces use English throughout the Union job, node and data catalog pages
 
 Click a task, input/output node, edge or server group in the job DAG to highlight the selection and show its details. Click empty canvas space to clear it. Automatic updates and layout changes preserve selections that still exist; changing jobs clears the selection. Node dashboards share this interaction.
 
-### Input metadata for shared execution
+### Shared execution
 
-A prepared task may carry `input_descriptors`, mapping each input port to the shared structure-inference descriptor. Union supplies these descriptors from its workflow inference report. Nodes use them to plan same-process execution without opening placeholder dataset URIs or consuming live streams. If descriptors are omitted, the node executes isolated steps and infers against actual stream headers. Descriptors do not grant data access or bypass operator inference.
+Nodes plan shared execution from runtime compatibility and connected ports, without invoking structure inference or reading input contents. Actual stream headers supply metadata during execution.

@@ -111,10 +111,9 @@ private[operators] final class JvmGroupExecution(input:Path,output:OutputStream=
         state(id,"running")
         OperatorRunner.runStreams(directory,directory.resolve("params.json"),streams,f=>{
           active();val h=mapper.readTree(f.metadata);val port=h.path("port").asText;val key=(id,port)
-          require(ports(port),"undeclared group output")
           h.path("type").asText match {
-            case "start"=>require(!begun(port),"duplicate group start");validate(step.path("outputs").path(port),h);begun+=port
-            case "data"=>require(begun==ports && !ended(port),"group data before metadata or after end")
+            case "start"=>require(!begun(port),"duplicate group start");if(ports(port))validate(step.path("outputs").path(port),h);begun+=port
+            case "data"=>require(begun(port) && !ended(port),"group data before metadata or after end")
             case "end"=>require(begun(port) && !ended(port),"invalid group end");ended+=port
             case _=>throw new IllegalArgumentException("invalid group output event")
           }
@@ -127,7 +126,7 @@ private[operators] final class JvmGroupExecution(input:Path,output:OutputStream=
             if(h.path("type").asText=="start")headers.countDown()
           }
         })(operators(id).process)
-        require(ended==ports,"incomplete group output")
+        require(ended==begun && ports.subsetOf(ended),"incomplete group output")
         state(id,"succeeded")
       }}
       tasks.foreach(t=>{while(t.isAlive){active();t.join(100)}})

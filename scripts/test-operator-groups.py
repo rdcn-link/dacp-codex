@@ -20,8 +20,7 @@ def process(ctx):
     out=ctx.bytes_output('result','text')
     for b in ctx.input('source').bytes():out.write(b.upper() if ctx.params.get('upper') else b)
 def infer_outputs(inputs, params):
-    from dacp_operator import descriptor, result
-    return result({'result': descriptor(['bytes'], ['text'], certainty='known')})
+    raise AssertionError("execution must not invoke structure inference")
 if __name__=='__main__':
     from dacp_operator.inference import run_operator
     run_operator(process, infer_outputs)

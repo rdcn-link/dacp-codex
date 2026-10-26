@@ -35,4 +35,22 @@ class InferenceSpec extends AnyFunSuite {
     intercept[IllegalArgumentException](StructureInference.descriptor(mapper.readTree("""{"representations":["records"],"formats":[],"certainty":"known"}""")))
     intercept[IllegalArgumentException](InferenceResult(Map.empty,Vector(InferenceDiagnostic("error","bad_field","unknown field"))).requireValid())
   }
+  test("worker processes changing parameters in one instance and rejects truncated or oversized frames") {
+    val requests=new java.io.ByteArrayOutputStream();val writer=new java.io.DataOutputStream(requests)
+    Seq("json","text").foreach { format=>
+      val request=StructureInference.mapper.writeValueAsBytes(StructureInference.json(InferenceRequest(Map.empty,mapper.createObjectNode().put("format",format))))
+      writer.writeInt(request.length);writer.write(request)
+    }
+    var calls=0;val output=new java.io.ByteArrayOutputStream()
+    OperatorRunner.inferWorker(new java.io.DataInputStream(new java.io.ByteArrayInputStream(requests.toByteArray)),new java.io.DataOutputStream(output)){(inputs,params)=>
+      calls+=1;InferenceResult(Map("result"->StreamDescriptor(Set("bytes"),Set(params.path("format").asText),certainty="known")))
+    }
+    val reader=new java.io.DataInputStream(new java.io.ByteArrayInputStream(output.toByteArray));assert(reader.readInt()==0)
+    Seq("json","text").foreach { format=>val raw=new Array[Byte](reader.readInt());reader.readFully(raw);assert(StructureInference.result(mapper.readTree(raw)).outputs("result").formats==Set(format)) }
+    assert(calls==2 && reader.read()== -1)
+    def invalid(raw:Array[Byte]):Unit=OperatorRunner.inferWorker(new java.io.DataInputStream(new java.io.ByteArrayInputStream(raw)),new java.io.DataOutputStream(new java.io.ByteArrayOutputStream())){(_,_)=>fail("invalid frames must not invoke the operator")}
+    intercept[java.io.EOFException](invalid(Array[Byte](0,0)))
+    intercept[IllegalArgumentException](invalid(java.nio.ByteBuffer.allocate(4).putInt(StructureInference.MaxBytes+1).array()))
+  }
+
 }

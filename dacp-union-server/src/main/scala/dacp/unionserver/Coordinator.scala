@@ -207,7 +207,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     val member=members.all.find(_.path("data_origin").asText==DacpUri.node(node)).getOrElse(throw new IllegalArgumentException("unknown inference node"))
     require(members.inspect(member).path("state").asText=="approved","inference member is not approved")
     val client=remote.dataClient(member.path("url").asText,Some(member.path("identity").asText))
-    val rs=client.doAction(new Action("dacp.infer",Json.mapper.writeValueAsBytes(WorkflowInference.taskJson(task,inputs))),CallOptions.timeout(20,TimeUnit.SECONDS))
+    val rs=client.doAction(new Action("dacp.infer",Json.mapper.writeValueAsBytes(WorkflowInference.taskJson(task,inputs))),CallOptions.timeout(120,TimeUnit.SECONDS))
     require(rs.hasNext,"missing member inference response");val raw=rs.next().getBody
     require(raw.length<=StructureInference.MaxBytes && !rs.hasNext,"invalid member inference response")
     StructureInference.result(Json.mapper.readTree(raw))
@@ -293,12 +293,10 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     require(timeout<=settings.timeout,"timeout_seconds exceeds Union server limit")
     val effective=policy.effective.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]().put("timeout_seconds",timeout)
-    val inference=replayOf.map(id=>history.get(id).get.path("structure_inference")).getOrElse(inferPlan(plan))
-    require(inference.isObject,"original structure inference unavailable")
-    val j=new Execution(Json.uuid(),owner,plan,script,policy.copy(effective=effective),replaySources,replayOf,path,inference)
+    val j=new Execution(Json.uuid(),owner,plan,script,policy.copy(effective=effective),replaySources,replayOf,path)
     jobs.put(j.id,j);j.start();j
   }
-  private[unionserver] final class Execution(val id:String,val owner:String,plan:JobPlan,script:String,policy:ExecutionPolicy,initialReplaySources:Map[String,String],replayOf:Option[String],incomingPath:Vector[String],inference:JsonNode) {
+  private[unionserver] final class Execution(val id:String,val owner:String,plan:JobPlan,script:String,policy:ExecutionPolicy,initialReplaySources:Map[String,String],replayOf:Option[String],incomingPath:Vector[String]) {
     private val proxyPath={require(!incomingPath.contains(members.unionId) && incomingPath.size<8,"proxy cycle or depth limit");incomingPath:+members.unionId}
     private val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     def requiresRetryAwareness:Boolean=policy.maxRetries>0
@@ -366,7 +364,6 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     }
     def dashboardSnapshot:JsonNode={
       val n=snapshot.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
-      n.set[JsonNode]("structure_inference",inference)
       n.put("job_yaml",script)
       n.set[JsonNode]("execution_policy",policy.submitted);n.set[JsonNode]("effective_execution_policy",policy.effective)
       replayOf.foreach(n.put("replay_of",_))
@@ -417,10 +414,6 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
             j.putObject("read_source").put("origin",settings.publicUrl).put("identity",members.tls.identity)
           }
         }
-        val descriptors=t.inputs.map {case(port,b)=>
-          port->StructureInference.descriptor(inference.path("tasks").path(b.task.get).path("outputs").path(b.port))
-        }
-        j.set[JsonNode]("input_descriptors",StructureInference.portsJson(descriptors))
         j.set[JsonNode]("params",Json.mapper.valueToTree[JsonNode](t.params));val inputs=j.putObject("inputs")
         t.inputs.foreach {case(port,b)=>
           val v=inputs.putObject(port)

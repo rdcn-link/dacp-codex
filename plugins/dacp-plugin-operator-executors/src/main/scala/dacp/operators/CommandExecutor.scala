@@ -5,6 +5,7 @@ import scala.jdk.CollectionConverters._
 
 /** Bridges ordinary stdin/stdout programs to bytes ports, exclusively inside a container. */
 final class CommandExecutor extends OperatorExecutor {
+  override def inferenceWorkerCommand(p:OperatorProgram,path:Option[String]):OperatorCommand=InferenceLaunch.python(command(p,path))
   val id = "command"
   def command(p:OperatorProgram, artifactPath:Option[String]):OperatorCommand = {
     val c=p.configuration

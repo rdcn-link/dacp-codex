@@ -16,7 +16,7 @@ trait Operator {
   def inferOutputs(inputs:Map[String,StreamDescriptor],params:JsonNode):InferenceResult
   def process(context:OperatorContext):Unit
   final def main(args:Array[String]):Unit={
-    if(args.headOption.contains("infer"))OperatorRunner.infer(args)(inferOutputs)
+    if(args.headOption.exists(Set("infer","infer-worker")))OperatorRunner.infer(args)(inferOutputs)
     else OperatorRunner.run(args)(process)
   }
 }
@@ -66,12 +66,40 @@ abstract class RecordsOperator extends Operator {
 }
 object OperatorRunner {
   def infer(args:Array[String],out:OutputStream=System.out)(method:(Map[String,StreamDescriptor],JsonNode)=>InferenceResult):Unit={
+    if(args.headOption.contains("infer-worker")){
+      require(args.length==3,"expected infer-worker REQUEST_FIFO RESPONSE_FIFO")
+      val input=new java.io.DataInputStream(Files.newInputStream(Path.of(args(1))))
+      try {
+        val output=new java.io.DataOutputStream(Files.newOutputStream(Path.of(args(2))))
+        try inferWorker(input,output)(method)finally output.close()
+      }finally input.close()
+      return
+    }
     require(args.length==2 && args(0)=="infer","expected infer REQUEST_JSON")
     val path=Path.of(args(1));require(Files.size(path)<=StructureInference.MaxBytes,"inference request too large")
     val request=StructureInference.request(StructureInference.mapper.readTree(Files.readAllBytes(path)))
     val result=Console.withOut(System.err){method(request.inputs,request.params)}
     val bytes=StructureInference.mapper.writeValueAsBytes(StructureInference.json(result))
     require(bytes.length<=StructureInference.MaxBytes,"inference result too large");out.write(bytes);out.flush()
+  }
+  /** Length-prefixed requests are bounded independently; no data streams or result cache. */
+  def inferWorker(in:java.io.DataInputStream,out:java.io.DataOutputStream)(method:(Map[String,StreamDescriptor],JsonNode)=>InferenceResult):Unit={
+    out.writeInt(0);out.flush()
+    var running=true
+    while(running){
+      // A partial frame is an error; only EOF between requests is a clean shutdown.
+      val first=in.read()
+      if(first<0)running=false else {
+        val length=(first<<24)|(in.readUnsignedByte()<<16)|(in.readUnsignedByte()<<8)|in.readUnsignedByte()
+        require(length>0 && length<=StructureInference.MaxBytes,"inference request exceeds limits")
+        val raw=new Array[Byte](length);in.readFully(raw)
+        val request=StructureInference.request(StructureInference.mapper.readTree(raw))
+        val result=Console.withOut(System.err){method(request.inputs,request.params)}
+        val response=StructureInference.mapper.writeValueAsBytes(StructureInference.json(result))
+        require(response.length<=StructureInference.MaxBytes,"inference result too large")
+        out.writeInt(response.length);out.write(response);out.flush()
+      }
+    }
   }
   def runStreams(directory:Path,params:Path,inputs:Map[String,InputStream],emit:OperatorFrame=>Unit)(process:OperatorContext=>Unit):Unit={
     val ctx=new OperatorContext(directory,params,OutputStream.nullOutputStream(),inputs,Some(emit))

@@ -79,3 +79,5 @@ Dataset 提供者和格式处理器可通过 `Scan` 优化过滤、投影和限�
 `OperatorExecutor.groupCommand` 是已实现的可选扩展点；JVM SDK 算子和显式提供 `process(ctx)` 的 Python 算子可在同节点、同环境下合并运行。资格、注册契约、示例和限制见 [同进程合并执行](operator-fusion.md)。
 
 S3 兼容读取是复用 DatasetAccess 的核心传输层，不是新的存储插件。Dataset 插件无需独立注册 S3 实现；原生 bytes 直接传递，仅声明 records 的 Item 则通过通用适配层以 UTF-8 JSONL 提供 bytes（不落盘），同样适用于 Flight 和任务输入。见 [S3 服务](s3-service.md)。
+
+显式结构推导通过 `OperatorExecutor.inferenceWorkerCommand` / `sourceInferenceWorkerCommand` 启动隔离 worker，支持按需启动和空闲回收；核心管理生命周期、主体隔离、并发容量、超时和有界元数据通道，执行器负责语言启动与 SDK 适配。外部插件的注册和管道协议见[结构推导](structure-inference.md#执行器插件的-worker-协议)。

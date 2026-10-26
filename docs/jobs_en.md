@@ -33,7 +33,7 @@ On Union, use public Union dataset URIs. Omit `node` for automatic placement or 
 
 ## Structure inference and sinks
 
-Every operator must implement [structure inference](structure-inference_en.md). Output descriptors come from this method, not manifest output declarations. A sink may infer an empty output map and finish successfully without emitting frames. A Job may set `outputs: {}`; the client then waits for completion without receiving result data. Unselected branches still execute.
+Every operator must implement [structure inference](structure-inference_en.md). Output descriptors come from this method, not manifest output declarations. A sink may infer an empty output map and finish successfully without emitting frames. A Job may set `outputs: {}`; the client then waits for completion without receiving result data. Unselected branches still execute. Submission and execution do not invoke inference automatically; explicitly call `infer` during authoring when needed.
 
 Upstream and downstream steps run concurrently with bounded buffering. Failure, cancellation and timeout cancel the attempt and release resources. Retries and materialization are configured in a separate [execution policy JSON](materialization_en.md). Retries can repeat external side effects; operators must provide appropriate idempotency.
 

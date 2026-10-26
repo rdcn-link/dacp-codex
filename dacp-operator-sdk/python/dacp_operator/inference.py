@@ -73,14 +73,10 @@ def validate_result(value):
             raise ValueError('invalid inference diagnostic')
 
 
-def run_inference(method, args=None, output=None):
-    args = sys.argv[1:] if args is None else args
-    if len(args) != 2 or args[0] != 'infer':
-        raise ValueError('expected infer REQUEST_JSON')
-    path = Path(args[1])
-    if path.stat().st_size > MAX_BYTES:
+def evaluate_inference(method, raw):
+    if len(raw) > MAX_BYTES:
         raise ValueError('inference request too large')
-    request = json.loads(path.read_bytes())
+    request = json.loads(raw)
     if not isinstance(request, dict) or request.keys() != {'inputs', 'params'} or not isinstance(request['params'], dict):
         raise ValueError('invalid inference request')
     _ports(request['inputs'])
@@ -90,14 +86,68 @@ def run_inference(method, args=None, output=None):
     raw = json.dumps(value, allow_nan=False).encode()
     if len(raw) > MAX_BYTES:
         raise ValueError('inference result too large')
-    (sys.stdout.buffer if output is None else output).write(raw)
+    return raw
+
+
+def serve_inference(method, args=None, input_stream=None, output=None):
+    """A worker processes requests serially; errors terminate it instead of reusing state."""
+    import struct
+    from contextlib import ExitStack
+    args = sys.argv[1:] if args is None else args
+    if len(args) != 3 or args[0] != 'infer-worker':
+        raise ValueError('expected infer-worker REQUEST_FIFO RESPONSE_FIFO')
+    with ExitStack() as stack:
+        source = input_stream if input_stream is not None else stack.enter_context(open(args[1], 'rb', buffering=0))
+        target = output if output is not None else stack.enter_context(open(args[2], 'wb', buffering=0))
+        def read_exact(size):
+            data = bytearray()
+            while len(data) < size:
+                chunk = source.read(size - len(data))
+                if not chunk:
+                    if not data:
+                        return None
+                    raise ValueError('truncated inference frame')
+                data.extend(chunk)
+            return bytes(data)
+        def write_all(raw):
+            view = memoryview(raw)
+            while view:
+                n = target.write(view)
+                if not n:
+                    raise IOError('inference pipe closed')
+                view = view[n:]
+        write_all(struct.pack('>I', 0)); target.flush()  # Ready; no result is cached.
+        while True:
+            header = read_exact(4)
+            if header is None:
+                return
+            size, = struct.unpack('>I', header)
+            if not 0 < size <= MAX_BYTES:
+                raise ValueError('inference frame exceeds limits')
+            raw = read_exact(size)
+            if raw is None:
+                raise ValueError('truncated inference request')
+            response = evaluate_inference(method, raw)
+            write_all(struct.pack('>I', len(response))); write_all(response); target.flush()
+
+
+def run_inference(method, args=None, output=None):
+    args = sys.argv[1:] if args is None else args
+    if args and args[0] == 'infer-worker':
+        return serve_inference(method, args, output=output)
+    if len(args) != 2 or args[0] != 'infer':
+        raise ValueError('expected infer REQUEST_JSON')
+    path = Path(args[1])
+    if path.stat().st_size > MAX_BYTES:
+        raise ValueError('inference request too large')
+    (sys.stdout.buffer if output is None else output).write(evaluate_inference(method, path.read_bytes()))
 
 
 def run_operator(process, infer_outputs, args=None):
     """Entrypoint for function-style operators. Both methods are required."""
     from . import OperatorContext
     args = sys.argv[1:] if args is None else args
-    if args and args[0] == 'infer':
+    if args and args[0] in ('infer', 'infer-worker'):
         run_inference(infer_outputs, args)
     else:
         with OperatorContext(args) as ctx:

@@ -48,13 +48,8 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
         require(h.path("type").asText=="start","input must start with metadata");definition.inputs(port).accept(h)
         (port,source,h)
       }
-      val inferred=if(definition.program.isEmpty)None else {
-        val descriptors=starts.map{case(port,_,h)=>port->StreamDescriptor(Set(h.path("representation").asText),Set(h.path("format").asText),
-          if(h.path("representation").asText=="records")Some(StreamProtocol.schema(h))else None,"known")}.toMap
-        val result=OperatorInference.run(config,docker,definition,InferenceRequest(descriptors,Data.mapper.valueToTree(task.params)),cancel,task.source.nonEmpty)
-        result.requireValid();Some(result)
-      }
-      val op=inferred.map(r=>definition.copy(outputs=r.outputs.view.mapValues(OperatorInference.contract).toMap)).getOrElse(definition)
+      // Output ports announce their own metadata at runtime; inference is an explicit authoring action.
+      val op=definition
       val manifest=Data.mapper.createArrayNode()
       starts.zipWithIndex.foreach {case((port,_,h),i)=>
         val filename=s"$i.arrow";val path=temporary.resolve(filename)
@@ -132,10 +127,10 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
         cancel.active();val f=next.get;val h=StreamProtocol.header(f);val port=h.path("port").asText
         if(Set("task_state","task_metric")(h.path("type").asText) && onEvent.nonEmpty)onEvent.get(h)
         else {
-        require(op.outputs.contains(port),"undeclared output port")
+        require(port.matches("[A-Za-z_][A-Za-z0-9_-]{0,127}"),"invalid output port")
         h.path("type").asText match {
-          case "start"=>require(!begun(port),"duplicate output start");op.outputs(port).accept(h);begun+=port
-          case "data"=>require(begun==op.outputs.keySet && !ended(port),"all output metadata must precede data")
+          case "start"=>require(!begun(port),"duplicate output start");op.outputs.getOrElse(port,PortContract(Set("bytes","records"),Set.empty,None)).accept(h);begun+=port
+          case "data"=>require(begun(port) && !ended(port),"output data before metadata or after end")
           case "end"=>require(begun(port) && !ended(port),"invalid output end");ended+=port
           case _=>throw new IllegalArgumentException("invalid operator output event")
         }
@@ -145,7 +140,7 @@ class TaskExecutor(config: Config,allocator: BufferAllocator) {
       }
       while(docker.inspectContainerCmd(container).exec().getState.getRunning){cancel.active();Thread.sleep(25)}
       if(docker.inspectContainerCmd(container).exec().getState.getExitCodeLong!=0L)throw new RuntimeException("operator failed: "+stderr.synchronized(stderr.toString))
-      require(ended==op.outputs.keySet,"operator output stream incomplete")
+      require(ended==begun && op.outputs.keySet.subsetOf(ended) && task.outputPorts.toSet.subsetOf(ended),"operator output stream incomplete")
       writers.foreach(t=>{while(t.isAlive){cancel.active();t.join(100)}});cancel.active()
     } catch {
       case t:Throwable => cancel.fail(t); throw t

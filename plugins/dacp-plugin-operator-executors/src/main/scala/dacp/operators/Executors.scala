@@ -11,6 +11,8 @@ final class ContainerExecutor extends OperatorExecutor {
   }
 }
 final class JvmExecutor extends OperatorExecutor {
+  override def inferenceWorkerCommand(p:OperatorProgram,path:Option[String]):OperatorCommand=InferenceLaunch.jvm(command(p,path))
+  override def sourceInferenceWorkerCommand(p:OperatorProgram,path:String):OperatorCommand=InferenceLaunch.jvm(sourceCommand(p,path))
   override def groupCommand(group:dacp.OperatorGroup):Option[OperatorCommand]=JvmGroup.command(group)
   val id = "jvm"
   override def sourceCommand(p: OperatorProgram, path: String): OperatorCommand = {
@@ -38,6 +40,8 @@ finally loader.close()
   }
 }
 final class PythonExecutor extends OperatorExecutor {
+  override def inferenceWorkerCommand(p:OperatorProgram,path:Option[String]):OperatorCommand=InferenceLaunch.python(command(p,path))
+  override def sourceInferenceWorkerCommand(p:OperatorProgram,path:String):OperatorCommand=InferenceLaunch.python(sourceCommand(p,path))
   override def groupCommand(group:dacp.OperatorGroup):Option[OperatorCommand]=PythonGroup.command(group)
   val id = "python"
   override def sourceCommand(p: OperatorProgram, path: String): OperatorCommand =

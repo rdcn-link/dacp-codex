@@ -141,13 +141,13 @@ class LocalJobExecutionSpec extends AnyFunSuite {
     thread.start();Thread.sleep(100);cancel.close();thread.join(5000)
     assert(!thread.isAlive);assert(error.get().isInstanceOf[java.util.concurrent.CancellationException]);assert(c.taskSlots.availablePermits()==2)
   }}
-  test("Flight Job exchange validates policy, reports execution ID, and replays original definition") {fixture{(c,a)=>
+  test("Flight Job exchange skips operator inference, validates policy, and replays original definition") {fixture{(c,a)=>
     val calls=new AtomicInteger
     val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={
       calls.incrementAndGet();var f=in("source").next()
       while(f.nonEmpty){emit(StreamProtocol.rename(f.get,"result"));f=if(StreamProtocol.header(f.get).path("type").asText=="end")None else in("source").next()}
     }}
-    val service=new TaskService(c,a,executor){override protected def inferPlan(p:JobPlan,cancel:StreamCancel):com.fasterxml.jackson.databind.JsonNode=WorkflowInference.propagate(p){(_,_)=>InferenceResult(Map("result"->StreamDescriptor(Set("bytes"),Set("text"),certainty="known")))};override protected def source(b:InputBinding,cancel:StreamCancel):FrameSource=input(b,cancel)}
+    val service=new TaskService(c,a,executor){override protected def source(b:InputBinding,cancel:StreamCancel):FrameSource=input(b,cancel)}
     val producer=new org.apache.arrow.flight.NoOpFlightProducer {
       override def doExchange(ctx:org.apache.arrow.flight.FlightProducer.CallContext,r:org.apache.arrow.flight.FlightStream,w:org.apache.arrow.flight.FlightProducer.ServerStreamListener):Unit=service.exchange(ctx,r,w)
     }
@@ -165,6 +165,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
       val id=StreamProtocol.header(output.head).path("execution_id").asText;assert(id.nonEmpty);assert(calls.get()==2)
       val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
       while(c.executionHistory.get(id).get.path("state").asText!="succeeded" && System.nanoTime()<deadline)Thread.sleep(10)
+      assert(!c.executionHistory.get(id).get.has("structure_inference"))
       val replayed=exchange("","",id)
       assert(replayed.filter(f=>StreamProtocol.header(f).path("type").asText=="data").flatMap(_.data).toArray.sameElements("weather\n".getBytes));assert(calls.get()==2)
       assert(c.executionHistory.list().exists(_.path("replay_of").asText==id))
