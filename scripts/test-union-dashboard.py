@@ -33,7 +33,7 @@ def fixture():
         for direction, ports in [('inputs', [b['port'] for b in t['inputs']]), ('outputs', ['result'])]:
             for port in ports:
                 node['ports'][t['id'] + '/' + direction + '/' + port] = dict(payload_bytes=128, remote_payload_bytes=128 if port == 'quantities' else 0, last_activity_ms=now)
-    return dict(job_id='g6-browser-test', state='succeeded', owner='client', elapsed_ms=2400, created_at_ms=now-2400, finished_at_ms=now, tasks=tasks, nodes=nodes, events=[], job_yaml='job: g6-browser-test\ntasks: []', attempts=[dict(attempt_id='first',retry_index=0,state='failed',started_at_ms=now-3000,finished_at_ms=now-2500,message='<script>unsafe</script>'),dict(attempt_id='second',retry_index=1,state='succeeded',started_at_ms=now-2400,finished_at_ms=now,nodes=nodes)], outputs={region + '_revenue': dict(task='revenue_' + region, port='result') for region in ['east', 'west']})
+    return dict(job_id='g6-browser-test', state='succeeded', owner='client', elapsed_ms=2400, created_at_ms=now-2400, finished_at_ms=now, tasks=tasks, nodes=nodes, events=[], job_yaml='name: g6-browser-test\ntasks: []', attempts=[dict(attempt_id='first',retry_index=0,state='failed',started_at_ms=now-3000,finished_at_ms=now-2500,message='<script>unsafe</script>'),dict(attempt_id='second',retry_index=1,state='succeeded',started_at_ms=now-2400,finished_at_ms=now,nodes=nodes)], outputs={region + '_revenue': dict(task='revenue_' + region, port='result') for region in ['east', 'west']})
 
 
 class Site(BaseHTTPRequestHandler):

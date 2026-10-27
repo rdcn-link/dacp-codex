@@ -14,6 +14,8 @@ Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs.md)动态提�
 
 官方网站模块：[dacp-website](dacp-website/README.md)，提供英文项目介绍、按角色分类的在线文档和软件下载。
 
+作业定义、节点子作业、执行策略和变量文件统一采用 YAML。每个 Job 必须提供可读的 `name`，系统另行生成执行 ID；节点与 Union 看板统一展示名称和执行信息。Shell 可同时提交：`submit workflow.yaml --policy policy.yaml --vars variables.yaml`。详见[作业编写](docs/jobs.md)。
+
 ## 按角色阅读
 
 | 读者 | 入口 | 主要内容 |

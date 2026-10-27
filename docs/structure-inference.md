@@ -9,8 +9,8 @@
 在 shell 中，先查看结构，再提交同一个工作流：
 
 ```text
-infer workflow.yaml --vars variables.json
-submit workflow.yaml --vars variables.json
+infer workflow.yaml --vars variables.yaml
+submit workflow.yaml --vars variables.yaml
 ```
 
 `infer` 只查询元信息，不执行数据处理，不预览实际数据。单机和 Union 均通过 Flight 提供 `dacp.infer`（单算子）及 `dacp.infer_job`（完整工作流）。普通客户端使用自己的服务器连接凭据；Union 向实际执行节点请求推导，公开结果只含任务名与结构，不返回内部成员地址。

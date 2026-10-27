@@ -57,13 +57,13 @@ The source archive includes code, build script, tests and bilingual instructions
 
 [workflow.yaml](workflow.yaml) runs `live_ticks → live_ticks_decode → piflow_select_field → piflow_convert_schema → piflow_csv_save`, converting JSONL bytes into Arrow records, projecting and renaming columns, then emitting CSV. Every step processes individual rows or batches without waiting for infinite input to finish. `live_ticks_decode` uses an explicit weather record schema and preserves observations; it is not a generic JSON flattener. Each line is limited to 64 KiB.
 
-[stream-only-policy.json](stream-only-policy.json) forbids intermediate output materialization and sets a 300-second overall timeout. Payloads travel through bounded memory queues, FIFO pipes and process stdout, without intermediate result files. Execution logs, status records, runtime caches and startup parameter files still use the server filesystem. This example guarantees no intermediate data payload staging to disk.
+[stream-only-policy.yaml](stream-only-policy.yaml) forbids intermediate output materialization and sets a 300-second overall timeout. Payloads travel through bounded memory queues, FIFO pipes and process stdout, without intermediate result files. Execution logs, status records, runtime caches and startup parameter files still use the server filesystem. This example guarantees no intermediate data payload staging to disk.
 
 Start the shell from the project root, connect to node A, and select a Dataset before submitting:
 
 ```text
 use weather
-submit examples/operators/live-stream/workflow.yaml --policy examples/operators/live-stream/stream-only-policy.json
+submit examples/operators/live-stream/workflow.yaml --policy examples/operators/live-stream/stream-only-policy.yaml
 ```
 
 The terminal continuously prints CSV rows with `sequence,station_id,timestamp,air_temperature_c`. Press Ctrl+C to stop. The generator needs no input Item. The workflow omits node placement and runs on the connected node. For Union, members must be able to resolve all five operator versions; the scheduler selects execution nodes.

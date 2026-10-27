@@ -42,7 +42,7 @@ The complete runnable [Scala example](../examples/operators/inline/Uppercase.sca
 Job YAML and SDK submissions use the same source representation:
 
 ```yaml
-job: uppercase
+name: uppercase
 tasks:
 - id: read_uppercase_source
   operator: read_item@1.0

@@ -1,4 +1,4 @@
-job: split-orders-demo
+name: split-orders-demo
 tasks:
 - id: read_split_left
   operator: read_item@1.0

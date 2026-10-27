@@ -90,10 +90,11 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
   }
   private def connectedPorts(tasks:Vector[JsonNode],task:JsonNode):Set[String]=
     task.path("output_routes").fieldNames.asScala.toSet ++ tasks.filterNot(_.has("replay_from")).flatMap(_.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin") && b.path("task").asText==task.path("id").asText).map(_.path("port").asText))
-  private def prepare(body:JsonNode,who:String):Session=synchronized {
-    Json.fields(body,Set("union_id","execution_id","tasks"),Set("allow_fusion","timeout_seconds"))
+  private def prepare(body:JsonNode,who:String,jobYaml:String):Session=synchronized {
+    Json.fields(body,Set("name","union_id","execution_id","tasks"),Set("allow_fusion","timeout_seconds"))
     require(!body.has("allow_fusion") || body.path("allow_fusion").isBoolean,"allow_fusion must be boolean")
     val timeout=if(body.has("timeout_seconds"))math.min(Json.number(body,"timeout_seconds",1,86400),settings.executionTimeoutSeconds)else settings.executionTimeoutSeconds
+    val jobName=Json.text(body,"name");require(jobName.length<=256 && !jobName.exists(_.isControl),"invalid job name")
     val union=Json.id(Json.text(body,"union_id"));val id=Json.id(Json.text(body,"execution_id"));val policy=grant(union,who)
     val submitted=Json.array(body,"tasks");val tasks=submitted.map(normalizeTask);require(tasks.nonEmpty && tasks.size<=64,"invalid task count")
     require(tasks.map(t=>Json.text(t,"id")).distinct.size==tasks.size,"duplicate task")
@@ -148,7 +149,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     val own=sessions.values.asScala.filter(s=> !s.terminal && s.owner==who && s.union==union).map(_.size).sum
     if(reserved+tasks.size>config.maxConcurrentTasks || own+tasks.size>policy.path("max_concurrent_tasks").asInt)throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
     if(!config.taskSlots.tryAcquire(tasks.size))throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
-    try {val s=new Session(id,union,who,submitted,body.path("allow_fusion").asBoolean(false),timeout);sessions.put(id,s);s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(tasks.size);throw t}
+    try {val s=new Session(id,union,who,jobName,jobYaml,submitted,body.path("allow_fusion").asBoolean(false),timeout);sessions.put(id,s);s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(tasks.size);throw t}
   }
   private def find(id:String,who:String,owner:Boolean=true):Session={
     val s=Option(sessions.get(Json.id(id))).getOrElse(throw UnionFailure(NOT_FOUND,"execution unavailable"))
@@ -158,7 +159,8 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
   }
   def doAction(ctx:CallContext,a:Action,out:StreamListener[Result]):Unit=Rpc.action(ctx,a,out) { (op,n,who)=>
     {
-      val union=if(n.has("union_id"))Json.text(n,"union_id")else find(Json.text(n,"execution_id"),who).union
+      val control=if(op=="prepare"){Json.fields(n,Set("job_yaml"));dacp.union.YamlDocument.parse(Json.text(n,"job_yaml"))}else n
+      val union=if(control.has("union_id"))Json.text(control,"union_id")else find(Json.text(control,"execution_id"),who).union
       Rpc.requireUnion(union)
     }
     op match {
@@ -180,7 +182,8 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
             result.put("committed",true).put("expires_at_ms",m.path("expires_at_ms").asLong);result.set[JsonNode]("ports",m.path("stored_ports"))
           }finally a.close()
         };result
-      case "prepare"=>prepare(n,who).snapshot
+      case "prepare"=>
+        Json.fields(n,Set("job_yaml"));val text=Json.text(n,"job_yaml");prepare(dacp.union.YamlDocument.parse(text),who,text).snapshot
       case "start"|"execution_status"|"cancel_execution"=>
         Json.fields(n,Set("execution_id"));val id=Json.text(n,"execution_id")
         val session=if(op=="cancel_execution"){
@@ -210,7 +213,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     def claimLocal():Unit={require(consumer.isEmpty,"not a local output");claim("")}
     def claim(who:String):Unit={if(who!=consumer)denied("output consumer denied");if(!claimed.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"output already consumed")}
   }
-  private final class Session(val id:String,val union:String,val owner:String,submitted:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long) {
+  private final class Session(val id:String,val union:String,val owner:String,jobName:String,jobYaml:String,submitted:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long) {
     private val definitions=submitted.map(normalizeTask)
     private val serviceCredential=if(Rpc.isAuthenticatedCall)Rpc.principal.credentialId else None
     private val proxyPath=Rpc.proxyHops
@@ -218,8 +221,8 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     val created=Json.now
     val cancel=new StreamCancel(timeoutSeconds=timeoutSeconds)
     @volatile private var state="prepared"
-    private val historyRecord=config.executionHistory.begin("union_execution",metadata=Json.obj().put("execution_id",id).put("union_id",union).put("owner",owner).put("node",DacpUri.origin(config.uri(""))),state="prepared")
-    historyRecord.update("prepared",{val n=Json.obj();n.set[JsonNode]("task_definitions",Json.mapper.valueToTree[JsonNode](submitted.asJava));n})
+    private val historyRecord=config.executionHistory.begin("union_execution",metadata=Json.obj().put("name",jobName).put("execution_id",id).put("union_id",union).put("owner",owner).put("node",DacpUri.origin(config.uri(""))),state="prepared")
+    historyRecord.update("prepared",{val n=Json.obj().put("job_yaml",jobYaml);n.set[JsonNode]("task_definitions",Json.mapper.valueToTree[JsonNode](submitted.asJava));n})
     private val replayArtifacts=scala.collection.mutable.Map.empty[String,MaterializedTask]
     try definitions.filter(_.has("replay_from")).foreach { t=>
       val artifact=materialization.get.get(ExecutionPolicy.key(t.path("replay_from").asText,t.path("id").asText)).getOrElse(throw UnionFailure(NOT_FOUND,"materialized task expired during prepare"))
@@ -494,7 +497,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       }
     }
     def snapshot:JsonNode={
-      val n=Json.obj().put("execution_id",id).put("union_id",union).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished).put("execution_mode",executionMode).put("fusion_reason",fusionReason).put("runtime_pid",runtimePid)
+      val n=Json.obj().put("execution_id",id).put("name",jobName).put("union_id",union).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished).put("execution_mode",executionMode).put("fusion_reason",fusionReason).put("runtime_pid",runtimePid)
       val ts=n.putObject("tasks");states.asScala.toSeq.sortBy(_._1).foreach{case(k,v)=>ts.put(k,v)}
       val artifacts=n.putObject("materialized_tasks")
       definitions.filter(t=>t.has("replay_from") || t.path("materialize").size()>0).foreach { t=>

@@ -9,8 +9,8 @@ Every operator must provide an inference method. Manifests declare input contrac
 Inspect structures before submitting the same workflow in the shell:
 
 ```text
-infer workflow.yaml --vars variables.json
-submit workflow.yaml --vars variables.json
+infer workflow.yaml --vars variables.yaml
+submit workflow.yaml --vars variables.yaml
 ```
 
 `infer` queries metadata without processing or previewing actual data. Nodes and Unions expose Flight actions `dacp.infer` (one operator) and `dacp.infer_job` (a complete workflow). Ordinary clients use their server connection credentials. Unions request inference from the selected execution members; public reports contain task names and structures without internal member addresses.

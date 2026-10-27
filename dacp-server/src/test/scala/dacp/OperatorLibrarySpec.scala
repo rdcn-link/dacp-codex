@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters._
 
 class OperatorLibrarySpec extends AnyFunSuite {
   test("source tasks and operator contracts accept explicitly empty inputs only") {
-    val source="""job: source
+    val source="""name: source
     |tasks:
     |- id: ticks
     |  operator: live_ticks@1.0

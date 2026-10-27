@@ -8,7 +8,7 @@ import dacp.union.Json
 import scala.jdk.CollectionConverters._
 
 class LocalJobExecutionSpec extends AnyFunSuite {
-  private val yaml="""job: local
+  private val yaml="""name: local
     |tasks:
     |- id: read_a_source
     |  operator: read_item@1.0
@@ -56,7 +56,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
   private def record(c:Config)=c.executionHistory.begin("dacp_exchange",metadata=Json.obj().put("owner","alice").put("request_type","job").put("job_yaml",yaml))
   private def policy(text:String)=ExecutionPolicy.parse(Json.mapper.readTree(text),plan)
   test("zero-output sink consumes its input stream") {fixtureWithHistory(true){(c,a)=>
-    val definition="""job: sink
+    val definition="""name: sink
       |tasks:
       | - {id: read, operator: read_item@1.0, inputs: {}, params: {uri: 'dacp://localhost:8815/data/item', view: bytes}}
       | - {id: sink, operator: sink@1, inputs: {source: read}}
@@ -154,7 +154,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
     val server=org.apache.arrow.flight.FlightServer.builder(a,org.apache.arrow.flight.Location.forGrpcInsecure("localhost",0),producer).build().start()
     val client=org.apache.arrow.flight.FlightClient.builder(a,server.getLocation).build()
     def exchange(yaml:String,policy:String,replay:String="",aware:Boolean=false):Vector[OperatorFrame]={
-      val req=dacp.protocol.Metadata.OperatorRequest.newBuilder().setJobYaml(yaml).setExecutionPolicyJson(com.google.protobuf.ByteString.copyFromUtf8(policy)).setReplayFrom(replay).setRetryAware(aware).build()
+      val req=dacp.protocol.Metadata.OperatorRequest.newBuilder().setJobYaml(yaml).setExecutionPolicyYaml(com.google.protobuf.ByteString.copyFromUtf8(policy)).setReplayFrom(replay).setRetryAware(aware).build()
       val x=client.doExchange(org.apache.arrow.flight.FlightDescriptor.command(req.toByteArray));val root=org.apache.arrow.vector.VectorSchemaRoot.create(PluginSchemas.bytes,a)
       try {x.getWriter.start(root);x.getWriter.completed();val out=Vector.newBuilder[OperatorFrame];while(x.getReader.next())out+=StreamProtocol.receive(x.getReader.getRoot);out.result()}finally {x.close();root.close()}
     }

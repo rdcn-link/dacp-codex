@@ -335,6 +335,6 @@ DACP and Union persist all execution records by default; the Union dashboard can
 
 ## Execution policies, retries, and replay
 
-Both single-node DACP Server multi-step jobs and Union collaborative jobs accept a separate execution-policy JSON with `max_retries`, `timeout_seconds`, and `materialization`. Use `submit workflow.yaml --policy policy.json` in the shell and `replay EXECUTION_ID` to replay from valid materialized boundaries. Python and Scala clients must explicitly supply a retry callback to clear the preceding attempt's partial results; closing the result stream cancels execution. See [execution policy, output materialization, and replay](../materialization_en.md) for configuration, complete calls, and success confirmation rules.
+Both single-node DACP Server multi-step jobs and Union collaborative jobs accept a separate execution-policy YAML with `max_retries`, `timeout_seconds`, and `materialization`. Use `submit workflow.yaml --policy policy.yaml` in the shell and `replay EXECUTION_ID` to replay from valid materialized boundaries. Python and Scala clients must explicitly supply a retry callback to clear the preceding attempt's partial results; closing the result stream cancels execution. See [execution policy, output materialization, and replay](../materialization_en.md) for configuration, complete calls, and success confirmation rules.
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy_en.md).

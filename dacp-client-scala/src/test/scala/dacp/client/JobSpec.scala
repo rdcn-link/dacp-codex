@@ -17,7 +17,7 @@ class JobSpec extends AnyFunSuite {
     val serverAllocator=new RootAllocator()
     val producer=new NoOpFlightProducer {
       override def doExchange(ctx:FlightProducer.CallContext,r:FlightStream,w:FlightProducer.ServerStreamListener):Unit={
-        assert(Metadata.OperatorRequest.parseFrom(r.getDescriptor.getCommand).getJobYaml=="job: test")
+        assert(Metadata.OperatorRequest.parseFrom(r.getDescriptor.getCommand).getJobYaml=="name: test")
         val root=VectorSchemaRoot.create(JobStream.envelope,serverAllocator)
         try {
           w.start(root)
@@ -28,7 +28,7 @@ class JobSpec extends AnyFunSuite {
     }
     val server=FlightServer.builder(serverAllocator,Location.forGrpcInsecure("127.0.0.1",0),producer).build().start()
     val allocator=new RootAllocator();val client=FlightClient.builder(allocator,server.getLocation).build()
-    val request=Metadata.OperatorRequest.newBuilder().setJobYaml("job: test").build().toByteArray
+    val request=Metadata.OperatorRequest.newBuilder().setJobYaml("name: test").build().toByteArray
     val stream=Job.open(client,allocator,request,10,onRetry)
     try body(stream) finally {stream.close();server.close();serverAllocator.close()}
   }
@@ -96,7 +96,7 @@ class JobSpec extends AnyFunSuite {
   }
   test("only node origins are accepted") {
     Seq("https://node","dacp://node/dataset","dacp://user:secret@node","dacp://node?x=y").foreach{n=>
-      intercept[IllegalArgumentException](Job.run(n,"job: test"))
+      intercept[IllegalArgumentException](Job.run(n,"name: test"))
     }
   }
 }

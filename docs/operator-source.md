@@ -42,7 +42,7 @@ END
 任务 YAML 与 SDK 使用相同源码表示：
 
 ```yaml
-job: uppercase
+name: uppercase
 tasks:
 - id: read_uppercase_source
   operator: read_item@1.0

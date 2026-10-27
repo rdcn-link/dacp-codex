@@ -1,3 +1,4 @@
+import yaml
 import json
 from types import SimpleNamespace
 import pyarrow as pa
@@ -18,7 +19,7 @@ def test_job_inference_sends_resolved_workflow_without_stream_exchange(monkeypat
     monkeypatch.setattr(inference, '_flight_client', lambda *args: client)
     assert Job.infer('dacp://localhost', 'params: {limit: $LIMIT}', variables={'LIMIT': 123}) == {'tasks': {}, 'outputs': {}}
     assert calls[0][0] == 'dacp.infer_job'
-    assert json.loads(calls[0][1]['job_yaml'])['params']['limit'] == 123
+    assert yaml.safe_load(calls[0][1]['job_yaml'])['params']['limit'] == 123
     assert client.closed
 
 
@@ -30,7 +31,7 @@ def test_union_uses_same_public_inference_action():
         calls.append(request.type)
         return [SimpleNamespace(body=pa.py_buffer(b'{"outputs":{}}'))]
     client.client = SimpleNamespace(do_action=action)
-    assert client.infer('job: test') == {'outputs': {}}
+    assert client.infer('name: test') == {'outputs': {}}
     assert calls == ['dacp.infer_job']
 
 

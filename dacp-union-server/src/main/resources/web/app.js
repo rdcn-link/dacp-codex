@@ -13,9 +13,9 @@ function empty(body,columns,text){const row=el('tr');cell(row,text,'empty').colS
 async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error('Status request failed ('+r.status+')');return r.json();}
 function renderJobs(){
  if(!snapshot)return;const body=$('jobs');body.replaceChildren();const query=$('search').value.trim().toLowerCase(),filter=$('state-filter').value;
- const jobs=snapshot.jobs.filter(j=>(!filter||(filter==='active'?!terminal.has(j.state):j.state===filter))&&(!query||[j.job_id,...j.tasks.flatMap(t=>[t.node,t.operator,t.id,t.title||''])].join(' ').toLowerCase().includes(query)));
- if(!jobs.length)return empty(body,6,snapshot.jobs.length?'No matching jobs':'No jobs yet. Submit a collaborative job through a Flight client.');
- for(const j of jobs){const row=el('tr',undefined,j.job_id===selected?'selected':'');const b=el('button',short(j.job_id),'job-link');b.title=j.job_id;b.addEventListener('click',()=>{selected=j.job_id;previous.clear();renderJobs();refresh();});cell(row,b);cell(row,badge(j.state));cell(row,j.tasks.length+' / '+new Set(j.tasks.map(t=>t.node_identity)).size);cell(row,time(j.created_at_ms));cell(row,duration(j.elapsed_ms));cell(row,short(j.owner),'mono').title=j.owner;body.append(row);}
+ const jobs=snapshot.jobs.filter(j=>(!filter||(filter==='active'?!terminal.has(j.state):j.state===filter))&&(!query||[j.name||'',j.job_id,...j.tasks.flatMap(t=>[t.node,t.operator,t.id,t.title||''])].join(' ').toLowerCase().includes(query)));
+ if(!jobs.length)return empty(body,7,snapshot.jobs.length?'No matching jobs':'No jobs yet. Submit a collaborative job through a Flight client.');
+ for(const j of jobs){const row=el('tr',undefined,j.job_id===selected?'selected':'');const b=el('button',j.name||'Unnamed job','job-link');b.title=j.job_id;b.addEventListener('click',()=>{selected=j.job_id;previous.clear();renderJobs();refresh();});cell(row,b);cell(row,short(j.job_id),'mono').title=j.job_id;cell(row,badge('Direct client'));cell(row,'Union job');cell(row,badge(j.state));cell(row,time(j.created_at_ms));cell(row,duration(j.elapsed_ms));body.append(row);}
 }
 const dagViewer=new DacpDag.Viewer($('dag'));
 async function renderDag(j){
@@ -24,8 +24,8 @@ async function renderDag(j){
  catch(e){$('dag-error').textContent='Graph rendering failed: '+e.message;$('dag-error').hidden=false;}
 }
 async function renderDetail(j){
- $('detail').hidden=false;$('job-script').textContent=DacpJobScript.format(j.job_yaml);$('job-policy').textContent=JSON.stringify({execution_policy:j.execution_policy||{},effective_execution_policy:j.effective_execution_policy||{},max_retries:j.max_retries||0},null,2);DacpAttempts.render($('job-attempts'),j);await renderDag(j);if(selected!==j.job_id)return;
- $('detail').hidden=false;$('job-title').textContent=j.job_id;$('job-meta').textContent=(labels[j.state]||j.state)+' · Retry '+(j.retry_count||0)+' / '+(j.max_retries||0)+' · used '+duration(j.elapsed_ms)+' · Submitted at '+time(j.created_at_ms)+(j.finished_at_ms?' · Finished at '+time(j.finished_at_ms):'');
+ $('detail').hidden=false;$('job-script').textContent=DacpJobScript.format(j.job_yaml);$('job-policy').textContent=j.policy_yaml||'{}\n';DacpAttempts.render($('job-attempts'),j);await renderDag(j);if(selected!==j.job_id)return;
+ $('detail').hidden=false;$('job-title').textContent=j.name||'Unnamed job';$('job-meta').textContent='Job ID: '+j.job_id+' · '+(labels[j.state]||j.state)+' · Retry '+(j.retry_count||0)+' / '+(j.max_retries||0)+' · used '+duration(j.elapsed_ms)+' · Submitted at '+time(j.created_at_ms)+(j.finished_at_ms?' · Finished at '+time(j.finished_at_ms):'');
  $('job-message').hidden=!j.message;$('job-message').textContent=j.message||'';$('events').replaceChildren(...(j.events||[]).map(e=>el('span',(labels[e.state]||e.state)+' · '+time(e.at_ms)+'  →  ')));
  const tasks=$('tasks');tasks.replaceChildren();
  for(const t of j.tasks){const card=el('article',undefined,'task'),head=el('div',undefined,'task-head');head.append(el('strong',t.title||t.id),badge(t.state));card.append(head,el('p',t.id+' · '+t.operator,'mono'),el('p',t.node,'muted mono'));const inputs=el('div',undefined,'dependency');for(const b of t.inputs)inputs.append(el('div',b.task?b.task+'.'+b.output_port+' → '+t.id+'.'+b.port:b.uri+' → '+t.id+'.'+b.port));card.append(inputs);tasks.append(card);}

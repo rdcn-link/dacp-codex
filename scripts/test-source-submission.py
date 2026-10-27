@@ -20,7 +20,7 @@ def job(code, runtime='python@1.0', view='bytes', entrypoint=None):
     operator = dict(runtime=runtime, source=code)
     if entrypoint:
         operator['entrypoint'] = entrypoint
-    return json.dumps(dict(job='source-contract', tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=NODE+'/data1/orders',view=view)),dict(id='run', operator=operator,inputs=dict(source='read'), params=dict(output_format='csv'))],outputs={'result':'run'}))
+    return json.dumps(dict(name='source-contract', tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=NODE+'/data1/orders',view=view)),dict(id='run', operator=operator,inputs=dict(source='read'), params=dict(output_format='csv'))],outputs={'result':'run'}))
 
 
 def events(text):

@@ -6,7 +6,7 @@ import dacp.union.Json
 class WorkflowVariablesSpec extends AnyFunSuite {
   test("typed nested substitution is nonrecursive and preserves literal text and keys") {
     val vars=Json.mapper.readTree("""{"N":123,"B":true,"O":{"x":2},"A":[1,2],"NULL":null,"TEXT":"$N"}""")
-    val result=Json.mapper.readTree(WorkflowVariables.resolve(
+    val result=dacp.union.YamlDocument.parse(WorkflowVariables.resolve(
       """params: {n: $N, nested: [$B, $O, $A, $NULL], text: $TEXT, literal: "x$N", "$N": key}""",vars))
     assert(result.path("params").path("n").isInt)
     assert(result.path("params").path("nested").get(0).asBoolean)

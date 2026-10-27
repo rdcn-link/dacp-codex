@@ -35,7 +35,7 @@ Shell startup binds the server address; `datasets` accepts no address argument. 
 Submit ordinary Jobs through standard `Job.run` or shell `submit`, using only public Union input URIs:
 
 ```yaml
-job: climate-summary
+name: climate-summary
 tasks:
 - id: read_summarize_source
   operator: read_item@1.0

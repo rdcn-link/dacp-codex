@@ -1,4 +1,4 @@
-job: eastern-station-temperature-anomalies
+name: eastern-station-temperature-anomalies
 tasks:
 - id: read_daily_source
   operator: read_item@1.0

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import yaml
 """Integration: run a repository on localhost:8820, seed source-bearing examples, then run with Docker access."""
 import json, socket, subprocess, tempfile, time, urllib.request
 from pathlib import Path
@@ -32,8 +33,8 @@ with tempfile.TemporaryDirectory(prefix='dacp-repository-example-check-') as tem
     except Exception: time.sleep(.1)
    else: raise RuntimeError('server readiness timeout')
    def run(operator,item='input',view='bytes',params=None):
-    job=dict(job='repository-example-check',tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=node+'/data/'+item,view=view)),dict(id='check',operator=operator,inputs=dict(source='read'),params=params or {})],outputs={'result':'check'})
-    with Job.run(node,json.dumps(job),timeout=60,**creds) as stream: events=list(stream)
+    job=dict(name='repository-example-check',tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=node+'/data/'+item,view=view)),dict(id='check',operator=operator,inputs=dict(source='read'),params=params or {})],outputs={'result':'check'})
+    with Job.run(node,yaml.safe_dump(job,sort_keys=False),timeout=60,**creds) as stream: events=list(stream)
     assert events[-1]['type']=='complete'
     return events
    events=run('identity@1.3')

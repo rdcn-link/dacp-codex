@@ -2,7 +2,7 @@
 
 [English](materialization_en.md)
 
-执行策略同时用于通过 Python 或 Scala 客户端提交的单机 DACP Server 任务和 Union 协作工作流。业务任务文件定义算子、输入输出、依赖及执行节点；独立的执行策略 JSON 控制哪些**已连接的输出端口**物化。
+执行策略同时用于通过 Python 或 Scala 客户端提交的单机 DACP Server 任务和 Union 协作工作流。业务任务文件定义算子、输入输出、依赖及执行节点；独立的执行策略 YAML 控制哪些**已连接的输出端口**物化。
 
 默认仍是直接流处理，不保存输出。`materialize` 表示在产出节点边传输边保存原始 OperatorFrame（包括 bytes 或 records 的 schema 与批次边界）。它不创建 Dataset，不把跨节点数据中转到 Union，不包含算子内部状态 checkpoint。
 
@@ -30,25 +30,19 @@ union:
 
 只有算子成功、输入完整消费且所有选定输出均完整时，任务的全部选定端口才原子提交。提交前不可重放；取消、失败和配额错误会废弃未提交数据。已成功提交的上游输出不因下游失败而删除。文件插件同步文件并原子发布清单，通过长度和 SHA-256 检查拒绝截断或损坏的重放数据。
 
-## 用户：独立策略 JSON
+## 用户：独立策略 YAML
 
-例如 `execution-policy.json`：
+例如 `execution-policy.yaml`：
 
-```json
-{
-  "max_retries": 0,
-  "materialization": {
-    "allowed": true,
-    "default": "stream",
-    "tasks": {
-      "ta": {
-        "outputs": {
-          "result": "materialize"
-        }
-      }
-    }
-  }
-}
+```yaml
+max_retries: 0
+materialization:
+  allowed: true
+  default: stream
+  tasks:
+    ta:
+      outputs:
+        result: materialize
 ```
 
 - `allowed` 默认 `true`，只表示允许，不会自动开启物化。
@@ -59,8 +53,10 @@ union:
 
 全局禁止引擎保存结果流：
 
-```json
-{"materialization":{"allowed":false,"default":"stream"}}
+```yaml
+materialization:
+  allowed: false
+  default: stream
 ```
 
 此时任何物化默认值或步骤覆盖都会报错，即使某个覆盖最终未被执行。该约束不等于禁止算子自身文件写入、格式处理临时文件、日志或执行元数据。策略不能扩大节点的算子、输入前缀、容量和身份授权。
@@ -68,14 +64,14 @@ union:
 Python：
 
 ```python
-import json
+import yaml
 from pathlib import Path
 from dacp import Union
 
 with Union('dacp://localhost:19860', cert='examples/certs/client.crt',
            key='examples/certs/client.key', ca='examples/certs/ca.crt') as union:
     with union.submit(Path('workflow.yaml').read_text(),
-                      execution_policy=json.loads(Path('execution-policy.json').read_text())) as execution:
+                      execution_policy=yaml.safe_load(Path('execution-policy.yaml').read_text())) as execution:
         job_id = execution.job_id  # 保存，用于之后重放
         for event in execution.results():
             if event['type'] == 'data':
@@ -85,8 +81,8 @@ with Union('dacp://localhost:19860', cert='examples/certs/client.crt',
 Scala：
 
 ```scala
-val policy = dacp.union.Json.parse(java.nio.file.Files.readString(
-  java.nio.file.Path.of("execution-policy.json")))
+val policy = dacp.union.YamlDocument.parse(java.nio.file.Files.readString(
+  java.nio.file.Path.of("execution-policy.yaml")))
 scala.util.Using.resource(union.submit(workflowYaml, policy)) { execution =>
   println(execution.id)
   scala.util.Using.resource(execution.results())(_.foreach(println))
@@ -122,8 +118,11 @@ with union.replay(job_id, tasks=['ta']) as replay:
 
 顶层 `max_retries` 是 0–10 的整数，默认 `0`；`2` 表示首次执行之后最多再试两次。`timeout_seconds` 是 1–86400 的整数，覆盖整个任务的执行、资源等待和所有重试；省略时使用服务器的 `execution_timeout_seconds`，提交值不能超过服务器上限。Union 下各节点还可执行更小的本地时限。
 
-```json
-{"max_retries": 2, "timeout_seconds": 120, "materialization": {"allowed": false}}
+```yaml
+max_retries: 2
+timeout_seconds: 120
+materialization:
+  allowed: false
 ```
 
 自动重试允许全部直接流传递，也允许全局禁止物化。结果在执行过程中增量发送，**一次尝试的结果在成功结束前都是暂定结果**。重试前，服务端发送 `attempt_failed` 通知；Python 调用方必须提供 `on_retry` 回调，Scala 提供 `Some(callback)`，先丢弃上一轮部分结果，再继续接收下一轮。未声明支持重试通知的客户端不能领取开启重试的结果。最终失败、超时或取消时，调用方也应丢弃当前暂定结果；收到 `complete` 且 Flight 正常结束才可确认成功。
@@ -149,7 +148,7 @@ except BaseException:
 
 ## 单机多步骤任务
 
-DACP Server 的单机任务采用同样的策略 JSON、流通知和存储插件，无需配置 Union。管理员在服务器配置顶层增加：
+DACP Server 的单机任务采用同样的策略 YAML、流通知和存储插件，无需配置 Union。管理员在服务器配置顶层增加：
 
 ```yaml
 execution_timeout_seconds: 1800
@@ -194,8 +193,8 @@ Scala 使用 `Job.run(node, script, executionPolicy = policy, onRetry = Some(res
 Shell 支持：
 
 ```text
-submit workflow.yaml --policy policy.json
-run piflow_csv_parser@1.0 --input source=/observations --view bytes --policy policy.json
+submit workflow.yaml --policy policy.yaml
+run piflow_csv_parser@1.0 --input source=/observations --view bytes --policy policy.yaml
 replay EXECUTION_ID
 ```
 
@@ -207,7 +206,7 @@ Shell 显示执行 ID，重试前明确标记上一轮输出作废并重置显�
 
 | Action | 请求 JSON | 返回 |
 |---|---|---|
-| `submit` | `{"job_yaml":"...","execution_policy":{...}}` | 新执行快照；策略可省略 |
+| `submit` | `{"job_yaml":"...","execution_policy_yaml":"materialization:\n  allowed: false\n"}` | 新执行快照；策略可省略 |
 | `replay_job` | `{"job_id":"原执行 ID","tasks":["ta"]}` | 新执行快照；`tasks` 可省略 |
 | 节点 `materialized_status` | `{"union_id":"...","execution_id":"...","task":"ta"}` | 是否提交、到期时间、存储端口校验信息；仅批准的调度者可用 |
 
@@ -219,4 +218,4 @@ Shell 显示执行 ID，重试前明确标记上一轮输出作废并重置显�
 
 插件负责私有配置、配额、过期清理、原子任务提交、持久化、租约与读取完整性；核心负责授权、策略校验、帧协议、取消及运行资源。每个 opaque chunk 不超过 9 MiB，插件不得缓存整个任务。关闭未提交 writer 必须中止，提交后才可 `get`，到期后不可新建租约；清理不得破坏现有租约。新实现应通过发现、提交/中止、重启读取、配额、过期/租约、截断/损坏和关闭清理契约测试；参考 `MaterializationSpec` 及跨节点 `UnionSpec`。
 
-单机 Flight DoExchange 的 `OperatorRequest` 增加 `execution_policy_json`（JSON 字节）、`retry_aware`（布尔值）与 `replay_from`（原执行 ID，此时 `job_yaml` 必须为空）。结果流首先发送 `execution` 元数据帧（包含 `execution_id`），随后输出帧也包含该 ID。两种传输在下一次尝试前均发送 `attempt_failed` 元数据，包含 `attempt_id`、`next_attempt_id`、`retry_count` 和 `message`。Union 的结果 ticket 通过 `retry_aware: true` 声明接收能力。
+单机 Flight DoExchange 的 `OperatorRequest` 增加 `execution_policy_yaml`（YAML 字节）、`retry_aware`（布尔值）与 `replay_from`（原执行 ID，此时 `job_yaml` 必须为空）。结果流首先发送 `execution` 元数据帧（包含 `execution_id`），随后输出帧也包含该 ID。两种传输在下一次尝试前均发送 `attempt_failed` 元数据，包含 `attempt_id`、`next_attempt_id`、`retry_count` 和 `message`。Union 的结果 ticket 通过 `retry_aware: true` 声明接收能力。

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import yaml
 """Compare identical 3-stage Flight Jobs with fusion enabled/disabled; persist every sample."""
 import argparse
 from datetime import datetime, timezone
@@ -120,12 +121,12 @@ def main():
             sequence += 1
             origin = nodes[mode]
             tasks = [dict(id=f'step{i}', operator=language + '@1', inputs={'source':'read' if i == 0 else f'step{i-1}'}, params={'upper':i % 2 == 0}) for i in range(3)]
-            job = dict(job=f'benchmark-{sequence}', tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/'+str(rows),view='bytes'))]+tasks, outputs={'result':'step2'})
+            job = dict(name=f'benchmark-{sequence}', tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/'+str(rows),view='bytes'))]+tasks, outputs={'result':'step2'})
             (d / f'job-{sequence}.json').write_text(json.dumps(job, indent=2))
             since = datetime.now(timezone.utc).isoformat()
             start = time.perf_counter()
             sha, size, count, first = hashlib.sha256(), 0, 0, None
-            with Job.run(origin, json.dumps(job), timeout=900, token=tokens[mode], **tls) as stream:
+            with Job.run(origin, yaml.safe_dump(job,sort_keys=False), timeout=900, token=tokens[mode], **tls) as stream:
                 for event in stream:
                     if event['type'] == 'data':
                         if first is None: first = time.perf_counter() - start

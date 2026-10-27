@@ -68,7 +68,7 @@ run piflow_filter@1.0 --input source=/observations --view records --params '{"co
 Use this Job to combine parsing, filtering and CSV output. The node example URI is `dacp://localhost:18861/weather/observations`. For Union submission, replace it with the Union public URI returned by the actual catalog, not a member-internal URI. Omit `node` for server scheduling.
 
 ```yaml
-job: High-temperature observations
+name: High-temperature observations
 tasks:
 - id: read
   operator: read_item@1.0
@@ -94,14 +94,14 @@ outputs:
   result: export
 ```
 
-Save as `weather.yaml`, and create `variables.json`:
+Save as `weather.yaml`, and create `variables.yaml`:
 
 ```json
 {"INPUT_URI":"dacp://localhost:18861/weather/observations"}
 ```
 
 ```text
-submit weather.yaml --vars variables.json
+submit weather.yaml --vars variables.yaml
 ```
 
 Results stream to the client by default. Materialization at selected boundaries, retries and timeouts use a separate [execution policy](materialization_en.md). Operator-internal input collection and engine-managed output persistence are separate mechanisms.

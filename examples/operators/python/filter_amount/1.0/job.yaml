@@ -1,4 +1,4 @@
-job: filter-amount-demo
+name: filter-amount-demo
 tasks:
 - id: read_filter_source
   operator: read_item@1.0

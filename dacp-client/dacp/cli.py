@@ -1,4 +1,5 @@
 """Interactive, bounded previews for a DACP dataset."""
+from . import yaml_document
 import argparse
 import codecs
 import re
@@ -397,7 +398,7 @@ class Browser(cmd.Cmd):
 
         Omit --input for zero-input source operators. Use --input for each named port. ITEM is a path, latest ls number, or full Item URI.
         Output defaults to result. Use --output PORT repeatedly for named outputs, or --no-output for a sink.
-        Optional: --params-file FILE, --timeout SECONDS, --policy policy.json.
+        Optional: --params-file FILE, --timeout SECONDS, --policy policy.yaml.
         Installed operator IDs work in NORMAL mode; native_uppercase requires publishing the native example.
         No preview limit applies by default. Job results are streams, with no saved Dataset.
         Execution time is printed after completion, failure or cancellation.
@@ -424,7 +425,7 @@ class Browser(cmd.Cmd):
         parser.add_argument('--view', choices=('bytes','records'), default='bytes')
         parser.add_argument('--params', default='{}')
         parser.add_argument('--params-file')
-        parser.add_argument('--policy', help='execution policy JSON file')
+        parser.add_argument('--policy', help='execution policy YAML file')
         parser.add_argument('--timeout', type=positive, default=3600)
         parser.add_argument('--preview-rows', type=positive)
         parser.add_argument('--preview-bytes', type=positive)
@@ -472,28 +473,28 @@ class Browser(cmd.Cmd):
         ports = [] if options.no_output else (options.output or ['result'])
         if len(set(ports)) != len(ports) or any(not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]{0,127}', p) for p in ports):
             raise ValueError('output ports must be unique identifiers')
-        job = {'job':'shell', 'tasks':readers + [{'id':'run','operator':operator,'inputs':inputs,'params':params}],
+        job = {'name':'shell', 'tasks':readers + [{'id':'run','operator':operator,'inputs':inputs,'params':params}],
                'outputs': {p: ('run' if p == 'result' else 'run:' + p) for p in ports}}
         u = urlsplit(self.uri)
         coordinator = urlunsplit((u.scheme,u.netloc,'','',''))
-        self.print_job(coordinator, json.dumps(job), options.timeout, **({"preview_rows":options.preview_rows,"preview_bytes":options.preview_bytes} if options.preview_rows or options.preview_bytes else {}),
-                       **({"execution_policy":json.loads(Path(options.policy).read_text())} if options.policy else {}))
+        self.print_job(coordinator, yaml_document.dump(job), options.timeout, **({"preview_rows":options.preview_rows,"preview_bytes":options.preview_bytes} if options.preview_rows or options.preview_bytes else {}),
+                       **({"execution_policy":yaml_document.mapping(Path(options.policy).read_text())} if options.policy else {}))
 
     def do_infer(self, arg):
         """Infer workflow output structures without processing data.
 
         Usage: infer FILE [--vars FILE]
-        Example: infer examples/convert-variables.yaml --vars examples/convert-variables.json
+        Example: infer examples/convert-variables.yaml --vars examples/convert-variables-values.yaml
         Unknown structures remain explicit. This does not preview or execute the workflow.
         """
         parser = argparse.ArgumentParser(prog='infer', exit_on_error=False)
         parser.add_argument('file')
-        parser.add_argument('--vars', help='workflow variables JSON object file')
+        parser.add_argument('--vars', help='workflow variables YAML mapping file')
         parser.error = lambda message: (_ for _ in ()).throw(ValueError(message))
         options = parser.parse_args(shlex.split(arg))
-        variables = json.loads(Path(options.vars).read_text()) if options.vars else None
+        variables = yaml_document.mapping(Path(options.vars).read_text()) if options.vars else None
         if options.vars and not isinstance(variables, dict):
-            raise ValueError('variables must be a JSON object')
+            raise ValueError('variables must be a mapping')
         u = urlsplit(self.uri)
         result = Job.infer(urlunsplit((u.scheme, u.netloc, '', '', '')), Path(options.file).read_text(),
                            variables=variables, **self.credentials)
@@ -506,13 +507,13 @@ class Browser(cmd.Cmd):
 
         Examples (file paths are relative to the shell working directory):
           submit examples/convert.yaml
-          submit examples/convert.yaml --vars variables.json
-          submit examples/convert.yaml --policy policy.json
+          submit examples/convert.yaml --vars variables.yaml
+          submit examples/convert.yaml --policy policy.yaml
           submit examples/convert.yaml --preview-bytes 128
 
         Without FILE, enter YAML and finish with END alone on a line:
           submit
-          job: demo
+          name: demo
           tasks:
             - id: copy
               operator: read_item@1.0
@@ -530,8 +531,8 @@ class Browser(cmd.Cmd):
         Ctrl-C cancels entry or execution. Use your node URI and installed operator IDs.
         """
         parser = argparse.ArgumentParser(prog='submit', exit_on_error=False)
-        parser.add_argument('--vars', help='workflow variables JSON object file')
-        parser.add_argument('--policy', help='execution policy JSON file')
+        parser.add_argument('--vars', help='workflow variables YAML mapping file')
+        parser.add_argument('--policy', help='execution policy YAML file')
         parser.add_argument('file', nargs='?')
         parser.add_argument('--preview-rows', type=positive)
         parser.add_argument('--preview-bytes', type=positive)
@@ -542,14 +543,14 @@ class Browser(cmd.Cmd):
         except (KeyboardInterrupt, EOFError):
             self.write('Job entry cancelled; nothing submitted.')
             return
-        variables = json.loads(Path(options.vars).read_text()) if options.vars else None
+        variables = yaml_document.mapping(Path(options.vars).read_text()) if options.vars else None
         if options.vars and not isinstance(variables, dict):
-            raise ValueError('variables must be a JSON object')
+            raise ValueError('variables must be a mapping')
         u = urlsplit(self.uri)
         self.print_job(urlunsplit((u.scheme,u.netloc,'','','')), text, 3600,
                        preview_rows=options.preview_rows, preview_bytes=options.preview_bytes,
                        variables=variables,
-                       **({"execution_policy":json.loads(Path(options.policy).read_text())} if options.policy else {}))
+                       **({"execution_policy":yaml_document.mapping(Path(options.policy).read_text())} if options.policy else {}))
 
     def do_replay(self, arg):
         """Replay a job using its committed materialized outputs.

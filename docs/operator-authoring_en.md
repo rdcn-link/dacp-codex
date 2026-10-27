@@ -225,7 +225,7 @@ run filter_amount@1.0 --input source=/orders --view records --params '{"min_amou
 The shell waits and displays the two result rows as batches arrive, then shows execution information and returns to its prompt. This job expresses the same binding and also allows separate views for multiple inputs:
 
 ```yaml
-job: filter-amount-demo
+name: filter-amount-demo
 tasks:
 - id: read_filter_source
   operator: read_item@1.0

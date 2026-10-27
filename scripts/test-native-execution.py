@@ -66,7 +66,7 @@ def main():
             server = subprocess.Popen([str(ROOT/'dacp-server/target/universal/stage/bin/dacp-server'), str(base/'server.json')],
                                       cwd=ROOT/'dacp-server', stdout=log, stderr=log)
             def job(name, view='bytes', item='source'):
-                return json.dumps(dict(job='native-contract', tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=NODE+'/data/'+item,view=view)),dict(id='native', operator=name+'@1',inputs=dict(source='read'))],outputs={'result':'native'}))
+                return json.dumps(dict(name='native-contract', tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=NODE+'/data/'+item,view=view)),dict(id='native', operator=name+'@1',inputs=dict(source='read'))],outputs={'result':'native'}))
             def run(name, item='source'):
                 with Job.run(NODE, job(name, item=item), timeout=30, **CREDS) as stream:
                     return list(stream)
@@ -82,11 +82,11 @@ def main():
                         time.sleep(.1)
                 else:
                     raise RuntimeError('test server did not start')
-                source_job = dict(job='native-source', tasks=[dict(id='generate', operator='generate@1', inputs={})], outputs={'result':'generate'})
+                source_job = dict(name='native-source', tasks=[dict(id='generate', operator='generate@1', inputs={})], outputs={'result':'generate'})
                 with Job.run(NODE, json.dumps(source_job), timeout=30, **CREDS) as stream:
                     generated = list(stream)
                 assert b''.join(e['data'] for e in generated if e['type']=='data') == b'generated\n'
-                sink_job = dict(job='native-stream-sink', tasks=[
+                sink_job = dict(name='native-stream-sink', tasks=[
                     dict(id='generate', operator='generate@1', inputs={}),
                     dict(id='sink', operator='sink@1', inputs={'source':'generate'})], outputs={})
                 with Job.run(NODE, json.dumps(sink_job), timeout=30, **CREDS) as stream:

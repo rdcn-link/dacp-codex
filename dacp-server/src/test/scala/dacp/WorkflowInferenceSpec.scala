@@ -5,7 +5,7 @@ import scala.jdk.CollectionConverters._
 
 class WorkflowInferenceSpec extends AnyFunSuite {
   val bytes=StreamDescriptor(Set("bytes"),Set("json"),certainty="known")
-  def plan=Jobs.parse("""job: infer
+  def plan=Jobs.parse("""name: infer
     |tasks:
     |- {id: source, operator: source@1, inputs: {}}
     |- {id: copy, operator: copy@1, inputs: {source: source}}

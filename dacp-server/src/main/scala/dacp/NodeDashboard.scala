@@ -51,7 +51,12 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     val n=record.deepCopy[ObjectNode]();n.put("execution_source",executionSource(record));n
   }
   private def graph(record:JsonNode):JsonNode={
-    val n=withSource(record);val id=n.path("record_id").asText
+    val n=withSource(record)
+    n.put("definition_yaml",if(record.has("job_yaml"))record.path("job_yaml").asText else dacp.union.YamlDocument.dump(if(record.has("task_definitions"))record.path("task_definitions")else record))
+    n.put("execution_policy_yaml",dacp.union.YamlDocument.dump(record.path("execution_policy").deepCopy[JsonNode]()))
+    n.put("effective_execution_policy_yaml",dacp.union.YamlDocument.dump(record.path("effective_execution_policy").deepCopy[JsonNode]()))
+    val policyView=Json.obj();policyView.set[JsonNode]("submitted",if(record.has("execution_policy"))record.path("execution_policy")else Json.obj());policyView.set[JsonNode]("effective",if(record.has("effective_execution_policy"))record.path("effective_execution_policy")else Json.obj());n.put("policy_yaml",dacp.union.YamlDocument.dump(policyView))
+    val id=n.path("record_id").asText
     val current=live().find(_.path("execution_id").asText==n.path("execution_id").asText).filter(_=>n.path("kind").asText=="union_execution")
     current.foreach(v=>v.fields.asScala.foreach(e=>n.set[JsonNode](e.getKey,e.getValue)))
     val children=config.executionHistory.store.records.filter(c=>c.path("parent_record_id").asText==id || c.path("parent_execution_id").asText==id)

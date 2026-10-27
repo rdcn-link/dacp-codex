@@ -11,9 +11,9 @@ object WorkflowVariables {
   private val variable = "\\$([A-Za-z_][A-Za-z0-9_]*)".r
   def resolve(text:String, variables:JsonNode):String = {
     if(variables==null)return text
-    require(variables.isObject,"variables must be a JSON object")
+    require(variables.isObject,"variables must be a mapping")
     require(variables.fieldNames().asScala.forall(_.matches("[A-Za-z_][A-Za-z0-9_]*")),"invalid workflow variable name")
-    val document=new Yaml(new SafeConstructor(new LoaderOptions())).load[Object](text)
+    val document=dacp.union.YamlDocument.parse(text)
     def visit(value:JsonNode,depth:Int):JsonNode = {
       require(depth<=100,"workflow nesting exceeds 100 levels")
       if(value.isTextual)value.asText match {
@@ -26,6 +26,6 @@ object WorkflowVariables {
       else if(value.isObject){val o=Json.obj();value.fields().asScala.foreach(e=>o.set[JsonNode](e.getKey,visit(e.getValue,depth+1)));o}
       else value
     }
-    visit(Json.mapper.valueToTree[JsonNode](document),0).toString
+    dacp.union.YamlDocument.dump(visit(document,0))
   }
 }

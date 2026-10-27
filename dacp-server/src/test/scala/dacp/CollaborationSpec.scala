@@ -6,7 +6,7 @@ import org.apache.arrow.memory.RootAllocator
 
 class CollaborationSpec extends AnyFunSuite {
   def config = Config("localhost",18815,"localhost",Map.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"))
-  val yaml="""job: inline
+  val yaml="""name: inline
     |tasks:
     | - id: first
     |   operator:
@@ -30,7 +30,7 @@ class CollaborationSpec extends AnyFunSuite {
     Jobs.authorizeSource(config.copy(debug=true),task)
   }
   test("references use task with optional port and reject old object bindings") {
-    val text="""job: pipeline
+    val text="""name: pipeline
       |tasks:
       | - {id: b, operator: identity@1.1, inputs: {source: a}}
       | - {id: a, operator: live_ticks@1.0, inputs: {}}
@@ -46,7 +46,7 @@ class CollaborationSpec extends AnyFunSuite {
     intercept[IllegalArgumentException](Jobs.parse(text.replace("result: b","result: {task: b, port: result}")))
   }
   test("stream dependencies define the graph and depends_on is rejected") {
-    val text="""job: stream
+    val text="""name: stream
       |tasks:
       | - {id: consume, operator: sink@1, inputs: {source: generate}}
       | - {id: generate, operator: generate@1, inputs: {}}
@@ -59,7 +59,7 @@ class CollaborationSpec extends AnyFunSuite {
     intercept[IllegalArgumentException](Jobs.parse(text.replace("id: generate, operator: generate@1, inputs: {}","id: generate, operator: generate@1, inputs: {source: consume}")))
   }
   test("read_item requires an Item URI and explicit view") {
-    val text="""job: read
+    val text="""name: read
       |tasks:
       | - {id: read, operator: read_item@1.0, inputs: {}, params: {uri: 'dacp://localhost:18815/data/item', view: records}}
       |outputs: {result: read}

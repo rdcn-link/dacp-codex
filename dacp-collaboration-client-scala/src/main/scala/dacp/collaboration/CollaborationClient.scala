@@ -16,7 +16,7 @@ final class CollaborationClient(tls:Tls,traffic:Option[FlightTraffic]=None,crede
     transport.stream(origin,kind,body,pin,timeout,hops)
   def membership(origin:String,unionId:String,pin:Option[String]=None):JsonNode=action(origin,"membership",Json.obj().put("union_id",unionId),pin)
   def nodeStatus(origin:String,unionId:String,pin:Option[String]=None):JsonNode=action(origin,"node_status",Json.obj().put("union_id",unionId),pin)
-  def prepare(origin:String,plan:JsonNode,pin:Option[String]=None):JsonNode=action(origin,"prepare",plan,pin)
+  def prepare(origin:String,plan:JsonNode,pin:Option[String]=None):JsonNode=action(origin,"prepare",dacp.union.Json.obj().put("job_yaml",dacp.union.YamlDocument.dump(plan)),pin)
   def start(origin:String,executionId:String,pin:Option[String]=None):JsonNode=action(origin,"start",Json.obj().put("execution_id",executionId),pin)
   def status(origin:String,executionId:String,pin:Option[String]=None):JsonNode=action(origin,"execution_status",Json.obj().put("execution_id",executionId),pin)
   def cancel(origin:String,executionId:String,pin:Option[String]=None):JsonNode=action(origin,"cancel_execution",Json.obj().put("execution_id",executionId),pin)

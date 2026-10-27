@@ -18,11 +18,12 @@ Final results travel from a node through X's bounded queue to the client. Status
 
 ### Dispatched subjob routing contract
 
-Clients can submit global workflows as YAML. U parses them, persists formatted JSON, and dispatches subjobs as JSON control messages over Flight. Union and subjob definitions may therefore appear as JSON in dashboards, while directly submitted local YAML scripts retain their YAML presentation. Both describe the same workflow model.
+Global jobs, node subjobs, execution policies and variable files use YAML. U retains the received workflow text as `submitted_job_yaml` and persists the planned execution definition as YAML. Subjobs travel in the `job_yaml` text field of Flight control messages; policies use `execution_policy_yaml`. Clients resolve variables before submitting YAML. Status and traffic metadata remain structured messages.
 
 User Job inputs accept only `task[:port]`; top-level `outputs` selects returned streams. An internal task dispatched by U to C looks like the following. Replace identity placeholders with actual 64-character hexadecimal certificate digests:
 
 ```yaml
+name: Weather screening
 union_id: union-U
 execution_id: job-001
 tasks:
@@ -71,7 +72,7 @@ U can expose a read-only operations dashboard on a separate HTTP listener withou
 A task `id` is its unique dependency identifier within the Job, used by input `task[:port]` references, final outputs, scheduling, status, and traffic correlation; it is required. Optional `title` describes its purpose, supports Unicode, and must contain 1–256 characters without control characters. Titles need not be unique and do not resolve dependencies. Dashboard cards and DAGs show the title with the ID; execution history retains titles.
 
 ```yaml
-job: daily-temperature
+name: daily-temperature
 tasks:
   - id: read_observations
     operator: read_item@1.0

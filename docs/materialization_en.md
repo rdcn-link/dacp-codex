@@ -2,7 +2,7 @@
 
 [中文](materialization.md)
 
-Execution policies apply to both single-node DACP Server jobs and collaborative Union workflows submitted through Python or Scala clients. The business task file defines operators, inputs and outputs, dependencies, and placement. A separate execution-policy JSON controls materialization of **connected output ports**.
+Execution policies apply to both single-node DACP Server jobs and collaborative Union workflows submitted through Python or Scala clients. The business task file defines operators, inputs and outputs, dependencies, and placement. A separate execution-policy YAML controls materialization of **connected output ports**.
 
 Direct streaming without output retention remains the default. `materialize` saves original OperatorFrames on the producing node while forwarding them, preserving bytes or records schemas and batch boundaries. It creates no Dataset, does not route intermediate data through Union, and does not checkpoint internal operator state.
 
@@ -30,25 +30,19 @@ The file plugin requires `directory`; the other three settings default to the va
 
 All selected ports of a task commit atomically only after the operator succeeds, its inputs are fully consumed, and the selected outputs are complete. Uncommitted data cannot be replayed; cancellation, failure, and quota errors discard it. A downstream failure does not delete previously committed upstream outputs. The file plugin syncs files, publishes a manifest atomically, and validates lengths and SHA-256 to reject truncated or corrupt replay data.
 
-## Users: separate policy JSON
+## Users: separate policy YAML
 
-For example, `execution-policy.json`:
+For example, `execution-policy.yaml`:
 
-```json
-{
-  "max_retries": 0,
-  "materialization": {
-    "allowed": true,
-    "default": "stream",
-    "tasks": {
-      "ta": {
-        "outputs": {
-          "result": "materialize"
-        }
-      }
-    }
-  }
-}
+```yaml
+max_retries: 0
+materialization:
+  allowed: true
+  default: stream
+  tasks:
+    ta:
+      outputs:
+        result: materialize
 ```
 
 - `allowed` defaults to `true`: permission alone does not enable materialization.
@@ -59,8 +53,10 @@ For example, `execution-policy.json`:
 
 To prohibit engine retention of result streams throughout the workflow:
 
-```json
-{"materialization":{"allowed":false,"default":"stream"}}
+```yaml
+materialization:
+  allowed: false
+  default: stream
 ```
 
 Any materializing default or task override then produces an error, even if that override would not ultimately execute. This does not prohibit operator file writes, format-processing temporary files, logs, or execution metadata. Policy cannot expand a node's operator, input-prefix, capacity, or identity authorization.
@@ -68,14 +64,14 @@ Any materializing default or task override then produces an error, even if that 
 Python:
 
 ```python
-import json
+import yaml
 from pathlib import Path
 from dacp import Union
 
 with Union('dacp://localhost:19860', cert='examples/certs/client.crt',
            key='examples/certs/client.key', ca='examples/certs/ca.crt') as union:
     with union.submit(Path('workflow.yaml').read_text(),
-                      execution_policy=json.loads(Path('execution-policy.json').read_text())) as execution:
+                      execution_policy=yaml.safe_load(Path('execution-policy.yaml').read_text())) as execution:
         job_id = execution.job_id  # Retain for subsequent replay
         for event in execution.results():
             if event['type'] == 'data':
@@ -85,8 +81,8 @@ with Union('dacp://localhost:19860', cert='examples/certs/client.crt',
 Scala:
 
 ```scala
-val policy = dacp.union.Json.parse(java.nio.file.Files.readString(
-  java.nio.file.Path.of("execution-policy.json")))
+val policy = dacp.union.YamlDocument.parse(java.nio.file.Files.readString(
+  java.nio.file.Path.of("execution-policy.yaml")))
 scala.util.Using.resource(union.submit(workflowYaml, policy)) { execution =>
   println(execution.id)
   scala.util.Using.resource(execution.results())(_.foreach(println))
@@ -122,8 +118,11 @@ Expired, incomplete, corrupt, offline, or unauthorized sources produce errors ra
 
 The top-level `max_retries` is an integer from 0 to 10, defaulting to `0`; `2` permits two retries after the initial attempt. `timeout_seconds` is an integer from 1 to 86400 covering the entire job, resource waits, and all retries. If omitted, the server's `execution_timeout_seconds` applies; a submitted value cannot exceed that limit. Under Union, individual nodes may impose a smaller local limit.
 
-```json
-{"max_retries": 2, "timeout_seconds": 120, "materialization": {"allowed": false}}
+```yaml
+max_retries: 2
+timeout_seconds: 120
+materialization:
+  allowed: false
 ```
 
 Automatic retry supports entirely streaming jobs, including jobs that prohibit materialization. Results are delivered incrementally; **each attempt's results remain provisional until successful completion**. Before retrying, the server sends `attempt_failed`. Python callers must supply an `on_retry` callback and Scala callers `Some(callback)` to discard the preceding attempt's partial results before accepting the next attempt. Consumers that do not declare retry awareness cannot claim results for retry-enabled jobs. Discard provisional results after terminal failure, timeout, or cancellation too. Confirm success only after `complete` and a normal Flight stream ending.
@@ -149,7 +148,7 @@ Every retry has a separate `attempt_id` under the same public execution ID. Reus
 
 ## Single-node multi-step jobs
 
-DACP Server single-node jobs support the same policy JSON, stream notifications, and storage plugin without configuring Union. Administrators add these top-level server settings:
+DACP Server single-node jobs support the same policy YAML, stream notifications, and storage plugin without configuring Union. Administrators add these top-level server settings:
 
 ```yaml
 execution_timeout_seconds: 1800
@@ -194,8 +193,8 @@ Scala uses `Job.run(node, script, executionPolicy = policy, onRetry = Some(reset
 The shell supports:
 
 ```text
-submit workflow.yaml --policy policy.json
-run piflow_csv_parser@1.0 --input source=/observations --view bytes --policy policy.json
+submit workflow.yaml --policy policy.yaml
+run piflow_csv_parser@1.0 --input source=/observations --view bytes --policy policy.yaml
 replay EXECUTION_ID
 ```
 
@@ -207,7 +206,7 @@ Use the existing Arrow Flight TLS / Token transport; there is no HTTP write inte
 
 | Action | Request JSON | Response |
 |---|---|---|
-| `submit` | `{"job_yaml":"...","execution_policy":{...}}` | New execution snapshot; policy is optional |
+| `submit` | `{"job_yaml":"...","execution_policy_yaml":"materialization:\n  allowed: false\n"}` | New execution snapshot; policy is optional |
 | `replay_job` | `{"job_id":"source ID","tasks":["ta"]}` | New execution snapshot; `tasks` is optional |
 | Node `materialized_status` | `{"union_id":"...","execution_id":"...","task":"ta"}` | Commit status, expiry, and stored-port integrity metadata; approved schedulers only |
 
@@ -219,4 +218,4 @@ Public contracts live in `dacp-plugin-api`: `MaterializationStoreProvider`, `Mat
 
 Plugins own private configuration, quotas, expiration, atomic task commit, durability, leases, and read integrity. Core owns authorization, policy validation, frame protocol, cancellation, and execution resources. Opaque chunks are at most 9 MiB; plugins must not buffer a whole task. Closing an uncommitted writer must abort it, `get` may expose committed artifacts only, and expired artifacts cannot receive new leases. Cleanup must preserve existing leases. New implementations should test discovery, commit/abort, restart reads, quota, expiration/leases, truncation/corruption, and close cleanup. See `MaterializationSpec` and cross-node `UnionSpec`.
 
-Single-node Flight DoExchange extends `OperatorRequest` with `execution_policy_json` (JSON bytes), `retry_aware` (boolean), and `replay_from` (original execution ID; `job_yaml` must then be empty). The result stream begins with an `execution` metadata frame containing `execution_id`; subsequent output frames include the same ID. Both transports send `attempt_failed` metadata with `attempt_id`, `next_attempt_id`, `retry_count`, and `message` before a new attempt. Union results tickets declare `retry_aware: true`.
+Single-node Flight DoExchange extends `OperatorRequest` with `execution_policy_yaml` (YAML bytes), `retry_aware` (boolean), and `replay_from` (original execution ID; `job_yaml` must then be empty). The result stream begins with an `execution` metadata frame containing `execution_id`; subsequent output frames include the same ID. Both transports send `attempt_failed` metadata with `attempt_id`, `next_attempt_id`, `retry_count`, and `message` before a new attempt. Union results tickets declare `retry_aware: true`.

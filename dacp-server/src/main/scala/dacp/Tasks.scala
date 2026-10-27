@@ -6,7 +6,7 @@ import org.yaml.snakeyaml.Yaml
 
 case class InputBinding(uri: Option[String] = None, task: Option[String] = None, port: String = "result", view: String = "bytes")
 case class Task(id: String, inputs: Map[String,InputBinding], operator: String, params: java.util.Map[String,Object], node: Option[String] = None, source: Option[SourceOperator] = None, title: Option[String] = None, outputPorts:Seq[String]=Seq.empty, proxyPath:Vector[String]=Vector.empty)
-case class JobPlan(tasks: Vector[Task], outputs: Map[String,(String,String)])
+case class JobPlan(tasks: Vector[Task], outputs: Map[String,(String,String)], name:String="Job")
 case class SourceOperator(runtime: String, source: String, entrypoint: String = "Main")
 object Jobs {
   val ReadItem = "read_item@1.0"
@@ -70,9 +70,9 @@ object Jobs {
   def parse(text: String): JobPlan = {
     require(text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 1024*1024,"job exceeds 1 MiB")
     val options=new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
-    val raw=try new Yaml(options).load[Object](text)catch{case e:org.yaml.snakeyaml.error.YAMLException=>throw new IllegalArgumentException("invalid job YAML",e)}
+    val raw=try dacp.union.Json.mapper.convertValue(dacp.union.YamlDocument.parse(text),classOf[Object])catch{case e:org.yaml.snakeyaml.error.YAMLException=>throw new IllegalArgumentException("invalid job YAML",e)}
     val doc=mapping(raw,"job")
-    require(doc.keySet.subsetOf(Set("job","tasks","outputs")) && doc.contains("job"),"invalid job settings")
+    require(doc.keySet.subsetOf(Set("name","tasks","outputs")) && doc.contains("name"),"invalid job settings")
     require(doc.get("tasks").exists(_.isInstanceOf[java.util.List[_]]),"tasks must be a list")
     val tasks=doc("tasks").asInstanceOf[java.util.List[Object]].asScala.map { raw =>
       val m=mapping(raw,"task")
@@ -98,6 +98,7 @@ object Jobs {
     val outputs=doc.get("outputs").map(v=>mapping(v,"outputs").map {case(label,raw)=>
       name(label);val (task,port)=reference(raw);require(ids(task),"unknown output task");label -> (task,port)
     }).getOrElse(Map.empty[String,(String,String)])
-    JobPlan(result.result(),outputs)
+    require(doc("name").isInstanceOf[String] && doc("name").toString.trim.nonEmpty && doc("name").toString.length<=256 && !doc("name").toString.exists(_.isControl),"name must contain 1 to 256 characters without control characters")
+    JobPlan(result.result(),outputs,doc("name").toString)
   }
 }

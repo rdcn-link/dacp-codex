@@ -1,4 +1,4 @@
-job: live-weather-stream
+name: live-weather-stream
 tasks:
 - id: ticks
   title: 持续生成模拟气象观测

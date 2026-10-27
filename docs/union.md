@@ -18,11 +18,12 @@ X 先 prepare 所有子 Job，得到接收确认后再 start。节点检查自�
 
 ### 下发子 Job 的路由契约
 
-客户端可用 YAML 提交全局工作流；U 解析后保存格式化 JSON，并通过 Flight 以 JSON 控制消息下发子作业。因此看板中的联合任务与子作业定义可能显示为 JSON，本地直接提交的 YAML 脚本则保留 YAML 展示。两者描述同一种工作流模型。
+全局 Job、节点子 Job、执行策略及变量文件统一使用 YAML。U 保存收到的工作流原文 `submitted_job_yaml`，并将规划后的执行定义保存为 YAML；通过 Flight 控制消息的 `job_yaml` 文本字段下发子作业。策略使用 `execution_policy_yaml` 文本字段，变量由客户端替换后按 YAML 提交。状态和流量等元数据仍为结构化消息。
 
 用户 Job 的 `inputs` 只接受 `task[:port]`，顶层 `outputs` 选择返回流。U 分解后下发给 C 的内部任务示例如下；身份占位符需替换为实际的 64 位十六进制证书摘要：
 
 ```yaml
+name: Weather screening
 union_id: union-U
 execution_id: job-001
 tasks:
@@ -71,7 +72,7 @@ U 可通过独立 HTTP 监听提供只读运行看板；这不改变上述 Fligh
 任务的 `id` 是 Job 内唯一的依赖标识，供输入的 `task[:port]`、最终输出、调度、状态与流量关联使用，必须保留。可选 `title` 是用途说明，支持中文，长度为 1–256 个字符且不可包含控制字符；不参与依赖解析，不要求唯一。看板任务卡片和 DAG 优先显示标题，同时保留 ID；标题随执行历史保存。
 
 ```yaml
-job: daily-temperature
+name: daily-temperature
 tasks:
   - id: read_observations
     operator: read_item@1.0

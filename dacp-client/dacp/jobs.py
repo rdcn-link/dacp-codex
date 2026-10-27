@@ -9,6 +9,7 @@ import pyarrow.flight as flight
 from . import dacp_pb2 as pb
 from .source import _flight_client
 from .variables import resolve_variables
+from . import yaml_document
 
 
 class JobStream:
@@ -138,7 +139,7 @@ class Job:
             raise TypeError('on_retry must be callable')
         body = pb.OperatorRequest(job_yaml=yaml, retry_aware=on_retry is not None,
                                   replay_from=replay_from or '',
-                                  execution_policy_json=(json.dumps(execution_policy).encode()
+                                  execution_policy_yaml=(yaml_document.dump(execution_policy).encode()
                                                          if execution_policy is not None else b'')).SerializeToString()
         if len(body) > 1024*1024:
             raise ValueError('control request exceeds 1 MiB')

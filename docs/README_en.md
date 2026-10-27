@@ -68,3 +68,5 @@ Union provides standard DACP discovery, Items, Jobs and S3. For public short nam
 [Authentication and access control](security_en.md): Flight tokens, Union service credentials, S3 SigV4, revocation and audit. [Structure inference](structure-inference_en.md): mandatory operator output inference and workflow validation.
 
 [Streaming versus per-step materialization benchmark](materialization-benchmark_en.md): 500,000 weather observations, three measured runs and actual persisted bytes.
+
+[Measured local versus cross-node streaming job performance](local-vs-union-benchmark_en.md).

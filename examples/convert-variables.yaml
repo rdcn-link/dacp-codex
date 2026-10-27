@@ -1,4 +1,4 @@
-job: parameterized-conversion
+name: parameterized-conversion
 tasks:
 - id: read
   operator: read_item@1.0

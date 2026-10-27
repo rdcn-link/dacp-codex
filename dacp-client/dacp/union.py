@@ -1,5 +1,6 @@
 """Ordinary Flight client for one DACP Union: TLS and a user bearer token."""
 from .variables import resolve_variables
+from . import yaml_document
 import base64
 from contextlib import suppress
 import json
@@ -44,8 +45,8 @@ class Union(FlightControl):
         body = {'job_yaml': resolve_variables(job_yaml, variables)}
         if execution_policy is not None:
             if not isinstance(execution_policy, dict):
-                raise ValueError('execution_policy must be a JSON object')
-            body['execution_policy'] = execution_policy
+                raise ValueError('execution_policy must be a mapping')
+            body['execution_policy_yaml'] = yaml_document.dump(execution_policy)
         result = self._action('submit', body)
         return UnionExecution(self, result['job_id'])
 

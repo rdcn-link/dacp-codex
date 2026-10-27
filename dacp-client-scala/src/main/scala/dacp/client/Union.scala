@@ -25,7 +25,7 @@ final class Union(url:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=1800)
     require(raw.length<=1024*1024 && !results.hasNext,"invalid inference response");Json.mapper.readTree(raw)
   }
   def submit(yaml:String,executionPolicy:JsonNode=Json.obj(),variables:JsonNode=null):UnionExecution={
-    val body=Json.obj().put("job_yaml",WorkflowVariables.resolve(yaml,variables));body.set[JsonNode]("execution_policy",executionPolicy)
+    val body=Json.obj().put("job_yaml",WorkflowVariables.resolve(yaml,variables));body.put("execution_policy_yaml",dacp.union.YamlDocument.dump(executionPolicy))
     val n=remote.action(origin,"submit",body)
     new UnionExecution(this,Json.id(Json.text(n,"job_id")))
   }

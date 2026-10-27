@@ -14,6 +14,8 @@ Nodes also expose an [S3-compatible read-only service](docs/s3-service_en.md) by
 
 Official website module: [dacp-website](dacp-website/README_en.md), providing an English project overview, online documentation by role, and software downloads.
 
+Job definitions, node subjobs, execution policies and variable files use YAML. Every Job requires a readable `name`, separate from its system-generated execution ID. Node and Union dashboards share job names and execution fields. In the shell, submit them together with `submit workflow.yaml --policy policy.yaml --vars variables.yaml`. See [writing jobs](docs/jobs_en.md).
+
 ## Read by role
 
 | Reader | Entry point | Main topics |

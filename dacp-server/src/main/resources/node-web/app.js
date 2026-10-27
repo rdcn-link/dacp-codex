@@ -13,15 +13,15 @@ const dagViewer=new DacpDag.Viewer($('dag'));
 async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error('Request failed ('+r.status+')');return r.json();}
 function showError(e){$('error').textContent=e.message+'; current information is unavailable.';$('error').hidden=false;$('connection').textContent='Request failed';}
 async function detail(){const id=selected;if(!id)return;const r=await api('/api/executions/'+encodeURIComponent(id));if(selected!==id)return;
- $('detail').hidden=false;$('execution-title').textContent=r.record_id;$('execution-state').textContent=(labels[r.state]||r.state)+' · '+(recordTypes[r.kind]||r.kind);
- $('execution-origin').textContent='Source: '+(r.execution_source==='union'?'Union':'Direct client')+(r.union_id?' · Union: '+r.union_id:'')+(r.execution_id?' · Execution: '+r.execution_id:'')+(r.parent_record_id||r.parent_execution_id?' · Parent record: '+(r.parent_record_id||r.parent_execution_id):'');
+ $('detail').hidden=false;$('execution-title').textContent=r.name||'Unnamed job';$('execution-state').textContent=(labels[r.state]||r.state)+' · '+(recordTypes[r.kind]||r.kind);
+ $('execution-origin').textContent='Job ID: '+(r.execution_id||r.record_id)+' · Source: '+(r.execution_source==='union'?'Union':'Direct client')+(r.union_id?' · Union: '+r.union_id:'')+(r.execution_id?' · Execution: '+r.execution_id:'')+(r.parent_record_id||r.parent_execution_id?' · Parent record: '+(r.parent_record_id||r.parent_execution_id):'');
  const steps=$('step-records');steps.replaceChildren();
  for(const step of r.step_records||[]){const row=el('tr');row.title=step.record_id;for(const value of [step.title||step.task_id||step.record_id,step.operator||'—',labels[step.state]||step.state,time(step.started_at_ms||step.created_at_ms),duration(terminal.has(step.state)?step.elapsed_ms:Date.now()-step.created_at_ms),step.attempt_id||'—'])cell(row,value);steps.append(row);}
  if(!steps.children.length){const row=el('tr');cell(row,'No operator step records').colSpan=6;steps.append(row);}
  DacpAttempts.render($('execution-attempts'),r);
- $('policy').textContent=JSON.stringify({submitted:r.execution_policy||{},effective:r.effective_execution_policy||{}},null,2);
+ $('policy').textContent=r.policy_yaml||'{}\n';
  $('definition-title').textContent=r.task_definitions?'Sub-job definition':r.job_yaml?'Job script':'Task definition';
- $('script').textContent=r.task_definitions?DacpJobScript.format(JSON.stringify(r.task_definitions)):r.job_yaml?DacpJobScript.format(r.job_yaml):DacpJobScript.format(JSON.stringify(r));
+ $('script').textContent=DacpJobScript.format(r.definition_yaml);
  const job={...r,tasks:r.graph_tasks,outputs:r.graph_outputs,nodes:r.graph_nodes};$('dag-overview').textContent=job.tasks.length+' steps';
  try{await dagViewer.update(job,previous,{bytes,time,duration,labels,terminal});$('dag-error').hidden=true;}catch(e){$('dag-error').textContent='Graph rendering failed: '+e.message;$('dag-error').hidden=false;}
  const next=new Map();for(const [node,n]of Object.entries(job.nodes))for(const [key,m]of Object.entries(n.ports||{}))next.set(job.job_id+'/'+node+'/'+key,{at:n.observed_at_ms,value:m.payload_bytes});previous=next;
@@ -30,8 +30,8 @@ async function refresh(){if(busy)return;busy=true;try{
  const [info,page]=await Promise.all([api('/api/overview'),api('/api/history?offset='+offset+'&limit=50&source='+$('execution-source').value)]);
  $('address').textContent=info.flight_uri;$('summary').replaceChildren();
  for(const [value,label]of [[time(info.started_at_ms),'Started at'],[duration(info.uptime_ms),'Uptime'],[info.reserved_tasks+' / '+info.capacity,'Task capacity'],[info.executors.join(', '),'Executors']]){const stat=el('div',undefined,'stat');stat.append(el('strong',value),el('span',label));$('summary').append(stat);}
- const body=$('history');body.replaceChildren();for(const r of page.records){const row=el('tr');const button=el('button',r.task_id||r.execution_id||r.record_id,'job-link');button.title=r.record_id;button.addEventListener('click',()=>{selected=r.record_id;previous.clear();detail().catch(showError);});cell(row,button);const source=el('span',r.execution_source==='union'?'Union':'Direct client','badge '+(r.execution_source==='union'?'busy':'good'));cell(row,source);cell(row,recordTypes[r.kind]||r.kind);cell(row,labels[r.state]||r.state);cell(row,time(r.created_at_ms));cell(row,duration(terminal.has(r.state)?r.elapsed_ms:Date.now()-r.created_at_ms));body.append(row);}
- if(!page.records.length){const row=el('tr');cell(row,'No execution records for this source').colSpan=6;body.append(row);}
+ const body=$('history');body.replaceChildren();for(const r of page.records){const row=el('tr');const button=el('button',r.name||'Unnamed job','job-link');button.title=r.record_id;button.addEventListener('click',()=>{selected=r.record_id;previous.clear();detail().catch(showError);});cell(row,button);const identifier=r.execution_id||r.record_id;const idCell=el('span',identifier.slice(0,8),'mono');idCell.title=identifier;cell(row,idCell);const source=el('span',r.execution_source==='union'?'Union':'Direct client','badge '+(r.execution_source==='union'?'busy':'good'));cell(row,source);cell(row,recordTypes[r.kind]||r.kind);cell(row,labels[r.state]||r.state);cell(row,time(r.created_at_ms));cell(row,duration(terminal.has(r.state)?r.elapsed_ms:Date.now()-r.created_at_ms));body.append(row);}
+ if(!page.records.length){const row=el('tr');cell(row,'No execution records for this source').colSpan=7;body.append(row);}
  $('page').textContent=' '+(offset+1)+'–'+(offset+page.records.length)+' ';$('previous').disabled=offset===0;$('next').disabled=page.records.length<50;
  await detail();$('connection').textContent='Connected';$('error').hidden=true;
  }catch(e){showError(e);}finally{busy=false;}}

@@ -51,6 +51,6 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
       sources.headOption.foreach(s=>params.put("uri",s._3))
       t.copy(node=Some(selected.path("data_origin").asText),params=params)
     }
-    JobPlan(tasks,input.outputs)
+    JobPlan(tasks,input.outputs,input.name)
   }
 }

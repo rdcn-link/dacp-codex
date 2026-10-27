@@ -35,7 +35,7 @@ except Exception as error:
     assert getattr(error,'code',None) == 'NOT_FOUND', error
 else:
     raise AssertionError('source unexpectedly exists on coordinator')
-bad = json.dumps(dict(job='failed_remote', tasks=[
+bad = json.dumps(dict(name='failed_remote', tasks=[
     dict(id='read', operator='read_item@1.0', inputs={}, params=dict(uri=B+'/csv_data/orders', view='bytes')),
     dict(id='fail', inputs=dict(source='read'), operator='missing@1.0'),
     dict(id='blocked', inputs=dict(source='fail'), node=A, operator='identity@1.1')]))

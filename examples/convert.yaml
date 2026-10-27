@@ -1,4 +1,4 @@
-job: demo
+name: demo
 tasks:
 - id: read_convert_source
   operator: read_item@1.0

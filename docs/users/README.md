@@ -335,6 +335,6 @@ DACP 与 Union 默认持久化全部执行记录；Union 看板支持重启后�
 
 ## 执行策略、重试与重放
 
-单机 DACP Server 的多步骤任务和 Union 协作任务均支持独立的执行策略 JSON：`max_retries`、`timeout_seconds` 和 `materialization`。Shell 用 `submit workflow.yaml --policy policy.json` 提交，并可用 `replay EXECUTION_ID` 从有效的物化边界重放。Python 与 Scala 客户端须通过显式重试回调清空上一轮部分结果；关闭结果流可取消任务。配置、完整调用示例与成功确认规则见[执行策略、输出物化与重放](../materialization.md)。
+单机 DACP Server 的多步骤任务和 Union 协作任务均支持独立的执行策略 YAML：`max_retries`、`timeout_seconds` 和 `materialization`。Shell 用 `submit workflow.yaml --policy policy.yaml` 提交，并可用 `replay EXECUTION_ID` 从有效的物化边界重放。Python 与 Scala 客户端须通过显式重试回调清空上一轮部分结果；关闭结果流可取消任务。配置、完整调用示例与成功确认规则见[执行策略、输出物化与重放](../materialization.md)。
 
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy.md)。

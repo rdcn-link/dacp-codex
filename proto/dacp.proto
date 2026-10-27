@@ -34,9 +34,9 @@ message Ticket { string dataset = 1; string item = 2; string view = 3; Scan scan
 message OperatorRequest {
   oneof request {
     string job_yaml = 1;
-    bytes task_json = 2;
+    bytes task_yaml = 2;
   }
-  bytes execution_policy_json = 3;
+  bytes execution_policy_yaml = 3;
   bool retry_aware = 4;
   string replay_from = 5;
 }

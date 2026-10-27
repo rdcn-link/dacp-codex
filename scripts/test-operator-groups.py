@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import yaml
 """Real Flight jobs: shared JVM/Python containers, preserved history, no live-server changes."""
 import argparse
 from datetime import datetime,timezone
@@ -54,9 +55,9 @@ def main():
             tls=dict(token=token,tls_root_certs=(cert/'ca.crt').read_bytes(),cert_chain=(cert/'client.crt').read_bytes(),private_key=(cert/'client.key').read_bytes())
             for language,ops,expected in [('jvm',['upper@1','strip@1'],b'HELLO DACP'),('python',['python@1','python@1'],b'HELLO DACP\n'),('mixed',['upper@1','legacy@1'],b'HELLO DACP\n')]:
                 tasks=[dict(id='a',operator=ops[0],inputs={'source':'read'},params={'upper':True} if language=='python' else {}),dict(id='b',operator=ops[1],inputs={'source':'a'},params={})]
-                job=dict(job='fusion-'+language,tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/message',view='bytes'))]+tasks,outputs={'result':'b'})
+                job=dict(name='fusion-'+language,tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/message',view='bytes'))]+tasks,outputs={'result':'b'})
                 started=time.monotonic()
-                with Job.run(origin,json.dumps(job),timeout=180,**tls) as stream:
+                with Job.run(origin,yaml.safe_dump(job,sort_keys=False),timeout=180,**tls) as stream:
                     frames=list(stream)
                 payload=b''.join(f['data'] for f in frames if f['type']=='data');assert payload==expected,(language,payload)
                 print(language,'Flight job verified, elapsed',round(time.monotonic()-started,3),'s',flush=True)

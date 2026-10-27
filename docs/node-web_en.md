@@ -50,3 +50,5 @@ Mouse-wheel zoom is locked by default. Click 🔒 Mouse zoom to unlock it; click
 While locked, scrolling the wheel over the DAG scrolls the page normally; only unlocked graphs capture wheel scrolling.
 
 Cross-node input interfaces appear in a separate upstream-server group outside this node’s execution area. Interface cards identify the upstream step and output port, such as `parse.result`; they are not steps executed on this node. Dependency and swimlane layouts use the same ownership.
+
+Jobs have a required readable `name` and a system-generated execution ID. Node and Union job lists share Name, Job ID, Source, Type, Status, Started at and Duration columns; details show the name and full ID. Job definitions, subjob definitions and execution policies display as YAML.

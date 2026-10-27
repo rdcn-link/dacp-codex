@@ -225,7 +225,7 @@ run filter_amount@1.0 --input source=/orders --view records --params '{"min_amou
 Shell 等待结果，随批次到达显示前面的两行结果，结束后显示执行信息并返回提示符。以下作业表达相同绑定，也适合为多个输入分别选择 view：
 
 ```yaml
-job: filter-amount-demo
+name: filter-amount-demo
 tasks:
 - id: read_filter_source
   operator: read_item@1.0

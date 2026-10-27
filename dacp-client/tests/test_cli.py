@@ -1,3 +1,4 @@
+import yaml
 import io
 from types import SimpleNamespace
 
@@ -341,10 +342,10 @@ def test_run_heredoc_source_preserves_indentation(browser, monkeypatch):
     monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
     b.onecmd('run --runtime python@1.0 --input source=1 <<STOP')
     import json
-    task = json.loads(calls[0][1])['tasks'][-1]
+    task = yaml.safe_load(calls[0][1])['tasks'][-1]
     assert task['operator'] == {'runtime':'python@1.0', 'source':"def process(inputs, params):\n    yield b'hi'\n"}
     assert task['inputs']['source'] == 'read_1'
-    reader = json.loads(calls[0][1])['tasks'][0]
+    reader = yaml.safe_load(calls[0][1])['tasks'][0]
     assert reader == {'id':'read_1','operator':'read_item@1.0','inputs':{},'params':{'uri':'dacp://localhost/data1/orders','view':'bytes'}}
 
 
@@ -385,7 +386,7 @@ def test_run_repository_id(browser, monkeypatch):
     monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
     b.onecmd('run identity@1.1 --input source=1')
     import json
-    assert json.loads(calls[0][1])['tasks'][-1]['operator'] == 'identity@1.1'
+    assert yaml.safe_load(calls[0][1])['tasks'][-1]['operator'] == 'identity@1.1'
 
 
 class JobEvents:
@@ -414,7 +415,7 @@ def test_job_records_header_once_and_no_implicit_limit(browser, monkeypatch):
                         dict(type='data',port='result',batch=pa.record_batch([[3,4]],names=['id'])),
                         dict(type='end',port='result'),dict(type='complete')])
     monkeypatch.setattr(cli.Job,'run',lambda *a,**kw:stream)
-    b.print_job('dacp://localhost','job: test',30)
+    b.print_job('dacp://localhost','name: test',30)
     assert out.getvalue().count('[result] id')==1
     assert '[result] 4' in out.getvalue() and 'Job complete.' in out.getvalue()
     assert stream.closed
@@ -424,7 +425,7 @@ def test_record_preview_stops_and_closes_without_reading_rest(browser, monkeypat
     b,ds,out = browser
     stream = JobEvents([record_start(),dict(type='data',port='result',batch=pa.record_batch([[1,2,3]],names=['id']))])
     monkeypatch.setattr(cli.Job,'run',lambda *a,**kw:stream)
-    b.print_job('dacp://localhost','job: test',30,preview_rows=2)
+    b.print_job('dacp://localhost','name: test',30,preview_rows=2)
     assert '[result] 2' in out.getvalue() and '[result] 3' not in out.getvalue()
     assert 'remaining job cancelled' in out.getvalue() and 'Job complete.' not in out.getvalue()
     assert stream.closed and stream.consumed==2
@@ -437,7 +438,7 @@ def test_text_ports_and_utf8_across_chunks(browser, monkeypatch):
                       dict(type='data',port='b',data=b'hello'),dict(type='data',port='a',data=b'\xb8\xad\n'),
                       dict(type='end',port='a'),dict(type='end',port='b'),dict(type='complete')])
     monkeypatch.setattr(cli.Job,'run',lambda *a,**kw:stream)
-    b.print_job('dacp://localhost','job: test',30)
+    b.print_job('dacp://localhost','name: test',30)
     assert '[b] hello\n[a] 中\n' in out.getvalue()
 
 
@@ -446,7 +447,7 @@ def test_binary_preview_counts_bytes_and_has_offsets(browser, monkeypatch):
     stream=JobEvents([dict(type='start',port='x',representation='bytes',format='binary'),
                       dict(type='data',port='x',data=bytes(range(32)))])
     monkeypatch.setattr(cli.Job,'run',lambda *a,**kw:stream)
-    b.print_job('dacp://localhost','job: test',30,preview_bytes=18)
+    b.print_job('dacp://localhost','name: test',30,preview_bytes=18)
     assert '[x] 00000010  10 11' in out.getvalue()
     assert '12 13' not in out.getvalue() and stream.closed
 
@@ -530,13 +531,13 @@ def test_submit_policy_and_replay_use_bound_server(browser, monkeypatch, tmp_pat
     import json
     b, ds, out = browser
     job = tmp_path / 'workflow.yaml'
-    policy = tmp_path / 'policy.json'
-    job.write_text('job: example')
+    policy = tmp_path / 'policy.yaml'
+    job.write_text('name: example')
     policy.write_text('{"max_retries":2,"timeout_seconds":120}')
     calls = []
     monkeypatch.setattr(b, 'print_job', lambda *args, **options: calls.append((args, options)))
     b.onecmd(f'submit {job} --policy {policy}')
-    assert calls[0][0][:2] == ('dacp://localhost', 'job: example')
+    assert calls[0][0][:2] == ('dacp://localhost', 'name: example')
     assert calls[0][1]['execution_policy'] == {'max_retries': 2, 'timeout_seconds': 120}
     b.onecmd('replay execution1')
     assert calls[1][0][:2] == ('dacp://localhost', '')
@@ -579,7 +580,7 @@ def test_run_zero_input_source(browser, monkeypatch):
     monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
     b.onecmd("run live_ticks@1.0 --params '{\"max_records\":3}'")
     import json
-    task = json.loads(calls[0][1])['tasks'][0]
+    task = yaml.safe_load(calls[0][1])['tasks'][0]
     assert task['inputs'] == {}
     assert task['params'] == {'max_records': 3}
 
@@ -624,7 +625,7 @@ def test_run_builds_only_stream_references_with_explicit_item_sources(browser, m
     calls = []
     monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
     b.onecmd('run join@1 --input left=1 --input right=2 --view records')
-    job = json.loads(calls[0][1])
+    job = yaml.safe_load(calls[0][1])
     assert job['outputs'] == {'result': 'run'}
     assert job['tasks'][-1]['inputs'] == {'left':'read_1','right':'read_2'}
     assert [t['params']['view'] for t in job['tasks'][:-1]] == ['records','records']
@@ -641,7 +642,7 @@ def test_run_explicit_results_and_sink(browser, monkeypatch, options, expected):
     calls = []
     monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
     b.onecmd('run example@1 ' + options)
-    assert json.loads(calls[0][1])['outputs'] == expected
+    assert yaml.safe_load(calls[0][1])['outputs'] == expected
 
 
 def test_run_rejects_conflicting_output_options(browser, monkeypatch):
@@ -663,9 +664,9 @@ def test_cat_replaces_show_without_alias(browser):
 def test_submit_loads_variables_json_alongside_policy(browser, monkeypatch, tmp_path):
     b, ds, out = browser
     workflow = tmp_path / 'job.yaml'
-    variables = tmp_path / 'vars.json'
-    policy = tmp_path / 'policy.json'
-    workflow.write_text('job: demo\ntasks: [{params: {limit: $LIMIT}}]')
+    variables = tmp_path / 'vars.yaml'
+    policy = tmp_path / 'policy.yaml'
+    workflow.write_text('name: demo\ntasks: [{params: {limit: $LIMIT}}]')
     variables.write_text('{"LIMIT":123}')
     policy.write_text('{"timeout_seconds":120}')
     calls = []
@@ -679,9 +680,9 @@ def test_submit_loads_variables_json_alongside_policy(browser, monkeypatch, tmp_
 def test_submit_rejects_nonobject_variable_files(browser, monkeypatch, tmp_path, value):
     b, ds, out = browser
     job = tmp_path / 'job.yaml'
-    variables = tmp_path / 'vars.json'
-    job.write_text('job: demo')
+    variables = tmp_path / 'vars.yaml'
+    job.write_text('name: demo')
     variables.write_text(value)
     monkeypatch.setattr(b, 'print_job', lambda *a, **k: pytest.fail('must not submit'))
     b.onecmd(f'submit {job} --vars {variables}')
-    assert 'variables must be a JSON object' in out.getvalue()
+    assert 'YAML document must be a mapping' in out.getvalue()

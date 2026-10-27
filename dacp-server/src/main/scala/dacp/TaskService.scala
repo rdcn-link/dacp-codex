@@ -34,7 +34,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
       val bytes=reader.getDescriptor.getCommand
       require(bytes.length<=1024*1024,"request exceeds 1 MiB")
       val request=Metadata.OperatorRequest.parseFrom(bytes)
-      require(request.hasJobYaml || (request.getExecutionPolicyJson.isEmpty && !request.getRetryAware && request.getReplayFrom.isEmpty),"worker requests cannot contain job policy")
+      require(request.hasJobYaml || (request.getExecutionPolicyYaml.isEmpty && !request.getRetryAware && request.getReplayFrom.isEmpty),"worker requests cannot contain job policy")
       writer.start(root)
       def emit(f:OperatorFrame):Unit={metric("outputs",f);StreamProtocol.send(writer,root,f,cancel)}
       if(request.hasJobYaml) {
@@ -49,14 +49,15 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         }
         val yaml=previous.map(_.path("job_yaml").asText).getOrElse(request.getJobYaml)
         require(previous.isEmpty || request.getJobYaml.isEmpty,"replay uses original job definition")
-        val raw=if(!request.getExecutionPolicyJson.isEmpty)Data.mapper.readTree(request.getExecutionPolicyJson.toByteArray)
+        val raw=if(!request.getExecutionPolicyYaml.isEmpty)dacp.union.YamlDocument.parse(request.getExecutionPolicyYaml.toStringUtf8)
           else previous.map(_.path("execution_policy")).getOrElse(dacp.union.Json.obj())
         val plan=Jobs.parse(yaml);plan.tasks.foreach(Jobs.authorizeSource(config,_));val policy=ExecutionPolicy.parse(raw,plan)
         val timeout=policy.timeoutSeconds.getOrElse(config.executionTimeoutSeconds)
         require(timeout<=config.executionTimeoutSeconds,"timeout_seconds exceeds server limit")
         require(policy.maxRetries==0 || request.getRetryAware,"automatic retries require a retry-aware client callback")
         val scoped=new StreamCancel(()=>{cancel.checkState();false},timeout);cancel.add(scoped)
-        val detail=dacp.union.Json.obj().put("job_yaml",yaml).put("execution_mode","isolated_steps")
+        val detail=dacp.union.Json.obj().put("job_yaml",yaml).put("name",plan.name).put("execution_mode","isolated_steps")
+        detail.put("execution_policy_yaml",dacp.union.YamlDocument.dump(policy.submitted))
         detail.set[com.fasterxml.jackson.databind.JsonNode]("execution_policy",policy.submitted)
         val effective=policy.effective.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();effective.put("timeout_seconds",timeout)
         detail.set[com.fasterxml.jackson.databind.JsonNode]("effective_execution_policy",effective);replay.foreach(detail.put("replay_of",_));record.update("running",detail)
@@ -72,9 +73,9 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
           val tasks=detail.putArray("tasks");plan.tasks.foreach(t=>{val entry=tasks.addObject().put("id",t.id).put("operator",t.operator);t.title.foreach(entry.put("title",_))});record.update("running",detail)
           new LocalJobExecution(config,executor,source,allocator).run(plan,policy,owner,record,replay,result,scoped)
         }else coordinate(yaml,result,scoped,record)
-      } else if(request.hasTaskJson) {
+      } else if(request.hasTaskYaml) {
         require(permits.tryAcquire(),"node task capacity reached");acquired=permits
-        val n=Data.mapper.readTree(request.getTaskJson.toByteArray)
+        val n=dacp.union.YamlDocument.parse(request.getTaskYaml.toStringUtf8)
         require(n.isObject && Set("id","operator","params","ports","sources").subsetOf(n.fieldNames.asScala.toSet) && n.fieldNames.asScala.toSet.subsetOf(Set("id","operator","params","ports","sources","parent_execution_id","title")),"invalid worker request")
         val details=dacp.union.Json.obj().put("request_type","task").put("task_id",n.path("id").asText)
         Option(n.get("title")).foreach(v=>details.set[com.fasterxml.jackson.databind.JsonNode]("title",v))
@@ -260,7 +261,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     }
     val ports=n.putArray("ports");inputs.keys.toVector.sorted.foreach(ports.add)
     val src=n.putArray("sources");sources.foreach(src.add)
-    val request=Metadata.OperatorRequest.newBuilder().setTaskJson(com.google.protobuf.ByteString.copyFrom(Data.mapper.writeValueAsBytes(n))).build()
+    val request=Metadata.OperatorRequest.newBuilder().setTaskYaml(com.google.protobuf.ByteString.copyFromUtf8(dacp.union.YamlDocument.dump(n))).build()
     val exchange=c.add(client.doExchange(FlightDescriptor.command(request.toByteArray)))
     val out=exchange.getWriter;val root=VectorSchemaRoot.create(PluginSchemas.bytes,allocator)
     out.start(root)

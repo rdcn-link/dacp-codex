@@ -23,7 +23,7 @@ An identical image is necessary but does not prove arbitrary programs can safely
 Existing SDK templates work directly. After building and publishing the Scala common-operator examples, `scala_text_uppercase@1.0` and `scala_text_strip@1.0` reference the same image and implement the SDK contract. They are not in the current six-operator collaboration repository; publish them before using this example:
 
 ```yaml
-job: clean-text
+name: clean-text
 tasks:
 - id: read_uppercase_source
   operator: read_item@1.0

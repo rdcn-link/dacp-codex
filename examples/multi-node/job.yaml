@@ -1,4 +1,4 @@
-job: collaborative_demo
+name: collaborative_demo
 tasks:
 - id: read_convert_at_data_source
   operator: read_item@1.0

@@ -58,7 +58,7 @@ object Job {
     require(executionPolicy.isObject,"executionPolicy must be an object")
     val builder=Metadata.OperatorRequest.newBuilder().setJobYaml(resolved).setRetryAware(onRetry.nonEmpty)
 
-    if(replayFrom.isEmpty || executionPolicy.size()>0)builder.setExecutionPolicyJson(com.google.protobuf.ByteString.copyFromUtf8(executionPolicy.toString))
+    if(replayFrom.isEmpty || executionPolicy.size()>0)builder.setExecutionPolicyYaml(com.google.protobuf.ByteString.copyFromUtf8(dacp.union.YamlDocument.dump(executionPolicy)))
     replayFrom.foreach(builder.setReplayFrom)
     val request=builder.build().toByteArray
     require(request.length<=1024*1024,"control request exceeds 1 MiB")

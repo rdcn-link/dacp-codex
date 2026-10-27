@@ -57,13 +57,13 @@ python3 scripts/upload-operator.py live_ticks@1.0 --catalog /tmp/live-ticks-cata
 
 [workflow.yaml](workflow.yaml) 依次执行 `live_ticks → live_ticks_decode → piflow_select_field → piflow_convert_schema → piflow_csv_save`，从 JSONL 字节流转为 Arrow 记录流，选列、重命名，再输出 CSV。所有步骤逐条或逐批处理，无需等待无限输入结束。`live_ticks_decode` 使用明确的气象记录 schema，保留每条观测，不是通用 JSON 展平器；每行最大 64 KiB。
 
-[stream-only-policy.json](stream-only-policy.json) 禁止中间结果物化并设置总时限 300 秒。数据负载通过内存有界队列、FIFO 管道和进程标准输出传递，不保存中间结果文件。执行日志、状态记录、运行时缓存和启动参数文件仍会写入服务器文件系统；本例保证的是中间数据负载不落盘。
+[stream-only-policy.yaml](stream-only-policy.yaml) 禁止中间结果物化并设置总时限 300 秒。数据负载通过内存有界队列、FIFO 管道和进程标准输出传递，不保存中间结果文件。执行日志、状态记录、运行时缓存和启动参数文件仍会写入服务器文件系统；本例保证的是中间数据负载不落盘。
 
 在项目根目录启动 Shell，连接节点 A 并选择数据集后提交：
 
 ```text
 use weather
-submit examples/operators/live-stream/workflow.yaml --policy examples/operators/live-stream/stream-only-policy.json
+submit examples/operators/live-stream/workflow.yaml --policy examples/operators/live-stream/stream-only-policy.yaml
 ```
 
 终端会持续输出 `sequence,station_id,timestamp,air_temperature_c` 的 CSV 行，按 Ctrl+C 停止。生成器不需要输入 Item。工作流不指定 node，直接提交给所连接节点；通过 Union 提交时，成员需能获取全部五个算子版本，由调度器选择执行节点。

@@ -49,4 +49,4 @@ Union 的共享传输模块对 JSON 消息实施 1 MiB 上限。具体动作、t
 
 ### 单机任务的执行策略
 
-Flight `DoExchange` 的 `OperatorRequest` 在任务 YAML 之外接收 `execution_policy_json`（JSON 字节）、`retry_aware`（布尔值）和 `replay_from`（原执行 ID）。重放时 `job_yaml` 置空，服务器恢复原任务与策略，校验原提交者及有效物化输出。工作步骤请求不接受这些作业级字段。结果流先发 `execution` 元数据帧公布执行 ID；重试前发送 `attempt_failed`，客户端回调清空暂定结果后接收新一轮 `start/data/end`。`complete` 后仍须确认 Flight 成功结束。断开或关闭流即取消执行。详见[执行策略](materialization.md)。
+Flight `DoExchange` 的 `OperatorRequest` 在任务 YAML 之外接收 `execution_policy_yaml`（YAML 字节）、`retry_aware`（布尔值）和 `replay_from`（原执行 ID）。重放时 `job_yaml` 置空，服务器恢复原任务与策略，校验原提交者及有效物化输出。工作步骤请求不接受这些作业级字段。结果流先发 `execution` 元数据帧公布执行 ID；重试前发送 `attempt_failed`，客户端回调清空暂定结果后接收新一轮 `start/data/end`。`complete` 后仍须确认 Flight 成功结束。断开或关闭流即取消执行。详见[执行策略](materialization.md)。

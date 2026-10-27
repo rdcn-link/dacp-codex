@@ -1,3 +1,4 @@
+import yaml
 import io
 import json
 import struct
@@ -148,14 +149,14 @@ def test_submit_policy_and_replay_use_separate_flight_controls():
         return {'job_id': 'execution-2'}
     client._action = action
     policy = {'materialization': {'allowed': False, 'default': 'stream'}}
-    submitted = client.submit('job: example', execution_policy=policy)
+    submitted = client.submit('name: example', execution_policy=policy)
     assert submitted.job_id == 'execution-2'
-    assert calls[-1] == ('submit', {'job_yaml': 'job: example', 'execution_policy': policy})
+    assert calls[-1] == ('submit', {'job_yaml': 'name: example', 'execution_policy_yaml': yaml.safe_dump(policy, sort_keys=False)})
     replayed = submitted.replay(tasks=['ta'])
     assert replayed.job_id == 'execution-2'
     assert calls[-1] == ('replay_job', {'job_id': 'execution-2', 'tasks': ['ta']})
-    with pytest.raises(ValueError, match='JSON object'):
-        client.submit('job: example', execution_policy='{}')
+    with pytest.raises(ValueError, match='mapping'):
+        client.submit('name: example', execution_policy='{}')
 
 
 def test_retry_callback_discards_partial_results_and_receives_next_attempt():
@@ -200,7 +201,7 @@ def test_union_submits_resolved_variable_snapshot():
     client._action = lambda name, body: (calls.append((name, body)) or {'job_id': 'example'})
     client.submit('tasks: [{params: {limit: $LIMIT}}]', variables={'LIMIT': 123})
     import json
-    assert json.loads(calls[0][1]['job_yaml'])['tasks'][0]['params']['limit'] == 123
+    assert yaml.safe_load(calls[0][1]['job_yaml'])['tasks'][0]['params']['limit'] == 123
     with pytest.raises(ValueError, match='missing workflow variable'):
         client.submit('params: {limit: $LIMIT}', variables={})
     assert len(calls) == 1

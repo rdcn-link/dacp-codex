@@ -68,7 +68,7 @@ run piflow_filter@1.0 --input source=/observations --view records --params '{"co
 组合解析、过滤与 CSV 输出时，使用以下 Job。节点示例 URI 为 `dacp://localhost:18861/weather/observations`；提交 Union 时替换成实际目录返回的 Union 公开 URI，不使用成员内部 URI。省略 `node` 由服务器调度。
 
 ```yaml
-job: High-temperature observations
+name: High-temperature observations
 tasks:
 - id: read
   operator: read_item@1.0
@@ -94,14 +94,14 @@ outputs:
   result: export
 ```
 
-保存为 `weather.yaml`，另建 `variables.json`：
+保存为 `weather.yaml`，另建 `variables.yaml`：
 
 ```json
 {"INPUT_URI":"dacp://localhost:18861/weather/observations"}
 ```
 
 ```text
-submit weather.yaml --vars variables.json
+submit weather.yaml --vars variables.yaml
 ```
 
 默认结果通过 stream 返回；选定边界的物化、重试和超时由独立的[执行策略](materialization.md)控制。算子内部收集数据与引擎保存输出是不同机制。
