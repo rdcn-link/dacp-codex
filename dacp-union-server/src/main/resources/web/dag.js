@@ -36,8 +36,19 @@ window.DacpDag=(()=>{
    let source='task:'+binding.task;
    if(!binding.task){
     source='input:'+t.id+':'+binding.port;
-   nodes.push({id:source,combo:groups.get(t.node),data:{kind:'input',title:binding.uri?.split('/').pop()||binding.port,subtitle:(binding.remote?'Cross-node input':'Local input')+' · '+binding.port,color:'#7f93ad',fill:'#fff',dash:[]},style:{size:[228,76]}});
-    details.set(source,{title:(binding.remote?'Cross-node input':'Local input')+' · '+binding.port,lines:[binding.uri||'', 'Meaning: '+(binding.view||'bytes'),'Server: '+t.node]});
+    let combo=groups.get(t.node),server=t.node;
+    if(binding.remote){
+     server=binding.upstream_origin||binding.uri?.split(' / ')[0]||'Upstream server';
+     combo=groups.get(server);
+     if(!combo){
+      const color=palette[groups.size%palette.length];combo='upstream:'+groups.size;groups.set(server,combo);
+      combos.push({id:combo,data:{title:server,subtitle:'External output interfaces',...color},style:{labelText:server+' · External outputs',stroke:color.stroke,fill:color.fill}});
+      details.set(combo,{title:'Upstream server',lines:[server,'Only output interfaces are shown; upstream steps execute on this server.']});
+     }
+    }
+    const title=binding.upstream_task?binding.upstream_task+'.'+(binding.upstream_port||'result'):binding.uri?.split('/').pop()||binding.port;
+    nodes.push({id:source,combo,data:{kind:'input',title,subtitle:(binding.remote?'External output':'Local input')+' · '+binding.port,color:'#7f93ad',fill:'#fff',dash:[]},style:{size:[228,76]}});
+    details.set(source,{title:(binding.remote?'Cross-node input':'Local input')+' · '+binding.port,lines:[binding.uri||'', 'Meaning: '+(binding.view||'bytes'),'Server: '+server]});
    }
    edge(source,'task:'+t.id,binding.task?binding.output_port+' → '+binding.port:binding.port,t,'inputs',binding.port);
   }
@@ -94,10 +105,15 @@ window.DacpDag=(()=>{
  let registered=false;
  class Viewer {
   constructor(host){
-   this.host=host;this.graph=null;this.ready=false;this.job=null;this.topology=null;this.details=new Map();this.inspected=null;this.pending=Promise.resolve();this.mode='fit';this.layoutMode='dependency';this.direction='horizontal';
+   this.host=host;this.graph=null;this.ready=false;this.job=null;this.topology=null;this.details=new Map();this.inspected=null;this.pending=Promise.resolve();this.mode='fit';this.layoutMode='dependency';this.direction='horizontal';this.mouseZoom=false;
    document.querySelectorAll('[data-dag-layout]').forEach(button=>button.addEventListener('click',()=>this.setLayout('layout',button.dataset.dagLayout)));
    document.querySelectorAll('[data-dag-direction]').forEach(button=>button.addEventListener('click',()=>this.setLayout('direction',button.dataset.dagDirection)));
    const button=(id,fn)=>document.getElementById(id).addEventListener('click',()=>this.action(fn));
+   // G6 cancels wheel events even when its zoom behavior is disabled.
+   // Cancel only while unlocked so native page scrolling works while locked.
+   host.addEventListener('wheel',event=>{if(this.mouseZoom)event.preventDefault();},{passive:false});
+   const lock=document.getElementById('dag-zoom-lock');
+   lock.addEventListener('click',()=>{this.mouseZoom=!this.mouseZoom;host.classList.toggle('mouse-zoom-enabled',this.mouseZoom);lock.textContent=this.mouseZoom?'🔓 Mouse zoom':'🔒 Mouse zoom';lock.setAttribute('aria-pressed',String(this.mouseZoom));lock.title=this.mouseZoom?'Lock mouse zoom':'Unlock mouse zoom';this.zoomHint();});
    button('dag-zoom-in',async()=>{this.mode='manual';await this.graph.zoomTo(Math.min(2.5,this.graph.getZoom()*1.2),false);});
    button('dag-zoom-out',async()=>{this.mode='manual';await this.graph.zoomTo(Math.max(.15,this.graph.getZoom()/1.2),false);});
    button('dag-fit',()=>this.fit());
@@ -113,8 +129,12 @@ window.DacpDag=(()=>{
    document.querySelectorAll('[data-dag-layout]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.dagLayout===this.layoutMode)));
    document.querySelectorAll('[data-dag-direction]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.dagDirection===this.direction)));
    document.getElementById('dag-expand').disabled=this.layoutMode==='swimlane';
-   document.getElementById('dag-layout-hint').textContent=this.layoutMode==='swimlane'?(this.direction==='vertical'?'Columns by server · top-to-bottom flow':'Rows by server · left-to-right flow')+' · drag to pan / scroll to zoom':'Drag to pan · scroll to zoom · double-click groups to collapse';
+   this.zoomHint();
    if(this.lastRequest)this.update(...this.lastRequest).catch(error=>{const box=document.getElementById('dag-error');box.textContent='Graph layout failed: '+error.message;box.hidden=false;});
+  }
+  zoomHint(){
+   document.getElementById('dag-layout-hint').textContent=this.layoutMode==='swimlane'?(this.direction==='vertical'?'Columns by server · top-to-bottom flow':'Rows by server · left-to-right flow')+' · drag to pan':'Drag to pan · double-click groups to collapse';
+   document.getElementById('dag-layout-hint').textContent+=this.mouseZoom?' · scroll to zoom':' · mouse zoom locked';
   }
   action(fn){
    this.pending=this.pending.catch(()=>{}).then(async()=>{if(this.graph){await fn();this.zoomLabel();}}).catch(error=>{const box=document.getElementById('dag-error');box.textContent='Graph interaction failed: '+error.message;box.hidden=false;});return this.pending;
@@ -156,7 +176,7 @@ window.DacpDag=(()=>{
       node:{type:'dacp-task-card',state:{selected:{stroke:'#2563eb',lineWidth:3.5,shadowColor:'#2563eb66',shadowBlur:20,shadowOffsetY:0}},style:{card:d=>d.data,fill:d=>d.data.fill,stroke:d=>d.data.color,lineDash:d=>d.data.dash,lineWidth:d=>d.data.border||1.2,radius:12,shadowColor:'#1e3a5f0c',shadowBlur:10,shadowOffsetY:4,label:false,ports:[{key:'in',placement:vertical?'top':'left'},{key:'out',placement:vertical?'bottom':'right'},{key:'left',placement:'left'},{key:'right',placement:'right'}],portR:3,portFill:'#fff',portStroke:'#b5c4d6'}},
       edge:{type:'polyline',state:{selected:{stroke:'#2563eb',lineWidth:4,shadowColor:'#2563eb55',shadowBlur:10,labelFill:'#1d4ed8',labelFontWeight:700,labelBackgroundFill:'#dbeafe'}},style:{sourcePort:'out',targetPort:d=>d.style?.targetPort||'in',router:d=>({type:'shortest-path',enableObstacleAvoidance:true,offset:16,gridSize:10,startDirections:[vertical?'bottom':'right'],endDirections:[vertical?'top':'left']}),radius:10,endArrow:true,endArrowSize:7,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#6e829b',labelBackground:true,labelBackgroundFill:'#fff',labelBackgroundRadius:5,labelPadding:[4,7],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
       combo:{type:'rect',state:{selected:{stroke:'#2563eb',lineWidth:3.5,shadowColor:'#2563eb44',shadowBlur:16}},style:{radius:18,padding:d=>d.style?.padding||[64,24,24,24],lineWidth:2,fillOpacity:1,labelPlacement:'top-left',labelTextAlign:'left',labelOffsetX:16,labelOffsetY:20,labelFontSize:12,labelFontWeight:600,labelFill:'#526b88',collapsedSize:[268,76]}},
-      behaviors:[{type:'drag-canvas',onFinish:()=>{this.mode='manual';}},{type:'zoom-canvas',sensitivity:.5,onFinish:()=>{this.mode='manual';this.zoomLabel();}},{type:'collapse-expand',enable:event=>layout!=='swimlane'&&event.targetType==='combo',animation:false}],
+      behaviors:[{type:'drag-canvas',onFinish:()=>{this.mode='manual';}},{type:'zoom-canvas',enable:()=>this.mouseZoom,preventDefault:false,sensitivity:.5,onFinish:()=>{this.mode='manual';this.zoomLabel();}},{type:'collapse-expand',enable:event=>layout!=='swimlane'&&event.targetType==='combo',animation:false}],
      });
      for(const type of ['node','edge','combo'])this.graph.on(type+':click',event=>this.select(event.target.id));
      this.graph.on('canvas:click',()=>this.select(null));

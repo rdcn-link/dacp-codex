@@ -34,3 +34,19 @@ Union provides public DACP proxy catalogs and per-member dataset pages on its ma
 `web.public_host` is the browser-facing dashboard hostname and defaults to the node `public_host`; it is separate from the bind address `web.host`. Only after HTTP starts successfully does the node report `web_enabled: true` and `web_url`, including its actual port, through Flight `node_status`. The Union member table links to that address, shows “未启用” when Web is disabled, and an unknown state when node status is unavailable.
 
 The dashboard interface uses English. Task titles, dataset names, JSON descriptions and user scripts retain their original content; dates and numbers use English locale formatting.
+
+## Execution sources and internal routing
+
+The job list shows only top-level jobs; child steps do not occupy separate rows. Expand Operator step records in job details to view each step’s operator, state, start time, duration and attempt number. Step records from all attempts are retained.
+
+The Source column distinguishes `Direct client` submissions from `Union` assignments. Type shows `User job` or `Union sub-job`. Source filtering applies before pagination and resets to the first page when changed. Details show the Union ID, execution ID and parent-record association.
+
+The dashboard HTTP endpoints `/api/history?source=client` and `?source=union` filter by origin. Omit `source`, or use `source=all`, for all top-level jobs; steps are excluded before pagination. `/api/executions/<record_id>` includes associated step records in `step_records`. History entries and details include `execution_source: client|union`; `kind` retains the precise record type. The server derives the source from execution records; it is not a user-supplied authorization field.
+
+Execution topology shows local connections and cross-node boundaries graphically. Sub-job definition displays the complete persisted definitions dispatched to this node, preserving operators, parameters, inputs, materialization settings and remote `output_routes` without filtering or rewriting fields. Local inputs use `task:port`; remote inputs retain their location objects. There is no separate routing section. Ordinary jobs display Job script. A `consumer_identity` digest authorizes a remote output reader; it is not a data representation or delivery mode.
+
+Mouse-wheel zoom is locked by default. Click 🔒 Mouse zoom to unlock it; click again to lock it. Toolbar zoom, Fit to view and 100% controls remain available.
+
+While locked, scrolling the wheel over the DAG scrolls the page normally; only unlocked graphs capture wheel scrolling.
+
+Cross-node input interfaces appear in a separate upstream-server group outside this node’s execution area. Interface cards identify the upstream step and output port, such as `parse.result`; they are not steps executed on this node. Dependency and swimlane layouts use the same ownership.

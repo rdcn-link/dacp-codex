@@ -16,6 +16,38 @@ X prepares every subjob before starting any. Nodes check capacity and authorizat
 
 Final results travel from a node through X's bounded queue to the client. Status is independent and does not wait for a slow result reader. Connections, execution, and waiting for results have timeouts. Explicit cancellation, execution failure, or interruption of final result consumption cancels the entire Job. Clients can connect to results after submission but before timeout; disconnecting a status subscription alone does not cancel execution.
 
+### Dispatched subjob routing contract
+
+Clients can submit global workflows as YAML. U parses them, persists formatted JSON, and dispatches subjobs as JSON control messages over Flight. Union and subjob definitions may therefore appear as JSON in dashboards, while directly submitted local YAML scripts retain their YAML presentation. Both describe the same workflow model.
+
+User Job inputs accept only `task[:port]`; top-level `outputs` selects returned streams. An internal task dispatched by U to C looks like the following. Replace identity placeholders with actual 64-character hexadecimal certificate digests:
+
+```yaml
+union_id: union-U
+execution_id: job-001
+tasks:
+  - id: export
+    operator: piflow_csv_save@1.0
+    params: {header: true}
+    inputs:
+      source:
+        origin: dacp://node-b:18862
+        producer_identity: <B identity digest>
+        task: filter
+        port: result
+    output_routes:
+      result:
+        consumer_identity: <U identity digest>
+```
+
+Local inputs use `source: read:result`; `inputs` alone establishes the connection without a local identity digest. Cross-node inputs use location objects containing `origin`, `producer_identity`, `task` and `port`. Object-form local inputs are rejected.
+
+`output_routes` declares only outputs read remotely over Flight, including final outputs returned to U. Omit it when there are no remote outputs. Each value must contain exactly `consumer_identity`. The superseded `outputs` routing field and scalar identity values are rejected. One output port cannot have both local and remote consumers. Nodes derive connected ports from the union of local `inputs` and remote `output_routes` for execution, materialization and replay. Local streams connect only within the node and cannot be read through Flight. Actual representations come from operator stream headers, not routing declarations.
+
+For example, A’s read step has no `output_routes`. Its parse step consumes the reader through `inputs: {source: read:result}` and declares B’s identity for its remote `result` output.
+
+U prepares and starts A, B and C. Read requests connect U→C→B→A, while data flows A→B→C→U with concurrent steps and backpressure. Intermediate streams bypass U. Recipient identities authorize reads without changing DAG binding syntax. Node dashboards show connections in the topology and preserve internal routes within the complete Sub-job definition.
+
 ## Observability
 
 X periodically polls member capacity and health. During execution it queries subjob status and produces Flight events. Events have monotonically increasing sequence numbers and a bounded in-memory window. A stale cursor receives an explicit gap plus current snapshot; snapshots are also available from the status endpoint. Events include Task states and per-port cumulative payload_bytes, records where applicable, remote_payload_bytes, and last_activity_ms. Byte counters measure data frame payloads, excluding TLS/gRPC overhead. Sending and receiving are counted separately and must not be summed as unique traffic. Unknown totals do not produce percentages; rates can be calculated from successive counters.
@@ -82,3 +114,9 @@ Click a task, input/output node, edge or server group in the job DAG to highligh
 ### Shared execution
 
 Nodes plan shared execution from runtime compatibility and connected ports, without invoking structure inference or reading input contents. Actual stream headers supply metadata during execution.
+
+Topology traffic labels use a separate top layer above the Union hub, nodes and wires without intercepting mouse input. Smaller labels are centered directly on their edges, moving only along the original curves with no detached leader lines; resizing recalculates placement. Job scripts retain saved YAML indentation and blank lines. JSON is displayed with multiline indentation while preserving original numeric and string tokens. Upstream inputs in local task definitions display as `task:port`, rather than presenting internal binding objects as submission syntax.
+
+DAGs in the node and Union dashboards lock mouse-wheel zoom by default. Click 🔒 Mouse zoom to unlock it and 🔓 Mouse zoom to lock it again. Toolbar zoom controls remain available.
+
+Input locations, including `read_source`, use `producer_identity` to verify the data provider, paired with output `consumer_identity`. The old input field `identity` is rejected. Member metadata retains its distinct `identity` field.

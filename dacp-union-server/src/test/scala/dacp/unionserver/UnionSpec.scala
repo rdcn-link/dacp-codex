@@ -160,6 +160,50 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     def close():Unit={x.close();a.close();b.close();af.close();bf.close();client.close();stranger.close();Thread.sleep(100);ca.close();cb.close();allocator.close()}
   }
   private def policy(all:Boolean=false):JsonNode=if(all)Json.parse("""{"materialization":{"default":"materialize"}}""")else Json.parse("""{"materialization":{"tasks":{"ta":{"outputs":{"result":"materialize"}}}}}""")
+  test("subjobs separate output routes from stream types and reject superseded route payloads") {
+    val f=new Fixture()
+    try {
+      f.approved();val id=f.submit();assert(f.bytes(id).sameElements(f.inputA++f.inputB))
+      eventually(f.status(id).path("state").asText=="succeeded")
+      val a=f.ca.executionHistory.store.records.find(_.path("kind").asText=="union_execution").get
+      val b=f.cb.executionHistory.store.records.find(_.path("kind").asText=="union_execution").get
+      def task(record:JsonNode,id:String)=record.path("task_definitions").elements.asScala.find(_.path("id").asText==id).get
+      val upstream=task(a,"ta");val downstream=task(b,"tb")
+      assert(!upstream.has("outputs") && !downstream.has("outputs"))
+      assert(upstream.path("output_routes").path("result").path("consumer_identity").asText==tls("b").identity)
+      assert(downstream.path("output_routes").path("result").path("consumer_identity").asText==tls("x").identity)
+      assert(downstream.path("inputs").path("left").path("origin").asText==DacpUri.origin(f.ca.uri("")))
+      val remoteInput=downstream.path("inputs").path("left")
+      assert(remoteInput.path("producer_identity").asText==tls("a").identity && !remoteInput.has("identity"))
+      val invalidInput=Json.obj().put("union_id",f.unionId).put("execution_id","superseded-producer")
+      invalidInput.set[JsonNode]("tasks",b.path("task_definitions").deepCopy[JsonNode]())
+      val oldBinding=invalidInput.path("tasks").elements.asScala.find(_.path("id").asText=="tb").get.path("inputs").path("left").asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
+      oldBinding.set[JsonNode]("identity",oldBinding.remove("producer_identity"))
+      assert(intercept[UnionFailure](f.x.members.remote.action(DacpUri.origin(f.cb.uri("")),"prepare",invalidInput,Some(tls("b").identity))).code==INVALID_ARGUMENT)
+      val reader=task(a,"read_ta_source")
+      assert(!reader.has("output_routes"))
+      assert(upstream.path("inputs").path("source").asText=="read_ta_source:result")
+      assert(task(b,"read_tb_right").path("output_routes").isMissingNode)
+      assert(downstream.path("inputs").path("right").asText=="read_tb_right:result")
+      val body=Json.obj().put("union_id",f.unionId).put("execution_id","invalid-routes")
+      body.set[JsonNode]("tasks",a.path("task_definitions").deepCopy[JsonNode]())
+      val first=body.path("tasks").elements.asScala.find(_.path("id").asText=="ta").get.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
+      val localReader=body.path("tasks").elements.asScala.find(_.path("id").asText=="read_ta_source").get.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
+      localReader.putObject("output_routes").putObject("result").put("consumer_identity",tls("a").identity)
+      assert(intercept[UnionFailure](f.x.members.remote.action(DacpUri.origin(f.ca.uri("")),"prepare",body,Some(tls("a").identity))).code==INVALID_ARGUMENT)
+      localReader.remove("output_routes")
+      first.withObject("inputs").putObject("source").put("task","read_ta_source").put("port","result")
+      assert(intercept[UnionFailure](f.x.members.remote.action(DacpUri.origin(f.ca.uri("")),"prepare",body,Some(tls("a").identity))).code==INVALID_ARGUMENT)
+      first.withObject("inputs").put("source","read_ta_source:result")
+      first.set[JsonNode]("outputs",first.remove("output_routes"))
+      assert(intercept[UnionFailure](f.x.members.remote.action(DacpUri.origin(f.ca.uri("")),"prepare",body,Some(tls("a").identity))).code==INVALID_ARGUMENT)
+      first.set[JsonNode]("output_routes",first.remove("outputs"))
+      first.withObject("output_routes").put("result",tls("a").identity)
+      assert(intercept[UnionFailure](f.x.members.remote.action(DacpUri.origin(f.ca.uri("")),"prepare",body,Some(tls("a").identity))).code==INVALID_ARGUMENT)
+      first.withObject("output_routes").putObject("result").put("consumer_identity",tls("a").identity).put("representation","bytes")
+      assert(intercept[UnionFailure](f.x.members.remote.action(DacpUri.origin(f.ca.uri("")),"prepare",body,Some(tls("a").identity))).code==INVALID_ARGUMENT)
+    }finally f.close()
+  }
   test("control dependencies are rejected; zero-output sinks remain valid") {
     val f=new Fixture()
     try {

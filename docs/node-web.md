@@ -34,3 +34,19 @@ Union 提供公开 DACP 代理目录，管理网站也提供按成员查看数�
 `web.public_host` 是浏览器访问 Web 看板时使用的主机名，默认沿用节点 `public_host`；它与监听地址 `web.host` 分开。节点只在 HTTP 服务成功启动后，通过 Flight `node_status` 报告 `web_enabled: true` 和实际端口对应的 `web_url`。Union 看板成员列表显示该地址链接；关闭 Web 时显示“未启用”，无法取得节点状态时显示未知。
 
 看板界面使用英文。任务标题、数据集名称、JSON 描述和用户脚本保留原文；日期和数值采用英文区域格式。
+
+## 执行来源与内部路由
+
+作业列表仅展示顶层作业，子步骤不再单独占行。作业详情中的 Operator step records 可展开查看各步骤的算子、状态、开始时间、耗时及尝试编号；各次尝试的步骤记录均保留。
+
+作业列表的 Source 列区分 `Direct client`（用户直接提交）与 `Union`（Union 下发）。Type 列显示 `User job` 或 `Union sub-job`。Source 筛选在分页前应用，切换筛选后从第一页开始。详情显示 Union ID、执行 ID 和父记录关联。
+
+看板 HTTP 的 `/api/history?source=client` 与 `?source=union` 按来源查询；省略 `source` 或使用 `source=all` 返回全部顶层作业；过滤步骤后再分页。`/api/executions/<record_id>` 的 `step_records` 包含关联的步骤记录。历史条目与详情包含 `execution_source: client|union`，原有 `kind` 保留精确的记录类型。来源是服务端根据执行记录确定的，不是用户指定的授权字段。
+
+Execution topology 图形化展示本地连接和跨节点边界。Sub-job definition 完整展示持久化记录中实际下发到本节点的步骤定义，保留算子、参数、输入、物化设置和远端 `output_routes`，不筛选或改写字段。本地输入保留 `task:port`，远端输入保留定位对象，不再单独展示路由区域。普通作业展示 Job script。`consumer_identity` 身份摘要用于授权远端读取者，不表示数据类型或传递方式。
+
+DAG 默认锁定鼠标滚轮缩放；点击 🔒 Mouse zoom 解锁后才响应滚轮，再次点击可锁定。工具栏的加减、适应视图和 100% 按钮始终可用。
+
+锁定时，在 DAG 上滚动鼠标滚轮会正常上下滚动页面；仅解锁时由图形接管滚轮。
+
+跨节点输入接口显示在上游服务器的独立区域中，位于本节点执行区域之外。接口卡片标注上游步骤及输出端口（如 `parse.result`）；它不是本节点执行的步骤。依赖图和泳道布局采用同一归属关系。

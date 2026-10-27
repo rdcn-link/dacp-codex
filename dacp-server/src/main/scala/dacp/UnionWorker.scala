@@ -56,35 +56,53 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
   private def denied(message:String):Nothing=throw UnionFailure(UNAUTHORIZED,message)
   private def validateInput(b:JsonNode,policy:JsonNode):Unit={
     if(b.has("uri")) {
-      Json.fields(b,Set("uri","view"),Set("origin","identity"));val uri=Json.text(b,"uri");val u=DacpUri.parse(uri)
+      Json.fields(b,Set("uri","view"),Set("origin","producer_identity"));val uri=Json.text(b,"uri");val u=DacpUri.parse(uri)
       require(u.getPath.stripPrefix("/").split("/",2).length==2,"input must identify an item")
       require(Set("bytes","records")(Json.text(b,"view")),"invalid view")
       if(DacpUri.origin(uri)==DacpUri.origin(config.uri(""))) {
-        require(!b.has("origin") && !b.has("identity"),"unexpected local source pin")
+        require(!b.has("origin") && !b.has("producer_identity"),"unexpected local source pin")
       }else {
-        require(b.has("origin") && b.has("identity") && DacpUri.origin(uri)==Json.origin(Json.text(b,"origin")),"remote source needs matching origin and identity")
-        Json.identity(Json.text(b,"identity"))
+        require(b.has("origin") && b.has("producer_identity") && DacpUri.origin(uri)==Json.origin(Json.text(b,"origin")),"remote source needs matching origin and producer_identity")
+        Json.identity(Json.text(b,"producer_identity"))
       }
     } else {
-      Json.fields(b,Set("task","port"),Set("origin","identity"))
+      Json.fields(b,Set("task","port"),Set("origin","producer_identity"))
       Json.id(Json.text(b,"task"));Json.id(Json.text(b,"port"))
-      require(b.has("origin")==b.has("identity"),"remote input needs origin and identity")
-      if(b.has("origin")){Json.origin(Json.text(b,"origin"));Json.identity(Json.text(b,"identity"))}
+      require(b.has("origin")==b.has("producer_identity"),"remote input needs origin and producer_identity")
+      if(b.has("origin")){Json.origin(Json.text(b,"origin"));Json.identity(Json.text(b,"producer_identity"))}
     }
   }
+  private def normalizeTask(task:JsonNode):JsonNode={
+    val n=task.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
+    val inputs=n.putObject("inputs")
+    require(task.path("inputs").isObject,"inputs must be an object")
+    task.path("inputs").fields.asScala.foreach { e=>
+      val b=e.getValue
+      if(b.isTextual){
+        val parts=b.asText.split(":",-1);require(parts.length==2,"local input must be task:port")
+        Json.id(parts(0));Json.id(parts(1));inputs.putObject(e.getKey).put("task",parts(0)).put("port",parts(1))
+      }else {
+        require(b.isObject && (b.has("uri") || b.has("origin")),"local input must be task:port")
+        inputs.set[JsonNode](e.getKey,b)
+      }
+    }
+    n
+  }
+  private def connectedPorts(tasks:Vector[JsonNode],task:JsonNode):Set[String]=
+    task.path("output_routes").fieldNames.asScala.toSet ++ tasks.filterNot(_.has("replay_from")).flatMap(_.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin") && b.path("task").asText==task.path("id").asText).map(_.path("port").asText))
   private def prepare(body:JsonNode,who:String):Session=synchronized {
     Json.fields(body,Set("union_id","execution_id","tasks"),Set("allow_fusion","timeout_seconds"))
     require(!body.has("allow_fusion") || body.path("allow_fusion").isBoolean,"allow_fusion must be boolean")
     val timeout=if(body.has("timeout_seconds"))math.min(Json.number(body,"timeout_seconds",1,86400),settings.executionTimeoutSeconds)else settings.executionTimeoutSeconds
     val union=Json.id(Json.text(body,"union_id"));val id=Json.id(Json.text(body,"execution_id"));val policy=grant(union,who)
-    val tasks=Json.array(body,"tasks");require(tasks.nonEmpty && tasks.size<=64,"invalid task count")
+    val submitted=Json.array(body,"tasks");val tasks=submitted.map(normalizeTask);require(tasks.nonEmpty && tasks.size<=64,"invalid task count")
     require(tasks.map(t=>Json.text(t,"id")).distinct.size==tasks.size,"duplicate task")
-    require(tasks.map(t=>t.path("inputs").size()+t.path("outputs").size()).sum<=1024,"subjob exceeds 1024 connected ports")
+    require(tasks.map(t=>t.path("inputs").size()+connectedPorts(tasks,t).size).sum<=1024,"subjob exceeds 1024 connected ports")
     tasks.foreach { t=>
-      Json.fields(t,Set("id","operator","params","inputs","outputs"),Set("title","materialize","replay_from","read_source"));Json.id(Json.text(t,"id"))
+      Json.fields(t,Set("id","operator","params","inputs"),Set("title","materialize","replay_from","read_source","output_routes"));Json.id(Json.text(t,"id"))
       if(t.has("title"))require(t.path("title").isTextual && t.path("title").asText.trim.nonEmpty && t.path("title").asText.length<=256 && !t.path("title").asText.exists(_.isControl),"invalid task title")
       val selected=if(t.has("materialize"))Json.strings(t,"materialize")else Vector.empty
-      require(selected.distinct.size==selected.size && selected.forall(t.path("outputs").has),"invalid materialization ports")
+      require(selected.distinct.size==selected.size && selected.forall(connectedPorts(tasks,t)),"invalid materialization ports")
       if(selected.nonEmpty || t.has("replay_from"))require(materialization.nonEmpty,"node materialization_store is not configured")
       if(t.has("replay_from")){
         val previous=Json.id(Json.text(t,"replay_from"))
@@ -93,7 +111,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           val m=artifact.metadata
           if(m.path("owner").asText!=who || m.path("union_id").asText!=union)denied("materialized task owner denied")
           require(m.path("signature")==ExecutionPolicy.signature(t),"replay task definition differs from materialized task")
-          require(t.path("outputs").fieldNames.asScala.forall(m.path("stored_ports").has),"replay needs all connected outputs materialized")
+          require(connectedPorts(tasks,t).forall(m.path("stored_ports").has),"replay needs all connected outputs materialized")
         }finally artifact.close()
       }
       val op=Json.text(t,"operator")
@@ -104,17 +122,19 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         if(DacpUri.origin(binding.uri.get)==DacpUri.origin(config.uri(""))){
           require(!t.has("read_source"),"local read_item must not have a remote source")
         }else {
-          val source=t.path("read_source");Json.fields(source,Set("origin","identity"))
-          require(Json.text(source,"identity")==who && Json.origin(Json.text(source,"origin"))==DacpUri.origin(binding.uri.get),"remote read_item must use the scheduler's pinned stream namespace")
+          val source=t.path("read_source");Json.fields(source,Set("origin","producer_identity"))
+          require(Json.text(source,"producer_identity")==who && Json.origin(Json.text(source,"origin"))==DacpUri.origin(binding.uri.get),"remote read_item must use the scheduler's pinned stream namespace")
         }
       }
-      require(t.path("params").isObject && t.path("inputs").isObject && t.path("inputs").size()<=32 && t.path("outputs").isObject && t.path("outputs").size()<=32,"invalid task ports")
+      require(t.path("params").isObject && t.path("inputs").isObject && t.path("inputs").size()<=32 && (!t.has("output_routes") || t.path("output_routes").isObject) && t.path("output_routes").size()<=32,"invalid task ports")
       t.path("inputs").fields.asScala.foreach(e=>{Json.id(e.getKey);validateInput(e.getValue,policy)})
-      t.path("outputs").fields.asScala.foreach(e=>{Json.id(e.getKey);Json.identity(e.getValue.asText)})
+      t.path("output_routes").fields.asScala.foreach { e=>
+        Json.id(e.getKey);Json.fields(e.getValue,Set("consumer_identity"));Json.identity(Json.text(e.getValue,"consumer_identity"))
+      }
     }
     tasks.filterNot(_.has("replay_from")).foreach(t=>t.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin")).foreach { b=>
       val parent=tasks.find(_.path("id").asText==b.path("task").asText).getOrElse(throw new IllegalArgumentException("unknown local upstream task"))
-      require(parent.path("outputs").path(b.path("port").asText).asText==tls.identity,"local output consumer mismatch")
+      require(!parent.path("output_routes").has(b.path("port").asText),"output cannot have both local and remote consumers")
     })
     var pending=tasks;var done=Set.empty[String]
     while(pending.nonEmpty){
@@ -128,7 +148,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     val own=sessions.values.asScala.filter(s=> !s.terminal && s.owner==who && s.union==union).map(_.size).sum
     if(reserved+tasks.size>config.maxConcurrentTasks || own+tasks.size>policy.path("max_concurrent_tasks").asInt)throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
     if(!config.taskSlots.tryAcquire(tasks.size))throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
-    try {val s=new Session(id,union,who,tasks,body.path("allow_fusion").asBoolean(false),timeout);sessions.put(id,s);s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(tasks.size);throw t}
+    try {val s=new Session(id,union,who,submitted,body.path("allow_fusion").asBoolean(false),timeout);sessions.put(id,s);s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(tasks.size);throw t}
   }
   private def find(id:String,who:String,owner:Boolean=true):Session={
     val s=Option(sessions.get(Json.id(id))).getOrElse(throw UnionFailure(NOT_FOUND,"execution unavailable"))
@@ -187,9 +207,11 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
   }
   private final class Output(val consumer:String,c:StreamCancel) {
     val queue=new FrameQueue(c);private val claimed=new AtomicBoolean();val delivered=new AtomicBoolean()
+    def claimLocal():Unit={require(consumer.isEmpty,"not a local output");claim("")}
     def claim(who:String):Unit={if(who!=consumer)denied("output consumer denied");if(!claimed.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"output already consumed")}
   }
-  private final class Session(val id:String,val union:String,val owner:String,definitions:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long) {
+  private final class Session(val id:String,val union:String,val owner:String,submitted:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long) {
+    private val definitions=submitted.map(normalizeTask)
     private val serviceCredential=if(Rpc.isAuthenticatedCall)Rpc.principal.credentialId else None
     private val proxyPath=Rpc.proxyHops
     val size=definitions.size
@@ -197,7 +219,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     val cancel=new StreamCancel(timeoutSeconds=timeoutSeconds)
     @volatile private var state="prepared"
     private val historyRecord=config.executionHistory.begin("union_execution",metadata=Json.obj().put("execution_id",id).put("union_id",union).put("owner",owner).put("node",DacpUri.origin(config.uri(""))),state="prepared")
-    historyRecord.update("prepared",{val n=Json.obj();n.set[JsonNode]("task_definitions",Json.mapper.valueToTree[JsonNode](definitions.asJava));n})
+    historyRecord.update("prepared",{val n=Json.obj();n.set[JsonNode]("task_definitions",Json.mapper.valueToTree[JsonNode](submitted.asJava));n})
     private val replayArtifacts=scala.collection.mutable.Map.empty[String,MaterializedTask]
     try definitions.filter(_.has("replay_from")).foreach { t=>
       val artifact=materialization.get.get(ExecutionPolicy.key(t.path("replay_from").asText,t.path("id").asText)).getOrElse(throw UnionFailure(NOT_FOUND,"materialized task expired during prepare"))
@@ -206,7 +228,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     private val taskRecords=definitions.map { t=>
       val metadata=Json.obj().put("execution_id",id).put("parent_record_id",historyRecord.id).put("union_id",union).put("owner",owner).put("node",DacpUri.origin(config.uri(""))).put("task_id",t.path("id").asText).put("operator",t.path("operator").asText)
       if(t.has("title"))metadata.put("title",t.path("title").asText)
-      metadata.set[JsonNode]("inputs",t.path("inputs"));metadata.set[JsonNode]("outputs",t.path("outputs"))
+      metadata.set[JsonNode]("inputs",submitted.find(_.path("id")==t.path("id")).get.path("inputs"));if(t.has("output_routes"))metadata.set[JsonNode]("output_routes",t.path("output_routes"))
       t.path("id").asText->config.executionHistory.begin("union_task",metadata=metadata,state="prepared")
     }.toMap
     @volatile var finished=0L
@@ -215,7 +237,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     private val started=new AtomicBoolean()
     private val states=new ConcurrentHashMap[String,String]()
     private val metrics=new ConcurrentHashMap[String,UnionPortMetrics]()
-    private val outputs=definitions.flatMap(t=>t.path("outputs").fields.asScala.map(e=>(t.path("id").asText,e.getKey)->new Output(e.getValue.asText,cancel))).toMap
+    private val outputs=definitions.flatMap(t=>connectedPorts(definitions,t).map(port=>(t.path("id").asText,port)->new Output(t.path("output_routes").path(port).path("consumer_identity").asText(""),cancel))).toMap
     definitions.foreach(t=>states.put(t.path("id").asText,"prepared"))
     def terminal:Boolean=Set("succeeded","failed","cancelled","expired")(state)
     def output(task:String,port:String):Output=outputs.getOrElse((task,port),throw UnionFailure(NOT_FOUND,"output unavailable"))
@@ -227,7 +249,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     private def observed(task:String,direction:String,port:String,f:OperatorFrame,remote:Boolean):Unit=
       metrics.computeIfAbsent(s"$task/$direction/$port",_=>new UnionPortMetrics(allocator)).observe(f,remote)
     private def remoteInput(b:JsonNode):FrameSource={
-      val in=cancel.add(remote.stream(Json.text(b,"origin"),"output",Json.obj().put("execution_id",id).put("task",Json.text(b,"task")).put("port",Json.text(b,"port")),pin=Some(Json.text(b,"identity")),timeout=timeoutSeconds))
+      val in=cancel.add(remote.stream(Json.text(b,"origin"),"output",Json.obj().put("execution_id",id).put("task",Json.text(b,"task")).put("port",Json.text(b,"port")),pin=Some(Json.text(b,"producer_identity")),timeout=timeoutSeconds))
       new FrameSource {
         private var complete=false
         def next():Option[OperatorFrame]={
@@ -245,7 +267,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     }
     private def datasetInput(b:JsonNode):FrameSource={
       val uri=Json.text(b,"uri");val parts=DacpUri.parse(uri).getPath.stripPrefix("/").split("/",2);val view=Json.text(b,"view")
-      val client=remote.dataClient(Json.text(b,"origin"),Some(Json.text(b,"identity")))
+      val client=remote.dataClient(Json.text(b,"origin"),Some(Json.text(b,"producer_identity")))
       val info=client.getInfo(FlightDescriptor.path("datasets",parts(0),"/"+parts(1)),CallOptions.timeout(10,TimeUnit.SECONDS))
       val meta=dacp.protocol.Metadata.Item.parseFrom(info.getAppMetadata)
       require(meta.getViewsList.contains(view),"source view unavailable")
@@ -312,7 +334,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       if(!allowFusion){fusionReason="node_partition_not_fusible";return None}
       if(runner.nonEmpty || definitions.size<2){fusionReason="single_step_or_test_runner";return None}
       val readers=definitions.filter(_.path("operator").asText==Jobs.ReadItem).map(t=>t.path("id").asText->t).toMap
-      if(readers.values.exists(t=>t.path("outputs").size()==0 || t.path("outputs").elements.asScala.exists(_.asText!=tls.identity))){fusionReason="selected_transport_source";return None}
+      if(readers.values.exists(t=>connectedPorts(definitions,t).isEmpty || t.path("output_routes").size()>0)){fusionReason="selected_transport_source";return None}
       val external=scala.collection.mutable.Map.empty[String,(String,String,JsonNode)]
       val tasks=definitions.filterNot(t=>readers.contains(t.path("id").asText)).map { t=>
         val id=t.path("id").asText
@@ -321,7 +343,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           val b=readers.get(original.path("task").asText).map { r=>
             require(original.path("port").asText=="result","read_item has only result output")
             val b=Json.obj().put("uri",r.path("params").path("uri").asText).put("view",r.path("params").path("view").asText).put("source_task",r.path("id").asText)
-            if(r.has("read_source"))b.put("origin",r.path("read_source").path("origin").asText).put("identity",r.path("read_source").path("identity").asText)
+            if(r.has("read_source"))b.put("origin",r.path("read_source").path("origin").asText).put("producer_identity",r.path("read_source").path("producer_identity").asText)
             b
           }.getOrElse(original)
           val binding=if(b.has("uri") || b.has("origin")){
@@ -332,7 +354,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         }.toMap
         Task(id,bindings,t.path("operator").asText,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),title=Option(t.get("title")).map(_.asText))
       }
-      val connected=definitions.filterNot(t=>readers.contains(t.path("id").asText)).flatMap(t=>t.path("outputs").fields.asScala.filter(_.getValue.asText!=tls.identity).map(e=>(t.path("id").asText,e.getKey))).zipWithIndex.map{case(pair,i)=>s"p$i"->pair}.toMap
+      val connected=definitions.filterNot(t=>readers.contains(t.path("id").asText)).flatMap(t=>t.path("output_routes").fields.asScala.filter(_.getValue.path("consumer_identity").asText.nonEmpty).map(e=>(t.path("id").asText,e.getKey))).zipWithIndex.map{case(pair,i)=>s"p$i"->pair}.toMap
       OperatorGroups.prepare(config,JobPlan(tasks,connected)) match {
         case Left(reason)=>fusionReason=reason;None
         case Right(group)=>executionMode="shared_process";fusionReason="compatible";Some((group,external.toMap,connected))
@@ -359,7 +381,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
               states.put(id,value);taskRecords(id).update(value,snapshot)
             }else {
               val direction=h.path("direction").asText;val port=h.path("port").asText
-              val remote=direction=="outputs" && outputs.get((id,port)).exists(_.consumer!=tls.identity)
+              val remote=direction=="outputs" && outputs.get((id,port)).exists(_.consumer.nonEmpty)
               metrics.computeIfAbsent(s"$id/$direction/$port",_=>new UnionPortMetrics(allocator)).summary(h,remote)
             }
           }
@@ -388,7 +410,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           if(t.has("replay_from")){
             states.put(taskId,"replaying");taskRecords(taskId).update("replaying")
             val artifact=replayArtifacts(taskId)
-            val replayThreads=t.path("outputs").fieldNames.asScala.toVector.sorted.map { port=>StreamProtocol.thread(cancel){
+            val replayThreads=connectedPorts(definitions,t).toVector.sorted.map { port=>StreamProtocol.thread(cancel){
               val source=cancel.add(artifact.open(port));val out=output(taskId,port)
               try {
                 var phase=0;var end=Option.empty[OperatorFrame];var chunk=source.next()
@@ -401,7 +423,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
                     case "end"=>require(phase==1,"invalid replay end");phase=2
                     case _=>throw new IllegalArgumentException("invalid replay frame")
                   }
-                  observed(taskId,"outputs",port,f,out.consumer!=tls.identity);if(h.path("type").asText=="end")end=Some(f)else out.queue.put(f);chunk=source.next()
+                  observed(taskId,"outputs",port,f,out.consumer.nonEmpty);if(h.path("type").asText=="end")end=Some(f)else out.queue.put(f);chunk=source.next()
                 }
                 require(phase==2,"incomplete replay output");end.foreach(out.queue.put);out.queue.end()
               }finally source.close()
@@ -420,11 +442,11 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           states.put(taskId,"waiting_inputs");taskRecords(taskId).update("waiting_inputs")
           val inputs=t.path("inputs").fields.asScala.map { e=>
             val b=e.getValue
-            val src=if(b.has("uri"))localInput(b)else if(b.has("origin"))remoteInput(b)else {val out=output(b.path("task").asText,b.path("port").asText);out.claim(tls.identity);out.queue}
+            val src=if(b.has("uri"))localInput(b)else if(b.has("origin"))remoteInput(b)else {val out=output(b.path("task").asText,b.path("port").asText);out.claimLocal();out.queue}
             e.getKey->new TrackedInput(src,taskId,e.getKey,b.has("origin"))
           }.toMap
           val bindings=inputs.keys.map(p=>p->InputBinding(uri=Some(config.uri("union","/item")))).toMap
-          val task=Task(taskId,bindings,t.path("operator").asText,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),title=Option(t.get("title")).map(_.asText),outputPorts=t.path("outputs").fieldNames.asScala.toVector,proxyPath=proxyPath)
+          val task=Task(taskId,bindings,t.path("operator").asText,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),title=Option(t.get("title")).map(_.asText),outputPorts=connectedPorts(definitions,t).toVector.sorted,proxyPath=proxyPath)
           states.put(taskId,"running");taskRecords(taskId).update("running")
           var seen=Set.empty[String];val phases=scala.collection.mutable.Map.empty[String,Int]
           val emit:OperatorFrame=>Unit=f=>{
@@ -438,14 +460,14 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
               }
               writer.get.append(port,OperatorFrames.encode(f))
             }
-            outputs.get((taskId,port)).foreach(out=>{observed(taskId,"outputs",port,f,out.consumer!=tls.identity);out.queue.put(f)})
+            outputs.get((taskId,port)).foreach(out=>{observed(taskId,"outputs",port,f,out.consumer.nonEmpty);out.queue.put(f)})
           }
           try {
             Jobs.readBinding(task) match {
               case Some(binding)=>
                 val descriptor=Json.obj().put("uri",binding.uri.get).put("view",binding.view)
                 val source=if(t.has("read_source")){
-                  descriptor.put("origin",t.path("read_source").path("origin").asText).put("identity",t.path("read_source").path("identity").asText)
+                  descriptor.put("origin",t.path("read_source").path("origin").asText).put("producer_identity",t.path("read_source").path("producer_identity").asText)
                   datasetInput(descriptor)
                 }else localInput(descriptor)
                 try {var f=source.next();while(f.nonEmpty){emit(StreamProtocol.rename(f.get,"result"));f=source.next()}}finally source.close()
@@ -456,7 +478,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
               // End has been consumed by the executor; the next item is completion/queue EOF.
               s.finish()
             }
-            require(t.path("outputs").fieldNames.asScala.toSet.subsetOf(seen),"declared connection port not produced")
+            require(connectedPorts(definitions,t).subsetOf(seen),"declared connection port not produced")
             require(selected.forall(p=>phases.get(p).contains(2)),"incomplete materialized outputs")
             cancel.active();writer.foreach(_.commit())
             outputs.filter(_._1._1==taskId).values.foreach(_.queue.end())

@@ -35,7 +35,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
   private val threads=new ThreadPoolExecutor(4,4,0L,java.util.concurrent.TimeUnit.MILLISECONDS,new ArrayBlockingQueue[Runnable](64),new ThreadPoolExecutor.AbortPolicy())
   private val closed=new AtomicBoolean()
   private val origin=new java.net.URI("dacp",null,config.publicHost,flightPort,null,null,null).toASCIIString
-  private val files=Map("/attempts.js"->("attempts.js","text/javascript"),"/"->("index.html","text/html"),"/duration.js"->("duration.js","text/javascript"),"/app.js"->("app.js","text/javascript"),"/dag.js"->("dag.js","text/javascript"),"/style.css"->("style.css","text/css"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"))
+  private val files=Map("/job-script.js"->("job-script.js","text/javascript"),"/attempts.js"->("attempts.js","text/javascript"),"/"->("index.html","text/html"),"/duration.js"->("duration.js","text/javascript"),"/app.js"->("app.js","text/javascript"),"/dag.js"->("dag.js","text/javascript"),"/style.css"->("style.css","text/css"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"))
   server.setExecutor(threads)
   server.createContext("/",(e:HttpExchange)=>handle(e))
   def port:Int=server.getAddress.getPort
@@ -45,11 +45,17 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
   private def json(e:HttpExchange,status:Int,value:JsonNode):Unit=send(e,status,Json.mapper.writeValueAsBytes(value),"application/json; charset=utf-8")
   private def error(e:HttpExchange,status:Int,message:String):Unit=json(e,status,Json.obj().put("error",message))
   private def values(n:JsonNode):Vector[JsonNode]=if(n.isArray)n.elements.asScala.toVector else Vector.empty
+  private def executionSource(record:JsonNode):String=
+    if(record.path("kind").asText.startsWith("union_") || record.path("union_id").asText.nonEmpty)"union"else "client"
+  private def withSource(record:JsonNode):ObjectNode={
+    val n=record.deepCopy[ObjectNode]();n.put("execution_source",executionSource(record));n
+  }
   private def graph(record:JsonNode):JsonNode={
-    val n=record.deepCopy[ObjectNode]();val id=n.path("record_id").asText
+    val n=withSource(record);val id=n.path("record_id").asText
     val current=live().find(_.path("execution_id").asText==n.path("execution_id").asText).filter(_=>n.path("kind").asText=="union_execution")
     current.foreach(v=>v.fields.asScala.foreach(e=>n.set[JsonNode](e.getKey,e.getValue)))
     val children=config.executionHistory.store.records.filter(c=>c.path("parent_record_id").asText==id || c.path("parent_execution_id").asText==id)
+    val steps=n.putArray("step_records");children.sortBy(c=>(c.path("created_at_ms").asLong,c.path("record_id").asText)).foreach(c=>steps.add(withSource(c)))
     val tasks=n.putArray("graph_tasks");val outputs=n.putObject("graph_outputs");val ports=Json.obj()
     var definitions=values(record.path("task_definitions"))
     if(definitions.isEmpty && record.has("job_yaml")) {
@@ -63,7 +69,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     if(definitions.isEmpty && record.has("task_id")) {
       val d=Json.obj().put("id",record.path("task_id").asText).put("title",record.path("title").asText(record.path("task_id").asText)).put("operator",record.path("operator").asText)
       if(record.path("inputs").isObject)d.set[JsonNode]("inputs",record.path("inputs"))else d.putObject("inputs")
-      if(record.path("outputs").isObject)d.set[JsonNode]("outputs",record.path("outputs"))
+      if(record.path("output_routes").isObject)d.set[JsonNode]("output_routes",record.path("output_routes"))
       definitions=Vector(d)
     }
     val localIds=definitions.map(_.path("id").asText).toSet
@@ -73,17 +79,21 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
       val t=tasks.addObject().put("id",task).put("title",d.path("title").asText(task)).put("operator",d.path("operator").asText).put("node",d.path("node").asText(origin)).put("node_identity","local").put("state",state)
       val bindings=t.putArray("inputs")
       d.path("inputs").fields.asScala.foreach { e=>
-        val b=e.getValue;val v=bindings.addObject().put("port",e.getKey).put("view",b.path("view").asText("bytes"))
+        val raw=e.getValue;val b=if(raw.isTextual){val parts=raw.asText.split(":",2);Json.obj().put("task",parts(0)).put("port",if(parts.length==2)parts(1)else "result")}else raw;val v=bindings.addObject().put("port",e.getKey).put("view",b.path("view").asText("bytes"))
         if(b.has("uri"))v.put("uri",b.path("uri").asText)
         else if(localIds(b.path("task").asText))v.put("task",b.path("task").asText).put("output_port",b.path("port").asText)
-        else v.put("remote",true).put("uri",b.path("origin").asText("upstream")+" / "+b.path("task").asText+"."+b.path("port").asText)
+        else v.put("remote",true).put("upstream_origin",b.path("origin").asText("upstream")).put("upstream_task",b.path("task").asText).put("upstream_port",b.path("port").asText).put("uri",b.path("origin").asText("upstream")+" / "+b.path("task").asText+"."+b.path("port").asText)
       }
-      d.path("outputs").fieldNames.asScala.foreach { port=>outputs.putObject(task+"."+port).put("task",task).put("port",port) }
-      child.foreach { c=>c.path("ports").fields.asScala.filterNot(_.getKey.startsWith(task+"/")).foreach(e=>ports.set[JsonNode](task+"/"+e.getKey,e.getValue)) }
+      d.path("output_routes").fieldNames.asScala.foreach { port=>outputs.putObject(task+"."+port).put("task",task).put("port",port) }
+      child.foreach { c=>c.path("ports").fields.asScala.foreach { e=>
+        val parts=e.getKey.split("/",-1)
+        if(parts.length==2 && Set("inputs","outputs")(parts(0)))ports.set[JsonNode](task+"/"+e.getKey,e.getValue)
+        else if(parts.length==3 && parts(0)==task && Set("inputs","outputs")(parts(1)))ports.set[JsonNode](e.getKey,e.getValue)
+      }}
       if(definitions.size==1 && !n.path("ports").fieldNames.asScala.exists(_.contains(task+"/")))n.path("ports").fields.asScala.foreach(e=>ports.set[JsonNode](task+"/"+e.getKey,e.getValue))
     }
     n.path("ports").fields.asScala.filter(e=>e.getKey.count(_=='/')==2).foreach(e=>ports.set[JsonNode](e.getKey,e.getValue))
-    ports.fieldNames.asScala.filter(_.contains("/outputs/")).foreach { key=>
+    if(!record.has("task_definitions") && !record.has("job_yaml"))ports.fieldNames.asScala.filter(_.contains("/outputs/")).foreach { key=>
       val parts=key.split("/",3)
       if(localIds(parts(0)) && !outputs.elements.asScala.exists(v=>v.path("task").asText==parts(0) && v.path("port").asText==parts(2)))outputs.putObject(parts(0)+"."+parts(2)).put("task",parts(0)).put("port",parts(2))
     }
@@ -109,11 +119,16 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
         val n=Json.obj();val a=n.putArray("datasets");config.datasetInfos().foreach { d=>val item=a.addObject().put("name",d.name).put("uri",origin+"/"+d.name).put("description",d.description) };json(e,200,n)
       case "/api/history"=>
         val parts=Option(e.getRequestURI.getRawQuery).filter(_.nonEmpty).map(_.split("&").toVector).getOrElse(Vector.empty)
-        require(parts.forall(_.matches("(offset|limit)=[0-9]+")),"invalid pagination")
-        val pairs=parts.map(_.split("=",2));require(pairs.map(_(0)).distinct.size==pairs.size,"duplicate pagination")
-        val params=pairs.map(p=>p(0)->p(1).toInt).toMap
-        val records=config.executionHistory.list(params.getOrElse("offset",0),params.getOrElse("limit",100))
-        val n=Json.obj();val a=n.putArray("records");records.foreach(a.add);json(e,200,n)
+        require(parts.forall(_.matches("(offset|limit)=[0-9]+|source=(all|client|union)")),"invalid history query")
+        val pairs=parts.map(_.split("=",2));require(pairs.map(_(0)).distinct.size==pairs.size,"duplicate history query")
+        val params=pairs.map(p=>p(0)->p(1)).toMap
+        val offset=params.getOrElse("offset","0").toInt;val limit=params.getOrElse("limit","100").toInt
+        require(offset>=0 && limit>0 && limit<=1000,"invalid history page")
+        val source=params.getOrElse("source","all")
+        val records=config.executionHistory.store.records.filter(r=> !Set("job_task","union_task")(r.path("kind").asText) && r.path("parent_record_id").asText.isEmpty && r.path("parent_execution_id").asText.isEmpty)
+          .filter(r=>source=="all" || executionSource(r)==source)
+          .sortBy(r=>(-r.path("created_at_ms").asLong,r.path("record_id").asText)).slice(offset,offset+limit)
+        val n=Json.obj().put("source",source);val a=n.putArray("records");records.foreach(r=>a.add(withSource(r)));json(e,200,n)
       case p if p.startsWith("/api/executions/")=>
         config.executionHistory.get(p.stripPrefix("/api/executions/")) match {case Some(n)=>json(e,200,graph(n));case None=>error(e,404,"execution not found")}
       case _=>files.get(path) match {

@@ -16,6 +16,38 @@ X 先 prepare 所有子 Job，得到接收确认后再 start。节点检查自�
 
 最终结果由节点发给 X，再经有界队列转发给客户端。状态通道独立，不受客户端慢速读取结果阻塞。连接、执行与等待结果均有超时；显式取消、执行失败、最终结果读取中断取消整个 Job。提交后尚未连接结果的客户端可以在超时前连接；断开状态订阅本身不取消 Job。
 
+### 下发子 Job 的路由契约
+
+客户端可用 YAML 提交全局工作流；U 解析后保存格式化 JSON，并通过 Flight 以 JSON 控制消息下发子作业。因此看板中的联合任务与子作业定义可能显示为 JSON，本地直接提交的 YAML 脚本则保留 YAML 展示。两者描述同一种工作流模型。
+
+用户 Job 的 `inputs` 只接受 `task[:port]`，顶层 `outputs` 选择返回流。U 分解后下发给 C 的内部任务示例如下；身份占位符需替换为实际的 64 位十六进制证书摘要：
+
+```yaml
+union_id: union-U
+execution_id: job-001
+tasks:
+  - id: export
+    operator: piflow_csv_save@1.0
+    params: {header: true}
+    inputs:
+      source:
+        origin: dacp://node-b:18862
+        producer_identity: <B的身份摘要>
+        task: filter
+        port: result
+    output_routes:
+      result:
+        consumer_identity: <U的身份摘要>
+```
+
+本地输入使用 `source: read:result`，只由 `inputs` 建立连接，不附加本地身份摘要。跨节点输入使用包含 `origin`、`producer_identity`、`task`、`port` 的定位对象；不接受本地输入的对象形式。
+
+`output_routes` 只声明通过 Flight 供远端读取的输出（包括返回 U 的最终输出）；没有远端输出时省略。每个值必须且只能包含 `consumer_identity`。不接受旧的 `outputs` 路由字段或标量身份值，同一输出端口不能同时连接本地与远端消费者。节点从本地 `inputs` 和远端 `output_routes` 的并集推导连接端口，用于执行、物化及重放；本地流只在节点内部连接，无法通过 Flight 读取。实际表示形式来自算子的输出流头，不在路由中声明。
+
+例如，A 上的读取步骤没有 `output_routes`；解析步骤通过 `inputs: {source: read:result}` 消费它，并为发往 B 的 `result` 输出声明 B 的身份。
+
+U 先 prepare 并 start A、B、C；读取请求沿 U→C→B→A 建立，数据沿 A→B→C→U 返回，各步骤并发且有背压。中间流不经 U 转发。接收身份控制的是谁能读取数据，不改变 DAG 连接语法；节点看板通过拓扑图展示连接，并在 Sub-job definition 中完整展示步骤定义及其内部路由。
+
 ## 可观测性
 
 X 定时请求成员容量、健康状态，运行期间查询执行状态并产生 Flight 事件。事件有单调序号，内存中保留有限窗口；过旧游标明确报告 gap，当前快照可通过状态接口取得。事件包含 Task 状态与端口累计 payload_bytes、records（适用时）、remote_payload_bytes、last_activity_ms。字节数只统计 data 帧负载，不含 TLS/gRPC 开销；同一连接的发送、接收分别统计，不应相加当作唯一流量。未知总量不报告百分比，速率由连续计数计算。
@@ -82,3 +114,9 @@ G6 支持依赖图与泳道图，每种均可选择横向（从左向右）或�
 ### 同进程执行
 
 节点根据运行环境兼容性和已连接端口规划同进程执行，不调用结构推导，也不读取输入内容。执行中的元数据来自实际流头。
+
+节点拓扑的流量标签使用独立最上层，不被 Union 圆圈、节点或连线遮挡，也不拦截鼠标操作。标签以较小字体居中覆盖在线条上，只沿原连线调整位置，不使用偏离连线的引导线；窗口尺寸变化时重新布局。Job script 展示保留已保存 YAML 的缩进和空行，JSON 使用多行缩进并保留原始数字与字符串值。本地任务定义中的上游输入显示为 `task:port`，不展示内部绑定对象作为提交语法。
+
+节点与 Union 看板的 DAG 默认锁定鼠标滚轮缩放。点击 🔒 Mouse zoom 解锁，点击 🔓 Mouse zoom 重新锁定；工具栏缩放按钮始终可用。
+
+输入定位（包括 `read_source`）使用 `producer_identity` 校验数据提供者，与输出的 `consumer_identity` 对应。旧输入字段 `identity` 不再接受；成员信息中的 `identity` 含义不同，保持不变。

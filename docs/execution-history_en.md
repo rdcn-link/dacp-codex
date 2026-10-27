@@ -1,6 +1,6 @@
 # Task execution records
 
-DACP Server and Union Server persist execution metadata by default; configuration cannot disable it. Results remain single-consumption streams. Node records do not store result payloads, complete Job YAML, parameters, or submitted source code. Union records retain the complete Job YAML, including its parameters, to display the task script; result payloads are not stored.
+DACP Server and Union Server persist execution metadata by default; configuration cannot disable it. Execution records do not store result-stream payloads; output materialization is controlled by separate execution policies and materialization storage. Nodes retain ordinary Job scripts and complete Union subjob task definitions, including parameters, input locations and output routes. Union retains global Job scripts. Scripts may contain parameters or submitted source code, and dashboards publicly display these records.
 
 ## Users and operations
 
@@ -42,8 +42,14 @@ The shared implementation is `dacp-server/ExecutionHistory.scala`, reused by U. 
 
 Validate with `cd dacp-server && sbt test` and `cd dacp-union-server && sbt test`. After `sbt stage` in both modules and preparing the example certificates and `dacp/operator-python:1.0` image, run `python3 scripts/test-execution-history.py` and `python3 scripts/test-union.py` from the root to check actual Docker execution and history. Both scripts use temporary ports and directories and shut down the services they start.
 
-The Union dashboard displays the submitted Job YAML and a DAG of datasets, tasks, port dependencies and final outputs. Union history retains the complete submitted Job YAML (including parameters) for this view; node audit records do not store it. The public read-only dashboard and query APIs expose this information; server administrators manage the history files. Node health reports include JVM process start time (`started_at_ms`) and monotonic uptime (`uptime_ms`); unreachable nodes retain their last observation. Older records without saved source display an explicit unavailable message.
+The Union dashboard displays the submitted Job YAML and a DAG of datasets, tasks, port dependencies and final outputs. Union history retains the complete submitted Job YAML (including parameters) for this view; nodes also retain local Job scripts or dispatched subjob definitions. The public read-only dashboard and query APIs expose this information; server administrators manage the history files. Node health reports include JVM process start time (`started_at_ms`) and monotonic uptime (`uptime_ms`); unreachable nodes retain their last observation. Older records without saved source display an explicit unavailable message.
 
 ## Storage extension
 
 Both nodes and Union accept the `execution_store` mapping above. `provider` selects a ServiceLoader-registered `ExecutionStoreProvider`; the implementation validates private `settings`. The default `file` implementation is in `plugins/dacp-plugin-execution-file`; `ExecutionHistory` retains state transitions, interrupted-execution recovery and pagination. Applications can construct `new ExecutionHistory(store, ownsStore = false)` to retain ownership. See [plugin registration](plugins_en.md#instance-environments-and-execution-storage).
+
+## Jobs and steps in the dashboard
+
+The node dashboard Jobs list shows only top-level jobs, with Source filters for `Direct client` and `Union`. Step records remain persisted and appear under Operator step records inside their job, including state, start time, duration and attempt number. Source filtering and step exclusion happen before pagination.
+
+Execution topology shows local connections and cross-node boundaries. Sub-job definition displays complete dispatched task definitions, without a separate routing file or routing section. Remote inputs use `producer_identity`, remote outputs use `consumer_identity`, and local connections require no certificate identity.

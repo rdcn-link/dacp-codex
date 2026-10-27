@@ -24,7 +24,7 @@ async function renderDag(j){
  catch(e){$('dag-error').textContent='Graph rendering failed: '+e.message;$('dag-error').hidden=false;}
 }
 async function renderDetail(j){
- $('detail').hidden=false;$('job-script').textContent=j.job_yaml||'No task script was saved for this historical record';$('job-policy').textContent=JSON.stringify({execution_policy:j.execution_policy||{},effective_execution_policy:j.effective_execution_policy||{},max_retries:j.max_retries||0},null,2);DacpAttempts.render($('job-attempts'),j);await renderDag(j);if(selected!==j.job_id)return;
+ $('detail').hidden=false;$('job-script').textContent=DacpJobScript.format(j.job_yaml);$('job-policy').textContent=JSON.stringify({execution_policy:j.execution_policy||{},effective_execution_policy:j.effective_execution_policy||{},max_retries:j.max_retries||0},null,2);DacpAttempts.render($('job-attempts'),j);await renderDag(j);if(selected!==j.job_id)return;
  $('detail').hidden=false;$('job-title').textContent=j.job_id;$('job-meta').textContent=(labels[j.state]||j.state)+' · Retry '+(j.retry_count||0)+' / '+(j.max_retries||0)+' · used '+duration(j.elapsed_ms)+' · Submitted at '+time(j.created_at_ms)+(j.finished_at_ms?' · Finished at '+time(j.finished_at_ms):'');
  $('job-message').hidden=!j.message;$('job-message').textContent=j.message||'';$('events').replaceChildren(...(j.events||[]).map(e=>el('span',(labels[e.state]||e.state)+' · '+time(e.at_ms)+'  →  ')));
  const tasks=$('tasks');tasks.replaceChildren();

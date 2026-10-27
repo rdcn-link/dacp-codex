@@ -182,7 +182,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       v.set[JsonNode]("params",Json.mapper.valueToTree(t.params))
       val inputs=v.putObject("inputs");t.inputs.foreach{case(p,b)=>require(b.task.nonEmpty,"job inputs require upstream tasks");inputs.put(p,b.task.get+":"+b.port)}
     }
-    val outputs=n.putObject("outputs");plan.outputs.foreach{case(p,(t,o))=>outputs.put(p,t+":"+o)};n.toString
+    val outputs=n.putObject("outputs");plan.outputs.foreach{case(p,(t,o))=>outputs.put(p,t+":"+o)};n.toPrettyString
   }
 
   private def nested(task:Task,inputs:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel):Unit={
@@ -415,25 +415,29 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
           val uri=b.uri.get
           if(DacpUri.origin(uri)!=n.path("data_origin").asText){
             require(DacpUri.origin(uri)==settings.publicUrl,"read_item must execute at the data owner")
-            j.putObject("read_source").put("origin",settings.publicUrl).put("identity",members.tls.identity)
+            j.putObject("read_source").put("origin",settings.publicUrl).put("producer_identity",members.tls.identity)
           }
         }
         j.set[JsonNode]("params",Json.mapper.valueToTree[JsonNode](t.params));val inputs=j.putObject("inputs")
         t.inputs.foreach {case(port,b)=>
-          val v=inputs.putObject(port)
-          b.uri match {
-            case Some(u)=>
-              v.put("uri",u).put("view",b.view)
-              if(DacpUri.origin(u)!=n.path("data_origin").asText){
-                val source=known.get(DacpUri.origin(u))
-                v.put("origin",source.map(url).getOrElse(settings.publicUrl)).put("identity",source.map(identity).getOrElse(members.tls.identity))
-              }
-            case None=>
-              val parent=b.task.get;v.put("task",parent).put("port",b.port)
-              if(identity(placements(parent))!=identity(n))v.put("origin",url(placements(parent))).put("identity",identity(placements(parent)))
+          if(b.task.exists(parent=>identity(placements(parent))==identity(n)))inputs.put(port,b.task.get+":"+b.port)
+          else {
+            val v=inputs.putObject(port)
+            b.uri match {
+              case Some(u)=>
+                v.put("uri",u).put("view",b.view)
+                if(DacpUri.origin(u)!=n.path("data_origin").asText){
+                  val source=known.get(DacpUri.origin(u))
+                  v.put("origin",source.map(url).getOrElse(settings.publicUrl)).put("producer_identity",source.map(identity).getOrElse(members.tls.identity))
+                }
+              case None=>
+                val parent=b.task.get;v.put("task",parent).put("port",b.port)
+                if(identity(placements(parent))!=identity(n))v.put("origin",url(placements(parent))).put("producer_identity",identity(placements(parent)))
+            }
           }
         }
-        val outputs=j.putObject("outputs");consumers.foreach {case((task,port),who)=>if(task==t.id)outputs.put(port,who)}
+        val routes=consumers.filter {case((task,port),who)=>task==t.id && (plan.outputs.values.toSet((task,port)) || who!=identity(n))}
+        if(routes.nonEmpty){val out=j.putObject("output_routes");routes.foreach {case((_,port),who)=>out.putObject(port).put("consumer_identity",who)}}
       };body
     }
     private def capacity():Boolean=nodes.forall { n=>

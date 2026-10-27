@@ -1,6 +1,6 @@
 # 任务执行记录
 
-DACP Server 和 Union Server 默认持久化执行元数据，不能通过配置关闭。结果仍为一次性流，节点记录不保存结果负载、完整 Job YAML、参数或提交的源码；Union 为展示任务脚本而保存完整 Job YAML（包括其中的参数），但不保存结果负载。
+DACP Server 和 Union Server 默认持久化执行元数据，不能通过配置关闭。执行记录不保存结果流负载；输出物化由独立的执行策略及物化存储控制。节点保存普通作业的 Job 脚本，以及 Union 子作业的完整步骤定义（含参数、输入定位和输出路由）；Union 保存全局 Job 脚本。脚本可能包含参数或提交的源码，看板会公开展示这些记录。
 
 ## 用户与运维
 
@@ -47,3 +47,9 @@ Union 看板展示提交的 Job YAML 和数据集、任务、端口依赖及最�
 ## 存储扩展
 
 节点和 Union 都支持上述 `execution_store` 映射。`provider` 选择通过 ServiceLoader 注册的 `ExecutionStoreProvider`，实现自行校验私有 `settings`。默认 file 位于 `plugins/dacp-plugin-execution-file`，`ExecutionHistory` 保留状态转换、中断恢复和分页。应用可用 `new ExecutionHistory(store, ownsStore = false)` 保留存储所有权。见[插件注册](plugins.md#实例环境和执行存储)。
+
+## 看板中的作业与步骤
+
+节点看板 Jobs 列表仅展示顶层作业，通过 Source 筛选 `Direct client` 或 `Union`。步骤记录保留在持久化存储中，在所属作业的 Operator step records 展开查看状态、开始时间、耗时及尝试编号。来源筛选与步骤排除均在分页前完成。
+
+Execution topology 展示本地连接和跨节点边界；Sub-job definition 完整展示收到的步骤定义，不另设路由文件或路由展示区域。远端输入使用 `producer_identity`，远端输出使用 `consumer_identity`；本地连接无需证书身份。
