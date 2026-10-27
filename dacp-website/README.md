@@ -1,6 +1,6 @@
 # DACP 官方网站
 
-独立的 Scala HTTP 服务，网站内容仅使用英文。提供项目介绍、用户／管理员／开发者文档、服务器和 SDK 下载。沿用项目 logo 和 C 形 favicon，不依赖外部字体、脚本或 CDN。
+独立的 Scala HTTP 服务，网站内容仅使用英文。提供项目介绍、用户／管理员／开发者文档、服务器和客户端下载。沿用项目 logo 和 C 形 favicon，不依赖外部字体、脚本或 CDN。
 
 ## 构建与启动
 
@@ -12,7 +12,7 @@ sbt test stage
 target/universal/stage/bin/dacp-website --host 0.0.0.0 --port 8830 --downloads /srv/dacp/downloads
 ```
 
-打开 `http://localhost:8830/`。`/docs` 是文档导航，`/downloads` 列出下载目录中实际存在的文件；`/guide/docs/users/README_en.md` 等路径提供渲染后的文档。默认监听 `0.0.0.0:8830`，默认下载目录是启动工作目录下的 `downloads`。
+打开 `http://localhost:8830/`。`/docs` 是文档导航，`/downloads` 列出下载目录中实际存在的受支持软件包；`/guide/docs/users/README_en.md` 等路径提供渲染后的文档。默认监听 `0.0.0.0:8830`，默认下载目录是启动工作目录下的 `downloads`。
 
 官网不承担数据访问、任务执行、成员调度或算子发布职责。部署到公网时，可在反向代理上配置域名和 HTTPS；下载目录只允许管理员写入。所有网页和下载均公开访问。
 
@@ -24,9 +24,9 @@ target/universal/stage/bin/dacp-website --host 0.0.0.0 --port 8830 --downloads /
 python3 scripts/prepare-website-downloads.py --output /srv/dacp/downloads
 ```
 
-脚本需要 sbt、Python 3.10+、pip 和网络。默认构建 `dacp-server`、`dacp-union-server`、`dacp-operator-repository`、`dacp-website` 的 ZIP 安装包，Scala 普通客户端／协作客户端／算子 SDK 依赖包，包含 `dacp-shell` 的 Python 普通客户端 wheel 及独立协作客户端 wheel，以及源码 ZIP。生成 `SHA256SUMS` 用于校验。产物均为开发快照，不宣称正式发布；JVM SDK ZIP 包含运行时依赖，Python wheel 的依赖由 pip 安装。
+脚本需要 sbt、Python 3.10+、pip 和网络。仅构建 `dacp-server`、`dacp-union-server` 的 ZIP 安装包，以及包含 `dacp-shell` 的 `dacp-client` Python wheel，并生成 `SHA256SUMS`。产物为开发快照；客户端依赖由 pip 安装。下载清单仅列出这三个软件组件，大小使用 1024 字节进制，显示为 `135M256k`。官网、源码、Scala SDK 和协作 SDK 包不列入下载清单。
 
-已经构建过的环境可以使用 `--skip-build` 重用应用 ZIP 和 SDK 类路径导出；Python wheel 与源码 ZIP 仍重新生成。任一缺失组件都会导致失败，不会悄悄跳过。文件准备好后逐个原子替换，正在运行的网站无需重启即可显示新文件；更新过程中整个目录不保证事务一致，请在发布完成后校验。
+使用 `--skip-build` 可重用服务器 ZIP；客户端 wheel 始终重新生成。缺失服务器安装包会导致失败。文件逐个原子替换，网站无需重启即可发现新文件；整个目录的更新不保证事务一致，请在发布完成后校验。已有无关文件不会被删除，但网站不再列出或提供它们的下载。
 
 ## 文档维护
 

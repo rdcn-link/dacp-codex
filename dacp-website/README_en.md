@@ -1,6 +1,6 @@
 # DACP official website
 
-An independent Scala HTTP service with English-only website content. It provides a project overview, user / administrator / developer documentation, and server and SDK downloads. It uses the project logo and C favicon without external fonts, scripts or CDNs.
+An independent Scala HTTP service with English-only website content. It provides a project overview, user / administrator / developer documentation, and server and client downloads. It uses the project logo and C favicon without external fonts, scripts or CDNs.
 
 ## Build and start
 
@@ -12,7 +12,7 @@ sbt test stage
 target/universal/stage/bin/dacp-website --host 0.0.0.0 --port 8830 --downloads /srv/dacp/downloads
 ```
 
-Open `http://localhost:8830/`. `/docs` provides documentation navigation; `/downloads` lists files actually present in the download directory; paths such as `/guide/docs/users/README_en.md` render documentation. Defaults are `0.0.0.0:8830` and a `downloads` directory relative to the process working directory.
+Open `http://localhost:8830/`. `/docs` provides documentation navigation; `/downloads` lists the supported software packages present in the download directory; paths such as `/guide/docs/users/README_en.md` render documentation. Defaults are `0.0.0.0:8830` and a `downloads` directory relative to the process working directory.
 
 The website does not handle data access, task execution, member scheduling or operator publication. For public deployment, configure a domain and HTTPS at a reverse proxy; allow only administrators to write the download directory. All pages and downloads are public.
 
@@ -24,9 +24,9 @@ From the repository root, run the following command to build components sequenti
 python3 scripts/prepare-website-downloads.py --output /srv/dacp/downloads
 ```
 
-The script requires sbt, Python 3.10+, pip and network access. By default it builds ZIP distributions of `dacp-server`, `dacp-union-server`, `dacp-operator-repository` and `dacp-website`, dependency bundles for the Scala ordinary client / collaboration client / operator SDKs, Python ordinary and collaboration client wheels, including `dacp-shell`, and a source ZIP. It generates `SHA256SUMS` for verification. Artifacts are development snapshots, not official releases; JVM SDK ZIPs include runtime dependencies, while pip installs Python wheel dependencies.
+The script requires sbt, Python 3.10+, pip and network access. It builds only the `dacp-server` and `dacp-union-server` ZIP distributions and the `dacp-client` Python wheel, including `dacp-shell`. It generates `SHA256SUMS` for verification. Artifacts are development snapshots; pip installs client dependencies. The download page lists only these three software components, with sizes such as `135M256k` using 1024-byte units. Website, source, Scala SDK and collaboration SDK bundles are not published in the download catalog.
 
-After an initial build, `--skip-build` reuses application ZIPs and SDK classpath exports; the Python wheel and source ZIP are still regenerated. Missing components fail the operation rather than being silently skipped. Prepared files replace published files atomically one by one; the running website discovers them without restarting. The directory update is not transactional as a whole; verify checksums after publication completes.
+Use `--skip-build` to reuse server ZIPs; the client wheel is always regenerated. Missing server distributions fail the operation. Files are replaced atomically one by one and discovered without a website restart. The directory update is not transactional as a whole; verify checksums after publication completes. Existing unrelated files are not deleted, but cannot be listed or downloaded through the website.
 
 ## Maintain documentation
 

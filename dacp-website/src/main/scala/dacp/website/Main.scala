@@ -35,6 +35,10 @@ final class Website(host: String, port: Int, downloads: Path) extends AutoClosea
     try x.getResponseBody.write(data) finally x.close()
   }
   private def html(x: HttpExchange, title: String, body: String): Unit = send(x, 200, "text/html; charset=utf-8", page(title, body))
+  private def softwareArtifact(name: String): Boolean =
+    name.matches("dacp-(server|union-server)-[0-9][A-Za-z0-9._-]*\\.zip") ||
+      name.matches("dacp_client-[0-9][A-Za-z0-9._-]*\\.whl")
+  private def downloadSize(bytes: Long): String = s"${bytes / (1024 * 1024)}M${(bytes % (1024 * 1024)) / 1024}k"
   private def missing(x: HttpExchange): Unit = send(x, 404, "text/html; charset=utf-8", page("Not found", "<h1>Not found</h1><p>This resource is unavailable.</p>"))
   server.createContext("/", (x: HttpExchange) => {
     try {
@@ -43,16 +47,16 @@ final class Website(host: String, port: Int, downloads: Path) extends AutoClosea
       else if (path == "/") html(x, "Stream data. Collaborate across nodes.", new String(resource("/web/home.html").get, UTF_8))
       else if (path == "/docs" || path == "/docs/") html(x, "Documentation", new String(resource("/web/docs.html").get, UTF_8))
       else if (path == "/downloads") {
-        val files = if (Files.isDirectory(downloadRoot)) { val s = Files.list(downloadRoot); try s.iterator().asScala.filter(p => Files.isRegularFile(p) && !Files.isSymbolicLink(p) && p.getFileName.toString.matches("[A-Za-z0-9._-]+") && !p.getFileName.toString.startsWith(".")).toVector.sortBy(_.getFileName.toString) finally s.close() } else Vector.empty
-        val rows = files.map { p => val n = p.getFileName.toString; s"<tr><td><a href='/download/$n'>${escape(n)}</a></td><td>${Files.size(p)} bytes</td></tr>" }.mkString
-        html(x, "Downloads", "<p class='eyebrow'>SOFTWARE</p><h1>Choose your tools.</h1><p>Development snapshots for Linux servers and cross-platform clients. JDK 17+ for JVM software; Python 3.10+ for the Python SDK and shell. Operator execution needs Linux and Docker.</p><p>Server archives include launch scripts and runtime libraries. SDK bundles include dependencies; the Python wheel installs dacp-shell. Source archives include examples, plugins and documentation.</p>" +
+        val files = if (Files.isDirectory(downloadRoot)) { val s = Files.list(downloadRoot); try s.iterator().asScala.filter(p => Files.isRegularFile(p) && !Files.isSymbolicLink(p) && p.getFileName.toString.matches("[A-Za-z0-9._-]+") && softwareArtifact(p.getFileName.toString)).toVector.sortBy(_.getFileName.toString) finally s.close() } else Vector.empty
+        val rows = files.map { p => val n = p.getFileName.toString; s"<tr><td><a href='/download/$n'>${escape(n)}</a></td><td>${downloadSize(Files.size(p))}</td></tr>" }.mkString
+        html(x, "Downloads", "<p class='eyebrow'>SOFTWARE</p><h1>Choose your tools.</h1><p>Development snapshots for Linux servers and cross-platform clients. JDK 17+ for JVM software; Python 3.10+ for the Python SDK and shell. Operator execution needs Linux and Docker.</p><p>Download DACP Server, Union Server or the Python client with dacp-shell. Server archives include launch scripts and runtime libraries; pip installs client dependencies. Sizes use 1024-byte units, shown as M and k.</p>" +
           (if (files.isEmpty) "<p>No artifacts have been published on this instance yet. <a href='https://github.com/rdcn-link/dacp-codex'>Build from source</a>.</p>" else "<table><thead><tr><th>Artifact</th><th>Size</th></tr></thead><tbody>" + rows + "</tbody></table>") +
-          "<h2>Install and verify</h2><pre>sha256sum -c SHA256SUMS\nunzip dacp-server-*.zip\npython -m pip install dacp_client-*.whl</pre><p>Download SHA256SUMS alongside the desired artifacts before verifying them. See the <a href='/guide/docs/administrators/README_en.md'>administrator guide</a> for certificates and configuration, and the <a href='/guide/docs/users/README_en.md'>user guide</a> for shell commands.</p>")
+          "<h2>Install and verify</h2><pre>sha256sum --ignore-missing -c SHA256SUMS\nunzip dacp-server-*.zip\npython -m pip install dacp_client-*.whl</pre><p>Download <a href='/download/SHA256SUMS'>SHA256SUMS</a> alongside the desired artifacts; use sha256sum --ignore-missing -c SHA256SUMS to verify your selected downloads. See the <a href='/guide/docs/administrators/README_en.md'>administrator guide</a> for certificates and configuration, and the <a href='/guide/docs/users/README_en.md'>user guide</a> for shell commands.</p>")
       }
       else if (path.startsWith("/download/")) {
         val n = path.stripPrefix("/download/")
         val file = downloadRoot.resolve(n).normalize()
-        if (!n.matches("[A-Za-z0-9._-]+") || n.startsWith(".") || file.getParent != downloadRoot || !Files.isRegularFile(file) || Files.isSymbolicLink(file)) missing(x)
+        if (!n.matches("[A-Za-z0-9._-]+") || (!softwareArtifact(n) && n != "SHA256SUMS") || file.getParent != downloadRoot || !Files.isRegularFile(file) || Files.isSymbolicLink(file)) missing(x)
         else {
           x.getResponseHeaders.set("Content-Disposition", "attachment; filename=\"" + n + "\"")
           x.getResponseHeaders.set("Content-Type", "application/octet-stream")

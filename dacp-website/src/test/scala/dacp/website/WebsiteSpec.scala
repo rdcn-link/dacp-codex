@@ -7,7 +7,10 @@ import java.nio.file.Files
 class WebsiteSpec extends AnyFunSuite {
   test("English pages, packaged documentation, safe downloads and unavailable resources") {
     val dir = Files.createTempDirectory("dacp-website-test")
-    Files.writeString(dir.resolve("example.zip"), "archive-content")
+    Files.writeString(dir.resolve("dacp-server-0.1.zip"), "archive-content")
+    Files.write(dir.resolve("dacp_client-0.1-py3-none-any.whl"), new Array[Byte](2 * 1024 * 1024 + 3 * 1024))
+    Files.writeString(dir.resolve("dacp-website-0.1.zip"), "excluded")
+    Files.writeString(dir.resolve("dacp-client-scala-development.zip"), "excluded")
     val site = new Website("127.0.0.1", 0, dir)
     site.start()
     val client = HttpClient.newHttpClient()
@@ -19,16 +22,20 @@ class WebsiteSpec extends AnyFunSuite {
       assert(doc.statusCode() == 200)
       assert(doc.body().contains("<article>"))
       assert(doc.headers().firstValue("Content-Security-Policy").isPresent)
-      assert(get("/downloads").body().contains("example.zip"))
-      val download = get("/download/example.zip")
+      assert(get("/downloads").body().contains("dacp-server-0.1.zip"))
+      assert(get("/downloads").body().contains("2M3k"))
+      assert(!get("/downloads").body().contains("dacp-website-0.1.zip"))
+      assert(!get("/downloads").body().contains("dacp-client-scala-development.zip"))
+      assert(get("/download/dacp-website-0.1.zip").statusCode() == 404)
+      val download = get("/download/dacp-server-0.1.zip")
       assert(download.body() == "archive-content")
-      assert(download.headers().firstValue("Content-Disposition").get().contains("example.zip"))
+      assert(download.headers().firstValue("Content-Disposition").get().contains("dacp-server-0.1.zip"))
       assert(get("/download/../build.sbt").statusCode() == 404)
       assert(get("/download/%2e%2e%2fbuild.sbt").statusCode() == 404)
       assert(get("/guide/docs/unknown_en.md").statusCode() == 404)
       assert(get("/assets/dacp-favicon.png").statusCode() == 200)
-      Files.createSymbolicLink(dir.resolve("outside.zip"), dir.getParent.resolve("outside"))
-      assert(get("/download/outside.zip").statusCode() == 404)
-    } finally { site.close(); Files.deleteIfExists(dir.resolve("outside.zip")); Files.delete(dir.resolve("example.zip")); Files.delete(dir) }
+      Files.createSymbolicLink(dir.resolve("dacp-union-server-0.1.zip"), dir.getParent.resolve("outside"))
+      assert(get("/download/dacp-union-server-0.1.zip").statusCode() == 404)
+    } finally { site.close(); Files.deleteIfExists(dir.resolve("dacp-union-server-0.1.zip")); Files.delete(dir.resolve("dacp-server-0.1.zip")); Files.delete(dir.resolve("dacp_client-0.1-py3-none-any.whl")); Files.delete(dir.resolve("dacp-website-0.1.zip")); Files.delete(dir.resolve("dacp-client-scala-development.zip")); Files.delete(dir) }
   }
 }
