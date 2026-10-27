@@ -34,7 +34,7 @@ Nodes read local operators through `local_operator_library` and search remote re
 
 ## Certificates and authorization
 
-Ordinary Flight clients use TLS and tokens without requiring client certificates. Union uses mutual TLS and node-issued service credentials bound to its Union ID and certificate fingerprint. Peer task streams are authorized by exact execution plans. Credentials are created, rotated and revoked locally and reload automatically. See [authentication and access control](../security_en.md).
+Ordinary DACP clients use TLS and tokens without requiring client certificates. Union uses mutual TLS and node-issued service credentials bound to its Union ID and certificate fingerprint. Peer task streams are authorized by exact execution plans. Credentials are created, rotated and revoked locally and reload automatically. See [authentication and access control](../security_en.md).
 
 ## Union and repository
 
@@ -42,7 +42,7 @@ Ordinary Flight clients use TLS and tokens without requiring client certificates
 - [Two-node example](../../examples/union/README_en.md): complete certificate, node, Union, and client demonstration.
 - [Repository manual](../../dacp-operator-repository/README_en.md): initialization, publication, source materials, HTTP service, and downloads.
 
-Union builds one Union from configuration, connects independent members using node-issued credentials and polls their status. Its public read-only HTTP dashboard exposes job scripts and execution metadata without login or tokens. Review task parameters for information unsuitable for public viewing. Computation remains protected by authorization on Flight interfaces.
+Union builds one Union from configuration, connects independent members using node-issued credentials and polls their status. Its public read-only HTTP dashboard exposes job scripts and execution metadata without login or tokens. Review task parameters for information unsuitable for public viewing. Computation remains protected by authorization on DACP interfaces.
 
 ## Monitoring, records, and shutdown
 
@@ -50,8 +50,8 @@ The dashboard shows node health, start time, uptime, job DAGs, status, and traff
 
 Use Ctrl+C for foreground processes or send SIGTERM. Restarting does not resume interrupted result streams. Inspect operator images with `docker image ls`; local runtime configuration and repository artifacts are separate resources. DEBUG logging and the DEBUG execution mode that allows source submission are configured separately.
 
-Nodes also start a read-only HTTP dashboard by default on the Flight port plus 1000. Disable it with `web.enabled: false`. See the [node web dashboard](../node-web_en.md) for configuration and DAG views.
+Nodes also start a read-only HTTP dashboard by default on the DACP service port plus 1000. Disable it with `web.enabled: false`. See the [node web dashboard](../node-web_en.md) for configuration and DAG views.
 
-Nodes also enable the [S3-compatible read service](../s3-service_en.md) by default, on the Flight port plus 2000. It provides HTTPS and SigV4-authenticated downloads of bytes Items using credentials independent of Flight. Disable it with `s3: {enabled: false}`.
+Nodes also enable the [S3-compatible read service](../s3-service_en.md) by default, on the DACP service port plus 2000. It provides HTTPS and SigV4-authenticated downloads of bytes Items using credentials independent of the DACP data service. Disable it with `s3: {enabled: false}`.
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy_en.md).

@@ -266,7 +266,7 @@ Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Save
 
 ## Collaboration and tasks
 
-DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and places each task on the node hosting its first input unless an execution node is specified. Nodes collaborate through mTLS Flight DoExchange. Eligible node subjobs [share one container and process](../operator-fusion_en.md), while other tasks execute independently; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
+DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and places each task on the node hosting its first input unless an execution node is specified. Nodes collaborate through service connections protected by mutual TLS. Eligible node subjobs [share one container and process](../operator-fusion_en.md), while other tasks execute independently; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
 
 Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, build the conversion operator and start the server. Stop the quick-start server first if it is still running:
 
@@ -294,7 +294,7 @@ Operators can share a dependency environment and a code bundle. The starter oper
 
 ## Security and operating limits
 
-Ordinary Flight uses TLS and tokens; Union collaboration uses mutual TLS and service credentials. Published datasets and their Items are browsable and readable by default, without an additional URI allowlist. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
+Ordinary DACP access uses TLS and tokens; Union collaboration uses mutual TLS and service credentials. Published datasets and their Items are browsable and readable by default, without an additional URI allowlist. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
 
 Unpublished physical files and database tables are not automatically exposed. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and tasks are not restored after restart. See the [technical reference](../../docs/reference_en.md#protocol-and-configuration) for full configuration and protocol details.
 

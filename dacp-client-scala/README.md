@@ -2,7 +2,7 @@
 
 [English](README_en.md)
 
-独立的 Scala 2.13 SDK，通过 Apache Arrow Flight 和 TLS/Token 读取 DACP Dataset。需要 JDK 17 和 sbt 1.10.x。使用共享的 [protobuf 定义](../proto/dacp.proto)，不依赖 DACP 服务器项目。
+独立的 Scala 2.13 SDK，通过 DACP 服务读取 Dataset，使用 TLS/Token 认证。需要 JDK 17 和 sbt 1.10.x。使用共享的 [protobuf 定义](../proto/dacp.proto)，不依赖 DACP 服务器项目。
 
 在本目录构建并发布到本地 Ivy 仓库：
 

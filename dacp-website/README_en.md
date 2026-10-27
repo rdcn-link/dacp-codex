@@ -24,7 +24,7 @@ From the repository root, run the following command to build components sequenti
 python3 scripts/prepare-website-downloads.py --output /srv/dacp/downloads
 ```
 
-The script requires sbt, Python 3.10+, pip and network access. It builds only the `dacp-server` and `dacp-union-server` ZIP distributions and the `dacp-client` Python wheel, including `dacp-shell`. It generates `SHA256SUMS` for verification. Artifacts are development snapshots; pip installs client dependencies. The download page lists only these three software components, with sizes such as `135M256k` using 1024-byte units. Website, source, Scala SDK and collaboration SDK bundles are not published in the download catalog.
+The script requires sbt, Python 3.10+, pip and network access. It builds only the `dacp-server` and `dacp-union-server` ZIP distributions and the `dacp-client` Python wheel, including `dacp-shell`. It generates `SHA256SUMS` for verification. Artifacts are development snapshots; pip installs client dependencies. The download page lists only these three software components, using 1024-byte units: MB with one decimal place (such as `134.9MB`), whole kB (such as `28kB`), and bytes for files below 1 kB. Website, source, Scala SDK and collaboration SDK bundles are not published in the download catalog.
 
 Use `--skip-build` to reuse server ZIPs; the client wheel is always regenerated. Missing server distributions fail the operation. Files are replaced atomically one by one and discovered without a website restart. The directory update is not transactional as a whole; verify checksums after publication completes. Existing unrelated files are not deleted, but cannot be listed or downloaded through the website.
 

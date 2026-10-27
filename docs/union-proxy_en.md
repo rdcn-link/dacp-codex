@@ -2,7 +2,7 @@
 
 [中文](union-proxy.md)
 
-Union provides a standard DACP service, Union management Flight APIs, and a separate HTTP operations dashboard. Python/Scala `Source`, `Job`, and the shell can connect to its public Flight address. Members remain independent; Union polls configured members, proxies their data and dispatches computation.
+Union provides a standard DACP service, Union-specific APIs, and a separate HTTP operations dashboard. Python/Scala `Source`, `Job`, and the shell can connect to its public DACP address. Members remain independent; Union polls configured members, proxies their data and dispatches computation.
 
 ## Public dataset names
 
@@ -52,7 +52,7 @@ outputs:
   result: summarize
 ```
 
-The example operator must be installed or available from a repository on the execution member. Ordinary tasks may omit `node`. Union filters configured locations by service credential and capacity, preferring input or upstream locations. When all raw input sizes are known, it chooses the location minimizing transferred bytes; otherwise it follows input declaration order. A multi-input operator executes at one member and reads other members' inputs as Flight streams. Explicit placement uses `node: nd-xxxx-xxxx`; public tasks cannot specify internal addresses.
+The example operator must be installed or available from a repository on the execution member. Ordinary tasks may omit `node`. Union filters configured locations by service credential and capacity, preferring input or upstream locations. When all raw input sizes are known, it chooses the location minimizing transferred bytes; otherwise it follows input declaration order. A multi-input operator executes at one member and reads other members' inputs as data streams. Explicit placement uses `node: nd-xxxx-xxxx`; public tasks cannot specify internal addresses.
 
 Execution policy JSON, output streams, failed-attempt notifications, cancellation, timeout, member-side materialization and replay use the existing engine. Results stream through Union to the client by default. Union participates as an upstream member through the ordinary worker contract, delegating computation to its own members. Inputs use temporary, single-consumer, certificate-bound streams without disk staging. Proxy paths detect cycles and enforce an eight-level limit; cancellation and remaining execution time propagate downstream.
 

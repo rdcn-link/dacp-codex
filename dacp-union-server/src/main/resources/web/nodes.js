@@ -37,7 +37,7 @@ function card(member,index,version){
  box.updateMember(member);
  box.append(heading,facts,body);let loaded=false,loading=false;
  async function load(){
-  if(loading)return;loading=true;body.replaceChildren(element('p','Reading the member catalog through Flight…','muted'));body.setAttribute('aria-busy','true');
+  if(loading)return;loading=true;body.replaceChildren(element('p','Loading the member dataset catalog…','muted'));body.setAttribute('aria-busy','true');
   try{
    const data=await request('/members/'+encodeURIComponent(member.identity)+'/datasets');if(version!==generation)return;
    body.replaceChildren();const bar=element('div',undefined,'section-head');const refresh=element('button','Reload');refresh.type='button';refresh.addEventListener('click',load);

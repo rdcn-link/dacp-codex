@@ -34,7 +34,7 @@ sbt 'run ../examples/server.yaml'
 
 ## 证书与授权
 
-普通 Flight 客户端使用 TLS 与 Token，无需客户端证书。Union 使用节点签发、绑定 Union ID 与证书指纹的服务凭据及双向 TLS。节点间任务流按执行计划精确授权。凭据本地创建、轮换、撤销并自动加载。操作说明见[认证与访问控制](../security.md)。
+普通 DACP 客户端使用 TLS 与 Token，无需客户端证书。Union 使用节点签发、绑定 Union ID 与证书指纹的服务凭据及双向 TLS。节点间任务流按执行计划精确授权。凭据本地创建、轮换、撤销并自动加载。操作说明见[认证与访问控制](../security.md)。
 
 ## Union 和仓库
 
@@ -42,7 +42,7 @@ sbt 'run ../examples/server.yaml'
 - [双节点示例](../../examples/union/README.md)：证书、节点、Union 和客户端的完整演示。
 - [算子仓库手册](../../dacp-operator-repository/README.md)：初始化、发布、源码材料、HTTP 服务和下载。
 
-Union 从配置构建唯一的 Union，使用节点签发的凭据连接独立节点并轮询状态。HTTP 管理看板展示任务脚本和执行元数据；公开只读，无需登录或 token。计算操作仍通过受授权保护的 Flight 接口进行。
+Union 从配置构建唯一的 Union，使用节点签发的凭据连接独立节点并轮询状态。HTTP 管理看板展示任务脚本和执行元数据；公开只读，无需登录或 token。计算操作仍通过受授权保护的 DACP 接口进行。
 
 ## 监控、记录与停机
 
@@ -50,8 +50,8 @@ Union 从配置构建唯一的 Union，使用节点签发的凭据连接独立�
 
 使用前台进程的 Ctrl+C 或发送 SIGTERM 停机。重启不会恢复中断的结果流。算子镜像可通过 `docker image ls` 检查；本地运行时配置与仓库制品是不同资源。日志中的 DEBUG 级别与允许源码提交的 DEBUG 运行模式分别配置。
 
-节点默认同时开启只读 HTTP 看板，端口为 Flight 端口加 1000；可通过 `web.enabled: false` 关闭。配置和 DAG 展示见[节点 Web 看板](../node-web.md)。
+节点默认同时开启只读 HTTP 看板，端口为 DACP 服务端口加 1000；可通过 `web.enabled: false` 关闭。配置和 DAG 展示见[节点 Web 看板](../node-web.md)。
 
-节点默认同时启用 [S3 兼容读取服务](../s3-service.md)，端口为 Flight 端口加 2000；它通过 HTTPS 与 SigV4 认证下载 bytes Item，凭据独立于 Flight。可通过 `s3: {enabled: false}` 关闭。
+节点默认同时启用 [S3 兼容读取服务](../s3-service.md)，端口为 DACP 服务端口加 2000；它通过 HTTPS 与 SigV4 认证下载 bytes Item，凭据独立于 DACP 数据服务。可通过 `s3: {enabled: false}` 关闭。
 
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy.md)。

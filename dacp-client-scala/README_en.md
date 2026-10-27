@@ -2,7 +2,7 @@
 
 [中文](README.md)
 
-A standalone Scala 2.13 SDK for reading DACP datasets over Apache Arrow Flight with TLS and tokens. Requires JDK 17 and sbt 1.10.x. It uses the shared [protobuf definition](../proto/dacp.proto) and has no dependency on the DACP server project.
+A standalone Scala 2.13 SDK for reading DACP datasets with TLS and token authentication. Requires JDK 17 and sbt 1.10.x. It uses the shared [protobuf definition](../proto/dacp.proto) and has no dependency on the DACP server project.
 
 Build and publish to your local Ivy repository from this directory:
 

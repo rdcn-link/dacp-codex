@@ -24,7 +24,7 @@ target/universal/stage/bin/dacp-website --host 0.0.0.0 --port 8830 --downloads /
 python3 scripts/prepare-website-downloads.py --output /srv/dacp/downloads
 ```
 
-脚本需要 sbt、Python 3.10+、pip 和网络。仅构建 `dacp-server`、`dacp-union-server` 的 ZIP 安装包，以及包含 `dacp-shell` 的 `dacp-client` Python wheel，并生成 `SHA256SUMS`。产物为开发快照；客户端依赖由 pip 安装。下载清单仅列出这三个软件组件，大小使用 1024 字节进制，显示为 `135M256k`。官网、源码、Scala SDK 和协作 SDK 包不列入下载清单。
+脚本需要 sbt、Python 3.10+、pip 和网络。仅构建 `dacp-server`、`dacp-union-server` 的 ZIP 安装包，以及包含 `dacp-shell` 的 `dacp-client` Python wheel，并生成 `SHA256SUMS`。产物为开发快照；客户端依赖由 pip 安装。下载清单仅列出这三个软件组件，大小使用 1024 字节进制：MB 保留一位小数（如 `134.9MB`），kB 显示整数（如 `28kB`），不足 1 kB 显示字节数。官网、源码、Scala SDK 和协作 SDK 包不列入下载清单。
 
 使用 `--skip-build` 可重用服务器 ZIP；客户端 wheel 始终重新生成。缺失服务器安装包会导致失败。文件逐个原子替换，网站无需重启即可发现新文件；整个目录的更新不保证事务一致，请在发布完成后校验。已有无关文件不会被删除，但网站不再列出或提供它们的下载。
 

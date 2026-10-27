@@ -14,7 +14,7 @@ async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)t
 function renderJobs(){
  if(!snapshot)return;const body=$('jobs');body.replaceChildren();const query=$('search').value.trim().toLowerCase(),filter=$('state-filter').value;
  const jobs=snapshot.jobs.filter(j=>(!filter||(filter==='active'?!terminal.has(j.state):j.state===filter))&&(!query||[j.name||'',j.job_id,...j.tasks.flatMap(t=>[t.node,t.operator,t.id,t.title||''])].join(' ').toLowerCase().includes(query)));
- if(!jobs.length)return empty(body,7,snapshot.jobs.length?'No matching jobs':'No jobs yet. Submit a collaborative job through a Flight client.');
+ if(!jobs.length)return empty(body,7,snapshot.jobs.length?'No matching jobs':'No jobs yet. Submit a collaborative job through a DACP client.');
  for(const j of jobs){const row=el('tr',undefined,j.job_id===selected?'selected':'');const b=el('button',j.name||'Unnamed job','job-link');b.title=j.job_id;b.addEventListener('click',()=>{selected=j.job_id;previous.clear();renderJobs();refresh();});cell(row,b);cell(row,short(j.job_id),'mono').title=j.job_id;cell(row,badge('Direct client'));cell(row,'Union job');cell(row,badge(j.state));cell(row,time(j.created_at_ms));cell(row,duration(j.elapsed_ms));body.append(row);}
 }
 const dagViewer=new DacpDag.Viewer($('dag'));

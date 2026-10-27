@@ -4,7 +4,7 @@
 
 Scala coordination and proxy service maintaining one Union. Members run independently. Union reads its member configuration, polls health and resources, and schedules streaming jobs. Members do not register or send heartbeats.
 
-Union exposes standard DACP Flight catalogs, Item access and Job execution through public dataset names that hide internal addresses. Intermediate task streams travel directly between members; final results return through Union. Its internal HTTP dashboard shows members, traffic, execution policy, attempts, DAGs and persistent history without authentication.
+Union exposes standard DACP catalogs, Item access and Job execution through public dataset names that hide internal addresses. Intermediate task streams travel directly between members; final results return through Union. Its internal HTTP dashboard shows members, traffic, execution policy, attempts, DAGs and persistent history without authentication.
 
 ## Build and configuration
 
