@@ -76,7 +76,7 @@ def main():
             z.writestr('worker_probe-1.0.dist-info/RECORD','')
         def publish(name,executor,image,entry,artifact=None,**extra):
             folder=d/'operators'/name/'1';folder.mkdir(parents=True)
-            manifest=dict(category='Test probes',icon=dict(path='M3 5h18v14H3z',color='#14866b'),parameters=dict(type='object',properties={},required=[],additionalProperties=False),name=name,version='1',image=image,executor=executor,entrypoint=entry,inputs={},**extra)
+            manifest=dict(icon=dict(path='M3 5h18v14H3z',color='#14866b'),parameters=dict(type='object',properties={},required=[],additionalProperties=False),name=name,version='1',image=image,executor=executor,entrypoint=entry,inputs={},**extra)
             if artifact:manifest['artifact']=str(artifact)
             (folder/'operator.yaml').write_text(json.dumps(manifest))
         publish('python','python','dacp/operator-python:1.0','probe',d/'probe.py')

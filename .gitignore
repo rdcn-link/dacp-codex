@@ -31,8 +31,8 @@ examples/sql/*.trace.db
 
 .dacp-executions/
 
-# Generated repository publisher credential
-.publish-token
+# Private repository administration state
+**/.admin/
 
 .dacp-access/
 

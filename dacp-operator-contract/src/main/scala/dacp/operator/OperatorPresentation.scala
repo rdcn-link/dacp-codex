@@ -5,11 +5,16 @@ import scala.jdk.CollectionConverters._
 
 /** Portable presentation metadata. Icons are local 24×24 SVG paths, never executable SVG or URLs. */
 object OperatorPresentation {
+  def validateCategories(n:JsonNode,required:Boolean):Unit={
+    require(n!=null && n.isArray && n.size()<=16 && (!required || n.size()>0),"categories must contain 1–16 labels")
+    val labels=n.elements.asScala.toVector
+    require(labels.forall(v=>v.isTextual && v.asText.nonEmpty && v.asText==v.asText.trim && v.asText.length<=80 && !v.asText.exists(Character.isISOControl)),"invalid category label")
+    require(labels.map(_.asText.toLowerCase(java.util.Locale.ROOT)).distinct.size==labels.size,"duplicate category labels")
+  }
   def validate(n: JsonNode): Unit = {
     require(n != null && n.isObject, "operator metadata must be an object")
-    val category = n.path("category")
-    require(category.isTextual && category.asText.nonEmpty && category.asText == category.asText.trim &&
-      category.asText.length <= 80 && !category.asText.exists(Character.isISOControl), "category must be a nonempty label of at most 80 characters")
+    require(!n.has("category"), "category was removed; repository administrators assign categories")
+    if(n.has("categories")) validateCategories(n.get("categories"),required=true)
     val icon = n.path("icon")
     require(icon.isObject && icon.fieldNames.asScala.toSet == Set("path", "color"), "icon requires path and color")
     val path = icon.path("path")

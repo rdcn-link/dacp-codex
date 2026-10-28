@@ -1,10 +1,10 @@
-# DACP 算子元信息契约
+# DACP operator metadata contracts
 
-[English](README_en.md)
+[中文](README_zh.md)
 
-轻量 Scala 模块，只依赖 Jackson，供算子仓库、DACP 节点和设计器共享静态参数定义验证。`dacp.operator.ParameterSchema.validate(JsonNode)` 检查 `parameters` 的递归结构、类型、默认值和约束；不执行算子、不填充 Job 默认参数。
+A lightweight Scala module depending only on Jackson. The operator repository, DACP nodes, and designer share static parameter-definition validation. `dacp.operator.ParameterSchema.validate(JsonNode)` checks recursive structure, types, defaults, and constraints in `parameters`; it neither executes operators nor fills Job parameter defaults.
 
-契约与配置示例见[算子参数契约](../docs/operator-parameters.md)。它适用于所有执行器及第三方算子，无需核心注册。
+See [operator parameter contracts](../docs/operator-parameters.md) for the contract and configuration examples. It applies to all executors and third-party operators without core registration.
 
 ```bash
 cd dacp-operator-contract

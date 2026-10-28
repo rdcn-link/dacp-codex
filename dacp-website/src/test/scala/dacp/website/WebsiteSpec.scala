@@ -18,7 +18,7 @@ class WebsiteSpec extends AnyFunSuite {
     try {
       assert(get("/").body().contains("Stream data."))
       assert(get("/docs").body().contains("Administrator guide"))
-      val doc = get("/guide/docs/users/README_en.md")
+      val doc = get("/guide/docs/users/README.md")
       assert(doc.statusCode() == 200)
       assert(doc.body().contains("<article>"))
       assert(doc.headers().firstValue("Content-Security-Policy").isPresent)
@@ -34,7 +34,7 @@ class WebsiteSpec extends AnyFunSuite {
       assert(download.headers().firstValue("Content-Disposition").get().contains("dacp-server-0.1.zip"))
       assert(get("/download/../build.sbt").statusCode() == 404)
       assert(get("/download/%2e%2e%2fbuild.sbt").statusCode() == 404)
-      assert(get("/guide/docs/unknown_en.md").statusCode() == 404)
+      assert(get("/guide/docs/unknown.md").statusCode() == 404)
       assert(get("/assets/dacp-favicon.png").statusCode() == 200)
       Files.createSymbolicLink(dir.resolve("dacp-union-server-0.1.zip"), dir.getParent.resolve("outside"))
       assert(get("/download/dacp-union-server-0.1.zip").statusCode() == 404)

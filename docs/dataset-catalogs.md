@@ -1,12 +1,12 @@
-# 动态 Dataset 目录
+# Dynamic Dataset catalogs
 
-[English](dataset-catalogs_en.md) · [插件体系](plugins.md) · [嵌入式服务器](embedded-server.md)
+[中文](dataset-catalogs_zh.md) · [Plugin architecture](plugins.md) · [Embedded server](embedded-server.md)
 
-`DatasetCatalog` 决定服务器当前发布哪些 Dataset；`DatasetProvider` 决定一个 Dataset 如何访问内容。数据集名称来自数据库、业务服务或用户程序时，使用目录插件；单个 Dataset 内的动态 Item 列表仍由 Dataset provider 实现。
+`DatasetCatalog` determines which Datasets a server currently publishes; `DatasetProvider` determines how one Dataset accesses its contents. Use catalog plugins when Dataset identities come from a database, business service, or application. Dynamic Items inside one Dataset remain the responsibility of its Dataset provider.
 
-## 命令行部署
+## Command-line deployment
 
-默认的 `static` 目录从配置中的 `datasets` 构建数据集。动态目录使用以下配置，不能同时声明非空的 `datasets`：
+The default `static` catalog builds Datasets from `datasets` configuration. Configure a dynamic catalog as follows; it cannot coexist with a nonempty `datasets` declaration:
 
 ```yaml
 plugin_directory: ./.dacp-plugins
@@ -18,9 +18,9 @@ dataset_catalog:
     password_env: DACP_CATALOG_PASSWORD
 ```
 
-以上是独立示例插件 `example.JdbcCatalogProvider` 的参数，完整配置还需要监听地址和 TLS 等常规节点设置。`source` 由插件解释和校验；核心不包含 JDBC 专用的目录分支。示例源码位于 [JdbcCatalogProvider.scala](../examples/plugins/src/main/scala/example/JdbcCatalogProvider.scala)。构建和安装方式见[插件示例](../examples/plugins/README.md)。将 JDBC 驱动及其依赖随插件安装到 `plugin_directory`，例如 PostgreSQL JDBC 驱动；目录表连接与普通 SQL 数据访问配置相互独立。
+These parameters belong to the independent `example.JdbcCatalogProvider` example. A complete node configuration also needs listener, TLS, and other standard settings. The plugin owns `source` parsing and validation; core has no JDBC-specific catalog branch. See [JdbcCatalogProvider.scala](../examples/plugins/src/main/scala/example/JdbcCatalogProvider.scala) and the [plugin example](../examples/plugins/README.md) for source, build, and installation. Install a JDBC driver and its dependencies alongside the plugin in `plugin_directory`, such as the PostgreSQL JDBC driver. Catalog database connections are independent of ordinary SQL data access configuration.
 
-示例查询以下登记表；表的创建和数据维护由业务系统负责，插件不会自动建表：
+The example queries these registry tables. Your business system creates and maintains them; the plugin does not create tables automatically:
 
 ```sql
 CREATE TABLE dacp_datasets (
@@ -35,18 +35,18 @@ INSERT INTO dacp_datasets VALUES ('reports');
 INSERT INTO dacp_items VALUES ('reports', '/orders', '/srv/data/orders.csv');
 ```
 
-客户端访问 `dacp://host:8815/reports`，其中 `/orders` 是公开 Item，`file_path` 是节点本地私有路径。示例每次列举都查询 `dacp_datasets`；每次打开都查询相应的 `dacp_items` 并创建独立的数据访问快照。增删目录记录不需要重启。JDBC 查询采用参数绑定和 10 秒查询超时，查询完成后关闭连接；后端异常作为请求错误返回，不伪装成空目录。需要缓存、一致性事务或连接池的插件自行实现这些策略。
+Clients access `dacp://host:8815/reports`. `/orders` is public; `file_path` is private to the node. Every listing queries `dacp_datasets`; every open queries its `dacp_items` and creates an independent access snapshot. Registry additions and removals require no restart. JDBC uses bound parameters and a ten-second query timeout, closing connections after queries. Backend failures fail requests instead of masquerading as an empty catalog. Plugins needing caching, consistent transactions, or connection pooling implement those policies themselves.
 
-## 插件契约与注册
+## Contracts and registration
 
-公开类型位于 `dacp-plugin-api`：
+Public types reside in `dacp-plugin-api`:
 
 ```scala
 trait DatasetCatalog extends AutoCloseable {
   def list(): Seq[DatasetInfo]
   def directory(check: () => Unit): DatasetDirectory = DatasetDirectory(list(check))
   def open(name: String): PublishedDataset
-  // 另提供带 check: () => Unit 的重载，以便执行取消检查。
+  // Overloads accepting check: () => Unit support cancellation checks.
 }
 
 trait DatasetCatalogProvider {
@@ -55,34 +55,34 @@ trait DatasetCatalogProvider {
 }
 ```
 
-`DatasetInfo` 包含公开寻址名称 `name`、JSON 对象描述字符串 `description`，没有独立的 ID 或显示名称属性。`directory` 默认包装 `list`；聚合目录可返回 `DatasetDirectory(entries, complete, unavailableSources)`，失败时不能把部分结果标为完整。`CatalogContext.createDataset(definition)` 复用已安装的 Dataset provider；传入 `FileDatasets.mixed` 可复用文件与 SQL 映射；原生后端也可以直接实现 `PublishedDataset`。不要将科学数组、图像或分组隐式转换成记录。
+`DatasetInfo` contains the public addressable `name`, JSON object description string `description`, with no separate ID or display-name property. `directory` defaults to wrapping `list`; aggregating catalogs may return `DatasetDirectory(entries, complete, unavailableSources)` and must identify partial results explicitly. `CatalogContext.createDataset(definition)` reuses installed Dataset providers; `FileDatasets.mixed` reuses file and SQL mappings. Native backends may implement `PublishedDataset` directly. Do not implicitly flatten scientific arrays, images, or groups into records.
 
-实现类提供公开无参构造函数，并在 JAR 中加入：
+Provide a public no-argument implementation constructor and include this file in the JAR:
 
 ```text
 META-INF/services/dacp.DatasetCatalogProvider
 ```
 
-文件内容为完整类名，例如：
+Its contents are fully qualified implementation names, for example:
 
 ```text
 example.JdbcCatalogProvider
 ```
 
-启动时根据配置的 `provider` 匹配插件 `id`，调用 `create(source, context)` 一次。缺失或重复的 provider、无效配置使启动失败；不需要修改核心注册表或重新编译服务器。
+Startup matches configured `provider` against the plugin's `id` and calls `create(source, context)` once. Missing or duplicate providers and invalid configuration fail startup. No core registry edits or server rebuilds are needed.
 
-## 生命周期、授权与发现
+## Lifecycle, authorization, and discovery
 
-- 目录须支持并发请求。`list` 返回当前快照；名称须符合节点命名规则且不得重复。目录查询失败必须抛出异常。
-- `open` 找不到名称时抛出 `FileNotFoundException`。返回值是调用方拥有的 `PublishedDataset` 租约；服务器关闭请求访问句柄后关闭该租约。不要把共享的可关闭对象直接交给多个请求。
-- 已取得的租约须保持有效，即使目录记录之后被删除或刷新。文件或数据库本身消失仍可能导致读取失败；这不是内容快照或持久结果保证。
-- 覆盖带 `check` 参数的重载，在查询循环和耗时步骤中检查取消；数据读取仍遵守现有背压和取消契约。
-- 服务器关闭目录实例。目录仅释放自己拥有的资源；用户注入的共享连接池由用户管理。
-- 目录信息无需额外的数据或 Union 执行授权，仍使用 Flight TLS / Token。已发布的数据集默认允许读取，仍验证命名空间和资源路径。
+- Catalogs must support concurrent requests. `list` returns a current snapshot with valid, unique node Dataset names. Backend discovery failures must throw.
+- `open` throws `FileNotFoundException` for missing names. Its result is a caller-owned `PublishedDataset` lease. The server closes the request access handle and then its lease. Do not hand one shared closable object to multiple requests.
+- Acquired leases must remain usable after registry removal or refresh. Underlying file or database removal can still fail a read; this does not guarantee content snapshots or persistent results.
+- Override the `check` overloads and check cancellation inside query loops and expensive operations. Reading still follows existing backpressure and cancellation contracts.
+- The server closes the catalog instance. Catalogs release only their own resources; application-injected shared pools remain application-owned.
+- Directory information requires no additional data or Union execution grant and still uses Flight TLS / Token. Published datasets are readable by default; namespace and resource-path validation remain in place.
 
-目录发现使用 Flight `dacp.catalog` Action，返回目录条目及完整性标记；标准 `ListFlights` 提供完整目录，不完整时返回错误。每条 `FlightInfo.app_metadata` 为 `DataSet` protobuf，包含公开名称、URI 和包含用户自定义 JSON 对象字符串的 `description`，不包含 Item 内容。公开描述、Shell 和 Union Web 按节点查看目录见[数据集目录](dataset-directory.md)。
+Discovery uses the Flight `dacp.catalog` Action, returning entries and completeness. Standard `ListFlights` returns a complete directory or fails for incomplete catalogs. Each `FlightInfo.app_metadata` is a `DataSet` protobuf containing public names, URIs and user-defined JSON object strings in `description`, without Item contents. See [dataset directories](dataset-directory.md) for descriptions, the shell and per-member browsing on the Union website.
 
-在项目根目录使用 Python 的标准 Flight 接口列举数据集：
+List Datasets through the standard Python Flight interface from the project root:
 
 ```python
 from pathlib import Path
@@ -98,6 +98,6 @@ with flight.FlightClient(
         print(info.descriptor.path[1].decode("utf-8"))
 ```
 
-## 契约测试
+## Contract tests
 
-运行 `(cd dacp-server && sbt test)`。`DatasetCatalogSpec` 使用 ServiceLoader 加载独立 JDBC 示例，通过真实 Flight 验证增删目录、数据读取、公开访问、后端故障和租约保留；同时验证无效名称、重复名称、取消、初始化失败及关闭次数。插件作者应覆盖同类场景，并验证自己的缓存、数据库事务与连接池资源管理。
+Run `(cd dacp-server && sbt test)`. `DatasetCatalogSpec` loads the independent JDBC example through ServiceLoader and verifies registry additions/removals, reading, public access, backend failures, and lease retention through real Flight. It also checks invalid and duplicate identities, cancellation, initialization failures, and close counts. Plugin authors should cover equivalent cases along with their cache, transaction, and pool management policies.

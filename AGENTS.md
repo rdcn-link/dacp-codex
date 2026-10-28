@@ -1,6 +1,6 @@
 # Documentation
 
-Whenever you modify `README.md`, create or update `README_en.md` with a complete English translation of the updated README in the same change. Keep commands, configuration keys, examples, links, and technical details synchronized.
+Documentation defaults to English: `README.md` and unsuffixed Markdown files are English. Provide complete Chinese translations in `README_zh.md` and `*_zh.md` in the same change. Keep commands, configuration keys, examples, links, and technical details synchronized. Do not retain `_en.md` aliases.
 
 # Unreleased development
 

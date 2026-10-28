@@ -23,8 +23,6 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('name')
     p.add_argument('--spark-home', type=Path, required=True)
-    p.add_argument('--publish', default='http://localhost:8820')
-    p.add_argument('--token-file', type=Path, default=ROOT / '.operator-catalog/.publish-token')
     p.add_argument('--skip-build', action='store_true')
     args = p.parse_args()
     spec = json.loads((HOME / 'specs.json').read_text())[args.name]
@@ -45,9 +43,9 @@ def main():
     archive = destination / ('dacp-ecoflow-' + args.name + '-sources.zip')
     archive.write_bytes(packaging.archive(files))
     ports = destination / (args.name + '-ports.json')
-    ports.write_text(json.dumps(dict(inputs=spec['inputs'],parameters=spec['parameters'],category=spec['category'],icon=spec['icon'])))
+    ports.write_text(json.dumps(dict(inputs=spec['inputs'],parameters=spec['parameters'],icon=spec['icon'])))
     instructions = destination / (args.name + '-build.txt')
-    instructions.write_text('See README_en.md and spark/README_en.md in the source archive.\n'
+    instructions.write_text('See README.md and spark/README.md in the source archive.\n'
         'Build shared runtime first. Compile and verify individually:\n'
         '.venv/bin/python examples/operators/piflow/spark/publish.py ' + args.name + ' --spark-home /path/to/extracted/pyspark-4.0.1\n')
     command = ['sudo', '-n', '-u', 'cnic', '-g', 'docker', str(ROOT / 'dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository'),
@@ -57,7 +55,6 @@ def main():
         '--source-revision', inventory['commit'], '--license', 'Apache-2.0', '--license-file', str(HOME / 'LICENSE'),
         '--build-instructions', str(instructions)]
     subprocess.run(command, check=True)
-    load(ROOT / 'scripts/upload-operator.py', 'ecoflow_upload').upload(destination, item['operator'] + '@1.0', args.publish, args.token_file.read_text().strip())
     packaging.mark_published(item['operator'], 'real Arrow IPC contract in an isolated Docker container')
     print('Published and container-verified: ' + item['operator'], flush=True)
 

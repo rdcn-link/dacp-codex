@@ -1,14 +1,14 @@
-# 执行策略、输出物化与重放
+# Execution policy, output materialization, and replay
 
-[English](materialization_en.md)
+[中文](materialization_zh.md)
 
-执行策略同时用于通过 Python 或 Scala 客户端提交的单机 DACP Server 任务和 Union 协作工作流。业务任务文件定义算子、输入输出、依赖及执行节点；独立的执行策略 YAML 控制哪些**已连接的输出端口**物化。
+Execution policies apply to both single-node DACP Server jobs and collaborative Union workflows submitted through Python or Scala clients. The business task file defines operators, inputs and outputs, dependencies, and placement. A separate execution-policy YAML controls materialization of **connected output ports**.
 
-默认仍是直接流处理，不保存输出。`materialize` 表示在产出节点边传输边保存原始 OperatorFrame（包括 bytes 或 records 的 schema 与批次边界）。它不创建 Dataset，不把跨节点数据中转到 Union，不包含算子内部状态 checkpoint。
+Direct streaming without output retention remains the default. `materialize` saves original OperatorFrames on the producing node while forwarding them, preserving bytes or records schemas and batch boundaries. It creates no Dataset, does not route intermediate data through Union, and does not checkpoint internal operator state.
 
-## 管理员：启用节点存储
+## Administrators: enable node storage
 
-在需要物化或重放的 DACP 节点配置中添加：
+Add this to DACP nodes that need materialization or replay:
 
 ```yaml
 union:
@@ -24,15 +24,15 @@ union:
       retention_seconds: 86400
 ```
 
-`directory` 是节点私有路径，不能由任务提交者指定。文件存储插件随标准发行包提供，位于 `plugins/dacp-plugin-execution-file`。省略 `materialization_store` 时，该节点拒绝需要物化或重放的任务。Union 先 prepare 全部节点，再启动任何步骤，因此不支持存储会导致准备失败，而非静默降级。
+`directory` is private node configuration, not a submitter-selected path. The file plugin ships with the standard distribution in `plugins/dacp-plugin-execution-file`. Without `materialization_store`, the node rejects tasks requiring materialization or replay. Union prepares every node before starting any step, so unsupported storage causes preparation failure rather than silent fallback.
 
-文件插件必须提供 `directory`；其余三个设置默认为上述值，且须为正整数。`max_bytes` 限制整个目录的受管理数据，`max_task_bytes` 限制单个任务的所有选定输出，两者包含帧长度前缀和清单开销；配额不足使执行失败，清理未提交数据。物化保留时间与内存会话的 `union.retention_seconds` 相互独立。到期数据不能被新执行获取；正在使用的租约关闭后才删除文件。存储目录只允许一个写入服务，启动时清理未提交临时目录。
+The file plugin requires `directory`; the other three settings default to the values above and must be positive integers. `max_bytes` limits managed data across the directory; `max_task_bytes` limits all selected outputs of one task, including frame length prefixes and manifest overhead. Exceeding quota fails execution and removes uncommitted data. Materialization retention is independent of in-memory `union.retention_seconds`. Expired artifacts cannot be acquired by new executions; files remain until active leases close. Only one writer service may open a storage directory. Startup removes uncommitted temporary directories.
 
-只有算子成功、输入完整消费且所有选定输出均完整时，任务的全部选定端口才原子提交。提交前不可重放；取消、失败和配额错误会废弃未提交数据。已成功提交的上游输出不因下游失败而删除。文件插件同步文件并原子发布清单，通过长度和 SHA-256 检查拒绝截断或损坏的重放数据。
+All selected ports of a task commit atomically only after the operator succeeds, its inputs are fully consumed, and the selected outputs are complete. Uncommitted data cannot be replayed; cancellation, failure, and quota errors discard it. A downstream failure does not delete previously committed upstream outputs. The file plugin syncs files, publishes a manifest atomically, and validates lengths and SHA-256 to reject truncated or corrupt replay data.
 
-## 用户：独立策略 YAML
+## Users: separate policy YAML
 
-例如 `execution-policy.yaml`：
+For example, `execution-policy.yaml`:
 
 ```yaml
 max_retries: 0
@@ -45,13 +45,13 @@ materialization:
         result: materialize
 ```
 
-- `allowed` 默认 `true`，只表示允许，不会自动开启物化。
-- `default` 默认 `stream`；可设为 `materialize`，为所有已连接输出开启物化。
-- `tasks.<任务 id>.outputs.<端口>` 可覆盖默认值，值为 `stream` 或 `materialize`。这里的任务 id 是步骤标识，不是服务器名。
-- 省略策略等同于直接流处理；不存在风险判断后自动物化。
-- 未知字段、类型错误、不存在的步骤、未连接的端口、非法取值及策略冲突在提交时拒绝。不为未连接的算子端口额外创建消费者。
+- `allowed` defaults to `true`: permission alone does not enable materialization.
+- `default` defaults to `stream`; use `materialize` to select all connected outputs.
+- `tasks.<task id>.outputs.<port>` overrides the default with `stream` or `materialize`. The task ID identifies a step, not a server.
+- Omitting policy means direct streaming. The engine never enables materialization based on risk estimates.
+- Unknown fields, incorrect types, missing tasks, unconnected ports, invalid modes, and conflicts are rejected at submission. The engine does not create consumers for otherwise unconnected operator ports.
 
-全局禁止引擎保存结果流：
+To prohibit engine retention of result streams throughout the workflow:
 
 ```yaml
 materialization:
@@ -59,9 +59,9 @@ materialization:
   default: stream
 ```
 
-此时任何物化默认值或步骤覆盖都会报错，即使某个覆盖最终未被执行。该约束不等于禁止算子自身文件写入、格式处理临时文件、日志或执行元数据。策略不能扩大节点的算子、输入前缀、容量和身份授权。
+Any materializing default or task override then produces an error, even if that override would not ultimately execute. This does not prohibit operator file writes, format-processing temporary files, logs, or execution metadata. Policy cannot expand a node's operator, input-prefix, capacity, or identity authorization.
 
-Python：
+Python:
 
 ```python
 import yaml
@@ -72,13 +72,13 @@ with Union('dacp://localhost:19860', cert='examples/certs/client.crt',
            key='examples/certs/client.key', ca='examples/certs/ca.crt') as union:
     with union.submit(Path('workflow.yaml').read_text(),
                       execution_policy=yaml.safe_load(Path('execution-policy.yaml').read_text())) as execution:
-        job_id = execution.job_id  # 保存，用于之后重放
+        job_id = execution.job_id  # Retain for subsequent replay
         for event in execution.results():
             if event['type'] == 'data':
                 print(event.get('batch', event['data']))
 ```
 
-Scala：
+Scala:
 
 ```scala
 val policy = dacp.union.YamlDocument.parse(java.nio.file.Files.readString(
@@ -89,34 +89,34 @@ scala.util.Using.resource(union.submit(workflowYaml, policy)) { execution =>
 }
 ```
 
-状态与执行历史分别记录 `execution_policy`（提交值）和 `effective_execution_policy`（应用默认值与覆盖后的已连接端口策略）。节点状态的 `materialized_tasks` 记录源执行及是否提交；新执行历史的 `replay_of` 和 `materialized_sources` 关联重放来源。启用物化的子 Job 不进行同进程步骤合并，以保留明确的提交边界。
+Status and history retain `execution_policy` (submitted values) and `effective_execution_policy` (connected-port settings after applying defaults and overrides). Node `materialized_tasks` describe source executions and commit status; new execution history links to `replay_of` and `materialized_sources`. Subjobs using materialization disable shared-process step fusion to preserve explicit commit boundaries.
 
-## 什么时候重放
+## When replay occurs
 
-仅在客户端**显式请求**时重放。原执行必须已经结束：成功、失败、取消、超时或重启后标记为中断。运行中的工作流不支持重放；仅当显式设置正数 `max_retries` 时才自动重试。
+Replay occurs only on an **explicit client request**. The source execution must have terminated: succeeded, failed, cancelled, expired, or marked interrupted after restart. Active workflows cannot be replayed, and automatic retry occurs only when `max_retries` is explicitly positive.
 
 ```python
 with union.replay(job_id, tasks=['ta']) as replay:
-    print(replay.job_id)  # 新的执行 ID
+    print(replay.job_id)  # A new execution ID
     for event in replay.results():
         if event['type'] == 'data':
             print(event.get('batch', event['data']))
 ```
 
-也可调用 `execution.replay(tasks=['ta'])`。Scala 对应 `union.replay(jobId, Some(Seq("ta")))` 或 `execution.replay(Some(Seq("ta")))`。
+`execution.replay(tasks=['ta'])` is also available. Scala equivalents are `union.replay(jobId, Some(Seq("ta")))` and `execution.replay(Some(Seq("ta")))`.
 
-- **下游失败**：复用 `ta` 的已提交输出，不重新执行 `ta` 算子；仍需执行的下游重新运行。客户端需要重新消费结果流。
-- **重新获取成功结果**：若最终输出步骤的全部已连接输出均已物化，可直接重放这些步骤。无须读取它们的原始输入或执行其上游；被剪枝步骤记录为 `skipped`。
-- 省略 `tasks` 时，先检查策略中所有输出均要求物化的步骤，选择当前已有完整、未过期提交的步骤，再按最终输出裁剪所需工作流。指定 `tasks` 时，每个步骤都必须可用，否则拒绝。至少需要一个可重放步骤。
-- 只有某步骤**全部已连接输出**均物化时，才能跳过该算子；仅物化部分输出仍可保存，但不能用于跳过这个多输出步骤。多端口重放并行读取，保留背压，避免端口顺序导致互相等待。
-- 重放使用原任务文件与原策略，不能借此修改算子、参数或输入。节点会再次核对定义与存储清单。客户端必须仍为原提交者，Union 仍须获节点批准，算子及输入授权也会重新校验。
-- 原执行元数据及节点存储都保留时，Union/节点重启后仍可新建重放执行。它不是自动恢复旧进程或执行计划，也不是按字节游标续读。
+- **Downstream failure**: reuse committed `ta` outputs without rerunning its operator; rerun downstream steps that are still needed. The client must consume a new result stream.
+- **Retrieve successful results again**: if every connected output of the final-output steps was materialized, replay those steps directly. Their raw inputs and upstream operators are unnecessary; pruned steps are recorded as `skipped`.
+- Without `tasks`, inspect policy-eligible steps whose connected outputs all require materialization, select those with complete, unexpired artifacts, then prune the required workflow from its final outputs. With explicit `tasks`, every requested step must be available or the request fails. At least one replayable step is required.
+- Skipping an operator requires **all of its connected outputs** to be materialized. Partial-output materialization can save data but cannot skip a multi-output step. Replay reads ports concurrently with backpressure to avoid waits caused by port ordering.
+- Replay uses the original task file and policy; operators, parameters, and inputs cannot be changed through this operation. Nodes revalidate task definitions against stored manifests. The client must still own the source execution, the Union must remain approved, and operator/input authorization is rechecked.
+- New replay executions work after Union/node restart while source history and node storage remain available. This is neither automatic restoration of an old process or execution plan nor byte-offset resume.
 
-结果过期、未完整提交、损坏、节点离线或授权失效会报错，不静默当成重放成功。未选中复用的步骤可能重新读取当前原始数据；本功能不保证跨节点数据快照一致性，也不提供有副作用算子的 exactly-once 执行。
+Expired, incomplete, corrupt, offline, or unauthorized sources produce errors rather than false replay success. Steps not selected for reuse may reread current raw data. This feature provides neither cross-node snapshot consistency nor exactly-once execution of operators with side effects.
 
-## 自动重试次数与总超时
+## Automatic retry count and overall timeout
 
-顶层 `max_retries` 是 0–10 的整数，默认 `0`；`2` 表示首次执行之后最多再试两次。`timeout_seconds` 是 1–86400 的整数，覆盖整个任务的执行、资源等待和所有重试；省略时使用服务器的 `execution_timeout_seconds`，提交值不能超过服务器上限。Union 下各节点还可执行更小的本地时限。
+The top-level `max_retries` is an integer from 0 to 10, defaulting to `0`; `2` permits two retries after the initial attempt. `timeout_seconds` is an integer from 1 to 86400 covering the entire job, resource waits, and all retries. If omitted, the server's `execution_timeout_seconds` applies; a submitted value cannot exceed that limit. Under Union, individual nodes may impose a smaller local limit.
 
 ```yaml
 max_retries: 2
@@ -125,10 +125,10 @@ materialization:
   allowed: false
 ```
 
-自动重试允许全部直接流传递，也允许全局禁止物化。结果在执行过程中增量发送，**一次尝试的结果在成功结束前都是暂定结果**。重试前，服务端发送 `attempt_failed` 通知；Python 调用方必须提供 `on_retry` 回调，Scala 提供 `Some(callback)`，先丢弃上一轮部分结果，再继续接收下一轮。未声明支持重试通知的客户端不能领取开启重试的结果。最终失败、超时或取消时，调用方也应丢弃当前暂定结果；收到 `complete` 且 Flight 正常结束才可确认成功。
+Automatic retry supports entirely streaming jobs, including jobs that prohibit materialization. Results are delivered incrementally; **each attempt's results remain provisional until successful completion**. Before retrying, the server sends `attempt_failed`. Python callers must supply an `on_retry` callback and Scala callers `Some(callback)` to discard the preceding attempt's partial results before accepting the next attempt. Consumers that do not declare retry awareness cannot claim results for retry-enabled jobs. Discard provisional results after terminal failure, timeout, or cancellation too. Confirm success only after `complete` and a normal Flight stream ending.
 
 ```python
-pending = bytearray()  # 仅为小结果示例；大结果应使用可回滚的接收器
+pending = bytearray()  # Small-result example; large results need a rollback-capable receiver.
 
 def reset_attempt(event):
     pending.clear()
@@ -144,11 +144,11 @@ except BaseException:
     raise
 ```
 
-每次重试使用独立 `attempt_id`，保留同一个公开执行 ID。已提交、端口完整且可用的物化步骤输出优先复用，其余必要步骤重新执行；只保存部分输出端口的步骤仍需重新执行。失败尝试的工作线程和流先停止，再通知客户端并开始下一轮。显式取消、授权或参数错误、总超时不重试；Union 的准备失败也不重试。算子副作用可能重复发生，重试不保证 exactly-once。显式重放创建新的执行，沿用策略并重新计算重试预算。
+Every retry has a separate `attempt_id` under the same public execution ID. Reusable committed outputs with every connected port available are reused; other necessary steps execute again. A step with only some output ports stored must execute again. Failed attempt workers and streams stop before notifying the client and starting another attempt. Explicit cancellation, authorization/argument errors, and overall timeout do not retry; Union preparation failures do not retry either. Operator side effects may occur repeatedly: retries do not guarantee exactly-once behavior. Explicit replay creates a new execution, preserves the policy, and starts a fresh retry budget.
 
-## 单机多步骤任务
+## Single-node multi-step jobs
 
-DACP Server 的单机任务采用同样的策略 YAML、流通知和存储插件，无需配置 Union。管理员在服务器配置顶层增加：
+DACP Server single-node jobs support the same policy YAML, stream notifications, and storage plugin without configuring Union. Administrators add these top-level server settings:
 
 ```yaml
 execution_timeout_seconds: 1800
@@ -161,7 +161,7 @@ materialization_store:
     retention_seconds: 86400
 ```
 
-这是单机执行使用的存储设置；`union.materialization_store` 用于该节点参与 Union 的子任务。两个设置可以引用同一个存储定义，由服务器统一管理生命周期。未启用存储时仍可执行纯流任务与自动重试，但不能物化或重放。物化提交边界使用独立步骤执行；显式策略的单机任务不进行同进程合并。跨节点调度策略提交到 Union。
+These settings serve single-node execution; `union.materialization_store` serves that node's Union subjobs. Both settings may reference the same store definition, whose lifecycle is managed centrally by the server. Without storage, streaming jobs and automatic retries work, but materialization and replay do not. Materialization commit boundaries use separate step execution; explicit single-node policies disable shared-process fusion. Submit cross-node scheduling policies to Union.
 
 ```python
 from dacp import Job
@@ -171,7 +171,7 @@ policy = {
     "timeout_seconds": 120,
     "materialization": {"default": "materialize"}
 }
-# script 中用 outputs 显式声明最终输出；输入输出格式与普通任务相同。
+# Declare final outputs explicitly in script's outputs; normal input/output formats apply.
 with Job.run("dacp://localhost:8815", script,
              execution_policy=policy, on_retry=reset_attempt) as results:
     for event in results:
@@ -179,18 +179,18 @@ with Job.run("dacp://localhost:8815", script,
             pending.extend(event["data"])
     execution_id = results.execution_id
 
-# 原执行结束后，复用仍有效的完整物化步骤；恢复原任务描述与策略。
+# After the original execution ends, reuse valid complete boundaries and its saved script/policy.
 with Job.replay("dacp://localhost:8815", execution_id,
                 on_retry=reset_attempt) as results:
     for event in results:
-        pass  # 接收新一轮结果，不能与旧结果拼接
+        pass  # Receive a new result; never concatenate it with an earlier result.
 ```
 
-原提交者才能重放；必须保留原执行历史和未过期的物化文件。失败任务也可从已提交边界重放。关闭结果流（`close()`、离开上下文或 shell 中 Ctrl-C）取消本次执行，终止步骤与后续重试。回调抛出异常也会关闭流并取消。
+Only the original submitter can replay; original execution history and unexpired materialized files must remain available. Failed jobs can replay from committed boundaries too. Closing the result stream (`close()`, leaving its context, or Ctrl-C in the shell) cancels execution, steps, and further retries. A callback exception also closes the stream and cancels execution.
 
-Scala 使用 `Job.run(node, script, executionPolicy = policy, onRetry = Some(reset))` 与 `Job.replay(node, executionId, onRetry = Some(reset))`。结果流及 `OutputEvent.executionId` 提供执行 ID。
+Scala uses `Job.run(node, script, executionPolicy = policy, onRetry = Some(reset))` and `Job.replay(node, executionId, onRetry = Some(reset))`. The result stream and `OutputEvent.executionId` expose the execution ID.
 
-Shell 支持：
+The shell supports:
 
 ```text
 submit workflow.yaml --policy policy.yaml
@@ -198,24 +198,24 @@ run piflow_csv_parser@1.0 --input source=/observations --view bytes --policy pol
 replay EXECUTION_ID
 ```
 
-Shell 显示执行 ID，重试前明确标记上一轮输出作废并重置显示状态。已经打印的终端文字仍保留作为尝试记录，不能把整段终端输出当作最终结果文件。最终输出需要物化时，在任务文件的 `outputs` 中声明端口，再通过 `submit` 提交。
+The shell displays the execution ID, explicitly invalidates preceding attempt output before retry, and resets its display state. Previously printed terminal text remains as attempt history; do not treat the entire terminal transcript as a final result file. To materialize final output, declare its ports in the task file's `outputs` and use `submit`.
 
-## 开发者：Flight 协议与存储插件
+## Developers: Flight protocol and storage plugins
 
-沿用 Arrow Flight TLS / Token，无 HTTP 写接口。Action 名均加 `dacp.union.` 前缀：
+Use the existing Arrow Flight TLS / Token transport; there is no HTTP write interface. All Action names use the `dacp.union.` prefix:
 
-| Action | 请求 JSON | 返回 |
+| Action | Request JSON | Response |
 |---|---|---|
-| `submit` | `{"job_yaml":"...","execution_policy_yaml":"materialization:\n  allowed: false\n"}` | 新执行快照；策略可省略 |
-| `replay_job` | `{"job_id":"原执行 ID","tasks":["ta"]}` | 新执行快照；`tasks` 可省略 |
-| 节点 `materialized_status` | `{"union_id":"...","execution_id":"...","task":"ta"}` | 是否提交、到期时间、存储端口校验信息；仅批准的调度者可用 |
+| `submit` | `{"job_yaml":"...","execution_policy_yaml":"materialization:\n  allowed: false\n"}` | New execution snapshot; policy is optional |
+| `replay_job` | `{"job_id":"source ID","tasks":["ta"]}` | New execution snapshot; `tasks` is optional |
+| Node `materialized_status` | `{"union_id":"...","execution_id":"...","task":"ta"}` | Commit status, expiry, and stored-port integrity metadata; approved schedulers only |
 
-结果继续通过原有 `results` Flight 流读取，要求 `start/data/end/complete` 以及成功的 Flight 结束状态。普通结果流仍只允许领取一次；第二次读取使用 `replay_job` 创建新执行。
+Results still use the existing `results` Flight stream, requiring `start/data/end/complete` and successful Flight termination. Ordinary result streams remain single-claim; use `replay_job` for a new execution instead of claiming them twice.
 
-节点 `prepare` 的各任务增加 `materialize: ["result"]` 以及可选 `replay_from: "源执行 ID"`。准备阶段验证所有重放输出存在，并持有租约；重放数据继续使用新的执行 ID 与原消费者证书绑定，不直接向客户端暴露磁盘路径。
+Each node `prepare` task adds `materialize: ["result"]` and optional `replay_from: "source execution ID"`. Preparation checks every replay output and acquires leases. Replayed data binds the new execution ID to the intended consumer certificate; disk paths are never exposed directly to clients.
 
-公共契约在 `dacp-plugin-api`：`MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask` 和 `MaterializedChunks`。外部实现通过 `META-INF/services/dacp.MaterializationStoreProvider` 注册提供者类，将 JAR 与依赖安装到节点 `plugin_directory`，并将 `provider` 设置为其 `id`，无须修改核心注册表。
+Public contracts live in `dacp-plugin-api`: `MaterializationStoreProvider`, `MaterializationStore`, `MaterializationWriter`, `MaterializedTask`, and `MaterializedChunks`. Register an external provider class through `META-INF/services/dacp.MaterializationStoreProvider`, install its JAR and dependencies in the node `plugin_directory`, and configure `provider` to its `id`. No core registry edits are needed.
 
-插件负责私有配置、配额、过期清理、原子任务提交、持久化、租约与读取完整性；核心负责授权、策略校验、帧协议、取消及运行资源。每个 opaque chunk 不超过 9 MiB，插件不得缓存整个任务。关闭未提交 writer 必须中止，提交后才可 `get`，到期后不可新建租约；清理不得破坏现有租约。新实现应通过发现、提交/中止、重启读取、配额、过期/租约、截断/损坏和关闭清理契约测试；参考 `MaterializationSpec` 及跨节点 `UnionSpec`。
+Plugins own private configuration, quotas, expiration, atomic task commit, durability, leases, and read integrity. Core owns authorization, policy validation, frame protocol, cancellation, and execution resources. Opaque chunks are at most 9 MiB; plugins must not buffer a whole task. Closing an uncommitted writer must abort it, `get` may expose committed artifacts only, and expired artifacts cannot receive new leases. Cleanup must preserve existing leases. New implementations should test discovery, commit/abort, restart reads, quota, expiration/leases, truncation/corruption, and close cleanup. See `MaterializationSpec` and cross-node `UnionSpec`.
 
-单机 Flight DoExchange 的 `OperatorRequest` 增加 `execution_policy_yaml`（YAML 字节）、`retry_aware`（布尔值）与 `replay_from`（原执行 ID，此时 `job_yaml` 必须为空）。结果流首先发送 `execution` 元数据帧（包含 `execution_id`），随后输出帧也包含该 ID。两种传输在下一次尝试前均发送 `attempt_failed` 元数据，包含 `attempt_id`、`next_attempt_id`、`retry_count` 和 `message`。Union 的结果 ticket 通过 `retry_aware: true` 声明接收能力。
+Single-node Flight DoExchange extends `OperatorRequest` with `execution_policy_yaml` (YAML bytes), `retry_aware` (boolean), and `replay_from` (original execution ID; `job_yaml` must then be empty). The result stream begins with an `execution` metadata frame containing `execution_id`; subsequent output frames include the same ID. Both transports send `attempt_failed` metadata with `attempt_id`, `next_attempt_id`, `retry_count`, and `message` before a new attempt. Union results tickets declare `retry_aware: true`.

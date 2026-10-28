@@ -12,7 +12,7 @@ class ProvenanceSpec extends AnyFunSuite {
     val root=Files.createTempDirectory("provenance-")
     try f(root) finally {val paths=Files.walk(root);try paths.iterator.asScala.toVector.sortBy(_.getNameCount).reverse.foreach(Files.delete(_))finally paths.close()}
   }
-  val ports=Repository.mapper.readTree("""{"category":"Data processing","icon":{"path":"M3 5h18v14H3zM3 10h18M9 5v14","color":"#14866b"},"parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"inputs":{"source":{"representations":["bytes"],"formats":[]}}}""")
+  val ports=Repository.mapper.readTree("""{"icon":{"path":"M3 5h18v14H3zM3 10h18M9 5v14","color":"#14866b"},"parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"inputs":{"source":{"representations":["bytes"],"formats":[]}}}""")
   val exporter=new Repository.ImageExporter {
     def inspect(image:String):String="sha256:"+"a"*64
     def save(image:String,file:Path):Unit={Files.writeString(file,"runtime");()}
@@ -41,6 +41,7 @@ class ProvenanceSpec extends AnyFunSuite {
     assert(html.contains("Source archive") && html.contains("License text") && html.contains("Dependency SBOM"))
     assert(html.contains("&lt;script&gt;") && !html.contains("<script>not HTML"))
     assert(html.contains("do not certify safety") && html.contains("abcdef123"))
+    ReviewTestSupport.approveLocal(root)
     val server=new RepositoryServer(root,"127.0.0.1",0);server.start()
     try {
       val client=HttpClient.newHttpClient()
@@ -81,7 +82,7 @@ class ProvenanceSpec extends AnyFunSuite {
     val source=archive(dir)
     val definition=Repository.mapper.createObjectNode().put("name","example").put("version","1").put("image","runtime")
     definition.set[com.fasterxml.jackson.databind.JsonNode]("inputs",ports.path("inputs"))
-    definition.put("category","Data processing")
+
     definition.set[com.fasterxml.jackson.databind.JsonNode]("icon",Repository.mapper.readTree("""{"path":"M3 5h18v14H3z","color":"#14866b"}"""))
     definition.set[com.fasterxml.jackson.databind.JsonNode]("parameters",ports.path("parameters"))
     definition.putObject("provenance").put("source_archive",source.getFileName.toString)

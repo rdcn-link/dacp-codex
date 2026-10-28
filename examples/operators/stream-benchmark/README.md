@@ -1,12 +1,12 @@
-# 同进程合并性能测试算子
+# Operators for the shared-process benchmark
 
-[English](README_en.md)
+[中文](README_zh.md)
 
-本例使用 Scala `ByteStreamOperator` 对 ASCII 文本执行大写或小写转换，按 64 KiB 块读取，不缓存整个 Item。Python 对照算子由测试脚本生成 wheel，包含相同业务逻辑和当前 SDK。
+This example uses Scala `ByteStreamOperator` to convert ASCII text to upper or lower case in 64 KiB chunks, without buffering an entire Item. The benchmark script generates a Python wheel containing equivalent business logic and the current SDK.
 
-## 执行
+## Run
 
-在仓库根目录运行：
+From the repository root:
 
 ```bash
 (cd examples/operators/stream-benchmark && sbt package)
@@ -17,14 +17,16 @@
   --output examples/output/fusion-benchmark
 ```
 
-需要已有测试 CA/客户端/节点证书（`examples/certs`）、支持 PyArrow 的 Python 环境、可用的 Docker，以及本地 `dacp/operator-jvm:1.1` 和 `dacp/operator-python:1.0` 镜像。能够直接访问 Docker 时省略 `--docker-prefix`。输出目录必须尚不存在。
+Prerequisites: existing test CA/client/node certificates in `examples/certs`, a Python environment with PyArrow, accessible Docker, and local `dacp/operator-jvm:1.1` and `dacp/operator-python:1.0` images. Omit `--docker-prefix` when Docker is directly accessible. The output directory must not already exist.
 
-脚本创建两个临时端口上的独立 DACP 服务，仅 `operator_fusion_enabled` 不同；不修改运行中的演示节点。三个步骤分别执行大写、小写、大写转换。数据每行 64 字节，100 万行是 64,000,000 字节，400 万行是 256,000,000 字节。这里测试的是 CSV 文本字节流，行数由换行符统计，并非 Arrow record stream。
+The script starts two independent DACP servers on temporary ports with only `operator_fusion_enabled` differing; it does not modify running demo nodes. Three steps convert text to upper case, lower case, then upper case. Each row is 64 bytes: one million rows are 64,000,000 bytes and four million rows are 256,000,000 bytes. This measures a CSV text byte stream, with rows counted by newlines, rather than an Arrow record stream.
 
-原始输入文件预先落盘，作为数据集来源。算子中间结果通过内存管道（合并）或内存队列、Flight 和 FIFO（独立）传递，不保存成普通结果文件。客户端边消费边校验，不保存最终结果；代码包、参数、日志和执行历史仍使用文件。
+Original input files are generated on disk as dataset sources. Intermediate results use in-memory pipes (fusion) or memory queues, Flight and FIFOs (isolated execution), without saving ordinary result files. The client validates incrementally without saving final output; code bundles, parameters, logs and execution history still use files.
 
-每种语言与策略先预热一次，然后每个规模重复三次并交替先后顺序。耗时从客户端提交 Job 到读取完整输出流结束，包含 TLS/Flight、算子解析、容器启动和清理、转换及客户端 SHA-256/行数校验，不含服务启动、数据生成及预热。镜像均已在本地，文件系统缓存不主动清空。
+Each language and strategy gets one warmup. Each data size then runs three repetitions with alternating strategy order. Wall time starts at client Job submission and ends after draining the entire output stream. It includes TLS/Flight, operator resolution, container startup and cleanup, transformations, and client SHA-256/row validation; it excludes server startup, data generation, and warmups. Images are local, and filesystem caches are not explicitly cleared.
 
-输出目录保留 `results.json`、逐次 Job 脚本、配置、访问日志及执行历史。脚本校验输出 SHA-256、字节数、行数、实际执行策略，以及合并策略一个容器/独立策略三个容器。测试结束自动停止测试服务。既有容器限制为每个容器 1 GiB；合并的三个步骤共享这一限制，独立执行则每步各有 1 GiB。没有额外设置 CPU 配额，其他宿主机负载会影响结果。
+The output directory retains `results.json`, individual Job scripts, configurations, access logs, and execution history. The script validates output SHA-256, bytes, rows, actual execution strategy, and one container for fusion versus three for isolated execution. Test servers stop automatically when the script exits. Existing limits are 1 GiB per container: the three fused steps share that limit, while isolated steps each get 1 GiB. No additional CPU quota is set; other host load can affect results.
 
-该测试针对三个轻量流式转换步骤；不能将结果直接推广为计算密集型算子或跨节点网络的加速比例。Python 线程还受到 GIL 与具体扩展库行为的影响。
+This benchmark covers three lightweight streaming transformations. Its speedup cannot be assumed for compute-intensive operators or cross-node networks. Python threads are also affected by the GIL and the behavior of individual extension libraries.
+
+The repository accepts source only. Local builds in these examples are for development verification; use the [source submission and review workflow](../../../docs/operator-submission.md) for public publication.

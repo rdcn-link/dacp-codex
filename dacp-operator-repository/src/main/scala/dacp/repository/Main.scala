@@ -5,7 +5,7 @@ import java.security.KeyStore
 import javax.net.ssl.{KeyManagerFactory, SSLContext}
 
 object Main {
-  private val usage = "publish name@version --image IMAGE --ports FILE --root DIR [--description TEXT] [--executor ID --entrypoint MAIN --artifact FILE --executor-config FILE] [--source-archive FILE --source-repository URL --source-revision COMMIT --license SPDX --license-file FILE --build-instructions FILE --sbom FILE] | seed --operators DIR --root DIR | serve --root DIR [--host HOST] [--port PORT] [--tls-keystore PKCS12 --tls-password-env ENV] [--publish-token-env ENV] [--publish-max-bytes BYTES]"
+  private val usage = "publish name@version --image IMAGE --ports FILE --root DIR [--description TEXT] [--executor ID --entrypoint MAIN --artifact FILE --executor-config FILE] [--source-archive FILE --source-repository URL --source-revision COMMIT --license SPDX --license-file FILE --build-instructions FILE --sbom FILE] | seed --operators DIR --root DIR | serve --root DIR [--host HOST] [--port PORT] [--tls-keystore PKCS12 --tls-password-env ENV] [--admin-password-env ENV] [--publish-max-bytes BYTES]"
   def main(args: Array[String]): Unit = {
     require(args.nonEmpty, usage)
     val publish = args(0) == "publish"
@@ -15,7 +15,7 @@ object Main {
     val options = args.drop(if (publish) 2 else 1)
     require(options.length % 2 == 0, usage)
     val pairs = options.grouped(2).map(v => v(0) -> v(1)).toSeq
-    val allowed = if (publish) Set("--root", "--image", "--description", "--executor", "--entrypoint", "--artifact", "--ports", "--executor-config", "--source-archive", "--source-repository", "--source-revision", "--license", "--license-file", "--build-instructions", "--sbom") else if (seed) Set("--root", "--operators") else Set("--root", "--host", "--port", "--tls-keystore", "--tls-password-env", "--publish-token-env", "--publish-max-bytes")
+    val allowed = if (publish) Set("--root", "--image", "--description", "--executor", "--entrypoint", "--artifact", "--ports", "--executor-config", "--source-archive", "--source-repository", "--source-revision", "--license", "--license-file", "--build-instructions", "--sbom") else if (seed) Set("--root", "--operators") else Set("--root", "--host", "--port", "--tls-keystore", "--tls-password-env", "--admin-password-env", "--publish-max-bytes")
     require(pairs.map(_._1).distinct.size == pairs.size && pairs.forall(p => allowed(p._1)), "unknown or duplicate option")
     val settings = pairs.toMap
     val root = Path.of(settings.getOrElse("--root", throw new IllegalArgumentException("--root required")))
@@ -47,14 +47,14 @@ object Main {
           val context = SSLContext.getInstance("TLS"); context.init(keys.getKeyManagers, null, null); context
         } finally java.util.Arrays.fill(password, '\u0000')
       }
-      val publishToken = settings.get("--publish-token-env").map { name =>
-        sys.env.getOrElse(name, throw new IllegalArgumentException("missing publish token environment variable"))
+      val adminPassword = settings.get("--admin-password-env").map { name =>
+        sys.env.getOrElse(name, throw new IllegalArgumentException("missing administrator password environment variable"))
       }
-      val server = new RepositoryServer(root, settings.getOrElse("--host", "127.0.0.1"), settings.getOrElse("--port", "8820").toInt, tls, publishToken, settings.getOrElse("--publish-max-bytes", "8589934592").toLong)
+      val server = new RepositoryServer(root, settings.getOrElse("--host", "127.0.0.1"), settings.getOrElse("--port", "8820").toInt, tls, adminPassword, settings.getOrElse("--publish-max-bytes", "8589934592").toLong)
       Runtime.getRuntime.addShutdownHook(new Thread(() => server.close()))
       server.start()
       println(s"Operator repository listening on ${server.boundPort}")
-      if(publishToken.isEmpty) println(s"Publisher token file: ${PublishToken.path(root.toAbsolutePath.normalize())}")
+      if(Files.exists(server.bootstrapPasswordPath)) println(s"Administrator bootstrap password file: ${server.bootstrapPasswordPath}")
     }
   }
 }

@@ -1,10 +1,10 @@
-# S3 兼容数据读取服务
+# S3-compatible data reading service
 
-[English](s3-service_en.md)
+[中文](s3-service_zh.md)
 
-DACP Server 默认同时启动 Flight、Web 看板和一个独立的 HTTPS S3 兼容端口。S3 服务复用实时 DatasetCatalog 与 DatasetAccess：dataset 对应 bucket，Item 的逻辑路径去掉开头的 `/` 后对应 object key。例如 `climate` 中的 `/observations/day.csv` 对应 `s3://climate/observations/day.csv`。不复制数据，不产生第二份目录配置。
+DACP Server starts Flight, its Web dashboard, and a separate HTTPS S3-compatible endpoint by default. S3 reuses the live DatasetCatalog and DatasetAccess contracts: each dataset is a bucket, and an Item's logical path without its leading `/` is the object key. For example, `/observations/day.csv` in `climate` becomes `s3://climate/observations/day.csv`. Data is not copied, and no second catalog configuration is needed.
 
-## 配置与生命周期
+## Configuration and lifecycle
 
 ```yaml
 host: 0.0.0.0
@@ -16,25 +16,25 @@ s3:
   port: 10815
 ```
 
-这段配置应与现有 datasets 或 dataset_catalog、TLS 等节点配置合并使用。省略 `s3` 时默认启用，绑定 `0.0.0.0`，端口为实际 Flight 监听端口加 2000；Flight 端口超过 63535 时需明确设置 S3 端口。`port: 0` 由系统分配端口。`s3: {enabled: false}` 关闭服务。`web.enabled` 与 S3 相互独立。
+Merge this snippet with the node's existing datasets or dataset_catalog, TLS, and other settings. Omitting `s3` enables the endpoint on `0.0.0.0`, using the actual bound Flight port plus 2000. Set an explicit S3 port when Flight uses a port above 63535. `port: 0` requests an OS-assigned port. `s3: {enabled: false}` disables the service. `web.enabled` and S3 are independent.
 
-服务随 `DacpServer.start()` 启动，随 `close()` 关闭；绑定失败会回滚整个节点启动。嵌入式应用通过 `server.s3Port` 获取实际端口。启动日志输出 S3 监听地址；通过 `http://节点主机:S3端口/` 访问。
+The service starts with `DacpServer.start()` and stops with `close()`. A bind failure rolls back the entire node startup. Embedded applications can obtain the actual port through `server.s3Port`. Startup logs report the S3 listening address; access it at `https://node-host:S3-port/`.
 
-S3 是独立认证的只读 HTTPS 端点，使用节点 TLS 证书。所有读取（含列表和元数据）要求 SigV4 认证，不支持匿名访问。密钥与 Flight Token 独立，通过本地凭据工具创建 kind=s3 的密钥；密钥撤销拒绝后续请求，已接纳的下载继续。支持预签名 GET 临时分享对象，不支持预签名列表请求。
+This is an independently authenticated read-only HTTPS endpoint using the node TLS certificate. All reads, including listings and metadata, require SigV4. Anonymous access is unsupported. S3 keys are independent of Flight tokens. Create kind=s3 credentials using the local credential tool. Revocation rejects subsequent requests while admitted downloads continue. Presigned GET supports temporary object sharing; presigned listings are unsupported.
 
-## 数据表示与插件
+## Representations and plugins
 
-- 列出并读取支持 `bytes` 视图的 Item。插件仅提供 `records` 时，节点的通用 Item 适配层自动提供 UTF-8 JSONL `bytes` 视图，因此这些 Item 也可从 S3 下载。这不是 S3 专用转换；Flight 和任务输入使用相同规则。插件已有的 `bytes` 视图优先，保持原有内容。
-- 普通文件按原始字节传输，包括 CSV、图片、压缩包和 NetCDF 文件；科学文件保持原有维度、分组与变量结构。具有 `bytes` 视图的结构根也可作为完整对象下载。
-- 普通逻辑文件夹不是对象；`prefix` 与 `delimiter` 可按路径分层浏览。
-- 每次请求在线读取目录和元数据，不维护持久化缓存。读取结束、失败或取消时释放请求级 Dataset 租约。
-- 使用 path-style 地址：`https://host:port/bucket/key`，不支持虚拟主机 bucket 地址。保留 Dataset 原名；为兼容 AWS CLI/SDK 的 bucket 校验，建议使用符合 S3 bucket 命名规则的数据集名。
+- Items supporting the `bytes` view are listed and readable. For a records-only plugin Item, the node's common Item adapter automatically exposes UTF-8 JSONL bytes, making it downloadable through S3 too. This conversion also applies to Flight and task inputs. Existing plugin-provided bytes take priority and retain their content.
+- Files stream their original bytes, including CSV, images, archives, and NetCDF. Scientific files retain dimensions, groups, and variables. A structured root advertising `bytes` is also downloadable as a complete object.
+- Ordinary logical folders are not objects. Use `prefix` and `delimiter` for hierarchical browsing.
+- Every request reads the live catalog and metadata without a persistent cache. Request-scoped Dataset leases are released after completion, failure, or cancellation.
+- Use path-style URLs: `https://host:port/bucket/key`; virtual-host bucket addresses are unsupported. Dataset names are preserved. For compatibility with AWS CLI/SDK bucket validation, choose dataset names that satisfy S3 bucket naming rules.
 
-S3 是核心传输适配层，不是存储后端插件。已有 Dataset provider 无需注册第二个实现；外部插件按 [Dataset 访问契约](dataset-access.md) 注册，提供递归 `list()`、`describe`、`bytes` 元数据和流。声明插件原生支持的 `Item.views`，如 `Some(Seq("bytes"))` 或 `Some(Seq("records"))`；节点会为后者补充 JSONL bytes。尽可能提供 `totalSizeBytes` 与 `lastModifiedTimeMs`；内容流使用 `PluginSchemas.bytes`，每批有界分块，遵守 `ready()` 检查，在 `finally` 释放资源。无需修改 S3 代码或客户端。JSONL 回退的大小未知，Item key 不添加 `.jsonl` 后缀；完整语义见 [通用 JSONL bytes 视图](dataset-access.md#通用-jsonl-bytes-视图)。未知大小的对象使用 HTTP chunked 下载，列表不虚构 Size，HEAD 不提供 Content-Length；依赖已知大小的托管下载工具可能无法处理这类对象。
+S3 is a core transport adapter, not a storage backend plugin. Existing Dataset providers need no second registration. External plugins register through the [Dataset access contract](dataset-access.md), implementing recursive `list()`, `describe`, bytes metadata, and streaming. Declare the plugin's native `Item.views`, such as `Some(Seq("bytes"))` or `Some(Seq("records"))`; the node adds JSONL bytes for the latter. Supply `totalSizeBytes` and `lastModifiedTimeMs` where possible. Stream bounded batches using `PluginSchemas.bytes`, honor `ready()` checks, and release resources in `finally`. No changes to S3 code or clients are required. JSONL fallback has unknown size and does not add a `.jsonl` suffix to the key; see the [common JSONL bytes view](dataset-access.md#common-jsonl-bytes-view). Unknown-size objects use chunked HTTP downloads, omit Size from listings, and omit Content-Length on HEAD; managed download tools requiring a known size may not support these objects.
 
-## 客户端示例
+## Client examples
 
-在服务器本地创建密钥，妥善保存返回的访问密钥 ID 与仅显示一次的秘密：
+Create a key locally, preserving its access key ID and one-time secret securely:
 
 ```bash
 target/universal/stage/bin/dacp-server credentials /protected/node-credentials create --subject download-user --kind s3
@@ -63,35 +63,34 @@ url = s3.generate_presigned_url('get_object',
     Params={'Bucket': 'climate', 'Key': 'observations/day.csv'}, ExpiresIn=300)
 ```
 
-AWS CLI 使用同样的访问密钥环境变量，并指定 `--endpoint-url https://localhost:10815` 与 `--ca-bundle examples/certs/ca.crt`，不要使用 `--no-sign-request`。也可以通过本地工具生成预签名 URL：
+AWS CLI uses the same access key environment variables, `--endpoint-url https://localhost:10815` and `--ca-bundle examples/certs/ca.crt`. Do not use `--no-sign-request`. Local presigning is also available:
 
 ```bash
 target/universal/stage/bin/dacp-server credentials /protected/node-credentials presign ACCESS_KEY_ID https://localhost:10815/climate/observations/day.csv 300
 ```
 
+## Supported operations and limitations
 
-## 支持范围与限制
-
-| 操作 | 行为 |
+| Operation | Behavior |
 |---|---|
-| ListBuckets、HeadBucket、GetBucketLocation | 实时 Dataset 目录；region 为空，客户端可指定 us-east-1 |
-| ListObjects、ListObjectsV2 | prefix、delimiter、max-keys（0–1000）、marker、start-after、continuation-token、encoding-type=url |
-| GetObject、HeadObject | bytes 下载及元数据；HEAD 不读取完整内容 |
-| 单段 Range | 已知大小时支持闭区间、开放结束与后缀范围；非法范围返回 416 |
-| 写入、删除、创建 bucket | 405 MethodNotAllowed |
-| 版本、ACL、对象条件请求等未实现读取 | 501 NotImplemented |
+| ListBuckets, HeadBucket, GetBucketLocation | Live Dataset catalog; empty region, clients may specify us-east-1 |
+| ListObjects, ListObjectsV2 | prefix, delimiter, max-keys (0–1000), marker, start-after, continuation-token, encoding-type=url |
+| GetObject, HeadObject | Bytes downloads and metadata; HEAD does not read the complete content |
+| Single Range | Closed, open-ended, and suffix ranges for known-size objects; invalid ranges return 416 |
+| Writes, deletion, bucket creation | 405 MethodNotAllowed |
+| Unimplemented reads, including versions, ACLs, and conditional object requests | 501 NotImplemented |
 
-Range 当前通过通用 bytes 流顺序跳过前段数据，读满目标范围即停止；无需落盘或缓存整个对象，但不承诺后端随机定位效率。未知大小的 Range 请求返回 501。没有自动计算 ETag、MD5 或快照版本；正在修改的数据不保证跨请求一致，分页期间目录变更也可能影响结果。对稳定下载有要求时应由插件提供稳定的数据版本。
+Ranges currently skip the preceding bytes in the generic stream and stop once the requested range is read. They need neither staging nor full-object buffering, but do not promise random-access backend efficiency. Ranges for unknown-size objects return 501. ETags, MD5 hashes, and snapshot versions are not computed automatically. Mutable data is not guaranteed consistent across requests, and catalog changes during pagination can affect results. Plugins should provide stable data versions when consistent downloads are required.
 
-S3 请求复用节点的轮转 JSON Lines [访问日志](access-logs.md)，记录 `s3_get` / `s3_head` 等操作、dataset、Item、状态、传输字节及耗时。使用有界线程池处理下载，网络写入形成背压，关闭节点时中止活动连接。
+S3 requests use the node's rotating JSON Lines [access logs](access-logs.md), recording operations such as `s3_get` / `s3_head`, dataset, Item, status, transferred bytes, and elapsed time. A bounded thread pool handles downloads, network writes provide backpressure, and node shutdown aborts active connections.
 
-## 验证
+## Verification
 
 ```bash
-# 从项目根目录执行
+# Run from the repository root
 python3 -m pip install boto3
 cd dacp-server
 DACP_S3_TEST_PYTHON="$(command -v python3)" sbt 'testOnly dacp.S3ServiceSpec dacp.DacpServerSpec'
 ```
 
-契约测试覆盖第三方 Dataset 接口、内置文件插件、动态目录、编码、分页、范围、空对象、未知大小、资源释放，以及真实 boto3 的托管下载。未设置 `DACP_S3_TEST_PYTHON` 时，仅跳过 boto3 集成测试。
+Contract tests cover third-party Dataset interfaces, the built-in file plugin, live catalogs, encoding, pagination, ranges, empty objects, unknown sizes, resource cleanup, and managed downloads with a real boto3 client. Only the boto3 integration test is skipped when `DACP_S3_TEST_PYTHON` is unset.

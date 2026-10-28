@@ -18,16 +18,16 @@ for relative in sorted(paths):
     # Agent instructions are tooling configuration, not published documentation.
     if path.name == 'AGENTS.md':
         continue
-    english = path.stem.endswith('_en')
-    mate = path.with_name(path.stem[:-3] + '.md' if english else path.stem + '_en.md')
+    chinese = path.stem.endswith('_zh')
+    mate = path.with_name(path.stem[:-3] + '.md' if chinese else path.stem + '_zh.md')
     if not mate.is_file():
         errors.append(f'{relative}: missing {mate.name}')
-    elif not english:
+    elif not chinese:
         pairs += 1
-        if not re.search(r'[\u4e00-\u9fff]', path.read_text()):
-            errors.append(f'{relative}: Chinese text missing')
-        if not re.search(r'[A-Za-z]{3,}', mate.read_text()):
-            errors.append(f'{mate.relative_to(root)}: English text missing')
+        if not re.search(r'[\u4e00-\u9fff]', mate.read_text()):
+            errors.append(f'{mate.relative_to(root)}: Chinese text missing')
+        if not re.search(r'[A-Za-z]{3,}', path.read_text()):
+            errors.append(f'{relative}: English text missing')
 for relative in paths:
     path = root / relative
     if path.name == 'AGENTS.md':

@@ -117,7 +117,9 @@ def main(directory):
                 self.channel.finish()
             except BaseException as e:fail(e)
     artifact=Path(spec['steps'][0]['artifact'])
-    if artifact.suffix=='.whl':
+    if artifact.suffix=='.zip':
+        sys.path.insert(0,str(artifact))
+    elif artifact.suffix=='.whl':
         package=tempfile.mkdtemp(prefix='dacp-group-package-')
         subprocess.run([sys.executable,'-m','pip','install','--no-index','--no-deps','--no-compile','--target',package,str(artifact)],check=True,stdout=sys.stderr)
         sys.path.insert(0,package)
@@ -125,7 +127,7 @@ def main(directory):
     # Preflight all entrypoints before consuming external inputs.
     functions={}
     for step in spec['steps']:
-        if artifact.suffix=='.whl':m=__import__(step['entrypoint'],fromlist=['process'])
+        if artifact.suffix in ('.whl','.zip'):m=__import__(step['entrypoint'],fromlist=['process'])
         else:
             ms=importlib.util.spec_from_file_location('dacp_group_'+step['id'],artifact);m=importlib.util.module_from_spec(ms);ms.loader.exec_module(m)
         fn=getattr(m,'process',None)

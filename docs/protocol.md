@@ -1,52 +1,52 @@
-# DACP 协议
+# DACP protocol
 
-[English](protocol_en.md) · [文档目录](README.md)
+[中文](protocol_zh.md) · [Documentation](README.md)
 
-DACP（Data Access and Collaboration Protocol，数据访问与协作协议）定义客户端、数据节点和协作调度节点之间的数据访问与计算协作约定。本项目实现建立在 Apache Arrow Flight 之上：Flight 提供传输机制，DACP 规定数据命名、元数据、读取语义、算子任务、身份授权和跨节点协作行为。DACP 是本项目的协议设计，并非 Apache Arrow 的独立标准。
+DACP (Data Access and Collaboration Protocol) defines data access and computation collaboration between clients, data nodes, and coordination nodes. This implementation builds on Apache Arrow Flight: Flight supplies transport, while DACP specifies naming, metadata, read semantics, operator tasks, identity, authorization, and collaboration. DACP is this project's protocol design, rather than a separate Apache Arrow standard.
 
-## 数据与计算模型
+## Data and computation model
 
-服务器通过 Dataset 组织数据，通过 Item 描述可访问的对象。客户端先浏览元数据与服务器公布的能力，再选择读取视图。`bytes` 提供字节内容，`records` 提供具有 Arrow schema 的记录批次。文件格式与读取视图分别描述存储表示和访问能力；客户端不能仅凭文件后缀推断读取方式。组、表和多维变量等科学数据结构应由插件显式描述，不应隐式展开为记录。
+Servers organize data into Datasets and describe accessible objects as Items. Clients inspect metadata and advertised capabilities before selecting a view. `bytes` exposes byte content; `records` exposes batches with an Arrow schema. Format and view describe storage representation and access capability separately; clients must not infer supported reads solely from filename extensions. Plugins should explicitly describe scientific groups, tables, and multidimensional variables rather than silently flattening them into records.
 
-作业包含 task；task 的 `id` 用于引用依赖，`title` 用于向用户说明用途。算子通过命名输入、输出端口消费和产生流。输入可以引用数据项或上游输出；结果不自动发布为新的 Dataset。普通节点与 Union 均接受标准 Job 提交；Union 使用自己的公开 URI 和可选逻辑节点 ID，并保留专用管理 API，见 [Union 代理服务](union-proxy.md)。
+A job contains tasks. A task's `id` identifies dependency references; its `title` describes its purpose to users. Operators consume and produce streams through named ports. Inputs reference only upstream outputs; read_item source operators read external Items. Results are not automatically published as Datasets. Nodes and Union both accept standard Job submission. Union uses its public URIs and optional logical node IDs, and retains dedicated management APIs; see [Union proxy service](union-proxy.md).
 
-## 传输分工
+## Transport responsibilities
 
-| 用途 | 当前传输 |
+| Purpose | Current transport |
 |---|---|
-| Dataset 目录发现 | Flight `ListFlights`，返回公开 Dataset URI 及描述，不额外要求数据授权；目录可由插件动态提供 |
-| 浏览、元数据与数据读取 | Arrow Flight；具体消息见技术参考和 protobuf 定义 |
-| S3 兼容对象读取 | 独立 HTTPS 端口，SigV4 认证，只读；dataset 映射 bucket、bytes Item 映射 object，见 [S3 服务](s3-service.md) |
-| 普通节点作业执行 | Flight `DoExchange`，交换控制消息与结果流 |
-| Union 成员凭据验证、状态和作业控制 | Flight `DoAction`，使用 `dacp.union.` 动作前缀及 JSON 消息 |
-| Union 最终结果与节点间流读取 | Flight `DoGet`，使用相应 ticket |
-| 算子仓库搜索、版本与制品下载 | HTTP/HTTPS |
-| Union 管理只读看板 | HTTP；查询运行状态及历史，不能据此提交计算任务 |
+| Dataset discovery | Flight `dacp.catalog` returns completeness, public Dataset URIs and descriptions without additional data grants; plugins can supply a dynamic catalog |
+| Browsing, metadata, and reading | Arrow Flight; see the technical reference and protobuf definitions for messages |
+| S3-compatible object reads | Separate HTTPS endpoint, SigV4-authenticated and read-only; datasets map to buckets and bytes Items to objects; see the [S3 service](s3-service.md) |
+| Ordinary node job execution | Flight `DoExchange` carrying control messages and result streams |
+| Union membership validation, status and job control | Flight `DoAction` with the `dacp.union.` action prefix and JSON messages |
+| Union final results and inter-node stream reads | Flight `DoGet` with the corresponding tickets |
+| Operator repository search, versions, and artifact downloads | HTTP/HTTPS |
+| Read-only Union management dashboard | HTTP for status and history; it does not authorize computation submission |
 
-Union 的共享传输模块对 JSON 消息实施 1 MiB 上限。具体动作、ticket 和字段以 [Union 协议](union.md)、[技术参考](reference.md)、`proto/dacp.proto` 和 `dacp-union-protocol` 实现为准。算子进程的端口帧协议属于执行器接口，见[算子流契约](operator-streams.md)，不等同于客户端 Flight 接口。
+The shared Union transport module limits JSON messages to 1 MiB. For exact actions, tickets, and fields, see the [Union protocol](union.md), [technical reference](reference.md), `proto/dacp.proto`, and `dacp-union-protocol`. The operator process port framing protocol is an executor interface, described in the [operator stream contract](operator-streams.md), rather than the client Flight interface.
 
-## 身份、信任和授权
+## Identity, trust, and authorization
 
-普通 Flight 客户端使用 TLS 和 Bearer Token。Union 访问成员使用双向 TLS 与节点签发的服务凭据。节点间流由精确执行计划授权，仅信任 CA 不授予访问权限。S3 使用独立的 SigV4 密钥。授权由服务器执行，与 SDK 类型无关。详见[安全方案](security.md)。
+Ordinary Flight clients use TLS and bearer tokens. Union members use mutual TLS and node-issued service credentials. Peer streams are authorized by exact execution plans, not merely CA trust. S3 has independent SigV4 keys. Servers enforce authorization regardless of SDK type. See [security](security.md).
 
-## 跨中心协作
+## Cross-center collaboration
 
-一个 Union Server 维护一个 Union。数据节点独立运行；Union 使用节点签发的凭据连接配置中的成员。Union 主动轮询节点状态，并按任务声明的依赖调度步骤。
+One Union Server maintains one Union. Data nodes run independently. Union connects members configured with node-issued credentials. Union actively polls their status and schedules steps according to declared dependencies.
 
-例如，A 上的任务产生 `oa`，B 基于 `oa` 和本地数据计算 `ob`：Union 调度 A、B，A 到 B 的中间流直接在节点间传输，最终 `ob` 由 Union 转发给客户端。客户端不必直接连接 B；参与节点仍须满足证书验证及相应业务授权。
+For example, a task on A produces `oa`, and B combines `oa` with local data to produce `ob`. Union schedules A and B; the intermediate stream travels directly between nodes, and Union relays the final `ob` stream to the client. The client need not connect directly to B. Participating nodes still require certificate verification and the corresponding business authorization.
 
-当前支持显式声明的协作 DAG、可配置物化边界与重放；自动恢复需要执行策略和支持重试的客户端，不提供任意通用流水线优化。状态、流量和任务标题可在看板及执行记录中查看。
+The implementation supports explicitly declared collaboration DAGs. It supports configured materialization boundaries and replay; automatic recovery requires an execution policy and retry-aware clients. It does not promise arbitrary general pipeline optimization. The dashboard and execution records expose status, traffic, and task titles.
 
-## 流与持久化
+## Streaming and persistence
 
-调用方应逐批消费结果并及时关闭流。取消、超时或下游失败必须释放上游读取与执行资源。已经收到部分数据不意味着整个作业成功，客户端仍须检查流的最终状态。
+Callers should consume results incrementally and close streams promptly. Cancellation, timeout, or downstream failure must release upstream readers and execution resources. Receiving partial data does not establish job success; clients must also check the final stream status.
 
-节点和 Union 持久化执行元数据；Union 记录任务脚本和步骤状态。结果内容通过实时流交付，不作为历史结果文件保存；重启后不能从执行记录恢复结果流。存储位置、查询和重启处理见[执行记录](execution-history.md)。
+Nodes and Union persist execution metadata; Union also records job scripts and step states. Result contents are delivered as live streams rather than historical output files. Execution records cannot restore result streams after restart. See [execution history](execution-history.md) for storage, queries, and restart behavior.
 
-## 实现与扩展
+## Implementation and extensions
 
-公开契约、传输、授权、命名空间与资源管理由核心负责。数据后端、格式、结构化浏览和执行器通过插件扩展。增加表示类型或改变线协议时，应同步更新共享契约、服务端、Python/Scala 客户端、测试与双语文档。已实现和计划中的扩展边界见[插件体系](plugins.md)。
+Core owns public contracts, transport, authorization, namespaces, and resource management. Plugins extend data backends, formats, structured browsing, and executors. Changes to representations or wire contracts must update shared interfaces, servers, Python/Scala clients, tests, and bilingual documentation together. See the [plugin architecture](plugins.md) for implemented and planned extension boundaries.
 
-### 单机任务的执行策略
+### Single-node job execution policies
 
-Flight `DoExchange` 的 `OperatorRequest` 在任务 YAML 之外接收 `execution_policy_yaml`（YAML 字节）、`retry_aware`（布尔值）和 `replay_from`（原执行 ID）。重放时 `job_yaml` 置空，服务器恢复原任务与策略，校验原提交者及有效物化输出。工作步骤请求不接受这些作业级字段。结果流先发 `execution` 元数据帧公布执行 ID；重试前发送 `attempt_failed`，客户端回调清空暂定结果后接收新一轮 `start/data/end`。`complete` 后仍须确认 Flight 成功结束。断开或关闭流即取消执行。详见[执行策略](materialization.md)。
+Flight `DoExchange` accepts `execution_policy_yaml` (YAML bytes), `retry_aware` (boolean), and `replay_from` (original execution ID) alongside job YAML in `OperatorRequest`. For replay, leave `job_yaml` empty; the server restores the original job and policy and checks the submitting identity and valid materialized outputs. Worker-step requests reject these job-level fields. Result streams begin with `execution` metadata exposing the execution ID. Before retrying, `attempt_failed` lets the client callback clear provisional results before receiving fresh `start/data/end` events. A `complete` event must still be followed by successful Flight end-of-stream. Disconnecting or closing the stream cancels execution. See [execution policies](materialization.md).

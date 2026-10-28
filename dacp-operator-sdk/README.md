@@ -1,10 +1,10 @@
-# 算子 SDK
+# Operator SDK
 
-SDK 封装输入发现、参数读取、Arrow IPC、输出帧、结束事件和资源清理。单输入模板使用 `source` / `result`；多端口使用 `OperatorContext`。
+The SDK handles input discovery, parameter loading, Arrow IPC, output frames, end events and resource cleanup. Single-input templates use `source` / `result`; use `OperatorContext` for multiple ports.
 
 ## Python
 
-在仓库根目录安装：
+Install from the repository root:
 
 ```bash
 python -m pip install ./dacp-operator-sdk/python
@@ -21,9 +21,9 @@ if __name__ == '__main__':
     Identity().main()
 ```
 
-表格处理继承 `RecordsOperator`，实现 `transform(batch, params)`，返回 `pyarrow.RecordBatch` 或 `None`；改变列结构时覆盖 `output_schema(input_schema, params)`。业务参数通过字典读取，例如 `params.get('min_amount', 20)`。
+For tables, extend `RecordsOperator` and implement `transform(batch, params)`, returning a `pyarrow.RecordBatch` or `None`. Override `output_schema(input_schema, params)` when changing columns. Read business parameters from the dictionary, for example `params.get('min_amount', 20)`.
 
-[双输入、双输出示例](../examples/operators/python/split_orders/1.0/split_orders.py)直接使用上下文。Python 共享运行时 Dockerfile 已包含 SDK，需要从仓库根目录重新构建：
+The [two-input, two-output example](../examples/operators/python/split_orders/1.0/split_orders.py) uses the context directly. The shared Python runtime Dockerfile includes the SDK; rebuild from the repository root:
 
 ```bash
 docker build -f examples/operators/python/Dockerfile -t dacp/operator-python:1.0 .
@@ -31,14 +31,14 @@ docker build -f examples/operators/python/Dockerfile -t dacp/operator-python:1.0
 
 ## Scala
 
-先在 `dacp-plugin-api` 和 `dacp-operator-sdk` 目录分别执行 `sbt publishLocal`，再构建示例：
+Run `sbt publishLocal` separately in `dacp-plugin-api` and `dacp-operator-sdk`, then build the example:
 
 ```bash
 cd examples/operators/scala
 sbt package
 ```
 
-构建依赖为 `"io.github.rdcn-link" %% "dacp-operator-sdk" % "0.1.0-SNAPSHOT" % Provided`。共享 JVM 运行时通过 `/opt/lib/*` 提供 SDK，更新后需要重建运行时镜像。
+The build dependency is `"io.github.rdcn-link" %% "dacp-operator-sdk" % "0.1.0-SNAPSHOT" % Provided`. The shared JVM runtime supplies the SDK through `/opt/lib/*`; rebuild its image after updating.
 
 ```scala
 import com.fasterxml.jackson.databind.JsonNode
@@ -49,13 +49,13 @@ object Identity extends BytesOperator {
 }
 ```
 
-完整示例：[SimpleIdentity.scala](../examples/operators/scala/src/main/scala/example/SimpleIdentity.scala)。表格模板 `RecordsOperator` 实现 `transform(batch, params): Option[VectorSchemaRoot]`；默认保留输入 schema，修改列时覆盖 `outputSchema`。输入 root 由 SDK 复用；输出同步序列化，不接管用户创建的 root，创建者负责关闭它。
+Complete example: [SimpleIdentity.scala](../examples/operators/scala/src/main/scala/example/SimpleIdentity.scala). The table template `RecordsOperator` implements `transform(batch, params): Option[VectorSchemaRoot]`. It retains the input schema by default; override `outputSchema` when changing columns. The SDK reuses input roots. Output serialization is synchronous and does not take ownership of user-created roots; their creator must close them.
 
-多端口继承 `Operator`，实现 `inferOutputs(inputs, params)` 和 `process(ctx)`：用 `ctx.inputNames`、`ctx.input(name).foreachRecords`、`ctx.recordsOutput(name, schema)` 或 bytes 对应方法读写。`ctx.params` 是 Jackson JSON 对象。
+For multiple ports, extend `Operator` and implement `process(ctx)`. Use `ctx.inputNames`, `ctx.input(name).foreachRecords`, `ctx.recordsOutput(name, schema)` or their bytes counterparts. `ctx.params` is a Jackson JSON object.
 
-## Scala 连续字节流模板
+## Scala continuous byte-stream template
 
-`ByteStreamOperator` 使用标准 Java `InputStream` / `OutputStream`，适合接入压缩、摘要、解析等库。输入按需跨 Arrow 批次和字节块读取；输出缓冲区最多 64 KiB，每帧最多 64 KiB，不缓存完整 Item。它改善流式库的接入方式，但不是零复制承诺。
+`ByteStreamOperator` uses standard Java `InputStream` / `OutputStream`, suitable for compression, hashing and parsing libraries. Input reads cross Arrow batches and byte chunks on demand. The output buffer and each output frame are at most 64 KiB; the whole Item is never buffered. This simplifies integration with streaming libraries but does not promise zero-copy behavior.
 
 ```scala
 import java.io.{InputStream, OutputStream}
@@ -72,22 +72,22 @@ object StreamGzip extends ByteStreamOperator {
 }
 ```
 
-完整文件：[StreamGzip.scala](../examples/operators/scala/src/main/scala/example/StreamGzip.scala)。将算子定义的入口设为 `example.StreamGzip`，输入声明 `source` 的 `bytes` 表示，输出由模板推导为 `result` 的 `bytes` / `gzip`。参数仍通过 `params` 读取。算子程序必须读到输入 EOF；提前关闭或读取固定长度后未到 EOF 会失败，不会产生成功 end。输出 `flush()` 立即发布缓冲数据；正常返回自动 flush 并发送 end。关闭输出适配器不会关闭协议 stdout，因此可以安全地关闭 `GZIPOutputStream` 等包装器；异常退出不自动发布残留缓冲。
+Complete file: [StreamGzip.scala](../examples/operators/scala/src/main/scala/example/StreamGzip.scala). Set the operator entry point to `example.StreamGzip`, declare input `source` with representation `bytes` and output `result` with `bytes` / `gzip`. Read parameters through `params` as usual. Programs must read input through EOF. Closing early, or stopping after a fixed number of bytes without reaching EOF, fails without successful end events. Output `flush()` publishes buffered data immediately. Successful return automatically flushes and emits end. Closing the output adapter never closes protocol stdout, so wrappers such as `GZIPOutputStream` can safely be closed. Failure does not automatically publish remaining buffered data.
 
-多端口作者也可使用 `ctx.input(name).byteStream()` 与 `ctx.bytesOutput(name, format).byteStream()`；仍需先声明全部输出，并按字典序完整消费每个输入。`BytesOperator` 是逐块数组模板，不把完整 Item 读入内存；它不保留业务记录边界。表格流使用已有的 `RecordsOperator`，按 `VectorSchemaRoot` 批处理并保留 schema，不应先转成字节再解析。
+Multiport authors can also use `ctx.input(name).byteStream()` and `ctx.bytesOutput(name, format).byteStream()`. Declare every output before writing and fully consume each input in lexical order. `BytesOperator` is a chunked array template; it does not read the entire Item into memory or preserve business record boundaries. Table streams use the existing `RecordsOperator`, processing `VectorSchemaRoot` batches with their schema instead of converting them to bytes and parsing again.
 
-## 流契约
+## Stream contract
 
-所有输入按端口名的字典序逐个读到 Arrow EOS；不要交替读取多个 FIFO。所有输出必须在首次写数据前声明；正常退出自动发送 end，异常退出不发送成功结束。空结果允许没有 data 帧。stdout 保留给协议，普通打印重定向到 stderr。每个 records 批次序列化后最多 8 MiB，大批次应由业务程序切分；bytes 输出自动切为最多 64 KiB。参数校验及有界内存的业务算法由作者负责。SDK 不提供通用 join、广播或流水线调度。
+Consume inputs one at a time in lexical port-name order through Arrow EOS; do not alternate between FIFOs. Declare all outputs before the first data write. Successful exit automatically sends end events; failure sends no successful end. Empty outputs may have no data frames. stdout is reserved for the protocol; ordinary prints are redirected to stderr. Each serialized records batch must fit within 8 MiB; business code must split larger batches. Bytes output is automatically chunked to at most 64 KiB. Authors own parameter validation and bounded-memory business algorithms. The SDK does not provide general joins, broadcasting or pipeline scheduling.
 
-算子仍需 `operator.yaml` 声明运行时、入口、端口和参数，并按[编写指南](../docs/operator-authoring.md)打包上传。SDK 不改变仓库发布接口。
+Operators still need `operator.yaml` declaring runtime, entry point, ports and parameters, and must be packaged and uploaded as described in the [authoring guide](../docs/operator-authoring.md). The SDK does not change the repository publishing API.
 
-## 同进程 Job
+## In-process Jobs
 
-JVM 模板实现 `Operator`，可由执行器在独立共享 JVM 内调用。Python 模板增加 `process(ctx)` 方法；模块可用顶层 `def process(ctx): MyOperator().process(ctx)` 暴露合并入口。上下文和输出由执行器管理，不要在该入口自行创建或关闭另一个上下文。资格、线程安全要求与示例见 [同进程合并执行](../docs/operator-fusion.md)。
+JVM templates implement `Operator` and can be invoked inside an isolated shared JVM. Python templates provide `process(ctx)`; modules can expose fusion through `def process(ctx): MyOperator().process(ctx)`. The executor owns context and output lifecycle; do not create or close another context in that entrypoint. See [operator fusion](../docs/operator-fusion.md) for eligibility, thread-safety requirements and examples.
 
-## 结构推导
+## Structure inference
 
-每个算子必须实现 `inferOutputs`（Scala）或 `infer_outputs`（Python）。模板已经提供实现；自定义算子需与处理方法一同实现。无输出算子返回空映射。清单不再声明输出。详见[统一协议与示例](../docs/structure-inference.md)。
+Every operator must implement `inferOutputs` (Scala) or `infer_outputs` (Python). Templates provide implementations; custom operators implement the method alongside processing. Sinks return an empty mapping. Manifests no longer declare outputs. See the [shared protocol and examples](../docs/structure-inference.md).
 
-必需的 `previewOutputs`（JVM）/ `preview_outputs`（Python）方法通过与结构推导相同的 worker 提供有界输出样例。默认请求上限为 10 行 / 16 KiB，SDK 与宿主都限制行数和 UTF-8 JSON 大小；自定义算子必须实现接口；纯变换模板可代为实现。方法因当前输入无法提供样例时，应说明原因；样例失败不覆盖 Schema。详见[样例接口与示例](../docs/structure-inference.md#有界输出样例接口)。
+Required `previewOutputs` (JVM) / `preview_outputs` (Python) methods provide bounded output samples through inference workers. Default requests allow 10 rows / 16 KiB; both SDK and host enforce row counts and serialized UTF-8 JSON size. Custom operators must implement this interface; pure-transform templates may supply it. If current inputs cannot yield a sample, report the reason. Preview failures preserve Schema. See [sample interfaces and examples](../docs/structure-inference.md#bounded-output-sample-interface).

@@ -44,7 +44,7 @@ final class DacpServer private(config:Config) extends AutoCloseable {
     }catch{case NonFatal(t)=>try close()catch{case NonFatal(e)=>t.addSuppressed(e)};throw t}
   }
   def boundPort:Int=synchronized {require(state=="started","server is not running");flight.getPort}
-  def location:Location=Location.forGrpcTls(config.publicHost,boundPort)
+  def location:Location=Location.forGrpcTls(config.publicHost,config.publicPort.getOrElse(boundPort))
   def awaitTermination():Unit={
     val running=synchronized {require(state=="started","server is not running");flight}
     running.awaitTermination()

@@ -1,0 +1,10 @@
+host: 0.0.0.0
+port: 28815
+upstream:
+  host: 10.0.0.10
+  port: 8815
+max_connections: 256
+buffer_bytes: 65536
+connect_timeout_seconds: 10
+# 0 keeps quiet, long-lived streams connected.
+idle_timeout_seconds: 0

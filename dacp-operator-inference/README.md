@@ -1,7 +1,7 @@
-# DACP 算子结构推导
+# DACP operator structure inference
 
-节点服务器和在线设计器共用的结构推导模块。负责算子解析与下载、推导 worker 的按需启动、复用和空闲回收，以及有向流图的结构传播。推导调用算子的结构推导入口，不执行工作流或读取数据行。
+Shared structure inference for node servers and the online designer. The module resolves and downloads operators, starts and reuses inference workers on demand, reclaims idle workers, and propagates structures through directed stream graphs. Inference calls operator inference entry points without running workflows or reading data rows.
 
-宿主提供 `OperatorEnvironment`，或创建 `OperatorInferenceService`，传入本地算子库、远端仓库地址、缓存路径、大小限制、`PluginEnvironment` 和 worker 配置。服务关闭时回收 worker；插件环境由宿主管理。执行器通过现有插件发现机制加载，不需要修改核心注册表。数据源元信息由宿主提供，模块不绑定具体数据后端。
+The host supplies `OperatorEnvironment` or creates `OperatorInferenceService` with a local operator library, remote repository URLs, cache path, size limit, `PluginEnvironment`, and worker settings. Closing the service reclaims workers; the host owns the plugin environment. Executors use existing plugin discovery without changes to core registries. The host supplies source metadata; the module does not depend on a particular dataset backend.
 
-验证：在本目录运行 `sbt test`。图传播测试覆盖缺失端口、循环、结构传播与错误；worker 池测试覆盖复用、并发和回收。Docker 集成测试需有 Docker 权限，容器启动时间会受到主机存储性能影响。
+Validation: run `sbt test` in this directory. Graph tests cover missing ports, cycles, propagation, and errors; worker-pool tests cover reuse, concurrency, and reclamation. Docker integration tests require Docker access, and container startup time depends on host storage performance.

@@ -57,6 +57,10 @@ if artifact.endswith('.whl'):
     sys.path.insert(0,'/tmp/dacp-package')
     sys.argv=[module]+args
     runpy.run_module(module,run_name='__main__')
+elif artifact.endswith('.zip'):
+    sys.path.insert(0,artifact)
+    sys.argv=[module]+args
+    runpy.run_module(module,run_name='__main__')
 else:
     sys.path.insert(0,os.path.dirname(artifact))
     sys.argv=[artifact]+args
@@ -64,7 +68,7 @@ else:
 """
   def command(p: OperatorProgram, path: Option[String]): OperatorCommand = {
     require(p.configuration.isEmpty,"executor does not accept configuration")
-    require(path.exists(f => f.endsWith(".whl") || f.endsWith(".py")), "Python executor requires a wheel or Python source artifact")
+    require(path.exists(f => f.endsWith(".whl") || f.endsWith(".py") || f.endsWith(".zip")), "Python executor requires a wheel, source ZIP or Python source artifact")
     require(p.entrypoint.matches("[A-Za-z_][A-Za-z0-9_.]*"), "Python entrypoint must be a module name")
     OperatorCommand(Some(Vector("/usr/local/bin/python", "-c", launcher, path.get, p.entrypoint)),
       environment = Map("PYTHONDONTWRITEBYTECODE" -> "1", "PIP_DISABLE_PIP_VERSION_CHECK" -> "1"))

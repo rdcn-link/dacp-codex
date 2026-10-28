@@ -1,56 +1,59 @@
 # DACP
 
-<img src="assets/dacp-logo.png" alt="DACP 标志：连接的节点组成 Collaborative 的首字母 C" width="240">
+<img src="assets/dacp-logo.png" alt="DACP logo: connected nodes form the C in Collaborative" width="240">
 
-[English](README_en.md)
+[中文](README_zh.md)
 
-DACP 提供数据访问与跨节点协作计算。服务器以 Dataset / Item 发布文件、SQL 表和结构化文件内容；客户端浏览数据、读取记录或字节流，并提交由算子组成的任务。计算在数据所在节点执行，输出以实时流返回。
+DACP provides data access and collaborative computation across nodes. Servers publish files, SQL tables, and structured-file contents as Datasets and Items. Clients browse data, read record or byte streams, and submit tasks composed of operators. Computation runs near the data and returns live output streams.
 
-DACP（Data Access and Collaboration Protocol，数据访问与协作协议）的数据模型、传输、信任和协作约定见[协议说明](docs/protocol.md)。
+For the data model, transport, trust, and collaboration contracts of DACP (Data Access and Collaboration Protocol), see the [protocol overview](docs/protocol.md).
 
-Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs.md)动态提供；Scala/JVM 应用可通过 [DacpServer API](docs/embedded-server.md)直接启动节点。
+[DatasetCatalog plugins](docs/dataset-catalogs.md) can supply Dataset identities dynamically; Scala/JVM applications can host nodes through the [DacpServer API](docs/embedded-server.md).
 
-节点默认提供 [S3 兼容只读服务](docs/s3-service.md)，可使用 S3 客户端列举 dataset bucket 并下载 Item 字节流。
+Nodes also expose an [S3-compatible read-only service](docs/s3-service.md) by default, allowing S3 clients to list dataset buckets and download Item byte streams.
 
-官方网站模块：[dacp-website](dacp-website/README.md)，提供英文项目介绍、按角色分类的在线文档和软件下载。
+Official website module: [dacp-website](dacp-website/README.md), providing an English project overview, online documentation by role, and software downloads.
 
-作业定义、节点子作业、执行策略和变量文件统一采用 YAML。每个 Job 必须提供可读的 `name`，系统另行生成执行 ID；节点与 Union 看板统一展示名称和执行信息。Shell 可同时提交：`submit workflow.yaml --policy policy.yaml --vars variables.yaml`。详见[作业编写](docs/jobs.md)。
+Job definitions, node subjobs, execution policies and variable files use YAML. Every Job requires a readable `name`, separate from its system-generated execution ID. Node and Union dashboards share job names and execution fields. In the shell, submit them together with `submit workflow.yaml --policy policy.yaml --vars variables.yaml`. See [writing jobs](docs/jobs.md).
 
-## 按角色阅读
+## Read by role
 
-| 读者 | 入口 | 主要内容 |
+| Reader | Entry point | Main topics |
 |---|---|---|
-| 用户 | [用户指南](docs/users/README.md) | dacp-shell、Python / Scala SDK、查询、作业、结果流和看板 |
-| 管理员 | [管理员指南](docs/administrators/README.md) | 服务部署、数据发布、证书与授权、Union 成员、算子仓库、日志和历史记录 |
-| 二次开发者 | [开发者指南](docs/developers/README.md) | 算子开发、插件注册、SDK 集成、协议、源码构建和测试 |
+| User | [User guide](docs/users/README.md) | dacp-shell, Python / Scala SDKs, queries, jobs, result streams, and dashboards |
+| Administrator | [Administrator guide](docs/administrators/README.md) | Deployment, data publication, certificates and authorization, Union membership, operator repositories, logs, and history |
+| Developer | [Developer guide](docs/developers/README.md) | Operators, plugin registration, SDK integration, protocols, source builds, and tests |
 
-[完整文档目录](docs/README.md) · [English documentation](docs/README_en.md)
+[Documentation index](docs/README.md) · [中文文档](docs/README.md)
 
-## 组件与工具
+## Components and tools
 
-| 组件 | 用途 |
+| Component | Purpose |
 |---|---|
-| `dacp-server` | 发布数据，处理数据访问请求，执行本地及跨节点任务 |
-| `dacp-job-designer` | 浏览器拖拽设计、跨节点编排、schema 预览与 YAML 导入导出 |
-| `dacp-shell` | 交互式浏览、SQL 查询、运行算子和提交任务文件；随 Python SDK 安装 |
-| `dacp-client` / `dacp-client-scala` | Python / Scala 应用访问数据、执行 Job 和提交 Union 作业 |
-| [dacp-union-server](dacp-union-server/README.md) | 管理一个 Union，按配置连接节点、轮询健康与容量、调度跨节点 DAG、转发最终结果流 |
-| [Union Web 看板](dacp-union-server/README.md#执行与接口) | 管理界面展示节点、任务脚本、可缩放 DAG、流量与执行历史 |
-| [dacp-operator-repository](dacp-operator-repository/README.md) | HTTP/HTTPS 算子仓库；公开搜索、版本浏览和下载，管理员通过 CLI 发布 |
-| `dacp-operator-runtime` / `plugins/dacp-plugin-operator-executors` | 共享算子运行环境、JVM / Python / 容器启动器及原生命令流桥接 |
-| `dacp-operator-contract` | 共享的静态算子参数类型、默认值与约束验证 |
-| `dacp-plugin-api` / `dacp-union-protocol` | 插件公开契约和 Union 共享传输工具 |
-| [plugins](plugins/README.md) | 内置 Dataset、文件格式、归档、Catalog 和算子启动插件 |
+| `dacp-server` | Publishes data, handles data access requests, and executes local and distributed tasks |
+| [dacp-proxy-server](dacp-proxy-server/README.md) | Expose one private DACP service through a relay preserving end-to-end TLS and authentication |
+| `dacp-job-designer` | Browser visual editing, cross-node composition, schema previews and YAML import / export |
+| `dacp-shell` | Interactive browsing, SQL queries, operator execution, and job-file submission; installed with the Python SDK |
+| `dacp-client` / `dacp-client-scala` | Python / Scala applications access data, execute Jobs, and submit Union jobs |
+| [dacp-union-server](dacp-union-server/README.md) | Manages one Union, connects configured nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
+| [Union web dashboard](dacp-union-server/README.md#execution-and-interfaces) | Management view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
+| [dacp-operator-repository](dacp-operator-repository/README.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; administrators publish through the CLI |
+| `dacp-operator-runtime` / `plugins/dacp-plugin-operator-executors` | Shared operator environments, JVM / Python / container launchers, and native-command stream bridging |
+| `dacp-operator-contract` | Shared static parameter types, defaults and constraint validation |
+| `dacp-plugin-api` / `dacp-union-protocol` | Public plugin contracts and shared Union transport utilities |
+| [plugins](plugins/README.md) | Bundled Dataset, file-format, archive, catalog, and operator launch plugins |
 
-服务端使用 JDK 17 和 Scala 2.13；Python SDK 要求 Python 3.10+。数据浏览不需要 Docker；算子执行需要 Linux 和可访问的 Docker Engine。构建使用 sbt 1.10.x。
+Servers use JDK 17 and Scala 2.13; the Python SDK requires Python 3.10+. Browsing data needs no Docker. Operator execution requires Linux and an accessible Docker Engine. Builds use sbt 1.10.x.
 
-## 开始使用
+## Get started
 
-- 已有服务器：从[连接与浏览](docs/users/README.md#浏览与读取)开始。
-- 本机体验：按[单节点部署](docs/administrators/README.md#单节点部署)启动服务。
-- 跨节点演示：运行[双节点 Union 示例](examples/union/README.md)。
-- 自定义计算：阅读[算子编写与发布](docs/operator-authoring.md)。
+- Existing server: start with [connecting and browsing](docs/users/README.md#browsing-and-reading).
+- Local demonstration: follow [single-node deployment](docs/administrators/README.md#single-node-deployment).
+- Distributed demonstration: run the [two-node Union example](examples/union/README.md).
+- Custom computation: read [writing and publishing operators](docs/operator-authoring.md).
 
-普通数据访问与任务执行使用 TLS 与 Token；Union 协作使用双向 TLS 和节点签发的服务凭据。S3 使用独立 SigV4 认证，算子仓库下载公开、发布要求 Token，内网看板公开只读。见[认证与访问控制](docs/security.md)。算子使用隔离的运行环境；符合条件的节点子作业会合并到同一进程执行，见[算子合并执行](docs/operator-fusion.md)。输出不注册为 Dataset；服务器持久化执行元数据，结果内容只通过一次性流交付。
+Ordinary data access and execution use TLS and tokens; Union collaboration uses mutual TLS and node-issued service credentials. S3 uses independent SigV4 authentication. Repository downloads are public, publication requires a token, and internal dashboards are publicly read-only. See [authentication and access control](docs/security.md). Operators use isolated runtime environments; eligible node subjobs share one process. See [in-process operator fusion](docs/operator-fusion.md). Outputs are not registered as Datasets. Servers persist execution metadata, while result contents are delivered through single-consumption streams.
 
-[在线 Job 设计器](dacp-job-designer/README.md)：拖拽编排、Union 节点选择、实时算子仓库、结构预览、变量、聊天草案和 YAML 导入导出。
+[Online Job Designer](dacp-job-designer/README.md): drag-and-drop composition, Union node selection, live operator repositories, schema previews, variables, chat proposals and YAML import / export.
+
+Source-only operator publication: [submission, isolated builds, review and trust scores](docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.

@@ -55,7 +55,7 @@ final class Website(host: String, port: Int, downloads: Path) extends AutoClosea
         val rows = files.map { p => val n = p.getFileName.toString; s"<tr><td><a href='/download/$n'>${escape(n)}</a></td><td>${downloadSize(Files.size(p))}</td></tr>" }.mkString
         html(x, "Downloads", "<p class='eyebrow'>SOFTWARE</p><h1>Choose your tools.</h1><p>Development snapshots for Linux servers and cross-platform clients. JDK 17+ for JVM software; Python 3.10+ for the Python SDK and shell. Operator execution needs Linux and Docker.</p><p>Download DACP Server, Union Server or the Python client with dacp-shell. Server archives include launch scripts and runtime libraries; pip installs client dependencies. Sizes use 1024-byte units: MB with one decimal place, kB as whole numbers.</p>" +
           (if (files.isEmpty) "<p>No artifacts have been published on this instance yet. <a href='https://github.com/rdcn-link/dacp-codex'>Build from source</a>.</p>" else "<table><thead><tr><th>Artifact</th><th>Size</th></tr></thead><tbody>" + rows + "</tbody></table>") +
-          "<h2>Install and verify</h2><pre>sha256sum --ignore-missing -c SHA256SUMS\nunzip dacp-server-*.zip\npython -m pip install dacp_client-*.whl</pre><p>Download <a href='/download/SHA256SUMS'>SHA256SUMS</a> alongside the desired artifacts; use sha256sum --ignore-missing -c SHA256SUMS to verify your selected downloads. See the <a href='/guide/docs/administrators/README_en.md'>administrator guide</a> for certificates and configuration, and the <a href='/guide/docs/users/README_en.md'>user guide</a> for shell commands.</p>")
+          "<h2>Install and verify</h2><pre>sha256sum --ignore-missing -c SHA256SUMS\nunzip dacp-server-*.zip\npython -m pip install dacp_client-*.whl</pre><p>Download <a href='/download/SHA256SUMS'>SHA256SUMS</a> alongside the desired artifacts; use sha256sum --ignore-missing -c SHA256SUMS to verify your selected downloads. See the <a href='/guide/docs/administrators/README.md'>administrator guide</a> for certificates and configuration, and the <a href='/guide/docs/users/README.md'>user guide</a> for shell commands.</p>")
       }
       else if (path.startsWith("/download/")) {
         val n = path.stripPrefix("/download/")
@@ -69,7 +69,7 @@ final class Website(host: String, port: Int, downloads: Path) extends AutoClosea
           try Files.copy(file, x.getResponseBody) finally x.close()
         }
       }
-      else if (path.startsWith("/guide/") && path.endsWith("_en.md") && !path.contains("..")) {
+      else if (path.startsWith("/guide/") && path.endsWith(".md") && !path.endsWith("_zh.md") && !path.contains("..")) {
         resource("/site/" + path.stripPrefix("/guide/")) match {
           case Some(bytes) =>
             val rendered = renderer.render(parser.parse(new String(bytes, UTF_8).replaceAll("\\[中文\\]\\([^)]*\\)\\s*(·\\s*)?", "")))
@@ -78,8 +78,7 @@ final class Website(host: String, port: Int, downloads: Path) extends AutoClosea
               val raw = m.group(2)
               val target = if (raw.startsWith("#") || raw.startsWith("https://") || raw.startsWith("http://")) raw
               else { val resolved = URI.create(path).resolve(raw).normalize().toString
-                if (resolved.takeWhile(_ != '#').endsWith("_en.md")) resolved
-                else if (resolved.endsWith("README.md")) resolved.stripSuffix("README.md") + "README_en.md"
+                if (resolved.takeWhile(_ != '#').endsWith(".md")) resolved
                 else "https://github.com/rdcn-link/dacp-codex/blob/main/" + resolved.stripPrefix("/guide/") }
               java.util.regex.Matcher.quoteReplacement(m.group(1) + "=\"" + target + "\"")
             })

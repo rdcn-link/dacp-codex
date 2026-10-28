@@ -26,6 +26,8 @@ class ExecutorSpec extends AnyFunSuite {
     assert(c.entrypoint.get(2).contains("'--no-index','--no-deps'"))
     assert(c.environment("PYTHONDONTWRITEBYTECODE") == "1")
     new PythonExecutor().command(p,Some("/operator/sum.py"))
+    val zip=new PythonExecutor().command(p,Some("/operator/operator.zip"))
+    assert(zip.entrypoint.get.exists(_.contains("artifact.endswith('.zip')")))
     intercept[IllegalArgumentException](new PythonExecutor().command(p,Some("/operator/ops.jar")))
   }
   test("container launch preserves image entrypoint and rejects unused artifact configuration") {

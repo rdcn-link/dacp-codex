@@ -11,7 +11,7 @@ libraryDependencies ++= Seq(
 Compile / resourceGenerators += Def.task {
   val root = baseDirectory.value.getParentFile
   val dest = (Compile / resourceManaged).value / "site"
-  val docs = (root ** "*_en.md").get.filterNot(f => f.getPath.contains("/target/") || f.getPath.contains("/."))
+  val docs = (root ** "*.md").get.filterNot(f => f.getName.endsWith("_zh.md") || f.getName == "AGENTS.md" || f.getPath.contains("/target/") || f.getPath.contains("/."))
   docs.map { f => val out = dest / IO.relativize(root, f).get; IO.copyFile(f, out); out } ++
     Seq("dacp-logo.png", "dacp-favicon.png", "dacp-favicon.ico").map { n =>
       val out = dest / "assets" / n; IO.copyFile(root / "assets" / n, out); out

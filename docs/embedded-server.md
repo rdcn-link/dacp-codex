@@ -1,12 +1,12 @@
-# 在用户程序中启动 DACP Server
+# Starting DACP Server inside an application
 
-[English](embedded-server_en.md) · [动态目录](dataset-catalogs.md)
+[中文](embedded-server_zh.md) · [Dynamic catalogs](dataset-catalogs.md)
 
-`dacp.DacpServer` 是可嵌入的 Scala/JVM API。命令行入口 `dacp.Main` 也使用同一实现，因此两种方式都包含 Flight TLS / Token、普通任务、可选 Union worker、执行记录和相同的授权检查。
+`dacp.DacpServer` is the embeddable Scala/JVM API. The `dacp.Main` CLI uses the same implementation, so both modes include Flight TLS / Token, ordinary tasks, optional Union workers, execution records, and identical authorization checks.
 
-## 启动与停机
+## Startup and shutdown
 
-已有服务器配置时：
+With an existing server configuration:
 
 ```scala
 import dacp.DacpServer
@@ -16,20 +16,20 @@ val server = DacpServer.builder()
   .build()
 
 try {
-  server.start()             // 监听启动后返回，用户程序可继续运行。
-  server.awaitTermination()  // 可选：让当前线程等待停机。
+  server.start()             // Returns after listening starts; the application can continue.
+  server.awaitTermination()  // Optional: block this thread until shutdown.
 } finally {
   server.close()
 }
 ```
 
-`configFile` 接受 `String` 或 `Path`。也可使用 `.config(config)` 传入新建的 `dacp.Config`。构建器只能 `build()` 一次；服务器只能启动一次，关闭后需构建新的实例。`boundPort` 和 `location` 在启动后提供实际 Flight 监听信息。
+`configFile` accepts a `String` or `Path`. Alternatively, `.config(config)` accepts a newly constructed `dacp.Config`. Builders allow one `build()`, and servers allow one start; create a new instance after closing. `boundPort` and `location` expose the actual Flight listener after startup.
 
-`close()` 可重复调用。启动失败时自动清理已分配的服务、目录、执行记录和 Arrow 内存；即使某个关闭操作抛出异常，也继续关闭其余资源。`build()` 成功后，服务器拥有传入的 Config 和目录实例；即使尚未启动，也应关闭服务器。不要在多个服务器之间共享一个 Config 或同一个可关闭的目录实例。
+`close()` is idempotent. Startup failure automatically releases allocated services, the catalog, execution records, and Arrow memory. Cleanup continues after an individual close fails. Once `build()` succeeds, the server owns its Config and catalog; close it even if never started. Do not share a Config or one closable catalog instance between servers.
 
-嵌入 API 不安装 JVM 退出钩子，不关闭进程级共享插件加载器。宿主程序负责决定何时 `close()`。命令行入口自行安装退出钩子。插件目录及静态扩展注册表目前是 JVM 级配置，同进程的多个实例不能使用不同插件安装目录；每个实例的数据目录、监听端口和执行历史目录仍应独立。
+The embedded API installs no JVM shutdown hook and does not close the process-wide plugin loader. The host application decides when to call `close()`; the CLI installs its own hook. Plugin directories and static extension registries are currently JVM-wide configuration, so servers in one JVM cannot use different plugin installation directories. Each instance should also have separate data directories, listener ports, and execution history directories.
 
-## 直接传入用户目录
+## Injecting an application catalog
 
 ```scala
 val catalog = new MyDatabaseCatalog(database)
@@ -39,19 +39,19 @@ val server = DacpServer.builder()
   .build()
 
 server.start()
-// 用户程序继续运行，管理自己的数据库或更新目录。
-// 停机时调用 server.close()。
+// The application continues managing its database or updating discovery metadata.
+// Call server.close() on shutdown.
 ```
 
-这里的 `MyDatabaseCatalog` 是用户实现的 `DatasetCatalog`。直接传入实例时无需 ServiceLoader 注册；它替代文件中的 `datasets` 或 `dataset_catalog`，不会创建被替代的 provider。使用 `.config(config)` 时必须在该 Config 的目录初始化之前注入，不能先调用 `Config.load` 初始化默认目录，再替换它；需要配置文件时使用 `.configFile(...).catalog(...)`。
+`MyDatabaseCatalog` is your implementation of `DatasetCatalog`. Direct injection needs no ServiceLoader registration. It replaces file-configured `datasets` or `dataset_catalog`, without creating the replaced provider. With `.config(config)`, inject before initializing that Config's catalog; do not call `Config.load` to initialize its default catalog and then replace it. Use `.configFile(...).catalog(...)` when loading a configuration file.
 
-每次 `catalog.open` 返回调用方拥有的 `PublishedDataset` 租约，服务器负责关闭访问句柄和租约。服务器停机关闭目录实例；目录不能关闭由宿主程序管理的共享数据库连接池。完整契约见[动态目录](dataset-catalogs.md)。
+Each `catalog.open` returns a caller-owned `PublishedDataset` lease. The server closes the access handle and lease, and closes the catalog on shutdown. Catalogs must not close a shared database pool owned by the host. See [dynamic catalogs](dataset-catalogs.md) for the full contract.
 
-## 可运行示例与工程依赖
+## Runnable example and project dependencies
 
-[完整示例](../examples/embedded-server/README.md)在同一 JVM 中维护并发注册表，在服务器启动后加入 `reports` Dataset，并通过普通 Flight 接口发布 CSV 数据。
+The [complete example](../examples/embedded-server/README.md) maintains a concurrent registry in the same JVM, adds a `reports` Dataset after startup, and publishes CSV data over the ordinary Flight interfaces.
 
-当前通过源码工程依赖接入，项目使用 Scala 2.13.16 / JDK 17。独立应用的 sbt 配置可参考示例：
+Integration currently uses source-project dependencies with Scala 2.13.16 and JDK 17. An independent application's sbt configuration can follow the example:
 
 ```scala
 ThisBuild / scalaVersion := "2.13.16"
@@ -64,4 +64,4 @@ javaOptions ++= Seq(
 )
 ```
 
-节点仍需有效 TLS 证书与授权配置。只提供数据浏览和读取无需 Docker；执行算子时才需要对应容器环境。
+Nodes still require valid TLS certificates and authorization configuration. Browsing and reading data need no Docker; executing operators requires their container environment.

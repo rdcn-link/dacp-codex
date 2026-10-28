@@ -1,17 +1,17 @@
-# 独立贡献插件示例
+# Standalone contributor plugins
 
-[English](README_en.md)
+[中文](README_zh.md)
 
-本项目仅依赖 `dacp-plugin-api` 编译，不依赖服务器实现，提供两个已注册的插件：
+This project compiles against `dacp-plugin-api` only. It does not depend on the server implementation. It supplies two registered plugins:
 
-- `example-message`：原生 Dataset，提供 `/message` 和 `/summary`，通过 `source.message` 配置。
-- `example-message-file`：处理 `.message` 文件的结构化文件处理器，直接提供 `/message` 和 `/summary` 子项，并支持私有配置 `options.prefix`。子项字节为包含所配前缀的 UTF-8 文本；文件根节点字节保持不变。
+- `example-message`: a native Dataset with `/message` and `/summary`, configured by `source.message`.
+- `example-message-file`: a `.message` structured-file handler with direct `/message` and `/summary` children and optional private `options.prefix`. Child bytes are UTF-8 text including the configured prefix; file-root bytes are unchanged.
 
-`/message` 提供 UTF-8 字节。`/summary` 提供一条 Arrow 记录，其 `characters` 列统计 Unicode 码点数量；显式记录数为 1。
+`/message` offers UTF-8 bytes. `/summary` offers one Arrow record with a `characters` column counting Unicode code points; its explicit record count is 1.
 
-此小型示例在内存中读取文本；生产处理器应对大型内容使用有界流式处理。
+The small example reads its text in memory; production handlers should use bounded streaming for large content.
 
-在项目根目录运行：
+From the repository root:
 
 ```bash
 (cd dacp-plugin-api && sbt publishLocal)
@@ -21,7 +21,7 @@ mkdir -p plugins
 cp examples/plugins/target/scala-2.13/dacp-example-plugins_2.13-0.1.0-SNAPSHOT.jar plugins/
 ```
 
-将以下片段加入完整服务器配置（还需配置监听和 TLS）。相对路径基于服务器工作目录解析；本示例从 `dacp-server/` 启动：
+Add this fragment to a complete server configuration (including listener and TLS settings). Relative paths resolve against the server working directory; this example starts from `dacp-server/`:
 
 ```yaml
 plugin_directory: ../.dacp-plugins
@@ -38,7 +38,7 @@ datasets:
         options: {prefix: "Preview: "}
 ```
 
-使用该配置重启已通过 stage 构建的服务器，无需修改启动器、为插件重新构建服务器或修改客户端。上述 `stage` 命令用于首次构建服务器；后续插件变更只需重建插件 JAR 并重启服务器。
+Restart the staged server with that configuration. No launcher edits, server rebuild for the plugin, or client changes are needed. The `stage` command above builds the server initially; subsequent plugin changes only require rebuilding the plugin JAR and restarting the server.
 
 ```python
 from dacp import Source
@@ -50,10 +50,10 @@ with Source.open("dacp://localhost:8815/files") as ds:
             print(reader.read().decode("utf-8"))
 ```
 
-注册文件位于 `src/main/resources/META-INF/services/`。文件及结构化文件处理器使用 `dacp.FormatHandler`，Dataset provider 使用 `dacp.DatasetProvider`。归档插件使用 `dacp.ContainerReader`，并自动获得格式条目。插件 JAR 和其私有依赖 JAR 应直接放在 `plugin_directory` 中，不扫描子目录。不要重复打包 DACP API 或服务器已提供的库。
+Registration files live in `src/main/resources/META-INF/services/`. File and structured-file handlers use `dacp.FormatHandler`; dataset providers use `dacp.DatasetProvider`. Archive plugins use `dacp.ContainerReader` and automatically receive a format entry. Plugin JARs and their private dependency JARs belong directly inside `plugin_directory`; nested directories are not scanned. Do not package another copy of the DACP API or server-supplied libraries.
 
-服务器的 [PluginSpec](../../dacp-server/src/test/scala/dacp/PluginSpec.scala) 将这些源码编译进测试，并通过 Flight 验证，同时覆盖已注册的归档插件与生命周期检查。自己的测试可以运行 `PluginChecks.listing(access)`，检查递归列表、直接子项、路径与元数据。还应添加格式特定的流式处理、有界内存、错误、取消和资源释放测试。
+The server's [PluginSpec](../../dacp-server/src/test/scala/dacp/PluginSpec.scala) compiles this source into its tests and exercises it over Flight, alongside registered archive plugins and lifecycle checks. Run `PluginChecks.listing(access)` in your own tests to check recursive listing, immediate children, paths, and metadata. Add format-specific streaming, bounded-memory, error, cancellation, and resource-release tests.
 
-动态目录示例 `example.JdbcCatalogProvider` 通过 `META-INF/services/dacp.DatasetCatalogProvider` 注册，查询数据库登记表并按需构建 Dataset。构建本工程后将 JAR 与 JDBC 驱动放到插件目录；配置及表结构见 [DatasetCatalog 指南](../../docs/dataset-catalogs.md)。
+The dynamic catalog example `example.JdbcCatalogProvider` registers through `META-INF/services/dacp.DatasetCatalogProvider`, queries database registry tables, and constructs Datasets on demand. After building this project, install its JAR and the JDBC driver in the plugin directory. See the [DatasetCatalog guide](../../docs/dataset-catalogs.md) for configuration and table definitions.
 
-节点发布后，`/summary` 还自动提供 JSONL `bytes` 视图。例如配置 `message: hello` 时，其字节内容为 `{"characters":5}` 加一个换行符；插件仍只实现 records。参见[通用视图规则](../../docs/dataset-access.md#通用-jsonl-bytes-视图)。
+Once published by a node, `/summary` also receives an automatic JSONL `bytes` view. With `message: hello`, its bytes are `{"characters":5}` followed by a newline; the plugin still implements only records. See the [common view rules](../../docs/dataset-access.md#common-jsonl-bytes-view).

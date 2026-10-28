@@ -41,7 +41,7 @@ object Repository {
     require(sha256.matches("[a-f0-9]{64}"), "invalid artifact digest")
     root.resolve("blobs/sha256").resolve(sha256)
   }
-  private def store(root: Path, source: Path, filename: String): com.fasterxml.jackson.databind.node.ObjectNode = {
+  private[repository] def store(root: Path, source: Path, filename: String): com.fasterxml.jackson.databind.node.ObjectNode = {
     require(Files.isRegularFile(source) && Files.size(source) > 0, "empty or missing artifact")
     val hash = checksum(source)
     val target = blob(root, hash)
@@ -104,8 +104,8 @@ object Repository {
       val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
       val in = Files.newInputStream(file)
       val d = try new org.yaml.snakeyaml.Yaml(options).load[java.util.Map[String, Object]](in).asScala.toMap finally in.close()
-      require(Set("name", "version", "image", "category", "icon", "inputs", "parameters").subsetOf(d.keySet) &&
-        d.keySet.subsetOf(Set("name", "version", "image", "description", "category", "icon", "executor", "entrypoint", "artifact", "inputs", "parameters", "executor_config", "provenance")), "invalid operator definition")
+      require(Set("name", "version", "image", "icon", "inputs", "parameters").subsetOf(d.keySet) &&
+        d.keySet.subsetOf(Set("name", "version", "image", "description", "icon", "executor", "entrypoint", "artifact", "inputs", "parameters", "executor_config", "provenance")), "invalid operator definition")
       dacp.operator.OperatorPresentation.validate(mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](d.asJava))
       val reference = s"${d("name")}@${d("version")}"
       val (name, version) = parts(reference)
@@ -132,6 +132,7 @@ object Repository {
   }
   def publish(root: Path, reference: String, image: String, ports: com.fasterxml.jackson.databind.JsonNode, exporter: ImageExporter = Docker, description: String = "",
               executor: String = "container", entrypoint: String = "", artifact: Option[Path] = None, configuration: com.fasterxml.jackson.databind.JsonNode = mapper.createObjectNode(), provenance: Provenance = Provenance()): String = synchronized {
+    require(!ports.has("categories"),"categories are assigned by repository administrators")
     dacp.operator.OperatorPresentation.validate(ports)
     dacp.operator.ParameterSchema.validate(ports.get("parameters"))
     validatePorts(ports)
@@ -170,7 +171,6 @@ object Repository {
         }
         val manifest = mapper.createObjectNode()
         manifest.put("api_version", 2).put("name", name).put("version", version).put("description", description)
-        manifest.put("category",ports.path("category").asText)
         manifest.set[com.fasterxml.jackson.databind.JsonNode]("icon",ports.path("icon"))
         manifest.set[com.fasterxml.jackson.databind.JsonNode]("inputs",ports.path("inputs"))
         manifest.set[com.fasterxml.jackson.databind.JsonNode]("parameters",ports.path("parameters"))

@@ -1,8 +1,8 @@
-# DACP 节点 Web 看板
+# DACP node web dashboard
 
-[English](node-web_en.md)
+[中文](node-web_zh.md)
 
-每个 dacp-server 默认启动公开、只读的 HTTP 看板。默认监听 `0.0.0.0`，端口为 DACP 服务端口加 1000，例如 DACP `8815` 对应 HTTP `9815`，DACP `18861` 对应 HTTP `19861`。启动日志打印实际监听地址。DACP 服务端口大于 64535 时需要显式设置 HTTP 端口。
+Each dacp-server starts a public, read-only HTTP dashboard by default. It binds to `0.0.0.0` on the DACP service port plus 1000: DACP `8815` uses HTTP `9815`, and DACP `18861` uses HTTP `19861`. Startup logs report the actual listener. DACP service ports above 64535 require an explicit HTTP port.
 
 ```yaml
 web:
@@ -12,43 +12,43 @@ web:
   port: 19861
 ```
 
-关闭看板：
+Disable the dashboard:
 
 ```yaml
 web:
   enabled: false
 ```
 
-`enabled` 必须为布尔值，`port` 必须为 0–65535 的整数；0 由操作系统分配临时端口，嵌入式程序可通过 `server.webPort` 获取。HTTP 端口绑定失败会使节点启动失败并释放已占用的 DACP 服务端口和资源。关闭节点同时关闭 HTTP 服务。
+`enabled` must be a boolean and `port` an integer from 0 to 65535. Port 0 requests an ephemeral port, available to embedded applications through `server.webPort`. An HTTP bind failure fails node startup and releases the DACP service port and resources already acquired. Closing the node also closes HTTP.
 
-首页展示节点 DACP 服务地址、启动时间、运行时长、任务容量、可用执行器、数据集目录和分页执行记录。选择记录查看 G6 DAG：横向布局、服务器分组、步骤标题、状态、已观测流量，支持点击详情、缩放与平移。节点与 Union 复用同一份绘图代码、样式和离线 G6 资源；都使用项目 DACP Logo。
+The homepage displays the DACP service address, startup time, uptime, task capacity, available executors, dataset directory, and paginated execution history. Select a record to view a G6 DAG with horizontal layout, server grouping, step titles, states, observed traffic, click details, zoom, and pan. Node and Union dashboards reuse the same renderer, styles, and offline G6 resources; both use the project DACP logo.
 
-Union 子任务展示本节点收到的任务定义和步骤，外部输入标为跨节点输入；本地步骤之间保留依赖连线。全局工作流及跨节点调度状态仍以 Union 看板为准。普通 Job 保存脚本，页面根据其定义展示依赖，结合执行记录读取步骤状态。没有记录到的流量显示 `—`。运行中的 Union 子任务按需读取当前内存状态和计数，结束后读取持久化记录；历史记录不包含任务定义时不补造 DAG。
+Union subjobs display the definitions and steps assigned to this node. External inputs are marked as cross-node inputs; dependencies between local steps retain their edges. Use the Union dashboard for the global workflow and scheduling state. Ordinary Jobs retain their scripts; the page displays dependencies from those definitions and reads step states from execution records. Unobserved traffic shows `—`. Running Union subjobs read current in-memory states and counters on demand; completed executions use persistent records. Historical records without task definitions do not receive invented DAGs.
 
-状态与所选任务每 2 秒刷新，数据集目录在打开页面或手动刷新时读取。看板不会打开 Item、运行算子、取消任务或消费结果流。
+Node status and the selected execution refresh every 2 seconds. Dataset directories are read on page load or manual refresh. The dashboard does not open Items, run operators, cancel jobs, or consume result streams.
 
-该页面公开执行元信息及保存的脚本和任务参数，适用于向查看者公开这些信息的部署；可配置监听地址或关闭。Flight 使用 TLS 与 Token；已发布的数据集默认公开，任务执行仍受其独立授权规则约束。Web 返回 `Cache-Control: no-store`，服务静态资源不依赖外网。
+The page publicly exposes execution metadata and stored scripts and task parameters. Use it where this information may be public, configure its bind address, or disable it. Flight uses TLS and tokens; published datasets are public by default, while execution retains its separate authorization rules. Responses use `Cache-Control: no-store`; static resources require no external network access.
 
-Union 提供公开 DACP 代理目录，管理网站也提供按成员查看数据集的页面；见[数据集目录](dataset-directory.md)。
+Union provides public DACP proxy catalogs and per-member dataset pages on its management website; see [dataset directories](dataset-directory.md).
 
-`web.public_host` 是浏览器访问 Web 看板时使用的主机名，默认沿用节点 `public_host`；它与监听地址 `web.host` 分开。节点只在 HTTP 服务成功启动后，通过 DACP `node_status` 报告 `web_enabled: true` 和实际端口对应的 `web_url`。Union 看板成员列表显示该地址链接；关闭 Web 时显示“未启用”，无法取得节点状态时显示未知。
+`web.public_host` is the browser-facing dashboard hostname and defaults to the node `public_host`; it is separate from the bind address `web.host`. Only after HTTP starts successfully does the node report `web_enabled: true` and `web_url`, including its actual port, through DACP `node_status`. The Union member table links to that address, shows “未启用” when Web is disabled, and an unknown state when node status is unavailable.
 
-看板界面使用英文。任务标题、数据集名称、JSON 描述和用户脚本保留原文；日期和数值采用英文区域格式。
+The dashboard interface uses English. Task titles, dataset names, JSON descriptions and user scripts retain their original content; dates and numbers use English locale formatting.
 
-## 执行来源与内部路由
+## Execution sources and internal routing
 
-作业列表仅展示顶层作业，子步骤不再单独占行。作业详情中的 Operator step records 可展开查看各步骤的算子、状态、开始时间、耗时及尝试编号；各次尝试的步骤记录均保留。
+The job list shows only top-level jobs; child steps do not occupy separate rows. Expand Operator step records in job details to view each step’s operator, state, start time, duration and attempt number. Step records from all attempts are retained.
 
-作业列表的 Source 列区分 `Direct client`（用户直接提交）与 `Union`（Union 下发）。Type 列显示 `User job` 或 `Union sub-job`。Source 筛选在分页前应用，切换筛选后从第一页开始。详情显示 Union ID、执行 ID 和父记录关联。
+The Source column distinguishes `Direct client` submissions from `Union` assignments. Type shows `User job` or `Union sub-job`. Source filtering applies before pagination and resets to the first page when changed. Details show the Union ID, execution ID and parent-record association.
 
-看板 HTTP 的 `/api/history?source=client` 与 `?source=union` 按来源查询；省略 `source` 或使用 `source=all` 返回全部顶层作业；过滤步骤后再分页。`/api/executions/<record_id>` 的 `step_records` 包含关联的步骤记录。历史条目与详情包含 `execution_source: client|union`，原有 `kind` 保留精确的记录类型。来源是服务端根据执行记录确定的，不是用户指定的授权字段。
+The dashboard HTTP endpoints `/api/history?source=client` and `?source=union` filter by origin. Omit `source`, or use `source=all`, for all top-level jobs; steps are excluded before pagination. `/api/executions/<record_id>` includes associated step records in `step_records`. History entries and details include `execution_source: client|union`; `kind` retains the precise record type. The server derives the source from execution records; it is not a user-supplied authorization field.
 
-Execution topology 图形化展示本地连接和跨节点边界。Sub-job definition 完整展示持久化记录中实际下发到本节点的步骤定义，保留算子、参数、输入、物化设置和远端 `output_routes`，不筛选或改写字段。本地输入保留 `task:port`，远端输入保留定位对象，不再单独展示路由区域。普通作业展示 Job script。`consumer_identity` 身份摘要用于授权远端读取者，不表示数据类型或传递方式。
+Execution topology shows local connections and cross-node boundaries graphically. Sub-job definition displays the complete persisted definitions dispatched to this node, preserving operators, parameters, inputs, materialization settings and remote `output_routes` without filtering or rewriting fields. Local inputs use `task:port`; remote inputs retain their location objects. There is no separate routing section. Ordinary jobs display Job script. A `consumer_identity` digest authorizes a remote output reader; it is not a data representation or delivery mode.
 
-DAG 默认锁定鼠标滚轮缩放；点击 🔒 Mouse zoom 解锁后才响应滚轮，再次点击可锁定。工具栏的加减、适应视图和 100% 按钮始终可用。
+Mouse-wheel zoom is locked by default. Click 🔒 Mouse zoom to unlock it; click again to lock it. Toolbar zoom, Fit to view and 100% controls remain available.
 
-锁定时，在 DAG 上滚动鼠标滚轮会正常上下滚动页面；仅解锁时由图形接管滚轮。
+While locked, scrolling the wheel over the DAG scrolls the page normally; only unlocked graphs capture wheel scrolling.
 
-跨节点输入接口显示在上游服务器的独立区域中，位于本节点执行区域之外。接口卡片标注上游步骤及输出端口（如 `parse.result`）；它不是本节点执行的步骤。依赖图和泳道布局采用同一归属关系。
+Cross-node input interfaces appear in a separate upstream-server group outside this node’s execution area. Interface cards identify the upstream step and output port, such as `parse.result`; they are not steps executed on this node. Dependency and swimlane layouts use the same ownership.
 
-作业名称为必填的 `name`；执行 ID 由系统生成。节点与 Union 的作业列表统一采用 Name、Job ID、Source、Type、Status、Started at、Duration 列，详情展示名称和完整 ID。作业定义、子作业定义和执行策略统一显示 YAML。
+Jobs have a required readable `name` and a system-generated execution ID. Node and Union job lists share Name, Job ID, Source, Type, Status, Started at and Duration columns; details show the name and full ID. Job definitions, subjob definitions and execution policies display as YAML.

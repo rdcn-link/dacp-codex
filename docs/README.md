@@ -1,78 +1,81 @@
-# DACP 文档
+# DACP documentation
 
-[English](README_en.md) · [项目首页](../README.md)
+[中文](README_zh.md) · [Project home](../README.md)
 
-作业格式及流依赖见[作业说明](jobs.md).
+For job format and stream dependencies, see [Jobs](jobs.md).
 
-协议总览：[DACP（Data Access and Collaboration Protocol）](protocol.md)。
+Protocol overview: [DACP (Data Access and Collaboration Protocol)](protocol.md).
 
-动态数据集目录与程序内启动：[DatasetCatalog](dataset-catalogs.md)、[嵌入式服务器](embedded-server.md)。
+Dynamic catalogs and application embedding: [DatasetCatalog](dataset-catalogs.md), [embedded server](embedded-server.md).
 
-当前协作部署的[算子库清单](operator-catalog.md)：6 个已发布算子的端口、参数、输入输出和 Shell / Job 示例。
+The [collaboration operator catalog](operator-catalog.md) documents the six published operators, ports, parameters, input/output and Shell / Job examples.
 
-## 按角色阅读
+## Read by role
 
-| 入口 | 适用对象 | 阅读路线 |
+| Entry point | Audience | Reading path |
 |---|---|---|
-| [用户指南](users/README.md) | 使用已部署服务的数据使用者、分析人员和应用使用者 | 连接 → 浏览与查询 → 执行作业 → 看板和历史 |
-| [管理员指南](administrators/README.md) | 部署节点、Union 或算子仓库的运维人员 | 环境与证书 → 发布数据 → 算子与授权 → 监控、存储和停机 |
-| [开发者指南](developers/README.md) | 算子作者、应用集成者及插件和协议开发者 | 模块架构 → 扩展契约 → 实现与注册 → 测试 |
+| [User guide](users/README.md) | Data consumers, analysts, and application users of deployed services | Connect → browse and query → execute jobs → dashboard and history |
+| [Administrator guide](administrators/README.md) | Operators deploying nodes, Union servers, or repositories | Environment and certificates → data publication → operators and authorization → monitoring, storage, and shutdown |
+| [Developer guide](developers/README.md) | Operator authors, application integrators, plugin and protocol developers | Module architecture → extension contracts → implementation and registration → tests |
 
-## 工具与模块手册
+## Tool and module manuals
 
-| 工具 | 文档 |
+| Tool | Documentation |
 |---|---|
-| dacp-shell、Python SDK | [用户指南](users/README.md)、[查询语义](records-scans.md)（英文） |
-| Scala SDK | [Scala 客户端](../dacp-client-scala/README.md) |
-| DACP Server | [管理员指南](administrators/README.md)、[配置和协议参考](reference.md) |
-| Union Server 与 Web 看板 | [Union 手册](../dacp-union-server/README.md)、[协作协议](union.md)、[双节点示例](../examples/union/README.md) |
-| 算子仓库 CLI 与网站 | [仓库手册](../dacp-operator-repository/README.md) |
-| 算子运行时与执行器 | [运行时](../dacp-operator-runtime/README.md)、[执行器](../plugins/dacp-plugin-operator-executors/README.md) |
-| 插件 API 与 Union 传输工具 | [插件 API](../dacp-plugin-api/README.md)、[Union 协议模块](../dacp-union-protocol/README.md) |
+| dacp-shell, Python SDK | [User guide](users/README.md), [query semantics](records-scans.md) |
+| DACP proxy server | [Single-upstream TCP relay](../dacp-proxy-server/README.md) |
+| Scala SDK | [Scala client](../dacp-client-scala/README.md) |
+| DACP Server | [Administrator guide](administrators/README.md), [configuration and protocol reference](reference.md) |
+| Union Server and web dashboard | [Union manual](../dacp-union-server/README.md), [collaboration protocol](union.md), [two-node example](../examples/union/README.md) |
+| Operator repository CLI and website | [Repository manual](../dacp-operator-repository/README.md) |
+| Operator runtime and executors | [Runtime](../dacp-operator-runtime/README.md), [executors](../plugins/dacp-plugin-operator-executors/README.md) |
+| Plugin API and Union transport utilities | [Plugin API](../dacp-plugin-api/README.md), [Union protocol module](../dacp-union-protocol/README.md) |
 
-## 专题参考
+## Topic references
 
-| 主题 | 文档 |
+| Topic | Documentation |
 |---|---|
-| 算子编写、发布、代码示例 | [Scala / Java / Python 算子](operator-authoring.md)、[原生命令](native-commands.md) |
-| DEBUG 源码提交 | [源码运行时与 heredoc](operator-source.md) |
-| 运行时、制品、缓存和帧协议 | [算子打包](operator-packaging.md)、[流契约](operator-streams.md)（英文） |
-| 源码、许可证、构建说明和 SBOM | [算子审查材料](operator-provenance.md) |
-| 执行记录、历史查询和重启语义 | [执行记录](execution-history.md) |
-| 插件发现与贡献要求 | [插件体系](plugins.md)（英文） |
-| Dataset 后端、文件格式和结构化浏览 | [Dataset provider](dataset-providers.md)、[格式处理器](format-handlers.md)（英文） |
-| 过滤、列投影、SQL shell 与优化契约 | [记录查询](records-scans.md)（英文） |
-| 数据模型、读取能力和节点配置字段 | [技术参考](reference.md) |
+| Writing, publishing, and example code | [Scala / Java / Python operators](operator-authoring.md), [native commands](native-commands.md) |
+| DEBUG source submission | [Source runtimes and heredocs](operator-source.md) |
+| Runtimes, artifacts, caches, and frame protocol | [Operator packaging](operator-packaging.md), [stream contract](operator-streams.md) |
+| Source, licenses, build instructions, and SBOM | [Operator review material](operator-provenance.md) |
+| Execution records, history queries, and restart semantics | [Execution history](execution-history.md) |
+| Plugin discovery and contribution requirements | [Plugin architecture](plugins.md) |
+| Dataset backends, file formats, and structured browsing | [Dataset providers](dataset-providers.md), [format handlers](format-handlers.md) |
+| Filters, projections, SQL shell, and optimization contracts | [Records queries](records-scans.md) |
+| Data model, read capabilities, and node settings | [Technical reference](reference.md) |
 
-## 可运行示例
+## Runnable examples
 
-- [普通节点间 Job](../examples/multi-node/README.md)和 [Union 跨中心分析](../examples/union/README.md)。
-- [Scala 算子](../examples/operators/scala/README.md)、[Python 算子](../examples/operators/python/README.md)、[原生可执行算子](../examples/operators/native/README.md)。
-- [插件工程](../examples/plugins/README.md)和 [SQL 数据发布](../examples/sql/README.md)。
+- [Jobs between ordinary nodes](../examples/multi-node/README.md) and [Union analysis across centers](../examples/union/README.md).
+- [Scala operators](../examples/operators/scala/README.md), [Python operators](../examples/operators/python/README.md), [native executable operators](../examples/operators/native/README.md).
+- [Plugin project](../examples/plugins/README.md) and [SQL publication](../examples/sql/README.md).
 
-除非文档另行指定，命令从项目根目录执行。服务配置中的相对路径以服务进程工作目录为基准。示例证书、主机名、端口及文件路径用于本地演示，部署时按实际环境配置。各 README 的 `README.md` 为中文，`README_en.md` 为对应英文版。
+Commands run from the project root unless a document specifies otherwise. Relative paths in service configurations resolve against the service process working directory. Example certificates, hosts, ports, and paths are for local demonstrations; configure deployment values for your environment. Documentation defaults to English in `README.md` and unsuffixed topic files; complete Chinese translations use `README_zh.md` and `*_zh.md`.
 
-[用户访问日志](access-logs.md)：JSON Lines 文件、大小轮转、字段及采集。
+[User access logs](access-logs.md): JSON Lines files, size rotation, fields and collection.
 
-[数据集目录](dataset-directory.md)：节点公开描述、Union Web 按节点查看目录和 Shell `datasets`。
-[同进程执行实测](operator-fusion-benchmark.md)：100 万与 400 万行的策略对比。
+[Dataset directories](dataset-directory.md): public node descriptions, per-member browsing on the Union website and shell `datasets`.
+[Shared-process measurements](operator-fusion-benchmark.md): strategy comparisons with one million and four million rows.
 
-[节点 Web 看板](node-web.md)：默认 HTTP 服务、配置开关及 G6 任务 DAG。
+[Node web dashboard](node-web.md): default HTTP service, configuration, and G6 execution DAGs.
 
-官方网站的构建、部署和软件下载发布：[dacp-website](../dacp-website/README.md)。网站仅提供英文内容。
+Official website builds, deployment and software download publication: [dacp-website](../dacp-website/README.md). Website content is English-only.
 
-[S3 兼容读取](s3-service.md)：节点启动时公开 dataset bucket 与 Item object，支持 SigV4 认证的只读下载。
+[S3-compatible reads](s3-service.md): dataset buckets and Item objects exposed at node startup, with SigV4-authenticated read-only downloads.
 
-Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](union-proxy.md)。
+Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](union-proxy.md).
 
-[认证与访问控制](security.md)：Flight Token、Union 服务凭据、S3 SigV4、撤销与审计。[结构推导](structure-inference.md)：算子必选输出推导与工作流校验。
+[Authentication and access control](security.md): Flight tokens, Union service credentials, S3 SigV4, revocation and audit. [Structure inference](structure-inference.md): mandatory operator output inference and workflow validation.
 
-[流传递与逐步物化实测](materialization-benchmark.md)：50 万条气象记录、三轮耗时和实际落盘量。
+[Streaming versus per-step materialization benchmark](materialization-benchmark.md): 500,000 weather observations, three measured runs and actual persisted bytes.
 
-本地与跨节点流式作业的[效率对比实测](local-vs-union-benchmark.md)。
+[Measured local versus cross-node streaming job performance](local-vs-union-benchmark.md).
 
-项目交流材料：[英文会议海报与 A4 PDF](../assets/posters/README.md)。
+Project presentation material: [English meeting poster and A4 PDF](../assets/posters/README.md).
 
-[在线 Job 设计器](../dacp-job-designer/README.md)：从浏览器设计单机与跨节点作业，导出 YAML 供 Shell / SDK 提交。
+[Online Job Designer](../dacp-job-designer/README.md): design local and cross-node jobs in the browser and export YAML for Shell / SDK submission.
 
-- [算子参数类型及设计器表单](operator-parameters.md)
+- [Operator parameter types and designer forms](operator-parameters.md)
+
+Source-only operator publication: [submission, isolated builds, review and trust scores](operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.

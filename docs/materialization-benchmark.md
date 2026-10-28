@@ -1,20 +1,20 @@
-# Stream 与逐步物化对比
+# Streaming versus per-step materialization
 
-[English](materialization-benchmark_en.md)
+[中文](materialization-benchmark_zh.md)
 
-2026-10-26；50 万条气象记录，输入 18,500,050 bytes，最终 Arrow 载荷 29,094,344 bytes。
+Measured on 2026-10-26 with 500,000 weather observations: 18,500,050 input CSV bytes and 29,094,344 final Arrow payload bytes.
 
-四步骤：A read_item → A CSV parser → B quality filter → C temperature filter。三个节点进程位于同一物理机，使用回环 Flight，XFS /dev/vdb 文件系统。两种策略各预热一次，正式交替运行三次。每次完整消费结果并等待任务成功，包含调度、进程启动、处理、传输及提交时间，不执行 schema 推导或重试。
+Four steps: A read_item → A CSV parser → B quality filter → C temperature filter. Three node processes share one physical host, loopback Flight and XFS on /dev/vdb. Each policy receives one warmup, followed by three alternating measured runs. Timing includes submission, scheduling, process startup, processing, transfer, complete result consumption and successful commit. There is no schema inference or retry.
 
-| 策略 | 第一次(s) | 第二次(s) | 第三次(s) | 中位数(s) | 每次结果落盘量 |
+| Policy | Run 1 (s) | Run 2 (s) | Run 3 (s) | Median (s) | Persisted result bytes per run |
 |---|---:|---:|---:|---:|---:|
-| 全 stream | 32.247 | 26.517 | 23.827 | 26.517 | 0 |
-| 每步物化 | 37.510 | 24.867 | 22.233 | 24.867 | 106,275,999 bytes（4 个已提交步骤） |
+| Streaming | 32.247 | 26.517 | 23.827 | 26.517 | 0 |
+| Materialize every step | 37.510 | 24.867 | 22.233 | 24.867 | 106,275,999 (4 committed steps) |
 
-加速比（物化中位数 / stream 中位数）为 0.9378×；本次未观察到 stream 加速。单次波动较大，不能将约 6.6% 的耗时差解释为稳定性能差异。
+Speedup, defined as materialized median / streaming median, is **0.9378×**. This test did not observe a streaming speedup. Run-to-run variation is substantial; the approximately 6.6% duration difference does not establish a stable performance difference.
 
-重要限制：当前物化实现边传输边写文件，完成后 fsync 提交，下游仍并发处理。因此这不是“每一步写完完整文件、下一步重新读文件”的批处理基线，不代表与传统文件工作流引擎的性能差距。
+The current materialization implementation writes while transmitting and commits with fsync on completion. Downstream steps still process concurrently. This is not a baseline that writes each complete intermediate file before the next step reads it, and it does not establish a comparison with traditional file-based workflow engines.
 
-八次运行均为 500,000 行且最终载荷 SHA-256 完全一致。stream 的 0 指结果物化文件，不包括输入原文件、日志和任务历史。
+All eight runs produced 500,000 rows and identical final-payload SHA-256 hashes. Zero persisted bytes refers to engine-managed result materialization, excluding the existing input file, logs and execution history.
 
-原始耗时、任务 ID、工作流、策略、结果哈希和已提交步骤见[测试数据](benchmarks/materialization-20261026.json)。输入为 UTF-8 CSV，表头为 `station_id,timestamp,temperature,humidity,quality`；第 i 条记录（从 0 起）为 `S{i%1000:04d},2026-10-26T{i%24:02d}:00:00Z,{10+i%300/10:.1f},{40+i%60},0`，行尾为 LF。复现实验时将记录中的公开 URI 与节点名称替换为自己的部署，先发布所需的[协作算子](operator-catalog.md)。
+[Raw measurements](benchmarks/materialization-20261026.json) include task IDs, workflow, policies, result hashes and committed steps. Input is UTF-8 CSV with the header `station_id,timestamp,temperature,humidity,quality`. Row i, starting at zero, is `S{i%1000:04d},2026-10-26T{i%24:02d}:00:00Z,{10+i%300/10:.1f},{40+i%60},0`, with LF line endings. To reproduce, replace public URIs and logical node names with your own deployment and publish the required [collaboration operators](operator-catalog.md).

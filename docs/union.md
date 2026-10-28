@@ -1,26 +1,26 @@
-# 单 Union 协作协议
+# Single-Union collaboration protocol
 
-每个 Union 维护一个持久身份，从启动配置读取独立成员，主动轮询成员健康并调度作业。节点不注册、不发送心跳。
+Each Union maintains one persistent identity and reads its independent members from startup configuration. It polls member health and schedules jobs; nodes do not register or send heartbeats.
 
-## 身份与授权
+## Identity and authorization
 
-普通客户端使用 TLS 与 Bearer Token。Union 到成员使用双向 TLS 及节点签发、绑定 Union ID 与证书指纹的服务凭据。信任 CA 本身不授予协作权限。成员信任该 Union 服务凭据授权的所有操作；节点间流受精确执行计划约束。服务凭据撤销或到期会停止运行中的协作。凭据操作和普通 Token 不同的撤销行为见[认证与访问控制](security.md)。
+Ordinary clients use TLS and bearer tokens. Union-to-member calls use mutual TLS plus node-issued service credentials bound to the Union ID and certificate fingerprint. Trusting a CA alone grants no collaboration permissions. Members trust all operations authorized through their Union service credential. Peer data streams are limited to exact execution plans. Local credential revocation or expiry stops active collaborative work. See [authentication and access control](security.md) for credential administration and different ordinary-token revocation semantics.
 
-成员仅来自配置，不提供远程邀请或管理 API。Union 身份、成员证书固定记录、公开命名空间路由与执行历史持久保存。成员不可用不阻止启动，后续轮询重试。重启不恢复运行中的执行；已提交的物化输出支持显式重放。
+Membership comes only from configuration, without remote invitation or administration APIs. Union identity, member pins, public namespace routes and execution history persist. Unavailable members do not prevent startup and are retried by polling. Restart does not recover running executions; committed materializations support explicit replay.
 
-## 执行与流
+## Execution and streams
 
-客户端提交使用 Union 公开 URI、可选逻辑 task.node 和明确 outputs 的标准 Job；管理员也可通过专用异步 API 指定内部位置。X 复用 DAG 验证，按节点组织子 Job。Union 只接受版本化算子，不接受内嵌源码。输入统一为上游 `task[:port]`，外部 Item 通过 `read_item@1.0` 的 `params.uri/view` 接入；本地读取使用 DatasetAccess，不通过 X 或 Flight 下载。每条输出连接只有一个消费者。
+Clients submit standard Jobs with public Union input URIs, optional logical task.node and explicit outputs. Asynchronous submission uses the same public namespace. See [Union proxy service](union-proxy.md). X reuses DAG validation and groups tasks into node subjobs. Union accepts versioned operators only, without inline source. Inputs use upstream `task[:port]` references; external Items enter through `read_item@1.0` with `params.uri/view`. Foreign member streams use Flight. Nodes read local Items through DatasetAccess, without downloading through X or Flight. Each output connection has one consumer.
 
-X 先 prepare 所有子 Job，得到接收确认后再 start。节点检查自身容量与授权，拒绝无法执行的计划。A 输出连接绑定本次 execution/task/port 与 B 的证书身份；B 通过 mTLS 主动拉取。相同节点内使用有界队列，跨节点使用带背压的 Flight `DoGet` 流。复用 OperatorFrames：start/data/end 后，成功退出才发送 complete；失败以 Flight 错误状态结束。接收 complete 后仍须验证 Flight 正常结束。输出不创建 Dataset，默认直接流传递；显式策略可在产出节点物化选定输出供重放。
+X prepares every subjob before starting any. Nodes check capacity and authorization and reject plans they cannot execute. A's output binds the execution/task/port to B's certificate identity; B pulls it over mTLS. Local connections use bounded queues; cross-node streams use Flight `DoGet` with backpressure. OperatorFrames are reused: start/data/end is followed by complete only after successful execution; failures terminate with a Flight error. After complete, consumers must still verify successful Flight end-of-stream. Outputs create no Dataset and stream directly by default; explicit policy can materialize selected outputs on the producing node for replay.
 
-最终结果由节点发给 X，再经有界队列转发给客户端。状态通道独立，不受客户端慢速读取结果阻塞。连接、执行与等待结果均有超时；显式取消、执行失败、最终结果读取中断取消整个 Job。提交后尚未连接结果的客户端可以在超时前连接；断开状态订阅本身不取消 Job。
+Final results travel from a node through X's bounded queue to the client. Status is independent and does not wait for a slow result reader. Connections, execution, and waiting for results have timeouts. Explicit cancellation, execution failure, or interruption of final result consumption cancels the entire Job. Clients can connect to results after submission but before timeout; disconnecting a status subscription alone does not cancel execution.
 
-### 下发子 Job 的路由契约
+### Dispatched subjob routing contract
 
-全局 Job、节点子 Job、执行策略及变量文件统一使用 YAML。U 保存收到的工作流原文 `submitted_job_yaml`，并将规划后的执行定义保存为 YAML；通过 Flight 控制消息的 `job_yaml` 文本字段下发子作业。策略使用 `execution_policy_yaml` 文本字段，变量由客户端替换后按 YAML 提交。状态和流量等元数据仍为结构化消息。
+Global jobs, node subjobs, execution policies and variable files use YAML. U retains the received workflow text as `submitted_job_yaml` and persists the planned execution definition as YAML. Subjobs travel in the `job_yaml` text field of Flight control messages; policies use `execution_policy_yaml`. Clients resolve variables before submitting YAML. Status and traffic metadata remain structured messages.
 
-用户 Job 的 `inputs` 只接受 `task[:port]`，顶层 `outputs` 选择返回流。U 分解后下发给 C 的内部任务示例如下；身份占位符需替换为实际的 64 位十六进制证书摘要：
+User Job inputs accept only `task[:port]`; top-level `outputs` selects returned streams. An internal task dispatched by U to C looks like the following. Replace identity placeholders with actual 64-character hexadecimal certificate digests:
 
 ```yaml
 name: Weather screening
@@ -33,43 +33,43 @@ tasks:
     inputs:
       source:
         origin: dacp://node-b:18862
-        producer_identity: <B的身份摘要>
+        producer_identity: <B identity digest>
         task: filter
         port: result
     output_routes:
       result:
-        consumer_identity: <U的身份摘要>
+        consumer_identity: <U identity digest>
 ```
 
-本地输入使用 `source: read:result`，只由 `inputs` 建立连接，不附加本地身份摘要。跨节点输入使用包含 `origin`、`producer_identity`、`task`、`port` 的定位对象；不接受本地输入的对象形式。
+Local inputs use `source: read:result`; `inputs` alone establishes the connection without a local identity digest. Cross-node inputs use location objects containing `origin`, `producer_identity`, `task` and `port`. Object-form local inputs are rejected.
 
-`output_routes` 只声明通过 Flight 供远端读取的输出（包括返回 U 的最终输出）；没有远端输出时省略。每个值必须且只能包含 `consumer_identity`。不接受旧的 `outputs` 路由字段或标量身份值，同一输出端口不能同时连接本地与远端消费者。节点从本地 `inputs` 和远端 `output_routes` 的并集推导连接端口，用于执行、物化及重放；本地流只在节点内部连接，无法通过 Flight 读取。实际表示形式来自算子的输出流头，不在路由中声明。
+`output_routes` declares only outputs read remotely over Flight, including final outputs returned to U. Omit it when there are no remote outputs. Each value must contain exactly `consumer_identity`. The superseded `outputs` routing field and scalar identity values are rejected. One output port cannot have both local and remote consumers. Nodes derive connected ports from the union of local `inputs` and remote `output_routes` for execution, materialization and replay. Local streams connect only within the node and cannot be read through Flight. Actual representations come from operator stream headers, not routing declarations.
 
-例如，A 上的读取步骤没有 `output_routes`；解析步骤通过 `inputs: {source: read:result}` 消费它，并为发往 B 的 `result` 输出声明 B 的身份。
+For example, A’s read step has no `output_routes`. Its parse step consumes the reader through `inputs: {source: read:result}` and declares B’s identity for its remote `result` output.
 
-U 先 prepare 并 start A、B、C；读取请求沿 U→C→B→A 建立，数据沿 A→B→C→U 返回，各步骤并发且有背压。中间流不经 U 转发。接收身份控制的是谁能读取数据，不改变 DAG 连接语法；节点看板通过拓扑图展示连接，并在 Sub-job definition 中完整展示步骤定义及其内部路由。
+U prepares and starts A, B and C. Read requests connect U→C→B→A, while data flows A→B→C→U with concurrent steps and backpressure. Intermediate streams bypass U. Recipient identities authorize reads without changing DAG binding syntax. Node dashboards show connections in the topology and preserve internal routes within the complete Sub-job definition.
 
-## 可观测性
+## Observability
 
-X 定时请求成员容量、健康状态，运行期间查询执行状态并产生 Flight 事件。事件有单调序号，内存中保留有限窗口；过旧游标明确报告 gap，当前快照可通过状态接口取得。事件包含 Task 状态与端口累计 payload_bytes、records（适用时）、remote_payload_bytes、last_activity_ms。字节数只统计 data 帧负载，不含 TLS/gRPC 开销；同一连接的发送、接收分别统计，不应相加当作唯一流量。未知总量不报告百分比，速率由连续计数计算。
+X periodically polls member capacity and health. During execution it queries subjob status and produces Flight events. Events have monotonically increasing sequence numbers and a bounded in-memory window. A stale cursor receives an explicit gap plus current snapshot; snapshots are also available from the status endpoint. Events include Task states and per-port cumulative payload_bytes, records where applicable, remote_payload_bytes, and last_activity_ms. Byte counters measure data frame payloads, excluding TLS/gRPC overhead. Sending and receiving are counted separately and must not be summed as unique traffic. Unknown totals do not produce percentages; rates can be calculated from successive counters.
 
-实现不承诺运行中 Job 自动恢复、算子内部检查点、fan-out、任意调度优化、科学数组表示或跨节点快照一致性。
+The implementation does not promise automatic running-job recovery, internal checkpoints, fan-out, arbitrary scheduling optimization, scientific array representations, or cross-node snapshot consistency.
 
-## 执行策略、输出物化与重放
+## Execution policy, output materialization, and replay
 
-Union 在 `job_yaml` 之外接收独立的 `execution_policy` JSON。默认仍直接流传递；选定的已连接输出经 `MaterializationStoreProvider` 在产出节点保存，任务成功且输入验证完整后，所有选定端口一起提交。`materialization.allowed: false` 是引擎输出物化的全局禁止约束，冲突的默认值或任务覆盖会被拒绝。
+Union accepts a separate `execution_policy` JSON alongside `job_yaml`. Streaming remains the default. Selected connected outputs are saved on their producing node through `MaterializationStoreProvider`; all selected ports commit together after the task succeeds and inputs are verified. `materialization.allowed: false` prohibits engine output materialization and rejects conflicting defaults or task overrides.
 
-原执行结束后，提交者可显式请求 `replay_job`，创建新的执行，复用完整且未过期的指定输出，剪枝不需要的上游任务并重新运行下游。最终结果也可重放。原始/生效策略、来源关联和重放状态均保存在历史中。节点须启用存储插件并重新校验授权。完整说明见[执行策略、节点配置、客户端示例与插件契约](materialization.md)。
+The owner can explicitly request `replay_job` after the source execution terminates. This creates a new execution, reuses complete, unexpired selected outputs, prunes unnecessary upstream work, and reruns downstream tasks. Final outputs can also be replayed. Original and effective policies, source links, and replay state are retained in history. Nodes must enable a storage plugin and revalidate authorization. Read [execution policy, storage configuration, client examples, and plugin contracts](materialization.md).
 
-这是任务边界重放，不是算子内部 checkpoint、按字节续读或运行进程恢复。过期、不完整、损坏的数据不能成功重放。Union 同样支持标准 `Job.run`，复用调度及策略引擎。
+This is task-boundary replay, not internal operator checkpoints, byte-offset resume, or restoration of running processes. Expired, incomplete, or corrupt artifacts cannot successfully replay. Standard `Job.run` is also supported at Union, sharing its scheduling and execution policy engine.
 
-顶层 `max_retries`（0–10，默认 0）限制执行失败后的重试次数。结果保持增量输出；开启重试须提供回调，在新一轮前丢弃上一轮部分结果，物化可选。`timeout_seconds` 覆盖资源等待和全部尝试，不能超过服务器上限。详见[执行策略](materialization.md)。
+Top-level `max_retries` (0–10, default 0) bounds execution retries. Results remain incremental; consumers must provide a retry callback to discard prior partial output. Materialization is optional. `timeout_seconds` covers resource waits and all attempts and cannot exceed the server limit. See [execution policy](materialization.md).
 
-## 管理网站
+## Administration website
 
-U 可通过独立 HTTP 监听提供只读运行看板；这不改变上述 Flight 协作协议。运行状态页面使用 U 的缓存状态，不因浏览触发节点 RPC 或领取结果；节点列表页面在展开节点时在线读取该节点目录。看板公开只读，跨提交者显示运行元数据，无需登录或 token。配置与 HTTP 只读接口见 [Union 服务器](../dacp-union-server/README.md#执行与接口)。
+U can expose a read-only operations dashboard on a separate HTTP listener without changing the Flight collaboration protocol above. The operations page uses U's cached state without triggering node RPCs or claiming results. The nodes page reads a member's live catalog when its card is expanded. The public read-only dashboard exposes execution metadata across submitters without login or tokens. See the [Union server](../dacp-union-server/README.md#execution-and-interfaces) for configuration and read-only HTTP interfaces.
 
-任务的 `id` 是 Job 内唯一的依赖标识，供输入的 `task[:port]`、最终输出、调度、状态与流量关联使用，必须保留。可选 `title` 是用途说明，支持中文，长度为 1–256 个字符且不可包含控制字符；不参与依赖解析，不要求唯一。看板任务卡片和 DAG 优先显示标题，同时保留 ID；标题随执行历史保存。
+A task `id` is its unique dependency identifier within the Job, used by input `task[:port]` references, final outputs, scheduling, status, and traffic correlation; it is required. Optional `title` describes its purpose, supports Unicode, and must contain 1–256 characters without control characters. Titles need not be unique and do not resolve dependencies. Dashboard cards and DAGs show the title with the ID; execution history retains titles.
 
 ```yaml
 name: daily-temperature
@@ -81,7 +81,7 @@ tasks:
       uri: dacp://localhost:18861/climate/observations
       view: records
   - id: daily_temperature
-    title: 计算站点每日气温统计
+    title: Aggregate product quantities
     node: dacp://localhost:18861
     operator: daily_temperature_stats@1.0
     inputs:
@@ -90,34 +90,34 @@ outputs:
   result: daily_temperature
 ```
 
-DAG 使用本地打包的 AntV G6 5.1.1 绘制，不依赖外部 CDN。任务卡片优先显示 `title`，缺省时显示 ID；卡片展示算子、状态、输入 / 输出负载。连线展示端口和负载；点击卡片或连线，在图下方查看完整标题、任务 ID、服务器地址、跨节点负载、相邻观测速率及记录数（适用时）。发送与接收分别计数，尚无观测和终态速率显示 `—`。最终输出连线采用源任务输出端口计数，不代表客户端已接收量。
+The DAG uses locally bundled AntV G6 5.1.1 without an external CDN. Task cards show `title`, falling back to the ID, together with operator, state and input/output payload. Edges show ports and payload. Click a card or edge to inspect the full title, task ID, server address, cross-node payload, rate between observations and record counts where applicable below the graph. Sending and receiving count separately; missing observations and terminal rates display `—`. Final-output edges use source output-port counters, not confirmed client-received bytes.
 
-颜色、符号和边框共同区分步骤：绿色实线 ✓ 表示已完成，蓝色粗框 ▶ 表示执行中，灰色虚线 ○ 表示尚未执行，红色框 ! 表示失败、取消、中断或超时。未知执行状态使用黄色框和 `? 状态未知`，不会被误标为尚未执行。图例和状态文字始终显示。
+Color, symbols and borders distinguish steps: solid green ✓ for completed, thick blue ▶ for running, dashed gray ○ for not yet executed, and red ! for failed, cancelled, interrupted or expired. Unknown execution state uses an amber border and `?` label rather than implying the step has not executed. A legend and explicit state text remain visible.
 
-G6 支持依赖图与泳道图，每种均可选择横向（从左向右）或纵向（从上向下）流程。泳道按服务器分行或分列，并按依赖阶段对齐。两组控件独立切换，自动刷新保留选择。默认使用组合布局：服务器区域和区域内任务均按依赖从左向右自动排列。每个服务器区域采用差异明显的背景色和边框，标题显示地址和步骤数。本地输入与任务位于对应区域，跨区域连线表示数据流；最终输出位于独立的 Union → 客户端区域。双击分组背景折叠 / 展开；工具栏的“展开全部”恢复完整视图。
+G6 supports dependency and swimlane layouts, each with horizontal (left to right) or vertical (top to bottom) flow. Swimlanes align dependency stages in server rows or columns. Layout controls are independent; refresh preserves both choices. The default combined layout is: both server groups and their internal tasks are automatically arranged left to right by dependency. Each server region has a contrasting background color and border and a heading with its address and task count. Local inputs and tasks stay within the server region, cross-region edges represent data flow, and final outputs occupy a separate Union → client region. Double-click group backgrounds to collapse or expand them; “Expand all” restores the complete view.
 
-工具栏提供放大、缩小、适应画布和 100% 显示，支持 15%–250% 缩放。拖动画布平移，滚轮围绕鼠标位置缩放。状态刷新更新内容，保留当前布局、缩放、平移和折叠状态；切换作业重新布局并适应画布。Canvas 中的信息也保留在下方的任务和端口表格中，便于阅读和辅助技术访问。
+The toolbar offers zoom in/out, fit canvas and 100% display, with 15%–250% zoom. Drag to pan and scroll to zoom around the pointer. State refreshes update content while preserving layout, zoom, pan and collapsed groups. Switching jobs lays out and fits the new graph. Canvas information is also available in the task and port tables below for reading and assistive technology access.
 
-网站分为运行看板 `/`、节点列表 `/nodes` 与数据目录 `/datasets`。节点列表图形化展示成员状态，原位加载节点本地名称的数据集；数据目录先加载成员清单，再并行、独立地读取各节点目录；每个节点返回后立即展示其 Union 公开名称及 Union URI，不等待其他节点。失败或超时只影响对应节点，页面保留已成功加载的数据并提示目录不完整，显示加载进度并支持刷新重试。远程目录读取使用独立的有界线程池，不占用看板页面和任务状态的请求线程。目录不落库，仅持久化名称映射。执行详情中的策略和尝试分别展示；尝试使用可展开时间轴，缺失的历史信息明确标注。
+The website separates the operations dashboard `/`, graphical member nodes `/nodes`, and data catalog `/datasets`. Node cards load local dataset names inline; the catalog first loads the member list, then reads each member directory independently in parallel. Each response immediately displays Union-assigned public names and Union URIs without waiting for other members. Failures or timeouts affect only that member; successful results remain visible with progress and incomplete-directory warnings, and Refresh retries the reads. Remote catalog reads use a separate bounded thread pool so they cannot occupy the request threads serving pages and job status. Only name mappings are persisted, not catalog lists. Policies and attempts are separate; expandable attempt timelines label missing historical information explicitly.
 
-节点列表采用深色拓扑视图，显示节点健康、容量与有向数据流。流量按接收端 `remote_payload_bytes` 计数，不将发送量和接收量相加；范围是最近 100 个作业各自最新尝试的成员间任务数据边，包含历史记录，不含协议开销、其他应用网络流量或返回客户端的最终输出。速率由同一尝试、同一输入端口的连续新鲜观测计算；重试计数重置、过期或缺少观测时显示未知。仅在观测到正速率时显示传输动画。点击拓扑节点在下方原位展开本地数据集，不读取结果流。
+The nodes page uses a dark topology view with health, capacity and directed data flows. Traffic counts receiver-side `remote_payload_bytes` once, never adding send and receive totals. Its scope is inter-member task edges from the latest attempt of each of the most recent 100 jobs, including persisted history. It excludes protocol overhead, other applications and final output returned to clients. Rates require successive fresh observations for the same attempt and input port; retry resets, stale samples or missing observations show unknown. Transfer animation appears only for observed positive rates. Clicking a topology node expands its local datasets below without consuming result streams.
 
-节点卡片展示环境 CPU、DACP 进程 CPU、环境内存、JVM 堆、可用处理器与线程数。指标来自 JVM 的管理接口，可能受容器限制；环境内存并非 DACP 独占内存，JVM 堆也不代表进程全部内存。不支持的指标显示未知。参与次数依据当前 Union 保存的历史，按已观测到执行状态的作业去重，步骤与重试不重复计数。拓扑只统计任务数据负载，不计入心跳、状态查询、目录访问和 Flight 消息封装。Union 的成员关系虚线不表示数据传输，也不显示消息字节数。
+Node cards show environment CPU, DACP process CPU, environment memory, JVM heap, available processors and thread count. Readings come from JVM management APIs and may reflect container limits. Environment memory is not DACP-exclusive; heap is not total process memory. Unsupported metrics show unknown. Participation counts deduplicate jobs with observed member execution states in this Union’s retained history; steps and retries do not add counts. The topology counts task data payload only, excluding heartbeats, status queries, catalog access and Flight message envelopes. Dashed Union membership links indicate membership rather than data transfer and display no message byte counts.
 
-节点拓扑的连线标签直接显示累计流量和连续观测速率；未知速率显示 `—`。悬停连线或标签可查看端点及任务数据负载统计，不在拓扑下方重复列出流量表。
+Node topology edge labels display cumulative traffic and observed rates directly; unknown rates show `—`. Hover over an edge or label for endpoints and task payload statistics. Traffic is not duplicated in a separate list below the topology.
 
-拓扑以轨道背景、分色节点卡片、资源利用率条和有向连线展示协作关系。仅有正观测速率的数据连线显示流动动画；系统的减少动态效果设置会禁用动画。
+The topology uses an orbital background, distinct member card colors, resource utilization bars and directed links. Only links with a positive observed rate animate; the system reduced-motion preference disables animation.
 
-网页界面统一使用英文，包括 Union 的任务、节点和数据目录页面，以及 DACP 节点运行看板。用户提供的任务标题、脚本、数据集名称及描述按原文展示。
+Web interfaces use English throughout the Union job, node and data catalog pages and the DACP node dashboard. User-provided task titles, scripts, dataset names and descriptions are displayed in their original language.
 
-在任务 DAG 中点击任务、输入输出节点、连线或服务器分组会高亮当前选择，并显示详情；点击画布空白处取消。自动更新与布局切换保留仍然存在的选择，切换作业会清除选择。节点看板使用相同交互。
+Click a task, input/output node, edge or server group in the job DAG to highlight the selection and show its details. Click empty canvas space to clear it. Automatic updates and layout changes preserve selections that still exist; changing jobs clears the selection. Node dashboards share this interaction.
 
-### 同进程执行
+### Shared execution
 
-节点根据运行环境兼容性和已连接端口规划同进程执行，不调用结构推导，也不读取输入内容。执行中的元数据来自实际流头。
+Nodes plan shared execution from runtime compatibility and connected ports, without invoking structure inference or reading input contents. Actual stream headers supply metadata during execution.
 
-节点拓扑的流量标签使用独立最上层，不被 Union 圆圈、节点或连线遮挡，也不拦截鼠标操作。标签以较小字体居中覆盖在线条上，只沿原连线调整位置，不使用偏离连线的引导线；窗口尺寸变化时重新布局。Job script 展示保留已保存 YAML 的缩进和空行，JSON 使用多行缩进并保留原始数字与字符串值。本地任务定义中的上游输入显示为 `task:port`，不展示内部绑定对象作为提交语法。
+Topology traffic labels use a separate top layer above the Union hub, nodes and wires without intercepting mouse input. Smaller labels are centered directly on their edges, moving only along the original curves with no detached leader lines; resizing recalculates placement. Job scripts retain saved YAML indentation and blank lines. JSON is displayed with multiline indentation while preserving original numeric and string tokens. Upstream inputs in local task definitions display as `task:port`, rather than presenting internal binding objects as submission syntax.
 
-节点与 Union 看板的 DAG 默认锁定鼠标滚轮缩放。点击 🔒 Mouse zoom 解锁，点击 🔓 Mouse zoom 重新锁定；工具栏缩放按钮始终可用。
+DAGs in the node and Union dashboards lock mouse-wheel zoom by default. Click 🔒 Mouse zoom to unlock it and 🔓 Mouse zoom to lock it again. Toolbar zoom controls remain available.
 
-输入定位（包括 `read_source`）使用 `producer_identity` 校验数据提供者，与输出的 `consumer_identity` 对应。旧输入字段 `identity` 不再接受；成员信息中的 `identity` 含义不同，保持不变。
+Input locations, including `read_source`, use `producer_identity` to verify the data provider, paired with output `consumer_identity`. The old input field `identity` is rejected. Member metadata retains its distinct `identity` field.

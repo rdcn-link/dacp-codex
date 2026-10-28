@@ -41,6 +41,25 @@ class DacpServerSpec extends AnyFunSuite {
     val socket=new ServerSocket(c.port);socket.close()
     intercept[IllegalArgumentException](server.start())
   }}
+  test("public port changes advertised URIs and location without changing the listener") {fixture{(dir,cert,key)=>
+    val count=new AtomicInteger();val c=config(dir,cert,key).copy(publicHost="data.example.org",publicPort=Some(28815))
+    val server=DacpServer.builder().config(c).catalog(catalog(count)).build().start()
+    try {
+      assert(server.boundPort==c.port)
+      assert(server.location.getUri.getHost=="data.example.org")
+      assert(server.location.getUri.getPort==28815)
+      assert(c.uri("public","/observations")=="dacp://data.example.org:28815/public/observations")
+      val allocator=new RootAllocator()
+      val client=dacp.union.ClientTransport.open(allocator,s"dacp://localhost:${c.port}",Some(cert),None,None,()=>Some(c.credentials.create("proxy-reader")._2))
+      try {
+        val result=client.doAction(new Action("dacp.catalog",Array.emptyByteArray)).next()
+        val directory=dacp.protocol.Metadata.Directory.parseFrom(result.getBody)
+        assert(directory.getDatasets(0).getUri=="dacp://data.example.org:28815/public")
+      }finally {client.close();allocator.close()}
+    }finally server.close()
+    intercept[IllegalArgumentException](c.copy(publicPort=Some(0)))
+    intercept[IllegalArgumentException](c.copy(publicPort=Some(65536)))
+  }}
   test("startup failure and close before start release owned resources exactly once") {fixture{(dir,cert,key)=>
     val count=new AtomicInteger();val bad=config(dir,cert,key).copy(cert=dir.resolve("missing.pem"))
     val server=DacpServer.builder().config(bad).catalog(catalog(count)).build()
@@ -65,6 +84,7 @@ class DacpServerSpec extends AnyFunSuite {
     val count=new AtomicInteger();val c=config(dir,cert,key);val yaml=dir.resolve("server.yaml")
     Files.writeString(yaml,s"""host: localhost
 public_host: localhost
+public_port: 28815
 port: ${c.port}
 tls_cert: $cert
 tls_key: $key
@@ -76,7 +96,7 @@ web: {host: localhost, port: 0}
 """)
     val builder=DacpServer.builder().configFile(yaml).catalog(catalog(count))
     val server=builder.build()
-    try {server.start();assert(server.s3Port.isDefined)}finally server.close()
+    try {server.start();assert(server.s3Port.isDefined);assert(server.boundPort==c.port);assert(server.location.getUri.getPort==28815)}finally server.close()
     assert(count.get()==1)
     intercept[IllegalArgumentException](builder.build())
   }}

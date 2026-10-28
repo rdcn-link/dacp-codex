@@ -1,12 +1,12 @@
-# DACP 在线作业设计器
+# DACP online Job Designer
 
-[English](README_en.md)
+[中文](README_zh.md)
 
-`dacp-job-designer` 是独立的 Scala HTTP 模块，提供英文的浏览器图形化 Job 设计界面，无登录、无用户管理。复用普通 Scala SDK 访问节点或 Union，设计器不执行作业，不依赖服务器内部实现。
+`dacp-job-designer` is an independent Scala HTTP module providing an English browser-based visual Job editor without login or user management. It uses the ordinary Scala SDK to access nodes or a Union, does not execute jobs, and does not depend on server internals.
 
-## 启动
+## Start
 
-需要 JDK 17、sbt 1.10.x。先复制并修改 [example.yaml](example.yaml)，将地址、CA 与 Token 文件设置为部署环境的实际值。凭据只保存在服务端配置中，不返回浏览器。
+Requires JDK 17 and sbt 1.10.x. Copy and edit [example.yaml](example.yaml), setting real service addresses, CA and Token files. Credentials remain in server configuration and are not returned to browsers.
 
 ```bash
 cd dacp-job-designer
@@ -14,34 +14,34 @@ sbt test stage
 target/universal/stage/bin/dacp-job-designer /etc/dacp/designer.yaml
 ```
 
-默认地址为 `http://127.0.0.1:8840/`。需要网络访问时设置 `host: 0.0.0.0`。服务配置由管理员维护，访问网页无需登录；配置的上游普通客户端凭据决定网页可读取的目录和可请求的推导能力。
+The default address is `http://127.0.0.1:8840/`. Set `host: 0.0.0.0` for network access. Administrators maintain configuration; visitors do not log in. Configured ordinary upstream client credentials determine the catalogs and inference capabilities available to the website.
 
-## 设计流程
+## Design workflow
 
-1. 打开页面后自动连接配置文件中唯一的 `target`；跨节点设计设置 `kind: union`，单机设计设置 `kind: node`。节点列表及画布标签显示 `localhost:18861` 等服务器地址，导出的节点绑定仍使用逻辑标识。
-2. 自动从配置文件的 `repository` 读取 `/v1/operators`。可搜索算子名称和说明、选择版本、拖到画布。`read_item@1.0` 是内置数据源。
-3. 打开左侧 **Datasets** 标签页会自动读取当前连接的公开目录，可用 **Refresh datasets** 刷新；展开数据集浏览数据项。点击数据项为选中或新建的读取步骤设置公开 URI 和视图。Union 模式使用 Union 的公开 URI。
-4. 拖动卡片调整位置，点击输出端口启动随鼠标移动的预览线，再点击输入端口建立流依赖；右键或 Esc 取消。端口不支持拖拽连线。在右侧修改标题和参数；支持删除步骤、移除连接、撤销、重做与自动排列。跨节点放置只使用当前 Union 返回的逻辑节点，导出时要求已连接并核对这些节点。
-5. 画布始终有且仅有一个 **Outlet**，可拖动位置，但不能删除或复制。点击算子输出端口，再点击 Outlet，即创建 Job 输出绑定；Outlet 最多连接一个步骤的一个输出端口，新连接替换原绑定。属性侧栏仅编辑步骤属性与参数；结果流名称可在 Job YAML 中修改。选中连到 Outlet 的线并按 Delete 可删除对应绑定，Outlet 本身始终保留。导入文件中的 Job 输出也连到同一个 Outlet。布局保存在浏览器草案中，导出时默认写入 `designer` 辅助区。允许 `outputs: {}`；每个生产者端口最多一个消费者。每个输出端口下方展示表示、格式和可确定的 Schema 字段；未知结构明确标注。
-6. 在 **Variables** 中编辑或加载独立 YAML 变量文件。参数可使用 `$INPUT_URI` 等完整变量值，保留整数、布尔和复合结构的类型。变量值不嵌入模板导出文件，使用 **Export variables** 单独导出。
-7. 参数、变量及连接变化后自动推导输出结构，参数编辑停顿 650 毫秒后触发，合法修改自动保存并同步到导出的作业；未完成或非法输入保留在表单中并提示。设计器使用公共 `dacp-operator-inference` 模块，在自身环境中按需启动并复用推导 worker，从配置的算子仓库获取代码；普通算子的推导不经 Union 或成员节点。`read_item` 仅向配置的目标服务器查询 Item 元信息，上游变化也会更新下游。推导请求串行合并，过期响应丢弃。在右侧 **Outputs** 标签页查看当前步骤各输出端口的完整结构及有界样例。推导不运行 Job；结构返回后再请求有界样例，`read_item` 可读取受限的源数据行。打开 Outputs 页直接展示已有结果，不重复推导。首次推导可能启动 worker。参数不完整或推导失败时明确提示，不保留过期字段，也不猜测未知结构。
-8. 点击 **Export job YAML** 保存可供 Shell / SDK 提交的标准 Job，导出会打开 YAML 预览窗口，默认勾选 **Include designer metadata**，可取消以只导出执行定义；提供 **Copy**、**Print** 和 **Download**。后续可以通过 **Load YAML** 加载以前导出的 Job，或者在 Job YAML 面板编辑后点击 **Apply YAML**。接受当前公开 Job 格式；内部子作业路由和旧接口格式不作为导入格式。
+1. Opening the page automatically connects to the single `target` in the configuration. Set `kind: union` for cross-node design or `kind: node` for local jobs. Node lists and canvas labels show server addresses such as `localhost:18861`; exported placement bindings retain logical node IDs.
+2. The configured `repository` loads automatically through `/v1/operators`. Search names and descriptions, choose versions and drag operators onto the canvas. `read_item@1.0` is a built-in data source.
+3. Open the left **Datasets** tab to load the connected service's public directory automatically; use **Refresh datasets** to reload it. Expand datasets to browse Items. Click an Item to set its public URI and view on the selected or a new read step. Union mode uses public Union URIs.
+4. Drag cards, click an output to start a pointer-following preview line, then click an input to establish the stream dependency. Right-click or press Esc to cancel. Port drag-to-connect is not supported. Edit titles and parameters in the inspector. Delete steps, remove connections, undo, redo and arrange automatically. Cross-node placements use only logical nodes returned by the current Union; export requires a connection and verifies these placements.
+5. The canvas always contains exactly one **Outlet**, which can be moved but cannot be deleted or duplicated. Click an operator output port, then click Outlet to create a Job output binding. Outlet accepts one output port from one step; a new connection replaces the existing binding. The sidebar only edits step properties and parameters; result stream names can be edited in Job YAML. Select an Outlet connection and press Delete to remove its binding; the Outlet stays on the canvas. Imported Job outputs are drawn as connections to the same Outlet. Layout is saved in the browser draft and included in optional `designer` metadata by default. Empty `outputs: {}` is allowed; each producer port has at most one consumer. Each output port displays its representation, format and known Schema fields below it; unknown structures are labeled explicitly.
+6. Edit or load a separate YAML variable file under **Variables**. Parameters support complete values such as `$INPUT_URI`, preserving numeric, boolean and compound types. Variables are not embedded in template exports; use **Export variables** separately.
+7. Output structures are inferred automatically after parameters, variables or connections change. Parameter edits trigger inference after a 650 ms pause with valid edits saved automatically into the exported Job; incomplete or invalid input stays in the form with a message. The designer uses the shared `dacp-operator-inference` module to start and reuse local inference workers on demand, obtaining code from the configured operator repository. Ordinary operators are inferred without Union or member-node requests. `read_item` only queries Item metadata from the configured target; upstream changes also update downstream structures. Requests are serialized and coalesced; stale responses are discarded. Use the right-hand **Outputs** tab to inspect each output port’s complete structure and bounded samples. Inference does not run a Job. Schemas are displayed before a separate bounded-sample request; `read_item` can read a limited number of source rows. Opening Outputs displays existing results without repeating inference. First use may start a worker. Incomplete parameters and inference failures are reported explicitly; stale fields are cleared and unknown structures are never guessed.
+8. **Export job YAML** opens a YAML preview. **Include designer metadata** is checked by default; uncheck it to keep only the execution definition. Use **Copy**, **Print**, or **Download** for the selected content. The exported Job is accepted by Shell / SDKs. **Load YAML** loads an existing exported Job; alternatively edit the Job YAML panel and click **Apply YAML**. Imports accept the current public Job format, not internal subjob routing or superseded interfaces.
 
-浏览器使用本机 localStorage 自动保存草案；不同浏览器不共享草案，没有服务器端历史作业存储。加载“历史文件”指上传已有 YAML 文件，不是从运行看板拉取执行历史。设计器不在导出时执行推导；导出检查图结构，实际输入端口及 schema 校验由设计时推导提供。布局支持平移滚动、缩放和适应视图。
+Browser localStorage saves a local draft. Drafts are not shared between browsers and there is no server-side job history store. Loading a historical file means uploading an existing YAML file, not retrieving dashboard execution history. Export performs graph checks without inference; design-time inference checks actual input contracts and schemas. The canvas supports scrolling, zoom and fit-to-view.
 
-提交示例：
+Submission example:
 
 ```text
 submit workflow.yaml --vars variables.yaml
 ```
 
-下侧 **Logs** 面板记录当前浏览器会话的操作提示、API 请求起止与耗时、请求错误、结构推导诊断以及浏览器异常，按 Info / Warning / Error 分类，可过滤、清空。日志按时间从新到旧排列，新消息显示在顶部；开启自动跟随后保持在顶部，关闭后新增消息尽量保持原阅读位置。上方状态栏仅显示最新一条消息，完整消息保留在日志面板。日志只在浏览器内存中保留最近 1,000 条，不写入磁盘；页面刷新后清空。节点和服务进程的完整后台日志仍保存在各自日志文件中。
+The lower **Logs** panel records operation messages, API request start/completion and duration, request errors, schema inference diagnostics and browser exceptions for the current browser session. Entries are classified as Info / Warning / Error and support filtering and clearing. Logs appear newest first, with new messages at the top. Auto-scroll follows the top; when disabled, incoming messages preserve the current reading position where possible. The upper status bar displays only the latest message; full messages remain in the log panel. The latest 1,000 entries are kept in browser memory without disk writes and cleared on page reload. Full backend logs from nodes and service processes remain in their respective log files.
 
-## 聊天编排
+## Chat composition
 
-聊天返回草案及说明，**Apply proposed changes** 后才替换当前图，支持撤销。模型输出与普通草案使用相同的图结构校验，并限制为所连接仓库的算子和 Union 公布的逻辑节点。它不会执行作业。
+Chat returns a proposal and explanation. **Apply proposed changes** replaces the graph only after review, and changes can be undone. Model output undergoes the same structural checks and is restricted to operators from the connected repository and logical nodes published by Union. Chat does not execute jobs.
 
-默认 `chat.provider: builtin` 是离线命令助手，**不是大语言模型**。支持英文／中文命令以及 CSV 过滤模板，例如：
+The default `chat.provider: builtin` is an offline command assistant, **not a language model**. It supports English / Chinese commands and a CSV filtering template:
 
 ```text
 create CSV filter job
@@ -52,9 +52,9 @@ set variable LIMIT = 123
 rename Weather analysis
 ```
 
-CSV 模板需要仓库包含相应 parser、filter、CSV 输出算子。模板生成后，用户须从实际目录设置 `INPUT_URI`，并检查过滤条件和执行位置。
+The CSV template requires parser, filter and CSV output operators in the repository. After generation, select a real `INPUT_URI` from the catalog and review the filter and placements.
 
-自由自然语言编排可直接使用兼容 Chat Completions 的模型服务，例如自部署模型：
+For unrestricted natural-language composition, directly configure a Chat Completions-compatible model service, including a self-hosted model:
 
 ```yaml
 chat:
@@ -64,9 +64,9 @@ chat:
   token_env: DACP_DESIGNER_CHAT_TOKEN
 ```
 
-`url` 填完整的聊天请求端点。设计器将当前草案、仓库清单、Union 节点和最近 12 条对话发送给模型，并解析返回的 JSON 草案；截断或不合法的响应不会应用。此接口的模型服务约定参见 [vLLM 官方说明](https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/)。本地示例默认未配置模型，仍可使用离线命令助手。
+Use the complete chat endpoint as `url`. The designer sends the current draft, repository catalog, Union nodes and the latest 12 messages and parses the JSON proposal. Truncated or invalid responses cannot be applied. See the [official vLLM server documentation](https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/) for the model-service contract. The local example has no model configured; the offline command assistant remains usable.
 
-也可以连接自定义模型适配 HTTP 服务：
+Alternatively, configure a custom model adapter HTTP service:
 
 ```yaml
 chat:
@@ -75,101 +75,101 @@ chat:
   token_env: DACP_DESIGNER_CHAT_TOKEN
 ```
 
-适配服务不必采用特定模型供应商。设计器 POST JSON，字段包括 `instructions`、`message`、`messages`（聊天历史）、`job_yaml`、`variables_yaml`、`operators`（仓库清单）、`nodes`（`nodes` 数组）和 `origin`。返回单个 JSON 对象：
+The adapter is model-vendor independent. The designer POSTs JSON containing `instructions`, `message`, `messages` (conversation history), `job_yaml`, `variables_yaml`, `operators` (repository catalog), `nodes` (a node array) and `origin`. Return one JSON object:
 
 ```json
-{"reply":"说明变更","job_yaml":"name: ...\ntasks: ...\noutputs: ...\n","variables_yaml":"LIMIT: 123\n"}
+{"reply":"Explain the changes","job_yaml":"name: ...\ntasks: ...\noutputs: ...\n","variables_yaml":"LIMIT: 123\n"}
 ```
 
-`token_env` 可省略；设置后从服务端环境读取 Bearer Token，不在网页输入密钥。HTTP 适配器超时 90 秒，响应上限 1 MiB。需要由部署者提供并配置实际模型适配服务；不绑定模型密钥，也不把离线命令助手描述为通用 AI。
+`token_env` is optional; when configured, a Bearer Token is read from the server environment, not entered in the browser. The adapter timeout is 90 seconds and response limit is 1 MiB. Deployers supply and configure the actual model adapter. No model keys are bundled, and the offline assistant is not described as general AI.
 
-第三方还可实现 `dacp.designer.ChatPlanner`，通过 `META-INF/services/dacp.designer.ChatPlanner` 注册实现类，将 JAR 放入 `plugins/`，使用 `java --add-opens=java.base/java.nio=ALL-UNNAMED -cp "lib/*:plugins/*" dacp.designer.Main CONFIG.yaml` 启动，然后设置 `chat.provider` 为实现的 `name`。无需修改核心注册表。适配器仅负责草案生成，不能绕过公共图校验。外部 JAR 应以 Provided 方式引用匹配版本的设计器契约。
+Third parties may implement `dacp.designer.ChatPlanner`, register their class in `META-INF/services/dacp.designer.ChatPlanner`, add its JAR to `plugins/` and launch with `java --add-opens=java.base/java.nio=ALL-UNNAMED -cp "lib/*:plugins/*" dacp.designer.Main CONFIG.yaml`, and select its `name` through `chat.provider`. No core registry changes are required. Adapters generate drafts and cannot bypass public graph validation. External JARs should use a matching designer contract as a Provided dependency.
 
-## 接口与开发
+## APIs and development
 
-HTTP API 不要求网页用户认证，仅供本设计器使用。除配置与静态资源外，使用 JSON POST：
+HTTP APIs do not authenticate website visitors and serve this designer. Except configuration and static assets, use JSON POST:
 
-| 路径 | 功能 |
+| Path | Purpose |
 |---|---|
-| `GET /api/config` | 公开服务、仓库名称与聊天能力，不返回凭据文件 |
-| `/api/nodes` | 查询配置服务器的节点及地址 |
-| `/api/operators` | 使用 `repository` 查询仓库实时算子列表 |
-| `/api/datasets`、`/api/items` | 读取所连接服务的目录与数据项元数据 |
-| `/api/document`、`/api/mapping` | 解析／规范化 Job、参数或变量 YAML |
-| `/api/export` | 检查图结构，返回 Job 与变量 YAML |
-| `/api/infer` | 使用 `job_yaml`、`variables_yaml` 请求真实结构推导 |
-| `/api/chat` | 基于当前草案、消息和实时目录生成候选草案 |
+| `GET /api/config` | Public service / repository names and chat capability, without credential files |
+| `/api/nodes` | Query nodes from the configured server |
+| `/api/operators` | Query a live repository catalog using `repository` |
+| `/api/datasets`, `/api/items` | Browse connected catalogs and Item metadata |
+| `/api/document`, `/api/mapping` | Parse / normalize Job, parameter or variable YAML |
+| `/api/export` | Check graph structure and return Job and variable YAML |
+| `/api/infer` | Request real inference using `job_yaml`, `variables_yaml` |
+| `/api/chat` | Generate proposals from the draft, messages and live catalogs |
 
-POST 请求上限 1 MiB，仓库列表上限 4 MiB；不接受浏览器传入任意代理地址。CA 与 token_file 是服务端文件。页面只读取目录和结构，不提供作业执行、仓库发布或用户管理 API。
+POSTs are limited to 1 MiB; repository lists to 4 MiB. Browsers cannot supply arbitrary proxy destinations. CA and token_file are server-side files. The editor reads metadata and structures and provides no job execution, repository publication or user management APIs.
 
-后端用 Scala 实现，浏览器交互使用随包发布的原生 JavaScript / SVG / CSS，不依赖外部 CDN。测试覆盖 YAML 往返、变量类型、循环与重复消费、空输出、真实 Arrow schema 展示、仓库查询、聊天草案及凭据不外泄；需配合浏览器测试验证拖放与连接、导入导出和实际 Union 推导。
+The backend is Scala; browser interaction uses bundled native JavaScript / SVG / CSS without external CDNs. Tests cover YAML round trips, variable types, cycles and duplicate consumers, empty outputs, real Arrow schema presentation, repository queries, chat proposals and credential non-disclosure. Browser checks additionally verify dragging, wiring, imports / exports and real Union inference.
 
-浏览器回归测试（需要 Playwright 和 Chromium，目标环境至少有三个成员）：
+Browser regression test (requires Playwright and Chromium, with at least three target members):
 
 ```bash
 python3 scripts/test-job-designer.py --url http://localhost:8840 \
   --item-uri dacp://localhost:19860/DATASET/observations
 ```
 
-从仓库根目录执行，将 URI 换成实际 records Item，要求包含 `quality` 列。测试只推导结构，不执行作业。
+Run from the repository root and replace the URI with an actual records Item containing a `quality` column. The test infers structures without executing jobs.
 
-属性面板采用固定右侧栏，默认隐藏，双击步骤或选择 Outlet 时展开，占用独立列而不遮挡画布；关闭后空间还给画布。左右侧栏均通过边缘窄条箭头折叠与展开，不提供关闭按钮。右侧展开时显示 `>`，折叠后显示 `<`；左侧方向相反。点击画布空白处、连线或按 Esc 不会自动隐藏属性侧栏。顶部直接展示具有清晰边框和立体层次的 **Step** 与 **Parameters** 标签页。底部编辑区默认收起，点击标签展开，使用箭头按钮收起；画布优先占用窗口空间，页面本身不滚动。
+The properties panel is a docked right sidebar, initially hidden, and opens when a step is double-clicked or Outlet is selected. It reserves its own column instead of covering the canvas; closing it returns that space to the canvas. Both sidebars fold and expand using arrows on persistent narrow edge rails, without close buttons. The right sidebar shows `>` when expanded and `<` when folded; the left sidebar uses the opposite directions. Clicking blank canvas space or connections, or pressing Esc, leaves the properties sidebar open. The header directly displays **Step** and **Parameters** tabs with distinct borders and raised styling. The bottom editor starts collapsed: click a tab to expand it and the arrow button to collapse it. The canvas takes priority within the viewport; the page itself does not scroll.
 
-属性面板分为 **Step**、**Parameters** 和 **Outputs** 三个标签页。Parameters 根据算子必需的静态 `parameters` 契约生成：名称和类型来自声明，同时显示说明、默认值、枚举及范围。可选参数需显式启用，未启用的参数不写入 Job。对象、数组及完整值变量（`$VAR_NAME`）通过表单配置。属性和参数的合法修改自动保存并同步 YAML，保留类型；连续输入合并为可撤销的编辑操作。详见[参数契约](../docs/operator-parameters.md)。
+The inspector has **Step**, **Parameters**, and **Outputs** tabs. Parameters are generated from the operator’s required static `parameters` contract: names and types come from the declaration, alongside descriptions, defaults, enums and bounds. Enable optional fields to set them explicitly; omitted fields stay omitted. Nested objects, arrays and whole-value variables (`$VAR_NAME`) use forms. Valid property and parameter edits save automatically and synchronize YAML while preserving types. Consecutive edits are grouped for undo. See [parameter contracts](../docs/operator-parameters.md).
 
-服务器和算子仓库仅通过启动配置中的 `target` 和 `repository` 指定，浏览器不提供手动连接、切换或重新加载连接的入口。打开页面时独立加载两个服务，精简页头显示状态及故障信息；上游恢复后刷新页面即可重试。
+The server and operator repository are selected only in the startup configuration (`target` and `repository`). The browser offers no manual connection, switching or reload controls. Both services load independently when opening the page. The compact header shows status and failures; reload the page after service recovery.
 
-点击流连线后高亮选中，可在画布获得焦点时按 Delete / Backspace 删除；选中时仅高亮连线，不出现矩形框或额外的工具栏按钮，支持撤销和重做。在表单输入框中编辑文字不会触发连线删除。一个已连接到下游步骤的端口不能同时作为 Job 输出，需要先删除该连线。导入文件中的输出绑定也会显示为连到 Outlet 的线。
+Click a stream connection to highlight it, then press Delete / Backspace while the canvas has focus. Selection highlights only the connection, without a rectangular frame or extra toolbar button. Deletion supports undo and redo. Keyboard deletion never edits a connection while typing in a form field. A port already consumed by another step cannot simultaneously be a Job output; remove the connection first. Imported output bindings also appear as connections to Outlet.
 
-选中步骤后按 Delete，会删除该步骤及其相关连线和 Outlet 连线；选中连线后按 Delete，只删除该连线。撤销可恢复完整删除前状态，重做可再次删除。编辑参数或名称等表单字段时不会触发图形删除。
+Select a step and press Delete to remove it along with its incident connections and Outlet connections. Select a connection and press Delete to remove just that connection. Undo restores the full deleted state, and redo reapplies deletion. Typing in parameter and name fields does not trigger graph deletion.
 
-左侧算子库采用可折叠分类与图标网格，直接读取算子声明的必填 `category` 与 `icon`；分类和图标不再按输入端口推测，无需修改设计器注册表。搜索会自动展开匹配分类，清空搜索后恢复原展开状态。悬停或键盘聚焦图标可查看版本、说明、输入端口、参数类型和执行器；拖入画布、双击或按 Enter 添加步骤。
+The left operator library uses collapsible categories and icon grids directly from administrator-assigned operator `categories` and developer-provided `icon` metadata. It does not infer categories or icons from input ports, and requires no Designer registry edits. Search expands matching categories and clearing it restores their previous state. Hover or focus an icon to see its version, description, input ports, parameter types and executor. Drag onto the canvas, double-click or press Enter to add a step.
 
-单节点 Job 的步骤无需指定 `node`，画布不显示默认节点区域。属性页不提供执行节点选项。跨节点设计时，从左侧 Union nodes 拖入节点以创建区域，或点击节点追加区域；把算子或已有步骤放进区域即可指定节点，拖出区域则移除 `node`。节点区域布局保存在浏览器草案及可选的 `designer` 辅助区中。
+Steps in a single-node Job need no `node`, and the canvas shows no default node region. The properties panel has no execution-node setting. For cross-node design, drag a Union node from the left onto the canvas to create a region, or click a node to append its region. Place operators or existing steps inside a region to assign its node; drag a step outside to omit `node`. Region layout stays in the browser draft only.
 
-拖动已有步骤仅调整位置或节点归属，不会展开已折叠的属性侧栏；单击步骤只选中，双击才展开其属性。
+Dragging an existing step only changes its position or node assignment and does not expand a folded properties sidebar; a single click selects a step and a double-click opens its properties.
 
-在画布空白处按住左键拖动可框选完全位于选框内的步骤和 Outlet；Shift 框选或 Shift 单击步骤追加或切换选择。多选后拖动任一所选元素整体移动，Delete 一次删除所选步骤及关联连线，可撤销恢复；Outlet 不会被删除。框选与拖动均不会展开属性侧栏，缩放和滚动后同样有效。
+Drag with the left mouse button on blank canvas space to select fully enclosed steps and Outlet. Shift-drag adds to the selection; Shift-click a step toggles it. Drag any selected element to move the group; Delete removes selected steps and their connections in one undoable action, while Outlet remains permanent. Marquee selection and dragging do not expand the properties sidebar and work after zooming or scrolling.
 
-点击节点区域标题可选中区域；拖动标题会连同所属步骤整体移动，保持节点归属与连线，可撤销恢复。区域内部空白处仍用于框选。
+Click a node region title to select it. Drag its title to move the region together with its steps, preserving node assignments and connections; undo restores the layout. Blank space inside regions remains available for marquee selection.
 
 
 
-选中步骤或连线后，Delete 和 Backspace 均可删除；选中多个步骤时批量删除。编辑输入框、文本区或参数值时不会触发画布删除。画布获得键盘焦点不显示整块蓝色外框。
+Delete and Backspace both remove selected steps or connections; multiple selected steps are deleted together. Editing inputs, text areas or parameter values never triggers graph deletion. Keyboard focus on the canvas does not draw a blue frame around the entire drawing area.
 
-删除多个步骤前显示确认框；取消时不改变选择、作业和撤销历史，删除单个步骤或连线无需确认。画布上方工具栏中的 Undo / Redo 按钮及快捷键支持撤销和重做：Ctrl/⌘+Z、Ctrl/⌘+Shift+Z，也支持 Ctrl+Y 重做。批量删除和有效移动分别作为一次操作整体恢复。文本输入框内保留原生文本撤销行为；拖动过程中不切换历史。
+Deleting multiple steps requires confirmation; cancel preserves selection, the job and undo history. Single-step or connection deletion needs no confirmation. Undo / Redo buttons in the toolbar above the canvas and shortcuts support Ctrl/⌘+Z, Ctrl/⌘+Shift+Z and Ctrl+Y for redo. Bulk deletion and valid movement each restore as one complete operation. Text fields retain native text undo behavior; history cannot change during a drag.
 
-拖动步骤或 Outlet、以及从算子库新增步骤时，与其重叠的其他步骤及 Outlet 会自动向下避让，并在需要时连锁调整，保留间距。多选步骤保持相对位置，停留在拖动目标位置。每次预览均基于拖动开始前的布局重新计算，移开鼠标后邻近元素恢复；取消拖动会恢复全部位置且不修改历史。放下后整次移动及避让作为一次操作支持撤销和重做。被避让步骤的执行节点绑定保持不变。所有元素均不再因重叠而拒绝放置。整体拖动节点区域也触发自动避让：其他节点区域携带其所属步骤整体让开，独立步骤和 Outlet 同样避让。每次预览均从原始布局计算，取消时全部恢复，整次移动支持一次撤销和重做，执行节点绑定保持不变。连线不计入放置障碍。
+Dragging steps or Outlet, or adding an operator, automatically moves overlapping steps and Outlet downward, cascading as needed and leaving a gap. Selected steps keep their relative offsets and stay at the dragged destination. Each preview starts from the original layout, so moving away restores neighbors; cancelling restores the complete layout without changing history. Dropping commits the entire move as one undo/redo operation. Displaced steps retain their execution-node assignments. No element rejects a destination because of overlap. Dragging a node region also triggers automatic avoidance: other regions move as complete groups with their steps; standalone steps and Outlet move aside too. Previews reset from the original layout, cancellation restores everything, and undo/redo restores the complete move. Execution-node assignments remain unchanged. Connections do not count as placement obstacles.
 
-节点区域采用柔和浅色背景、浅色标题栏、细彩色边线、服务器图标和步骤数量标注；选中后增加柔和的外围阴影，保留普通边框，不增加额外轮廓线，拖动标题栏可整体移动。
+Node regions use soft tinted backgrounds, light title bars, fine colored accents, server icons and step counts. Selection adds a soft outer shadow while retaining the normal border, without an extra outline; dragging the title bar moves the whole region.
 
-步骤框的右上角显示算子声明的图标及颜色，与左侧算子库一致；内置 `read_item` 使用相同的数据源图标。尚未加载到算子元信息时显示灰色占位图标。
+The top-right corner of each step card displays the operator’s declared icon and color, matching the operator library. The built-in `read_item` uses the same data-source icon. A gray placeholder appears while operator metadata is unavailable.
 
-节点区域的避让跟随拖动方向：向上拖动时，邻近元素向上避让；向下拖动时向下避让；水平拖动默认向下避让。连锁调整保留上下顺序，区域及其步骤整体移动。若向上避让超出画布顶部，则整体向下补足可见空间，避免元素移出可见坐标范围。
+Node-region avoidance follows the drag direction: dragging upward pushes neighbors upward; dragging downward pushes them downward. Horizontal drags use downward avoidance. Cascades preserve vertical order and move each region together with its steps. If an upward cascade reaches the canvas origin, the layout shifts down to keep all elements visible.
 
-Outlet 始终位于所有节点区域之外，节点区域内部的空白部分也不能与其重叠。拖动 Outlet、移动或扩展节点区域、导入作业及自动布局时，均会自动将 Outlet 调整至区域外的空闲位置。Outlet 不参与执行节点绑定，整次调整支持撤销和重做。
+Outlet always remains outside every node region, including empty areas inside a container. Dragging Outlet, moving or growing a region, importing a job and arranging the canvas all relocate Outlet to a free position outside containers. It never gains a node assignment, and the complete adjustment participates in undo/redo.
 
-Parameters 使用紧凑表单，参数名为固定标签。已声明单一类型的参数显示类型标注和小型 `$` 变量切换按钮，不再重复显示类型下拉框。说明、默认值与约束通过信息提示查看；可选参数用复选框启用。仍支持多行字符串、嵌套对象、数组、枚举及联合类型。自定义参数仅在新增时输入名称，已有参数名均显示为标签。
+Parameters use a compact form with fixed name labels. Declared single-type values show a type label and a small `$` variable toggle, without a redundant type selector. Descriptions, defaults and constraints are available from the info hint. Optional parameters are enabled by checkbox. Multiline strings, nested objects, arrays, enums and union types remain editable. Additional parameter names are entered only during creation; existing names are labels.
 
-左侧栏将 **Operators**、**Nodes**、**Datasets** 分成三个标签页，标签以带图标的圆角按钮沿侧栏左缘从上到下排列，内容显示在其右侧，与右侧横向属性标签区分。默认打开算子页；切换时保留搜索、分类展开、数据集展开及各页滚动位置。支持上下方向键、Home 和 End 切换标签。
+The left sidebar separates **Operators**, **Nodes** and **Datasets** into three tabs, using rounded icon buttons stacked vertically along the sidebar’s left edge, with content on the right, distinct from the horizontal right properties tabs. Operators open by default. Switching tabs retains search, category expansion, dataset expansion and each panel’s scroll position. Up/Down arrows, Home and End switch tabs.
 
-首次打开 **Datasets** 时自动加载目录；若配置服务器仍在连接，则连接完成后自动继续。切换标签复用已加载的列表及展开项目；**Refresh datasets** 用于显式刷新。加载期间合并重复请求，空目录或服务不可用时显示明确状态。
+Opening **Datasets** automatically loads the directory on first use, waiting for the configured server connection if necessary. Switching tabs reuses the loaded list and expanded items. **Refresh datasets** explicitly reloads it; concurrent loads are coalesced and empty or unavailable directories show an explicit status.
 
-### 导出与恢复布局
+### Exporting and restoring layout
 
-`designer.version: 1` 是布局格式版本；`generator.name` 和 `generator.version` 标记设计器名称及构建版本，`exported_at` 是本次导出时的 UTC 时间（ISO 8601）。`positions` 保存步骤坐标，`node_areas` 保存节点区域位置，`outlet` 保存结果出口位置，`viewport` 保存缩放和滚动位置。重新加载会恢复这些布局信息；没有辅助区的文件自动排列。执行端接受并忽略整个 `designer` 区，不影响执行语义。预览窗口切换复选框后，复制、打印、下载均使用当前预览内容，变量仍单独导出。
+`designer.version: 1` identifies the layout format; `generator.name` and `generator.version` identify the designer and its build version. `exported_at` records the current export time in UTC (ISO 8601). `positions` stores step coordinates, `node_areas` stores node-region positions, `outlet` stores the result outlet position, and `viewport` stores zoom and scroll offsets. Loading restores this layout; files without metadata are arranged automatically. Execution accepts and ignores the entire `designer` section. Toggling the preview checkbox updates the content used by copy, print, and download. Variables remain a separate export.
 
-设计器本地推导需要 Docker 访问权限；`operator_cache`、`operator_max_bytes`、可选的 `plugin_directory` 和 `inference_workers` 配置本地运行环境。worker 空闲后自动回收。算子参数或上游结构变化会重新推导，不缓存推导结果；失败时显示诊断信息，不转发到执行节点兜底。
+Local inference requires Docker access. Configure the local environment with `operator_cache`, `operator_max_bytes`, optional `plugin_directory`, and `inference_workers`. Idle workers are reclaimed automatically. Parameter or upstream structure changes trigger inference again; results are not cached. Failures produce diagnostics without falling back to execution nodes.
 
-### YAML 编辑器
+### YAML editors
 
-Job YAML、Variables 和只读导出预览统一使用 CodeMirror 6。支持 YAML 语法着色、变量着色、行号、代码折叠和搜索；可编辑区域还支持搜索替换、两空格缩进、Tab 缩进、编辑器内撤销/重做和语法错误标记。编辑器内快捷键不会操作画布历史。语法提示仅检查 YAML 语法，作业结构与参数规则仍由 Apply YAML 和服务端检查；不会因此自动执行任务或推导。
+Job YAML, Variables, and the read-only export preview use CodeMirror 6. Features include YAML and variable highlighting, line numbers, folding, and search. Editable surfaces also support replacement, two-space indentation, Tab indentation, editor undo/redo, and syntax diagnostics. Editor shortcuts do not operate on canvas history. Diagnostics check YAML syntax only; Apply YAML and the server still check workflow structure and parameter rules. Editing does not automatically execute a job or trigger inference for an unapplied Job YAML draft.
 
-画布变更会同步到 Job YAML；手动修改 YAML 后，在 Apply YAML 之前不会被画布同步覆盖。导出预览只读，辅助信息开关、复制、打印和下载使用同一份原始 YAML 内容，不包含行号或着色标记。
+Canvas changes synchronize to Job YAML. Once YAML is edited manually, canvas synchronization does not overwrite it before Apply YAML. Export preview is read-only; the metadata toggle, copy, print, and download use the same original YAML text without line numbers or highlighting markup.
 
-参数名称后的问号不再弹出悬浮说明。鼠标移入、键盘聚焦或点击问号时，参数面板下方的说明区显示该项的描述、类型、是否必需、默认值、枚举与约束；内容保留到查看下一项或切换步骤。嵌套参数共用这个说明区。
+Question marks beside parameter names no longer display floating descriptions. Hovering, focusing, or clicking a question mark updates a description area below the parameter form with its description, type, required status, default, enum, and constraints. The information remains until another parameter is inspected or the step changes. Nested parameters share this area.
 
-前端源码在 `frontend/`，依赖版本由 `package-lock.json` 锁定。修改编辑器源码或依赖时，使用 Node.js 22 或以上版本运行：
+Frontend sources live in `frontend/`; `package-lock.json` locks dependency versions. After changing editor sources or dependencies, use Node.js 22 or newer:
 
 ```bash
 cd dacp-job-designer/frontend
@@ -177,32 +177,32 @@ npm ci --ignore-scripts
 npm run build
 ```
 
-将生成的 `src/main/resources/web/yaml-editor.js` 和 `editor-licenses.txt` 与源码一起提交。之后在模块目录执行 `sbt test stage`；常规 Scala 构建和部署无需 Node.js。资源由 Scala HTTP 服务本地提供，浏览器不访问 CDN。第三方许可保留在 `/editor-licenses.txt`。
+Commit generated `src/main/resources/web/yaml-editor.js` and `editor-licenses.txt` with the sources. Then run `sbt test stage` in the module directory. Regular Scala builds and deployment do not require Node.js. The Scala HTTP service serves all assets locally; browsers do not access a CDN. Third-party license notices remain available at `/editor-licenses.txt`.
 
-### 输出结构与样例
+### Output structures and samples
 
-输出预览统一位于右侧 **Outputs** 标签页，不再提供顶部手动推导按钮或下侧独立结构预览页。参数和连线变化自动更新各端口的结构。未接齐输入的步骤单独显示缺失端口，上游及无关分支的成功结构不受影响。
+Output previews live in the right-hand **Outputs** tab; there is no top-level manual inference button or separate lower schema-preview tab. Parameter and connection changes update port structures automatically. Steps with incomplete inputs report their missing ports individually, preserving successful upstream and independent-branch structures.
 
-样例由算子的 `previewOutputs`（JVM）或 `preview_outputs`（Python）接口提供，不由界面依据 Schema 合成。所有算子必须实现样例接口；当前输入无法生成样例时明确报告原因。每个端口默认最多 10 行、16 KiB（按序列化后的 UTF-8 JSON 计），单次图预览的样例总量最多 256 KiB；截断会明确标记。结构推导与样例请求分离：结构逐步骤返回后，后续样例请求附带 `preview: {max_rows: 10, max_bytes: 16384}`。样例方法不调用完整作业的处理入口。`read_item` 的样例来自受限源读取，records 保留字段结构，bytes 用 Base64 展示。详见[结构推导与样例接口](../docs/structure-inference.md)。
+Operators supply samples through `previewOutputs` (JVM) or `preview_outputs` (Python); the UI does not synthesize samples from Schema. All operators must implement the sample interface; unavailable samples for current inputs are reported with a reason. Defaults are 10 rows and 16 KiB per port, measured as serialized UTF-8 JSON, with a 256 KiB total sample budget per graph preview. Truncation is explicitly labeled. Structure inference and sample requests are separate: a subsequent sample request adds `preview: {max_rows: 10, max_bytes: 16384}`. Sample methods do not invoke complete-job processing. `read_item` samples use bounded source reads; records preserve field structure, while bytes are shown as Base64. See [structure inference and sample interfaces](../docs/structure-inference.md).
 
-`read_item` 未显式选择 `view` 时，根据 Item 元信息优先选择 records，不支持时使用 bytes；显式选择始终保留。设计器展示自动选择的实际视图，YAML 中省略自动选择的 `view`，执行端也采用相同规则。例如 `dacp://localhost:19860/ds-6zmr-crvh/benchmark` 的 records 视图可返回站点、时间、温度、湿度及质量字段的 Schema。
+When `read_item` has no explicit `view`, Item metadata selects records when supported and bytes otherwise; explicit choices are preserved. The designer displays the selected view and omits automatically selected `view` values from YAML. Execution uses the same policy. For example, the records view of `dacp://localhost:19860/ds-6zmr-crvh/benchmark` provides station, time, temperature, humidity, and quality Schema fields.
 
-步骤框内仅以紧凑的字段名和类型展示输出结构，不展示数据样例；完整结构及算子提供的样例统一在右侧 **Outputs** 标签页查看。
+Step cards show only output structure as compact field names and types, without data samples. Full structures and operator-provided samples are available in the right-hand **Outputs** tab.
 
-结构推导仅随算子、步骤参数、输入连接或变量值的变化触发；首次加载步骤也会推导。移动、选中、重命名、切换侧栏或修改 Job 输出绑定不会触发推导。
+Schema inference is triggered only by changes to operators, step parameters, input connections or variable values, as well as initial step loading. Moving, selecting, renaming, switching sidebars or editing Job output bindings does not trigger inference.
 
-Schema 的界面类型名称参见[结构推导文档](../docs/structure-inference.md#界面中的-schema-类型名称)，步骤框与 Outputs 统一展示，保留嵌套层级、时间单位与可空性。
+See [Schema display type names](../docs/structure-inference.md#schema-type-names-in-the-interface). Step cards and Outputs use consistent names while preserving nesting, time units and nullability.
 
-步骤框的结构采用紧凑的两列表格，分别展示字段名和统一类型名，无额外表头。字段较多时在表格区域滚动，长字段名和类型省略显示，悬停查看完整内容；右侧 Outputs 提供完整结构。
+Step cards show compact two-column tables with field names and normalized types, without an extra header row. Longer schemas scroll within the table area; long names and types are ellipsized with their full text available on hover. Outputs provides the complete structure.
 
-推导错误在步骤框中仅显示错误图标和 `Inference error`，未知结构显示问号图标和 `Schema unknown`；推导中显示 `Inferring…`。详细错误在右侧 Outputs 和下侧 Logs 中查看。
+Step cards show an error icon with `Inference error` for failures, a question-mark icon with `Schema unknown` for unknown structures, and `Inferring…` while inference is pending. Detailed errors remain available in Outputs and Logs.
 
-Outlet 最多连接一个步骤的一个输出端口；连接新端口会替换原绑定，允许暂时不连接。导入和导出均校验此限制。结构推导先返回 Schema，再单独请求有界数据样例；样例读取较慢或失败不影响已展示的结构。
+Outlet accepts at most one output port from one step. Connecting a new port replaces the existing binding; an unconnected Outlet is allowed. Imports and exports enforce this limit. Inference displays schemas first and requests bounded samples separately; slow or failed sample reads do not hide the displayed schemas.
 
-## 校验、逐步骤推导和编辑操作
+## Validation, incremental inference and editing
 
-点击 **Validate**，下侧 **Validation** 页会列出错误和警告，点击问题中的步骤名称可定位并打开该步骤。检查包括：未连接 Outlet、没有流向 Outlet 的游离步骤、缺失或多余输入端口、不存在的步骤引用、重复消费、环路、参数及变量。已有推导结果还用于检查输出端口和输入表示／格式是否匹配；没有推导结果时显示未验证警告，不表示验证通过。校验不执行作业、不启动推导 worker、不读取数据，不能保证实际执行成功；当前未应用的 Job YAML 不参与画布校验。
+Click **Validate** to list errors and warnings in the lower **Validation** panel. Click a step name in an issue to locate and open that step. Checks cover an unconnected Outlet, steps with no dataflow path to Outlet, missing or extra inputs, unknown step references, duplicate consumers, cycles, parameters and variables. Existing inference results also verify output ports and input representations/formats. Missing inference results produce an unverified warning rather than a successful check. Validation does not execute jobs, start inference workers or read data, and cannot guarantee runtime success. Unapplied Job YAML edits are excluded from canvas validation.
 
-设计器通过 `/api/infer_stream` 逐步骤接收 NDJSON 事件：`step` 携带步骤名与该步骤推导结果，`complete` 携带完整报告，`error` 表示请求未正常完成。推导依赖从上游到下游，完成一个步骤立即更新画布；当前仍串行执行独立分支。发生请求错误时保留本次已返回步骤的结构，过期草案结果被丢弃。有界样例随后单独获取，records 样例在 Outputs 中按字段列和记录行展示为表格；嵌套值用紧凑 JSON 展示，长值悬停查看，bytes 样例显示 Base64。
+The designer receives incremental NDJSON events through `/api/infer_stream`: `step` carries a step name and its inference result, `complete` carries the full report, and `error` indicates an incomplete request. Inference follows dependencies from upstream to downstream and updates the canvas immediately after each step completes. Independent branches are still inferred serially. Request failures preserve structures already received for the current draft; stale draft results are discarded. Bounded samples are requested separately afterward. Outputs displays records samples as tables with fields as columns and records as rows; nested values use compact JSON, long values are available on hover, and bytes samples remain Base64.
 
-选中单个步骤后，点击 **Duplicate step** 或按 **Ctrl/⌘+D** 创建副本。副本使用新 ID，保留算子、参数及节点绑定，不复制输入连线和 Outlet 绑定，避免重复消费。可撤销复制。框选或 Shift 单击多个步骤后，拖动其中任一步骤的标题栏可整体移动，保持相对位置，连线跟随，支持整组撤销；选中的 Outlet 也可一起移动。
+Select one step and click **Duplicate step** or press **Ctrl/⌘+D** to create a copy with a new ID. The copy retains its operator, parameters and node placement, but not input connections or Outlet bindings, preventing duplicate consumers. Duplication supports undo. After marquee-selecting or Shift-clicking multiple steps, drag any selected step's header to move the group while preserving relative positions and updating connections. Group movement supports undo and can include the selected Outlet.

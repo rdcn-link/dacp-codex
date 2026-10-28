@@ -47,7 +47,7 @@ def build(catalog, output, name="live_ticks"):
     if not target.exists():
         try: os.link(original, target)
         except OSError: shutil.copyfile(original, target)
-    manifest = dict(api_version=2,category='Data processing',icon=dict(path='M3 5h18v14H3zM3 10h18M9 5v14',color='#14866b'), name=name, version='1.0',
+    manifest = dict(api_version=2,icon=dict(path='M3 5h18v14H3zM3 10h18M9 5v14',color='#14866b'), name=name, version='1.0',
                     description=('Decode live_ticks JSONL to Arrow records, emitting each line immediately with a 64 KiB line limit.' if decoder else 'Continuously emit timestamped synthetic weather JSONL. Params: interval_seconds (0.01-60, default 1), max_records (0 means continuous). Zero-input source operator. Cancel or timeout to stop.'),
                     inputs=({'source':dict(representations=['bytes'], formats=[])} if decoder else {}),
                     parameters=dict(type='object', properties=({} if decoder else {

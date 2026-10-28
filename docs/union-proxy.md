@@ -1,26 +1,26 @@
-# Union 的 DACP 代理服务
+# Union DACP proxy service
 
-[English](union-proxy_en.md)
+[中文](union-proxy_zh.md)
 
-Union 同时提供标准 DACP 服务、Union 专用 API 和独立 HTTP 运维看板。Python/Scala `Source`、`Job` 和 Shell 可以连接 Union 的公开 DACP 地址。成员节点仍独立运行；Union 连接配置中的成员并轮询，使用节点签发的服务凭据代理数据和分发计算。
+Union provides a standard DACP service, Union-specific APIs, and a separate HTTP operations dashboard. Python/Scala `Source`, `Job`, and the shell can connect to its public DACP address. Members remain independent; Union polls configured members, proxies their data and dispatches computation.
 
-## 公开数据集命名
+## Public dataset names
 
-节点继续以本地名称发布数据集。Union 将“成员证书身份、本地数据集名称”映射为固定长度的公开名称，例如 `ds-k7m2-9wqr`，公开 URI 为 `dacp://union.example:19860/ds-k7m2-9wqr`。Item 在其后追加逻辑路径。`name` 就是该公开名称；整个系统的数据集没有独立的 `id` 或显示名称属性。成员本地名称仅用于内部路由。成员地址、证书身份不写入公开目录；用户提供的描述和数据内容原样保留，发布者应自行控制其中的信息。
+Nodes continue publishing datasets by local name. Union maps each (member certificate identity, local dataset name) pair to a fixed-length public name such as `ds-k7m2-9wqr`. Its public URI is `dacp://union.example:19860/ds-k7m2-9wqr`, followed by an Item's logical path. `name` is that public name. Datasets have no separate `id` or display-name property anywhere in the system. Member-local names are used only for internal routing. Public catalogs omit member addresses and certificate identities. User descriptions and payloads are preserved; publishers control the information they contain.
 
-名称使用持久化递增计数器、密钥化可逆置换和不易混淆字符编码生成，不能从字符串直接看出相邻整数关系。编码不是访问授权手段。逻辑节点 ID 使用 `nd-xxxx-xxxx`，供需要指定计算位置的客户端使用；通过 Flight Action `dacp.nodes` 获取。
+Names use a persistent increasing counter, keyed reversible permutation and an unambiguous alphabet. Adjacent counters are not apparent from their strings. Encoding is not authorization. Logical node IDs use `nd-xxxx-xxxx` for clients requiring explicit placement; obtain them through Flight Action `dacp.nodes`.
 
-`dacp.nodes` 的每个节点包含逻辑 `id`、服务地址 `address`、状态 `state`、容量 `capacity` 和观测时间。可用时还提供任务占用、Union 槽位、启动时间、运行时长、资源使用情况、执行器和看板地址。不可用成员仍展示并明确标注状态；保留指标属于最后一次观测。设计器显示地址和状态详情，禁止把步骤放置到不可用成员，执行位置仍保存逻辑 ID。
+Each `dacp.nodes` entry includes a logical `id`, server `address`, `state`, `capacity` and observation time. Available status fields also include task reservations, Union slots, start time, uptime, resource usage, runtimes and dashboard address. Unavailable members remain visible with explicitly unavailable state; any retained metrics are the last observation. The designer displays addresses and status details, disables placement on unavailable members, and saves logical IDs for execution placement.
 
-映射保存在 `state_directory/dataset-routes/routes.json`，包含编码密钥、下一计数值和当前路由。不保存数据集元数据副本。该目录只允许一个服务实例持有写锁。备份时保留整个 Union 状态目录；不要用旧备份覆盖仍被外部引用的 名称空间。密钥丢失或计数器回退可能破坏 名称稳定性。
+`state_directory/dataset-routes/routes.json` stores the encoding key, next counter and current routes, without dataset metadata replicas. A writer lock allows one serving instance. Back up the entire Union state directory; do not restore an old backup over an dataset namespace still referenced externally. Losing the key or rolling back the counter can break name stability.
 
-## 在线目录与成员变化
+## Online catalogs and membership changes
 
-`dacp.catalog` Action 接收空请求体，返回 `Directory` protobuf：`datasets`、`complete`、`unavailable_sources`。每次请求在线读取已批准成员的目录并合并，新发现的数据集自动获得名称。成员不可达、未批准或目录读取失败时返回可用部分，并标记不完整；客户端不能把部分目录当作完整清单。标准 `ListFlights` 无法携带完整性标记，因此遇到部分目录返回 `UNAVAILABLE`。
+Action `dacp.catalog` accepts an empty body and returns a `Directory` protobuf with `datasets`, `complete` and `unavailable_sources`. Each request reads and merges authenticated configured members' catalogs online; newly discovered datasets receive names automatically. Unreachable, unauthenticated or failing members produce an explicitly incomplete directory containing available entries. Clients must not interpret partial directories as complete. Standard `ListFlights` cannot carry completeness, so partial catalogs fail with `UNAVAILABLE`.
 
-临时故障保留原路由；只有一次成功完整的成员目录读取确认名称消失，才删除对应映射。明确移除成员也会清理其映射。删除的公开名称不再使用；同名数据集再次出现会获得新公开名称。撤销批准立即停止代理，故障或撤销不会把旧公开名称指向其他数据集。节点原地替换同名数据集不能被名称契约识别为新数据集；这是当前身份模型的边界。
+Temporary failures preserve routes. Only a successful complete member listing confirming a missing name removes that mapping. Explicit member removal also removes its routes. Deleted public names are never reused; a returning local name receives a new public name. Revocation stops proxy access, and failures or revocation never redirect an old public name to another dataset. Replacing a dataset in place under the same native name cannot be detected as a new identity under this naming contract.
 
-## 客户端使用
+## Clients
 
 ```text
 dacp-shell dacp://union.example:19860
@@ -30,11 +30,11 @@ dacp-shell> ls /
 dacp-shell> cat /observations records
 ```
 
-Shell 的启动参数绑定服务器地址。`datasets` 不接收地址参数。完整目录只有一个数据集时自动选择；直接使用公开名称选择，例如 `use ds-k7m2-9wqr`，或执行 `datasets` 后通过 `use 1` 选择对应行。列表只显示行号、名称和 JSON 描述，不显示 URI。SDK 的 `Source.datasets(...)` 返回可迭代目录并提供完整性字段；访问 Item、记录扫描和 bytes 流沿用普通 DACP 接口。S3 默认开启、匿名只读，以公开名称 作为 bucket，Item 逻辑路径作为 key；使用 `s3: {enabled: false}` 可关闭。S3 不能表达部分 bucket 清单，目录不完整时返回 503。
+Shell startup binds the server address; `datasets` accepts no address argument. A complete, single-entry directory is selected automatically. `use NAME` selects the exact published name, such as `use ds-k7m2-9wqr`; after `datasets`, `use 1` selects the corresponding row. The list shows row numbers, names, and JSON descriptions, without URIs. SDK `Source.datasets(...)` returns an iterable directory with completeness fields. Item reads, record scans and bytes streams use ordinary DACP interfaces. S3 requires independent SigV4 authentication for read-only access, using public names as buckets and Item logical paths as keys. Disable it with `s3: {enabled: false}`. Incomplete bucket listings return 503 because S3 cannot express partial directory completeness.
 
-## 普通任务与位置选择
+## Ordinary jobs and placement
 
-通过标准 `Job.run` 或 Shell `submit` 提交普通 Job；输入只引用 Union 的公开 URI：
+Submit ordinary Jobs through standard `Job.run` or shell `submit`, using only public Union input URIs:
 
 ```yaml
 name: climate-summary
@@ -54,17 +54,17 @@ outputs:
   result: summarize
 ```
 
-例中的算子须已安装或可从仓库获取。普通任务可省略 `node`。Union 在已认证的配置成员中按容量筛选执行位置，优先数据或上游步骤所在成员；全部原始输入大小已知时选择需要传输总字节数较少的位置，否则按输入声明顺序选择。一个多输入算子只在一个成员执行，其他成员输入通过数据流传输。需要固定位置时设置 `node: nd-xxxx-xxxx`，不能在公开任务中填写内部地址。
+The example operator must be installed or available from a repository on the execution member. Ordinary tasks may omit `node`. Union filters configured locations by service credential and capacity, preferring input or upstream locations. When all raw input sizes are known, it chooses the location minimizing transferred bytes; otherwise it follows input declaration order. A multi-input operator executes at one member and reads other members' inputs as data streams. Explicit placement uses `node: nd-xxxx-xxxx`; public tasks cannot specify internal addresses.
 
-执行策略 YAML、结果流、失败尝试通知、取消、超时、成员上的物化和重放沿用现有执行引擎。结果默认流式返回，经 Union 到客户端。Union 作为上级的成员时复用普通 worker 契约，转交本地成员执行；输入使用短期、单消费者、绑定证书身份的流，不落盘。代理路径限制为 8 层并检测循环；取消和剩余执行时间传到下级。
+Execution policy JSON, output streams, failed-attempt notifications, cancellation, timeout, member-side materialization and replay use the existing engine. Results stream through Union to the client by default. Union participates as an upstream member through the ordinary worker contract, delegating computation to its own members. Inputs use temporary, single-consumer, certificate-bound streams without disk staging. Proxy paths detect cycles and enforce an eight-level limit; cancellation and remaining execution time propagate downstream.
 
-## 管理边界
+## Management boundaries
 
-成员由 Union 启动配置指定，使用节点签发的服务凭据。普通客户端使用 TLS 与 Token；任务接口及结果、事件流检查所有者。不提供远程成员管理 API。内网 HTTP 看板公开只读，会展示运维拓扑。S3 使用独立 SigV4 凭据。见[安全说明](security.md)及 [Union 配置](../dacp-union-server/README.md)。
+Members are configured in Union's startup configuration and use node-issued service credentials. Ordinary clients use TLS and tokens; task APIs and result/event streams enforce ownership. No remote member administration API exists. The internal HTTP dashboard is publicly readable and exposes operational topology. S3 uses separate SigV4 credentials. See [security](security.md) and [Union configuration](../dacp-union-server/README.md).
 
-## 开发与验证
+## Development and validation
 
-`DatasetCatalog.directory` 扩展目录完整性契约，默认包装插件的 `list`。`ProxyCatalog` 通过相同的 `DatasetAccess` 契约转发元数据、扫描和流，不识别具体数据库或文件格式。插件仍使用现有注册方式，无须修改核心注册表。记录型 Item 的共享 JSONL bytes 视图同样适用于代理与 S3。
+`DatasetCatalog.directory` adds completeness to the catalog contract, defaulting to a wrapper over plugin `list`. `ProxyCatalog` forwards metadata, scans and streams through the same `DatasetAccess` contract without database or format branches. Plugins retain their existing registration mechanism and require no core registry changes. The shared JSONL bytes view for records Items also applies to proxy access and S3.
 
 ```bash
 (cd dacp-union-server && sbt test)
@@ -73,9 +73,9 @@ outputs:
 PYTHONPATH=dacp-client .venv/bin/python -m pytest dacp-client/tests
 ```
 
-契约测试覆盖名称编解码与重启、完整/部分目录、公开 URI、Item 流、S3、自动放置、跨成员原始输入、组合 worker、权限与循环检测。
+Contract tests cover name encoding/decoding and restart, complete/partial catalogs, public URIs, Item streams, S3, placement, raw cross-member inputs, worker composition, authorization and cycle detection.
 
-Union 作为上级成员需要物化输出时，可在 Union 配置顶层设置 `materialization_store`，使用相同存储插件契约；存储在该 Union 层，不要求其下游成员物化：
+To materialize outputs when Union acts as an upstream member, configure top-level `materialization_store` using the same storage plugin contract. Storage resides at that Union layer; its downstream members need not materialize:
 
 ```yaml
 materialization_store:

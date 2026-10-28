@@ -14,7 +14,7 @@ inputs:
 provenance:
   source_archive: ../../../../../../.operator-sources/dacp-sources.zip
   source_repository: https://github.com/rdcn-link/dacp-codex
-  build_instructions: See examples/operators/native/README_en.md for the C compiler command and runtime setup.
+  build_instructions: See examples/operators/native/README.md for the C compiler command and runtime setup.
 
 parameters:
   type: object
@@ -22,7 +22,6 @@ parameters:
   required: []
   additionalProperties: false
 
-category: Data processing
 icon:
   path: "M3 5h18v14H3zM3 10h18M9 5v14"
   color: "#14866b"

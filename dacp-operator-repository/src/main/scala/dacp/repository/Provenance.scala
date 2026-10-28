@@ -25,8 +25,8 @@ object Provenance {
   private val textKeys=Set("source_repository","source_revision","license","build_instructions")
   val fileKeys=Vector("source_archive","license_file","sbom")
   private val keys=textKeys++fileKeys
-  def validFilename(name:String):Boolean=name.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*")
-  def isArchive(name:String):Boolean=Seq(".zip",".tar",".tar.gz",".tgz").exists(name.toLowerCase(java.util.Locale.ROOT).endsWith)
+  def validFilename(name:String):Boolean=name.length<=255 && name.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*")
+  def isArchive(name:String):Boolean=java.util.ServiceLoader.load(classOf[dacp.operator.SourceArchive]).iterator.asScala.exists(_.supports(name))
   def textMetadata(p:Provenance):com.fasterxml.jackson.databind.node.ObjectNode = {
     val n=Repository.mapper.createObjectNode()
     Seq("source_repository"->p.sourceRepository,"source_revision"->p.sourceRevision,"license"->p.license,

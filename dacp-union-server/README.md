@@ -1,14 +1,14 @@
-# DACP Union 服务
+# DACP Union server
 
-[English](README_en.md)
+[中文](README_zh.md)
 
-Scala 编写的协调与代理服务，一个进程维护一个 Union。成员节点独立运行；Union 读取成员配置，轮询健康与资源状态并调度流式作业。成员无需注册或发送心跳。
+Scala coordination and proxy service maintaining one Union. Members run independently. Union reads its member configuration, polls health and resources, and schedules streaming jobs. Members do not register or send heartbeats.
 
-Union 提供标准 DACP 数据目录、Item 访问与 Job 执行，公开数据集名称隐藏成员实际地址。中间任务流直接在成员间传输，最终结果经 Union 返回。内网 HTTP 看板无需认证，展示成员、流量、执行策略、尝试记录、DAG 与持久执行历史。
+Union exposes standard DACP catalogs, Item access and Job execution through public dataset names that hide internal addresses. Intermediate task streams travel directly between members; final results return through Union. Its internal HTTP dashboard shows members, traffic, execution policy, attempts, DAGs and persistent history without authentication.
 
-## 构建与配置
+## Build and configuration
 
-需要 JDK 17 和 sbt，在本模块执行：
+Requires JDK 17 and sbt. Run in this module:
 
 ```bash
 sbt test stage
@@ -16,7 +16,7 @@ target/universal/stage/bin/dacp-union-server identity ../.union-demo/x.yaml
 target/universal/stage/bin/dacp-union-server serve ../.union-demo/x.yaml
 ```
 
-配置路径相对于进程工作目录：
+Paths are relative to the process working directory:
 
 ```yaml
 host: 127.0.0.1
@@ -39,26 +39,26 @@ web: {host: 127.0.0.1, port: 19880}
 s3: {enabled: true, host: 127.0.0.1, port: 21860}
 ```
 
-## 认证与成员关系
+## Authentication and membership
 
-按[认证与访问控制](../docs/security.md)在本地签发凭据。每个成员签发绑定稳定 Union ID 和证书指纹的服务凭据，将秘密保存到该成员对应的 `credential_file`。成员仅通过配置文件管理，没有远程邀请、审批或成员管理 API。成员不可用不阻止启动，后续轮询重试；凭据撤销会终止运行中的协作。成员证书变更时，需要本地审查 `state_directory/member-identities` 中保存的身份固定记录，必要时重新签发绑定凭据。保留 Union 状态目录以维持身份。
+Follow [authentication and access control](../docs/security.md) for local credential issuance. Each member issues a Union service credential bound to its stable Union ID and certificate fingerprint. Put the secret in that member's `credential_file`. Members are configured only in this file; there are no remote invitation, approval or member-management APIs. Unavailable members are polled again and do not block startup. Credential revocation stops active collaboration work. Member certificate changes require an explicit local review of the saved pin in `state_directory/member-identities` and newly bound credentials when applicable. Keep Union state to preserve its identity.
 
-普通客户端使用 TLS 与 Bearer Token，无需客户端证书。本地创建示例：
+Ordinary clients use TLS and a bearer token, without requiring a client certificate. Create one locally:
 
 ```bash
 target/universal/stage/bin/dacp-union-server credentials ../.union-demo/x/credentials create --subject alice
 ```
 
-将返回的 Token 保存到受保护文件，通过 `dacp-shell dacp://localhost:19860 --ca ../examples/certs/ca.crt --token-file /protected/alice.token` 使用。见[客户端示例](../docs/union-proxy.md)。任务使用公开命名空间或逻辑节点名称；状态、取消、重放、结果与事件流检查所有者。
+Store the returned token in a protected file and use `dacp-shell dacp://localhost:19860 --ca ../examples/certs/ca.crt --token-file /protected/alice.token`. See [client examples](../docs/union-proxy.md). Jobs use the public namespace or logical node IDs. Owner checks protect status, cancellation, replay and result/event streams.
 
-## 执行与接口
+## Execution and interfaces
 
-Job 通过 `inputs` 连接步骤，不支持控制依赖，允许无输出算子。每个算子必须实现[结构推导](../docs/structure-inference.md)。[执行策略](../docs/materialization.md)控制物化、重放、重试次数与总超时。自动重试要求客户端丢弃失败尝试的部分结果，不强制最终结果物化。流使用有界队列与背压；重启中断的任务不会自动恢复，但已提交的物化结果可重放。
+Jobs connect steps through `inputs`; control dependencies are unsupported and output-free operators are allowed. Every operator implements [structure inference](../docs/structure-inference.md). [Execution policy](../docs/materialization.md) controls materialization, replay, retry count and total timeout. Automatic retries require clients to discard a failed attempt's partial output; final materialization is optional. Streaming uses bounded queues and backpressure. Jobs interrupted by restart are not automatically resumed; committed materializations can be replayed.
 
-前缀 `dacp.union.` 的 Flight Actions 包括 `submit`、`replay_job`、`job_status` 和 `cancel_job`。结果与事件 Ticket 携带 `job_id`，事件还携带 `after`。普通目录使用 `dacp.catalog`，逻辑节点使用 `dacp.nodes`。请求大小上限为 1 MiB。HTTP 看板是内网只读接口，不管理凭据。S3 使用独立 SigV4 认证，见 [S3](../docs/s3-service.md)。
+Flight Actions with prefix `dacp.union.` include `submit`, `replay_job`, `job_status` and `cancel_job`. Result and event tickets carry `job_id`; events also carry `after`. Ordinary discovery uses `dacp.catalog`, and logical nodes use `dacp.nodes`. Requests are limited to 1 MiB. The HTTP dashboard is an internal read-only interface, not a credential administration service. S3 is independently authenticated with SigV4; see [S3](../docs/s3-service.md).
 
-每个 Job 支持 64 步及 1024 个连接端口，每步最多 32 个输入和 32 个连接输出。Union 最多 64 个活动任务及 4096 个内存会话。事件保留最多 128 条、4 MiB，旧游标收到 gap 通知。备份配置、凭据、Union 身份、成员证书固定记录、命名空间路由、执行历史和物化存储；凭据应与公开数据分别保护。
+Each job supports 64 steps and 1024 connected ports, with 32 inputs/connected outputs per step. Union permits 64 active jobs and 4096 in-memory sessions. Events retain up to 128 entries within 4 MiB; stale cursors receive a gap notification. Back up configuration, credentials, Union identity, member pins, namespace routes, execution history and any materialization stores. Protect credentials separately from public data.
 
-## 开发
+## Development
 
-普通 SDK 与协作 SDK 通过 `dacp-union-protocol` 共享传输、证书和流实现，服务端授权不依赖 SDK 类型。数据代理使用插件接口，核心不包含后端专用分支。在本模块运行 `sbt test`，在仓库根目录运行 `scripts/test-union-dashboard.py` 验证网页。
+The ordinary and collaboration SDKs share transport, certificate and stream implementations in `dacp-union-protocol`; service-side authorization is independent of SDK choice. Dataset proxying uses plugin contracts without backend-specific core branches. Run `sbt test` here and the browser checks in `scripts/test-union-dashboard.py` from the repository root.

@@ -1,16 +1,16 @@
-# 本地与跨节点流式作业执行对比
+# Local versus cross-node streaming job benchmark
 
-[English](local-vs-union-benchmark_en.md)
+[中文](local-vs-union-benchmark_zh.md)
 
-2026-10-27 实测：本地耗时中位数 **21.86 秒**，跨节点 **23.33 秒**，跨节点耗时增加 **6.7%**（本地相对加速比 1.067）。三个节点和 Union 均在同一物理机，因此不能据此推断跨机房网络性能。
+Measured on 2026-10-27: median local duration was **21.86 seconds**, versus **23.33 seconds** across nodes, an observed **6.7%** increase (local relative speedup: 1.067). All three nodes and Union ran on one physical host; these results do not represent cross-site network performance.
 
-## 方法
+## Method
 
-输入为 500,000 行气象观测 CSV，共 18,500,050 字节。两组执行同一条链：`read_item → piflow_csv_parser → piflow_filter → piflow_csv_save`。本地全部在 A 执行；跨节点在 A 读取与解析、B 过滤、C 导出，客户端从 Union 接收结果。筛选条件为 `quality = '0' AND CAST(temperature AS REAL) >= 30`。
+The input was a 500,000-row weather observation CSV containing 18,500,050 bytes. Both modes used `read_item → piflow_csv_parser → piflow_filter → piflow_csv_save`. Local execution placed every step on A. Cross-node execution read and parsed on A, filtered on B, and exported on C; the client received results through Union. The filter was `quality = '0' AND CAST(temperature AS REAL) >= 30`.
 
-执行策略明确禁止物化，中间结果通过流传递；客户端逐块计数并计算摘要，不保存输出内容。输入文件本身已存在于磁盘，执行记录和日志仍正常保存。计时范围为客户端提交至结果流结束，包含调度、运行时启动、处理及传输。
+The execution policy prohibited materialization. Intermediate results flowed between steps; the client counted and hashed chunks without saving output payloads. The input file already existed on disk, and execution history and logs were still persisted. Timing covered client submission through result-stream completion, including scheduling, runtime startup, processing and transfer.
 
-每组预热一次，然后交替进行三轮正式测量；预热不计入中位数。
+Each mode had one excluded warmup followed by three alternating measured rounds.
 
 | Round | Local (s) | Cross-node (s) |
 |---|---:|---:|
@@ -19,14 +19,14 @@
 | 3 | 21.858 | 20.360 |
 | Median | 21.858 | 23.331 |
 
-预热本地 96.206 秒、跨节点 107.385 秒。正式首轮仍明显较慢，说明环境尚有启动或缓存波动；本次样本有限，6.7% 是此负载下的观测值，不应视为固定跨节点开销。
+Warmups took 96.206 seconds locally and 107.385 seconds across nodes. The first measured round remained substantially slower, indicating startup or cache variability. With this limited sample, 6.7% is a workload-specific observation rather than a fixed cross-node overhead.
 
-每轮输出均为 166,600 行、6,164,250 字节，SHA-256 一致：
+Every run produced 166,600 rows and 6,164,250 bytes with the same SHA-256:
 
 ```text
 4d39d4dde925bd0bf3f5a856e583df880d8bd5b63949f524e48a3afbf99b58de
 ```
 
-## 复测
+## Reproduction
 
-使用 [benchmark-local-vs-union.py](../scripts/benchmark-local-vs-union.py)，通过 `--help` 查看参数。准备具有上述字段的 CSV Item，并设置节点和 Union 的对应 Item URI、三个成员名称、CA 和各自 Token 文件。脚本生成两份作业 YAML、策略 YAML、变量 YAML及逐轮记录和汇总 JSON；默认各预热一次、正式三轮。凭据不写入结果文件。
+Use [benchmark-local-vs-union.py](../scripts/benchmark-local-vs-union.py); `--help` lists its arguments. Prepare a CSV Item with the fields above and provide the node and Union Item URIs, three member names, CA, and separate Token files. The script writes both workflow YAML files, policy YAML, variable YAML, per-round records and a summary JSON. Defaults are one warmup and three measured rounds per mode. Credentials are excluded from result files.

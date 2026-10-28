@@ -1,8 +1,8 @@
-# 流式作业
+# Streaming jobs
 
-[English](jobs_en.md)
+[中文](jobs_zh.md)
 
-DACP Server 与 Union 使用同一种 Job 格式。步骤通过 `inputs` 引用其他步骤的输出流建立关联，列表顺序不代表执行顺序。不支持 `depends_on` 控制依赖。
+DACP Server and Union share the same Job format. Steps connect through output streams referenced in `inputs`. List order does not define execution order. Control dependencies (`depends_on`) are not supported.
 
 ```yaml
 name: weather-filter
@@ -25,22 +25,22 @@ outputs:
   result: copy
 ```
 
-## 字段与流连接
+## Fields and stream connections
 
-`name` 是必填的可读工作流名称，与自动生成的执行 ID 分开；最多 256 个字符，不允许空白名称或控制字符。每个 task 包含唯一 `id`、可选说明 `title`、带版本的 `operator`、命名输入 `inputs`，以及可选的参数 `params` 和执行位置 `node`。输入值和 Job 输出使用 `task` 或 `task:port`，省略端口时使用 `result`。不支持对象形式连接或连接级 `view`。每个输出最多有一个消费者；分发数据需要显式复制算子或不同输出端口。
+`name` is the required readable workflow name, separate from the generated execution ID. It must contain 1–256 characters, cannot be blank, and cannot contain control characters. Each task has a unique `id`, optional descriptive `title`, versioned `operator`, named `inputs`, and optional `params` and placement `node`. Input values and Job outputs use `task` or `task:port`; omitted ports mean `result`. Object bindings and connection-level `view` are not supported. Each output has at most one consumer. Use explicit duplication operators or separate ports for fan-out.
 
-`read_item@1.0` 是无需算子容器的内置传输源。它没有输入，参数 `uri` 指向一个 Item，`view` 为 `bytes` 或 `records`，输出端口为 `result`。生成器的输入也为空。处理算子消费上游输出，表示形式转换必须显式完成。
+`read_item@1.0` is a built-in transport source requiring no operator container. It takes no inputs and requires `params.uri` addressing one Item; optional `params.view` selects `bytes` or `records`; its output is `result`. Zero-input generators also have empty inputs. Processing operators consume upstream outputs. Representation conversion is explicit.
 
-向 Union 提交时，数据 URI 使用 Union 公开的数据集名称。省略 `node` 时自动调度，也可使用 `dacp.nodes` 返回的逻辑节点。用户提交的工作流不能直接使用成员实际地址。
+On Union, use public Union dataset URIs. Omit `node` for automatic placement or use a logical node returned by `dacp.nodes`. Physical member addresses are not accepted in user submissions.
 
-## 结构推导与无输出步骤
+## Structure inference and sinks
 
-所有算子必须实现[结构推导](structure-inference.md)，输出描述由该方法给出，不在清单中声明。无输出算子可以推导出空输出映射，并成功结束而不发送数据帧。Job 可设 `outputs: {}`，客户端等待整体完成而不接收数据。未选入最终结果的分支仍会执行。 提交和执行不自动调用推导方法；仅在编制时按需显式调用 `infer`。
+Every operator must implement [structure inference](structure-inference.md). Output descriptors come from this method, not manifest output declarations. A sink may infer an empty output map and finish successfully without emitting frames. A Job may set `outputs: {}`; the client then waits for completion without receiving result data. Unselected branches still execute. Submission and execution do not invoke inference automatically; explicitly call `infer` during authoring when needed.
 
-上下游以有界缓冲并发运行。故障、取消、超时会终止本次尝试并释放资源。重试与物化通过独立的[执行策略 YAML](materialization.md) 配置。重试可能重复外部副作用，业务算子需要提供适当的幂等机制。
+Upstream and downstream steps run concurrently with bounded buffering. Failure, cancellation and timeout cancel the attempt and release resources. Retries and materialization are configured in a separate [execution policy YAML](materialization.md). Retries can repeat external side effects; operators must provide appropriate idempotency.
 
 
-当前协作示例已发布的算子、参数和完整输入输出示例见[算子库清单](operator-catalog.md)。
+See the [operator catalog](operator-catalog.md) for currently published collaboration operators, parameters and complete input/output examples.
 
 ## Shell
 
@@ -51,13 +51,13 @@ run piflow_filter@1.0 --input source=/observations --view records --params '{"co
 run piflow_csv_parser@1.0 --input source=/observations --view bytes
 ```
 
-Shell 将 Item 输入转换为 `read_item` 步骤，逐块打印结果。连接节点或 Union 使用 [TLS 与 Token](security.md)。多输出可重复指定 `--output PORT`，无输出步骤使用 `--no-output`。源码 heredoc 仅允许 DEBUG 模式，见[源码提交](operator-source.md)。
+The shell converts Item inputs into `read_item` steps and prints results incrementally. It connects to either a node or Union using [TLS and a token](security.md). Repeat `--output PORT` to select multiple ports, or use `--no-output` for a sink. Inline heredoc source is DEBUG-only; see [source submission](operator-source.md).
 
-## 工作流变量
+## Workflow variables
 
-提交工作流时，可以通过独立 YAML 文件设置变量，无需修改工作流模板。YAML 文件的顶层必须是映射，例如 `VAR_NAME: 123`，数值、布尔值和列表会保留其类型。
+Supply variables in a separate YAML file when submitting a workflow, without editing the template. Its root must be a mapping, for example `VAR_NAME: 123`; numbers, booleans and lists retain their types.
 
-工作流中，将需要替换的完整值写为 `$VAR_NAME`：
+Write a complete value as `$VAR_NAME` in the workflow:
 
 ```yaml
 params:
@@ -65,7 +65,7 @@ params:
   schema: $SCHEMA
 ```
 
-对应的 `variables.yaml`：
+The matching `variables.yaml` is:
 
 ```yaml
 VAR_NAME: 123
@@ -73,24 +73,24 @@ SCHEMA:
   temperature: float64
 ```
 
-在已连接服务器的 shell 中执行：
+In a shell already connected to the server, run:
 
 ```text
 submit workflow.yaml --vars variables.yaml
 submit workflow.yaml --vars variables.yaml --policy policy.yaml
 ```
 
-也支持交互输入：`submit --vars variables.yaml`，输入工作流后以单独一行 `END` 结束。完整的转换示例为：
+Interactive input also works: run `submit --vars variables.yaml`, enter the workflow, and finish with `END` alone on a line. A complete conversion example is provided:
 
 ```text
 submit examples/convert-variables.yaml --vars examples/convert-variables-values.yaml
 ```
 
-示例路径相对于 shell 工作目录；请将变量文件的 `INPUT_URI` 改为目标服务器可访问的 Item URI，并确保所引用的算子可用。
+Paths are relative to the shell's working directory. Change `INPUT_URI` in the variable file to an Item URI accessible to the target server and ensure the referenced operators are available.
 
-变量名区分大小写，匹配 `[A-Za-z_][A-Za-z0-9_]*`。提供变量对象后，客户端解析 YAML，递归替换完整的字符串值，保留数字、布尔、字符串、列表、映射和 `null` 类型，随后将解析后的工作流提交给服务器。字典键不替换；`prefix-$VAR_NAME` 不进行局部拼接；变量值中的 `$OTHER` 不再次展开。不会读取环境变量或执行 Shell 命令。缺失变量或无效变量文件会在提交前报错，多余变量允许存在。不提供 `--vars` / SDK `variables` 参数时保持原有提交行为。
+Variable names are case-sensitive and match `[A-Za-z_][A-Za-z0-9_]*`. When a variable object is supplied, the client parses YAML and recursively substitutes complete string values, preserving numbers, booleans, strings, lists, mappings, and `null`, then submits the resolved workflow. Mapping keys are unchanged; `prefix-$VAR_NAME` is not interpolated; `$OTHER` inside an inserted value is not expanded again. Environment variables are not read and Shell commands are not executed. Missing variables or invalid variable files fail before submission; unused variables are allowed. Omitting `--vars` / the SDK `variables` argument preserves the existing submission behavior.
 
-Python SDK 对单机和 Union 提交均接受变量字典：
+The Python SDK accepts variable dictionaries for both node and Union submissions:
 
 ```python
 import yaml
@@ -103,11 +103,11 @@ with Job.run("dacp://localhost:18861", workflow, variables=variables) as result:
     for event in result:
         print(event)
 
-# union 为已连接的 dacp.union.Union 实例
+# union is an already connected dacp.union.Union instance
 execution = union.submit(workflow, variables=variables)
 ```
 
-Scala SDK 使用相同规则：
+The Scala SDK uses the same rules:
 
 ```scala
 import dacp.client.Job
@@ -118,18 +118,18 @@ val workflow = Files.readString(Path.of("workflow.yaml"))
 val variables = dacp.union.YamlDocument.parse(Files.readString(Path.of("variables.yaml")))
 val result = Job.run("dacp://localhost:18861", workflow, variables = variables)
 try result.foreach(println) finally result.close()
-// union 为已连接的 dacp.client.Union 实例
+// union is an already connected dacp.client.Union instance
 val execution = union.submit(workflow, variables = variables)
 ```
 
-变量文件在客户端读取，不需要上传至节点文件系统。服务器记录和执行的是替换后的工作流，因此自动重试和重放沿用首次提交的具体值；重放不能覆盖变量。需要使用新变量时重新提交。替换后的内容也可能出现在任务历史和看板中，不应将密码等秘密放入变量。
+The client reads the variable file; it need not exist on the node filesystem. The server records and executes the resolved workflow, so automatic retries and replays retain the original resolved values. Replays cannot override variables; submit a new workflow to use new values. Resolved values may appear in job history and dashboards, so do not put passwords or other secrets in variables.
 
-工作流、执行策略和变量统一采用 YAML，可同时提交：
+Workflows, execution policies and variables use YAML and can be submitted together:
 
 ```text
 submit workflow.yaml --policy policy.yaml --vars variables.yaml
 ```
 
-Union 下发的子作业保留全局作业的 `name`。节点与 Union 看板统一展示 Name、Job ID、Source、Type、Status、Started at、Duration；列表优先显示名称，详情保留完整 ID。子作业定义和执行策略均显示为 YAML。YAML 文档限制为 1 MiB，拒绝重复键、不安全对象标签及集合别名；字符串形式的编号、日期和布尔文本应加引号。
+Union subjobs retain the global job’s `name`. Node and Union dashboards share Name, Job ID, Source, Type, Status, Started at and Duration columns. Names lead the list, while details retain the full ID. Subjob definitions and execution policies display as YAML. YAML documents are limited to 1 MiB and reject duplicate keys, unsafe object tags and collection aliases. Quote textual numbers, dates and boolean labels.
 
-`read_item` 的 `view` 可省略：优先使用 Item 提供的 records 视图，否则使用 bytes。显式指定时不会自动改选；不支持所选视图则报错。
+When `read_item.view` is omitted, Item metadata selects records when available, otherwise bytes. An explicit choice is preserved and fails if unsupported.

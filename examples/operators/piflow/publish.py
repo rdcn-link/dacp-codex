@@ -89,7 +89,7 @@ def build(name, runtime_catalog, destination):
         f'{n},sha256={base64.urlsafe_b64encode(hashlib.sha256(b).digest()).rstrip(b"=").decode()},{len(b)}'
         for n, b in sorted(files.items())) + '\n' + dist + 'RECORD,,\n').encode()
     artifact = store(archive(files), module + '-1.0-py3-none-any.whl')
-    source_files = {n: p.read_bytes() for n in ('README.md', 'README_en.md', 'review.md', 'review_en.md', 'LICENSE', 'NOTICE', 'inventory.json', 'specs.json', 'publish.py', 'test.py', 'container_test.py', 'integration_test.py', 'audit.py', 'excel-dependencies.json') if (p := HERE / n).exists()}
+    source_files = {n: p.read_bytes() for n in ('README.md', 'README_zh.md', 'review.md', 'review_zh.md', 'LICENSE', 'NOTICE', 'inventory.json', 'specs.json', 'publish.py', 'test.py', 'container_test.py', 'integration_test.py', 'audit.py', 'excel-dependencies.json') if (p := HERE / n).exists()}
     source_files.update(files)
     source_files['upstream/' + item['source']] = (HERE / 'upstream' / item['source']).read_bytes()
     source = store(archive(source_files), module + '-sources.zip')
@@ -102,7 +102,7 @@ def build(name, runtime_catalog, destination):
         except OSError:
             shutil.copyfile(original, target)
     manifest = dict(api_version=2, name=item['operator'], version='1.0',
-                    description=spec['description'], category=spec['category'], icon=spec['icon'], inputs=spec['inputs'], parameters=spec['parameters'],
+                    description=spec['description'],  icon=spec['icon'], inputs=spec['inputs'], parameters=spec['parameters'],
                     execution=dict(executor='python', entrypoint=module, config={}),
                     runtime=runtime, artifact=artifact,
                     provenance=dict(source_archive=source, license='Apache-2.0', license_file=license_blob,
@@ -120,20 +120,9 @@ def main():
     parser.add_argument('name')
     parser.add_argument('--runtime-catalog', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=HERE / 'target/catalog')
-    parser.add_argument('--publish', help='Repository origin, e.g. http://localhost:8820')
-    parser.add_argument('--token-file', type=Path, default=ROOT / '.operator-catalog/.publish-token')
     args = parser.parse_args()
     subprocess.run([sys.executable, str(HERE / 'test.py'), args.name], check=True)
     manifest = build(args.name, args.runtime_catalog, args.output)
-    if args.publish:
-        environment = os.environ.copy()
-        environment['DACP_PIFLOW_CATALOG'] = str(args.output.resolve())
-        subprocess.run([sys.executable, str(HERE / 'container_test.py'), args.name], env=environment, check=True)
-        spec = importlib.util.spec_from_file_location('dacp_upload', ROOT / 'scripts/upload-operator.py')
-        uploader = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(uploader)
-        uploader.upload(args.output, manifest['name'] + '@1.0', args.publish, args.token_file.read_text().strip())
-        mark_published(manifest['name'], 'individual Arrow SDK contract tests')
     print(json.dumps(dict(operator=manifest['name'], code_bytes=manifest['artifact']['size'], verified=True)))
 
 

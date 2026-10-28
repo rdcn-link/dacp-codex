@@ -1,26 +1,26 @@
-# DACP 内置插件
+# DACP bundled plugins
 
-[English](README_en.md)
+[中文](README_zh.md)
 
-所有内置扩展实现位于本目录。插件依赖 `dacp-plugin-api`，不依赖 `dacp-server`，通过 JAR 内的 `META-INF/services/` 注册；与外部贡献插件使用相同的发现机制，核心注册表不列举内置类。
+All bundled extension implementations live here. Plugins depend on `dacp-plugin-api`, not `dacp-server`, and register through `META-INF/services/` inside their JARs. They use the same discovery mechanism as contributed plugins; core registries do not enumerate built-in classes.
 
-| 模块 | 实现与注册 ID | 实现专有依赖 |
+| Module | Implementations and registration IDs | Implementation-specific dependencies |
 |---|---|---|
-| `dacp-plugin-datasets` | `DatasetProvider`：`directory`、`sqldb`、`mixed`；文件/JDBC 读取与组合命名空间 | H2、PostgreSQL JDBC 驱动 |
-| `dacp-plugin-formats-basic` | `FormatHandler`：`csv`、`ndjson`、`json`、`bin` | Apache Commons CSV |
-| `dacp-plugin-parquet` | `FormatHandler`：`parquet`，含扫描下推 | Parquet、Hadoop |
-| `dacp-plugin-excel` | `FormatHandler`：`excel` | Apache POI |
-| `dacp-plugin-archives` | `ContainerReader`：`zip`、`gzip`、`tar`、`tar-gzip` | Apache Commons Compress |
-| `dacp-plugin-catalog-static` | `DatasetCatalogProvider`：`static` | 无额外依赖 |
-| `dacp-plugin-operator-executors` | `OperatorExecutor`：`container`、`jvm`、`python`、`command` | 无额外依赖 |
-| `dacp-plugin-mounted` | `DatasetProvider`：`mounted`；通用命名空间组合 | 无额外依赖 |
-| `dacp-plugin-execution-file` | `ExecutionStoreProvider`、`MaterializationStoreProvider`：`file`；原子执行元数据、带配额/过期/完整性校验的输出物化 | 无额外依赖 |
+| `dacp-plugin-datasets` | `DatasetProvider`: `directory`, `sqldb`, `mixed`; file/JDBC reading and mixed namespaces | H2 and PostgreSQL JDBC drivers |
+| `dacp-plugin-formats-basic` | `FormatHandler`: `csv`, `ndjson`, `json`, `bin` | Apache Commons CSV |
+| `dacp-plugin-parquet` | `FormatHandler`: `parquet`, including scan pushdown | Parquet and Hadoop |
+| `dacp-plugin-excel` | `FormatHandler`: `excel` | Apache POI |
+| `dacp-plugin-archives` | `ContainerReader`: `zip`, `gzip`, `tar`, `tar-gzip` | Apache Commons Compress |
+| `dacp-plugin-catalog-static` | `DatasetCatalogProvider`: `static` | No additional dependencies |
+| `dacp-plugin-operator-executors` | `OperatorExecutor`: `container`, `jvm`, `python`, `command` | No additional dependencies |
+| `dacp-plugin-mounted` | `DatasetProvider`: `mounted`; generic namespace composition | No additional dependencies |
+| `dacp-plugin-execution-file` | `ExecutionStoreProvider`, `MaterializationStoreProvider`: `file`; atomic execution metadata and output materialization with quotas, expiry, and integrity validation | No additional dependencies |
 
-文件、JDBC 与 mixed 在同一 Dataset 插件中共享别名和目录实现；格式读取器独立打包，Dataset 插件不依赖 POI、Parquet 或归档实现类。JSON 默认提供原始 bytes；NDJSON 提供 records。算子程序与共享运行时仍位于 `operators/`、`examples/operators/` 和 `dacp-operator-runtime/`，它们在容器中执行，不是加载进服务器的插件。
+File, JDBC, and mixed providers share alias and directory implementation in one Dataset plugin. Format readers are packaged independently; the Dataset plugin does not depend on POI, Parquet, or archive implementation classes. JSON provides original bytes by default; NDJSON provides records. Operator programs and shared runtimes remain in `operators/`, `examples/operators/`, and `dacp-operator-runtime/`; they execute in containers rather than loading into the server as plugins.
 
-## 构建和运行
+## Build and run
 
-从仓库根目录运行：
+From the repository root:
 
 ```bash
 (cd plugins/dacp-plugin-datasets && sbt package)
@@ -29,9 +29,9 @@
 (cd dacp-server && sbt test 'Universal / stage')
 ```
 
-服务器编译时只依赖公共 API 和协议等核心模块。标准发行包通过运行时依赖携带以上插件及其依赖，`sbt run` 与打包启动均可直接使用内置能力，无需重复复制内置插件到安装目录。集成测试在服务器模块验证真实 Flight、别名、记录/字节流、扫描、资源清理和取消。
+Server compilation depends only on the public API and core modules such as the protocol. The standard distribution includes these plugins and their dependencies through runtime dependencies. Both `sbt run` and packaged launchers provide bundled capabilities without copying built-ins into the installation directory. Server integration tests verify real Flight access, aliases, records/bytes, scans, cleanup, and cancellation.
 
-第三方插件编译时以 `Provided` 方式依赖 `dacp-plugin-api`，将插件 JAR 和服务器尚未提供的私有依赖直接放入安装目录，重启加载。例如：
+Third-party plugins compile against `dacp-plugin-api` as `Provided`. Put plugin JARs and private dependencies not already supplied by the server directly into the installation directory, then restart. For example:
 
 ```yaml
 plugin_directory: ../.dacp-plugins
@@ -41,12 +41,12 @@ datasets:
     source: {root: /srv/data}
 ```
 
-`plugins/` 是受版本控制的源码目录；`.dacp-plugins/` 是 Git 忽略的本地安装目录。服务器不会递归扫描源码目录。不要重复安装标准包已附带的相同插件 ID。目录、后端、格式、归档和启动器的服务文件分别为 `dacp.DatasetCatalogProvider`、`dacp.DatasetProvider`、`dacp.FormatHandler`、`dacp.ContainerReader`、`dacp.OperatorExecutor`。
+`plugins/` is a version-controlled source directory; `.dacp-plugins/` is the Git-ignored local installation directory. The server does not recursively scan the source tree. Do not install duplicate copies of plugin IDs already bundled with the distribution. Catalogs, backends, formats, archives, and launchers register in `dacp.DatasetCatalogProvider`, `dacp.DatasetProvider`, `dacp.FormatHandler`, `dacp.ContainerReader`, and `dacp.OperatorExecutor` respectively.
 
-## 架构边界与扩展
+## Architecture and extensions
 
-`dacp-plugin-api` 提供契约、通用 Arrow 扫描与记录工具、发现和资源工具；`dacp-server` 保留 Flight、授权、请求与任务生命周期。核心 `sources` 只保存 provider/settings；Dataset 插件校验 JDBC 设置并实现连接、查询和类型映射。没有为 MongoDB、S3、NetCDF 或 FITS 提供生产实现。
+`dacp-plugin-api` supplies contracts, generic Arrow scans and record utilities, discovery, and resource utilities. `dacp-server` retains Flight, authorization, and request/task lifecycles. Core `sources` entries contain only provider/settings; the Dataset plugin validates JDBC settings and implements connections, queries and type mapping. Production MongoDB, S3, NetCDF, and FITS implementations are not provided.
 
-新增现有扩展点的插件只需注册、安装和配置，无需修改核心或客户端。接口和示例见[插件指南](../docs/plugins.md)、[Dataset/Item 访问](../docs/dataset-access.md)、[独立贡献示例](../examples/plugins/README.md)和[执行器说明](dacp-plugin-operator-executors/README.md)。
+Adding a plugin for an existing extension point requires only registration, installation, and configuration, without core or client changes. See [the plugin guide](../docs/plugins.md), [Dataset/Item access](../docs/dataset-access.md), [independent contributor examples](../examples/plugins/README.md), and [executor documentation](dacp-plugin-operator-executors/README.md).
 
-[输出物化配置与插件契约](../docs/materialization.md)。
+[Output materialization configuration and plugin contracts](../docs/materialization.md).

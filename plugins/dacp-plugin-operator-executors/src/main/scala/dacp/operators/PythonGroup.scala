@@ -8,13 +8,20 @@ import java.util.zip.ZipFile
 private[operators] object PythonGroup {
   private def supported(s:OperatorGroupStep):Boolean={
     val path=s.program.artifact.get
+    if(s.artifactPath.get.endsWith(".zip")){
+      val zip=new ZipFile(path.toFile)
+      try return Option(zip.getEntry(".dacp-build.json")).filter(e=>e.getSize>=0 && e.getSize<=65536).exists{e=>
+        val in=zip.getInputStream(e)
+        try {val n=dacp.Data.mapper.readTree(in.readNBytes(65537));import scala.jdk.CollectionConverters._;n.path("python_process_modules").elements.asScala.exists(_.asText==s.program.entrypoint)}finally in.close()
+      }finally zip.close()
+    }
     val source=if(s.artifactPath.get.endsWith(".py")){if(Files.size(path)>4*1024*1024)return false;new String(Files.readAllBytes(path),UTF_8)}
     else{val zip=new ZipFile(path.toFile);try Option(zip.getEntry(s.program.entrypoint.replace('.','/')+".py")).filter(_.getSize<=4*1024*1024).map { e=>val in=zip.getInputStream(e);try new String(in.readNBytes(4*1024*1024+1),UTF_8)finally in.close() }.getOrElse("")finally zip.close()}
     "(?m)^def process\\s*\\(".r.findFirstIn(source).nonEmpty
   }
   private def resource(name:String):Array[Byte]={val in=getClass.getResourceAsStream("/"+name);require(in!=null,"missing group runner resource");try in.readAllBytes()finally in.close()}
   def command(group:OperatorGroup):Option[OperatorCommand]={
-    if(group.steps.flatMap(_.program.artifact).distinct.size!=1 || !group.steps.forall(s=>s.program.configuration.isEmpty && s.program.artifact.nonEmpty && s.artifactPath.exists(p=>p.endsWith(".py")||p.endsWith(".whl")) && supported(s)))return None
+    if(group.steps.flatMap(_.program.artifact).distinct.size!=1 || !group.steps.forall(s=>s.program.configuration.isEmpty && s.program.artifact.nonEmpty && s.artifactPath.exists(p=>p.endsWith(".py")||p.endsWith(".whl")||p.endsWith(".zip")) && supported(s)))return None
     Some(OperatorCommand(Some(Vector("/usr/local/bin/python","-u","/input/python-group.py")),arguments=Vector("/input"),
       environment=Map("PYTHONDONTWRITEBYTECODE"->"1","PIP_DISABLE_PIP_VERSION_CHECK"->"1"),
       files=Map("python-group.py"->resource("python-group.py"),"group-sdk.py"->resource("group-sdk.py"),"inference.py"->resource("inference.py"),"group.json"->JvmGroup.definition(group)),

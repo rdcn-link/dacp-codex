@@ -1,46 +1,46 @@
-# 开发者指南
+# Developer guide
 
-[English](README_en.md) · [文档目录](../README.md) · [用户指南](../users/README.md)
+[中文](README_zh.md) · [Documentation](../README.md) · [User guide](../users/README.md)
 
-引擎内置 `read_item@1.0` 只负责传输，后端和格式继续由 Dataset/Item 插件提供；流连接和控制依赖契约见[作业说明](../jobs.md).
+The built-in `read_item@1.0` handles transport only; Dataset/Item plugins own backends and formats. See [Jobs] for stream and control dependency contracts(../jobs.md).
 
-面向实现算子、Dataset provider、格式处理器、执行器、SDK 或服务端的贡献者。连接节点、浏览数据、配置内置 provider 和运行作业请先阅读用户指南。除非另有说明，命令均从项目根目录执行。
+For contributors implementing operators, dataset providers, formats, executors, SDKs, or the server. For connecting to a node, browsing data, configuring built-in providers, and running jobs, start with the user guide. Commands below run from the project root unless stated otherwise.
 
-目录级扩展和程序内启动见 [DatasetCatalog](../dataset-catalogs.md)与[嵌入式服务器](../embedded-server.md)。
+For catalog-level extensions and application startup, see [DatasetCatalog](../dataset-catalogs.md) and the [embedded server](../embedded-server.md).
 
-## 架构与扩展点
+## Architecture and extension points
 
-核心负责契约、发现与生命周期、传输、授权、命名空间校验、取消和资源管理。插件负责领域行为、私有参数和依赖。新增已有扩展点的实现不应修改核心注册表或客户端；内置与外部插件使用相同的注册契约。
+Core owns contracts, discovery and lifecycle, transport, authorization, namespace validation, cancellation, and resource management. Plugins own domain behavior, private settings and dependencies. Implementations of existing extension points must not require core registry or client changes. Built-ins use the same registration contracts as external plugins.
 
-| 模块 | 职责 |
+| Module | Responsibility |
 |---|---|
-| `dacp-plugin-api` | Provider、格式、扫描及执行器公开契约 |
-| `dacp-server` | Flight 服务、命名空间、协调与资源生命周期 |
-| `dacp-client`、`dacp-client-scala` | 客户端 API 与 shell |
-| `dacp-operator-runtime` | JVM 算子运行时及内置实现 |
-| `plugins/dacp-plugin-operator-executors` | 容器启动器与原生命令桥接器 |
-| `dacp-operator-repository` | 不可变发布、公开搜索与下载 |
-| `proto/dacp.proto` | 共享线协议消息 |
+| `dacp-plugin-api` | Public provider, format, scan and executor contracts |
+| `dacp-server` | Flight service, namespace, coordination and resource lifecycle |
+| `dacp-client`, `dacp-client-scala` | Public client APIs and shell |
+| `dacp-operator-runtime` | JVM operator runtime and built-in implementations |
+| `plugins/dacp-plugin-operator-executors` | Container launchers and native-command bridge |
+| `dacp-operator-repository` | Immutable publication, public search and downloads |
+| `proto/dacp.proto` | Shared wire messages |
 
-## 编写与发布算子
+## Write and publish operators
 
-- [算子编写指南](../operator-authoring.md)：Scala/Python 完整源码、构建及上传。
-- [原生命令](../native-commands.md)：stdin/stdout 适配、可执行制品与插件配置。
-- [打包与执行器](../operator-packaging.md)：共享依赖、不可变制品、仓库 schema 与注册。
-- [流契约](../operator-streams.md)：命名端口、帧、背压、取消和调度边界。
-- [DEBUG 源码](../operator-source.md)：Python/Scala 编译启动契约；不支持 Java 原始源码。
+- [Authoring guide](../operator-authoring.md): complete Scala/Python examples, builds and uploads.
+- [Native commands](../native-commands.md): stdin/stdout adapter, executable artifacts and plugin configuration.
+- [Packaging and executors](../operator-packaging.md): shared dependencies, immutable artifacts, repository schema and registration.
+- [Stream contract](../operator-streams.md): named ports, frames, backpressure, cancellation and current scheduling limits.
+- [DEBUG source](../operator-source.md): Python/Scala compilation and launch contracts; raw Java source is unsupported.
 
-算子输出为临时流，不注册结果 Dataset，不提供保存结果模式或输出 TTL。科学数据须保留结构：已实现 bytes 和 records；新增数组或图像表示须先定义共享契约。通用流水线调度与 fan-out 尚未实现。
+Operator outputs are transient streams. There is no result-dataset registration, saved-result mode or output TTL. Preserve scientific structures; bytes and records are implemented, while new array/image representations need a shared contract first. General pipeline scheduling and fan-out are not implemented.
 
-## 扩展 Dataset 与格式
+## Extend datasets and formats
 
-参见[插件贡献要求](../plugins.md)、[Dataset provider 契约](../dataset-providers.md)、[格式及容器处理器](../format-handlers.md)和[记录查询语义](../records-scans.md)。下面的示例说明 provider 实现、配置责任与服务注册。
+See [plugin contribution requirements](../plugins.md), [dataset provider contracts](../dataset-providers.md), [format and container handlers](../format-handlers.md), and [records query semantics](../records-scans.md). The example below illustrates provider implementation, configuration ownership and service registration.
 
-### 自定义 Dataset provider
+### User-defined Dataset providers
 
-用户定义的 provider 是服务端 Scala/JVM 插件。`provider` 选择插件，`source` 传入该 Dataset 实例的私有参数；同一个 provider 可用不同参数构建多个 Dataset。插件负责校验参数，客户端只看到公开路径和数据。
+A user-defined provider is a server-side Scala/JVM plugin. `provider` selects the plugin; `source` supplies private parameters for this Dataset instance. Multiple Datasets can use the same provider with different parameters. The plugin validates its settings; clients see public paths and data.
 
-下面是一个可发布单个 CSV 文件的完整 provider 示例，固定公开路径为 `/records`：
+This complete provider example publishes one CSV file at the fixed public path `/records`:
 
 ```scala
 package example
@@ -65,19 +65,19 @@ class CsvFileProvider extends DatasetProvider {
 }
 ```
 
-将代码编译为 JAR，仅依赖独立的 `dacp-plugin-api`（使用与服务器匹配的版本和 Scala 版本，以 `Provided` 方式依赖）。在 JAR 内创建以下服务注册文件：
+Compile the code into a JAR against the standalone `dacp-plugin-api`, using the matching API and Scala versions and a `Provided` dependency. Include this service registration file inside the JAR:
 
 ```text
 META-INF/services/dacp.DatasetProvider
 ```
 
-文件内容为实现类全名：
+Its contents are the implementation class name:
 
 ```text
 example.CsvFileProvider
 ```
 
-将插件及其所需依赖 JAR 放入 `plugin_directory`（不要复制服务器已提供的 API 和依赖），重启时使用以下配置片段，并合并监听地址和 TLS：
+Place the plugin and its required dependency JARs in `plugin_directory` (without duplicating the API or dependencies supplied by the server), then restart with this configuration fragment merged with listener and TLS settings:
 
 ```yaml
 plugin_directory: /opt/dacp/plugins
@@ -88,23 +88,23 @@ datasets:
       file: /private/measurements.csv
 ```
 
-客户端读取 `/records`，不会获得 `source.file`。需要逐项映射的插件默认通过 `items` 接收参数，也可覆盖 `DatasetProvider.itemSettingsKey` 声明自己的配置键；解析后的映射统一由 `definition.items` 提供。`source` 可包含插件自定义的嵌套参数，插件必须自行校验类型、必填项和未知参数。
+Clients read `/records` without receiving `source.file`. Plugins needing per-item mappings receive them through `items` by default, or can override `DatasetProvider.itemSettingsKey` to declare their own configuration key; parsed mappings are always available as `definition.items`. `source` can contain nested plugin-specific parameters; the plugin must validate types, required values, and unknown parameters.
 
-目录 provider 使用 `reader_overrides`，SQLDB 使用 `tables`，mixed 使用 `items`。目录和 SQLDB 不接受 `items`。原生后端（例如未来的 MongoDB provider）可直接实现 `PublishedDataset` 和 `DatasetAccess`，提供列举、元数据、计数与流式读取，无需映射成文件或 SQL。完整接口和取消、资源释放要求见 [provider 开发指南](../../docs/dataset-providers.md)。MongoDB 尚未实现。
+Directory providers use `reader_overrides`, SQLDB uses `tables`, and mixed uses `items`. Directory and SQLDB reject `items`. Native backends such as a future MongoDB provider can implement `PublishedDataset` and `DatasetAccess` directly for listing, metadata, counting, and streaming without mapping to files or SQL. See the [provider development guide](../dataset-providers.md) for interfaces, cancellation, and resource cleanup requirements. MongoDB is not implemented yet.
 
-### 文件与结构化内容插件
+### File and structured-content plugins
 
-文件插件实现 `FormatHandler`，在 `META-INF/services/dacp.FormatHandler` 注册。处理器自行校验私有 `options` 参数；例如 Excel 的设置为 `options: {sheet: Orders, header_row: 2}`。通用 `format` 和 `schema` 保持在读取配置顶层。
+File plugins implement `FormatHandler` and register in `META-INF/services/dacp.FormatHandler`. Each handler validates its private `options` parameters; for example, Excel uses `options: {sheet: Orders, header_row: 2}`. Common `format` and `schema` remain at the top level of reader settings.
 
-需要浏览文件内部逻辑对象时，实现 `StructuredFileHandler`，通过同一个格式服务文件注册。其 `openStructure` 返回 `DatasetAccess`，可直接流式读取内部对象，不要求提取为临时文件。文件根表现为带原始 bytes 视图的 folder，子对象显式声明 `records` 或 `bytes`。归档读取器可实现 `ContainerReader` 并在 `META-INF/services/dacp.ContainerReader` 注册，无需再修改核心格式注册表。
+To browse logical objects inside a file, implement `StructuredFileHandler` and register through the same format service file. Its `openStructure` returns `DatasetAccess` and can stream internal objects directly without extracting temporary files. The file root is a folder with original bytes; children explicitly advertise `records` or `bytes`. Archive readers can implement `ContainerReader` and register in `META-INF/services/dacp.ContainerReader`, without modifying core format registries.
 
-独立插件 API 位于 [dacp-plugin-api](../../dacp-plugin-api)，可运行的贡献示例和构建、安装步骤位于 [examples/plugins](../../examples/plugins/README.md)。`PluginChecks.listing` 提供可复用的元数据契约检查。服务端会关闭每次请求的访问句柄，并在关闭服务时释放 provider 资源。NetCDF、FITS 的具体解析插件及数组、图像新视图尚未实现；现有接口允许贡献者定义文件内部对象，不能静默把数组展开为记录。
+The standalone API lives in [dacp-plugin-api](../../dacp-plugin-api). Runnable contributions and build/install instructions are in [examples/plugins](../../examples/plugins/README.md). `PluginChecks.listing` provides reusable metadata contract checks. The server closes request-scoped access handles and releases provider resources on shutdown. Concrete NetCDF/FITS parsers and new array/image views are not implemented yet; contributors can represent internal file objects through the current interfaces, without silently flattening arrays into records.
 
-## 开发与验证
+## Development and validation
 
-DACP 优先采用插件机制扩展。新的数据集后端、文件格式和处理算子应通过实现公开扩展契约并安装插件加入，避免修改核心分发逻辑。内置实现与社区实现应使用相同契约，插件负责自己的参数校验与第三方依赖，客户端通过统一路径和能力访问数据。贡献方式、现有机制与科学数据扩展边界见 [插件贡献指南](../../docs/plugins.md)。
+DACP prefers plugins for extension. New dataset backends, file formats, and processing operators should implement public extension contracts and be installed as plugins, without changes to core dispatch. Built-in and community implementations should use the same contracts; plugins own their parameter validation and third-party dependencies, while clients access data through common paths and capabilities. See the [plugin contribution guide](../plugins.md) for contribution guidance, available mechanisms, and scientific-data extension boundaries.
 
-从项目根目录运行：
+Run from the project root:
 
 ```bash
 (cd dacp-server && sbt test)
@@ -112,41 +112,43 @@ DACP 优先采用插件机制扩展。新的数据集后端、文件格式和处
 (cd dacp-client-scala && sbt test)
 ```
 
-服务启动并设置证书环境变量后，运行 SDK 与安全检查：
+After starting the server and setting the certificate environment variables, run the SDK and security checks:
 
 ```bash
 .venv/bin/python examples/client.py
 .venv/bin/python examples/check_security.py
 ```
 
-跨节点容器联调使用 `bash scripts/test-collaboration.sh`，需要 Docker。测试覆盖命名空间、格式读取、归档浏览、SQL 流、schema 校验、授权、流生命周期和任务协作。
+Use `bash scripts/test-collaboration.sh` for cross-node container integration; it requires Docker. Tests cover namespaces, format readers, archive browsing, SQL streams, schema validation, authorization, stream lifetimes, and task collaboration.
 
-协议定义位于 [proto/dacp.proto](../../proto/dacp.proto)，服务端位于 [dacp-server](../../dacp-server)，Python SDK 位于 [dacp-client](../../dacp-client)，Scala SDK 位于 [dacp-client-scala](../../dacp-client-scala)。
+The protocol is defined in [proto/dacp.proto](../../proto/dacp.proto). Source code lives in [dacp-server](../../dacp-server), [dacp-client](../../dacp-client) for Python, and [dacp-client-scala](../../dacp-client-scala) for Scala.
 
 
-## 补充契约与联调验证
+## Additional contract and integration checks
 
 ```bash
 (cd plugins/dacp-plugin-operator-executors && sbt test)
 (cd dacp-operator-repository && sbt test)
 ```
 
-stage 服务端、构建所需运行时并准备示例证书后，使用 Docker 权限运行 `.venv/bin/python scripts/test-native-execution.py`，验证原生流、部分失败和取消。`scripts/test-source-submission.py` 需要启动 `examples/source-debug.yaml` 中的 DEBUG 服务，验证 Python/Scala heredoc。前置条件与测试端口见脚本及对应指南。
+After staging the server, building the referenced runtimes and preparing example certificates, run `.venv/bin/python scripts/test-native-execution.py` with Docker access for native streaming, partial-failure and cancellation checks. `scripts/test-source-submission.py` requires the DEBUG server from `examples/source-debug.yaml`; it checks Python/Scala heredocs. See each script and the linked guides for prerequisites and test ports.
 
-[技术参考](../reference.md)说明传输及配置。测试、示例与中英文文档须同步。本项目尚未发布，直接替换被废弃接口，不保留兼容别名或迁移回退。
+The [technical reference](../reference.md) documents transport and configuration. Keep tests, examples, and Chinese/English documentation synchronized. This project is unreleased: replace superseded interfaces directly, without compatibility aliases or migration fallbacks.
 
-## 算子审查材料
+## Operator review evidence
 
-支持发布可选的源码包、仓库修订版本、许可证声明与文本、构建说明和 SBOM。公开页面提供下载并标注缺失信息。参见[源码与审查信息](../operator-provenance.md)。
+Publish optional source archives, repository revisions, license declarations/text, build instructions and SBOMs. Public pages show downloads and missing information. See [source and review information](../operator-provenance.md).
 
-## Union 开发
+## Union development
 
-[Union 协议](../union.md) 定义证书身份、计算授权和直接流。`dacp-union-protocol` 提供共享传输工具，`dacp-server/UnionWorker` 复用插件数据访问及算子执行器，`dacp-union-server` 负责成员轮询、子任务准备和结果转发。运行 `cd dacp-union-server && sbt test` 验证真实 mTLS 的双节点契约。领域分析算子放在 `examples/union/operators`，不修改核心注册表。
+The [Union protocol](../union.md) defines certificate identity, compute authorization, and direct streams. `dacp-union-protocol` provides shared transport helpers; `dacp-server/UnionWorker` reuses plugin data access and operator execution; `dacp-union-server` handles member polling, subjob preparation, and result forwarding. Run `cd dacp-union-server && sbt test` for two-node contracts over real mTLS. Domain analysis operators live in `examples/union/operators`, without core registry changes.
 
-普通 Flight 请求、Union 节点子任务和全局作业共用持久化执行记录。生命周期、原子写入及测试见 [执行记录](../execution-history.md)。
+Ordinary Flight requests, Union node subtasks, and global jobs share persistent execution records. For lifecycle, atomic writes, and tests, see [execution history](../execution-history.md).
 
-## 中英文文档检查
+## Bilingual documentation checks
 
-在仓库根运行 `python3 scripts/check-doc-translations.py`。发布的 Markdown 以 `README.md`/`name.md` 为中文，`README_en.md`/`name_en.md` 为英文。完整译文、命令、配置和链接应一起更新。脚本检查配对、基础语言内容和本地文件/章节链接，不能替代翻译语义审查。工具指令与构建产物不计入发布文档。
+Run `python3 scripts/check-doc-translations.py` from the repository root. Published Markdown defaults to English in `README.md`/`name.md`, with complete Chinese translations in `README_zh.md`/`name_zh.md`. Update complete translations, commands, configuration and links together. The check validates pairing, basic language presence and local document/heading links; it does not replace semantic translation review. Agent instructions and generated build output are excluded.
 
-Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy.md)。
+Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy.md).
+
+Source-only operator publication: [submission, isolated builds, review and trust scores](../operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.

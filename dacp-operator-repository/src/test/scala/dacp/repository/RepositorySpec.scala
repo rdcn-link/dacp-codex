@@ -14,7 +14,7 @@ class RepositorySpec extends AnyFunSuite {
       try paths.iterator.asScala.toSeq.sortBy(_.getNameCount).reverse.foreach(Files.delete(_)) finally paths.close()
     }
   }
-  private val ports=Repository.mapper.readTree("""{"category":"Data processing","icon":{"path":"M3 5h18v14H3zM3 10h18M9 5v14","color":"#14866b"},"parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"inputs":{"source":{"representations":["bytes"],"formats":[]}}}""")
+  private val ports=Repository.mapper.readTree("""{"icon":{"path":"M3 5h18v14H3zM3 10h18M9 5v14","color":"#14866b"},"parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"inputs":{"source":{"representations":["bytes"],"formats":[]}}}""")
   private def publish(root:Path, reference:String, image:String, exporter:Repository.ImageExporter, description:String="",
     executor:String="container",entrypoint:String="",artifact:Option[Path]=None):String =
     Repository.publish(root,reference,image,ports,exporter,description,executor,entrypoint,artifact)
@@ -36,7 +36,7 @@ class RepositorySpec extends AnyFunSuite {
     val node=Repository.mapper.createObjectNode().put("name","seeded").put("version","1").put("image","native:1")
       .put("executor","command").put("entrypoint","/usr/bin/tr")
     node.set[com.fasterxml.jackson.databind.JsonNode]("inputs",ports.path("inputs"))
-    node.put("category","Data processing")
+
     node.set[com.fasterxml.jackson.databind.JsonNode]("icon",Repository.mapper.readTree("""{"path":"M3 5h18v14H3z","color":"#14866b"}"""))
     node.set[com.fasterxml.jackson.databind.JsonNode]("parameters",ports.path("parameters"))
     node.set[com.fasterxml.jackson.databind.JsonNode]("executor_config",settings)
@@ -74,10 +74,10 @@ class RepositorySpec extends AnyFunSuite {
     val definitions = root.resolve("definitions")
     val definition = definitions.resolve("custom/2.0/operator.yaml")
     Files.createDirectories(definition.getParent)
-    Files.writeString(definition, "name: custom\nversion: '2.0'\nimage: custom:2\ncategory: Data processing\nicon: {path: M3 5h18v14H3z, color: '#14866b'}\nparameters: {\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}\ninputs: {source: {representations: [bytes], formats: []}}\n")
+    Files.writeString(definition, "name: custom\nversion: '2.0'\nimage: custom:2\nicon: {path: M3 5h18v14H3z, color: '#14866b'}\nparameters: {\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}\ninputs: {source: {representations: [bytes], formats: []}}\n")
     val catalog = root.resolve("catalog")
     assert(Repository.seed(catalog, definitions, exporter) == Seq("custom@2.0"))
-    Files.writeString(definition, "name: other\nversion: '2.0'\nimage: custom:2\ncategory: Data processing\nicon: {path: M3 5h18v14H3z, color: '#14866b'}\nparameters: {\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}\ninputs: {source: {representations: [bytes], formats: []}}\n")
+    Files.writeString(definition, "name: other\nversion: '2.0'\nimage: custom:2\nicon: {path: M3 5h18v14H3z, color: '#14866b'}\nparameters: {\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}\ninputs: {source: {representations: [bytes], formats: []}}\n")
     intercept[IllegalArgumentException](Repository.seed(catalog, definitions, exporter))
     Files.writeString(definition, "name: custom\nversion: '2.0'\nimage: custom:2\nimage: replaced\n")
     intercept[org.yaml.snakeyaml.error.YAMLException](Repository.seed(catalog, definitions, exporter))
@@ -124,6 +124,7 @@ class RepositorySpec extends AnyFunSuite {
     publish(root, "convert@1.0", "tag", exporter, "Convert CSV to Parquet")
     publish(root, "convert@2.0", "tag", exporter, "Convert tables")
     publish(root, "identity@1.0", "tag", exporter, "Copy <script>alert(1)</script> & preserve bytes")
+    ReviewTestSupport.approveLocal(root)
     val server = new RepositoryServer(root, port=0)
     server.start()
     val client = HttpClient.newHttpClient()
@@ -189,6 +190,7 @@ class RepositorySpec extends AnyFunSuite {
     val blobs = Files.list(root.resolve("blobs/sha256"))
     try assert(blobs.count() == 2) finally blobs.close()
     assert(!Files.exists(root.resolve("first/1/image.tar")))
+    ReviewTestSupport.approveLocal(root)
     val server = new RepositoryServer(root, port=0); server.start()
     try {
       val page = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(
@@ -200,6 +202,7 @@ class RepositorySpec extends AnyFunSuite {
   }}
   test("HTTP contract serves manifests and archives and rejects traversal and writes") { withRoot { root =>
     val manifest = publish(root,"identity@1.0","tag",exporter)
+    ReviewTestSupport.approveLocal(root)
     val server = new RepositoryServer(root,port=0)
     server.start()
     val client = HttpClient.newHttpClient()
@@ -215,7 +218,7 @@ class RepositorySpec extends AnyFunSuite {
       Files.createDirectories(root.resolve("unfinished/1"))
       assert(Repository.mapper.readTree(request("/v1/operators").body()).size() == 1)
       val json = request("/v1/operators/identity/1.0")
-      assert(json.statusCode() == 200 && json.body() == manifest)
+      assert(json.statusCode() == 200 && Repository.mapper.readTree(json.body()).path("name")==Repository.mapper.readTree(manifest).path("name"))
       assert(json.headers().firstValue("Content-Type").get() == "application/json")
       val archive = request("/v1/blobs/sha256/" + catalog.get(0).path("runtime").path("archive").path("sha256").asText)
       assert(archive.statusCode() == 200 && archive.body() == "image archive")
@@ -235,7 +238,7 @@ class RepositorySpec extends AnyFunSuite {
   }}
   test("sources and sinks publish while missing port mappings are rejected") { withRoot { root =>
     val source=ports.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
-    source.put("category","Data processing")
+
     source.set[com.fasterxml.jackson.databind.JsonNode]("icon",Repository.mapper.readTree("""{"path":"M3 5h18v14H3z","color":"#14866b"}"""))
     source.set[com.fasterxml.jackson.databind.JsonNode]("parameters",ports.path("parameters"))
     source.putObject("inputs")
@@ -243,7 +246,7 @@ class RepositorySpec extends AnyFunSuite {
     assert(result.path("inputs").isObject && result.path("inputs").size()==0)
     source.remove("inputs")
     intercept[IllegalArgumentException](Repository.validatePorts(source))
-    source.put("category","Data processing")
+
     source.set[com.fasterxml.jackson.databind.JsonNode]("icon",Repository.mapper.readTree("""{"path":"M3 5h18v14H3z","color":"#14866b"}"""))
     source.set[com.fasterxml.jackson.databind.JsonNode]("parameters",ports.path("parameters"))
     source.putObject("inputs")
@@ -265,7 +268,7 @@ class RepositorySpec extends AnyFunSuite {
   test("parameter declarations survive publication and public views; malformed contracts cannot publish") {withRoot{root=>
     val metadata=ports.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
     val parameters=Repository.mapper.readTree("""{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"default":10,"description":"Maximum rows"}},"required":[],"additionalProperties":false}""")
-    metadata.put("category","Data processing")
+
     metadata.set[com.fasterxml.jackson.databind.JsonNode]("icon",Repository.mapper.readTree("""{"path":"M3 5h18v14H3z","color":"#14866b"}"""))
     metadata.set[com.fasterxml.jackson.databind.JsonNode]("parameters",parameters)
     val published=Repository.mapper.readTree(Repository.publish(root,"typed@1","runtime",metadata,exporter))
@@ -274,7 +277,7 @@ class RepositorySpec extends AnyFunSuite {
     assert(WebPages.detail(published,Seq(published)).contains("Maximum rows"))
     metadata.remove("parameters")
     intercept[IllegalArgumentException](Repository.publish(root,"missing@1","runtime",metadata,exporter))
-    metadata.put("category","Data processing")
+
     metadata.set[com.fasterxml.jackson.databind.JsonNode]("icon",Repository.mapper.readTree("""{"path":"M3 5h18v14H3z","color":"#14866b"}"""))
     metadata.set[com.fasterxml.jackson.databind.JsonNode]("parameters",parameters)
     parameters.path("properties").path("limit").asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].put("default","bad")
@@ -285,12 +288,13 @@ class RepositorySpec extends AnyFunSuite {
     specs.elements.asScala.foreach{n=>dacp.operator.OperatorPresentation.validate(n);dacp.operator.ParameterSchema.validate(n.get("parameters"))}
   }
   test("presentation metadata is required on publication and rendered in public search and detail") {withRoot {root=>
-    for(field<-Seq("category","icon")){
+    for(field<-Seq("icon")){
       val bad=ports.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();bad.remove(field)
       intercept[IllegalArgumentException](Repository.publish(root,"missing@1","runtime",bad,exporter))
     }
     val n=Repository.mapper.readTree(Repository.publish(root,"visible@1","runtime",ports,exporter))
-    assert(n.path("category")==ports.path("category") && n.path("icon")==ports.path("icon"))
+    assert(!n.has("category") && n.path("icon")==ports.path("icon"))
+    n.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].putArray("categories").add("Data processing").add("Tables")
     val index=WebPages.index(Seq(n),"Data processing")
     assert(index.contains("/operators/visible/1") && index.contains("M3 5h18v14H3zM3 10h18M9 5v14"))
     assert(WebPages.detail(n,Seq(n)).contains("Data processing"))

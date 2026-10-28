@@ -20,3 +20,6 @@ Compile / resourceGenerators += Def.task {
 
 lazy val operatorContract = RootProject(file("../dacp-operator-contract"))
 dependsOn(operatorContract)
+
+lazy val sourceAnalysis = RootProject(file("../plugins/dacp-plugin-source-analysis"))
+dependsOn(sourceAnalysis)

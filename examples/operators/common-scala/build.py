@@ -70,7 +70,7 @@ def build(runtime_catalog,destination):
         except OSError:__import__('shutil').copyfile(original,target)
     assert hashlib.sha256(target.read_bytes()).hexdigest()==runtime['archive']['sha256']
     for name,s in CATALOG.items():
-        m=dict(api_version=2,category='Data processing',icon=dict(path='M3 5h18v14H3zM3 10h18M9 5v14',color='#14866b'),name='scala_'+name,version='1.0',parameters=parameter_schema(s['params']),description=s['description']+'; params='+json.dumps(s['params'],ensure_ascii=False,separators=(',',':')),
+        m=dict(api_version=2,icon=dict(path='M3 5h18v14H3zM3 10h18M9 5v14',color='#14866b'),name='scala_'+name,version='1.0',parameters=parameter_schema(s['params']),description=s['description']+'; params='+json.dumps(s['params'],ensure_ascii=False,separators=(',',':')),
                inputs={'source':{'representations':['bytes'],'formats':[]}},
                execution={'executor':'jvm','entrypoint':'dacp.common.Op_'+name,'config':{}},runtime=runtime,artifact=artifact,
                provenance={'source_archive':source,'source_repository':'https://github.com/rdcn-link/dacp-codex','build_instructions':'From the project root publish the plugin API and operator SDK locally, then run .venv/bin/python examples/operators/common-scala/build.py. See bundled bilingual instructions. Runtime dependencies are provided by dacp/operator-jvm:1.1.'})
@@ -78,9 +78,6 @@ def build(runtime_catalog,destination):
     print(f'Built {len(CATALOG)} Scala operators; shared JAR {artifact["size"]} bytes; sources {source["size"]} bytes',flush=True)
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--prepare-only',action='store_true');p.add_argument('--runtime-catalog',type=Path,default=ROOT/'.operator-catalog');p.add_argument('--output',type=Path,default=HERE/'target/catalog');p.add_argument('--publish');p.add_argument('--token-env',default='DACP_REPOSITORY_PUBLISH_TOKEN');a=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--prepare-only',action='store_true');p.add_argument('--runtime-catalog',type=Path,default=ROOT/'.operator-catalog');p.add_argument('--output',type=Path,default=HERE/'target/catalog');a=p.parse_args()
     if a.prepare_only:prepare();sys.exit()
-    if a.publish and not os.environ.get(a.token_env):p.error('publisher token missing')
     build(a.runtime_catalog,a.output)
-    if a.publish:
-        builder.CATALOG={'scala_'+n:s for n,s in CATALOG.items()};builder.publish(a.output,a.publish,os.environ[a.token_env])

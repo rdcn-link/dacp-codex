@@ -1,67 +1,67 @@
-# 认证与访问控制
+# Authentication and access control
 
-本文说明 DACP 已实现的认证方式、授权边界、凭据管理、撤销行为和审计。下文提供节点、Union、S3 与算子仓库的配置和操作说明。
+This document describes implemented DACP authentication, authorization boundaries, credential management, revocation and audit. The following sections cover node, Union, S3 and operator repository configuration and operations.
 
-## 服务边界
+## Service boundaries
 
-| 服务 | 认证与访问范围 |
+| Service | Authentication and access scope |
 | --- | --- |
-| 节点与 Union 的普通 Flight 服务 | TLS 与 Bearer Token；服务端执行授权 |
-| Union 到成员节点的协作调用 | 双向 TLS 与节点签发的 Union 服务凭据 |
-| 节点间任务数据流 | 双向 TLS 与精确绑定任务、端口和接收方的执行计划 |
-| S3 服务 | 独立的访问密钥；HTTPS、SigV4 请求头认证、预签名 GET |
-| 节点、Union 运维看板 | 内网公开只读，不提供登录或访问控制 |
-| 算子仓库 | 浏览、下载公开；发布接口要求 Token，网页不提供发布功能 |
+| Ordinary node and Union Flight services | TLS and bearer tokens; server-side authorization |
+| Union collaboration calls to members | Mutual TLS and a node-issued Union service credential |
+| Task streams between nodes | Mutual TLS and execution plans bound to tasks, ports and consumers |
+| S3 service | Independent access keys; HTTPS, SigV4 header authentication and presigned GET |
+| Node and Union dashboards | Public read-only access inside the internal network; no login or access control |
+| Operator repository | Public approved operators and runtimes; per-submitter Tokens for sources; authenticated administrator review |
 
-授权发生在服务端。普通客户端 SDK 与协作 SDK 分开提供，但共享 Flight、证书和流协议实现；选择某个 SDK 本身不会获得权限。
+Authorization takes place on the server. Ordinary and collaboration SDKs are separate products sharing Flight, certificate and stream protocol implementations. Choosing an SDK does not grant permissions.
 
-## 普通客户端
+## Ordinary clients
 
-客户端使用 Token，不要求每个客户端都申请证书。客户端执行标准 TLS CA 和主机名校验，不增加人工证书固定或额外身份确认步骤。
+Clients use tokens; individual client certificates are not required. Clients perform standard TLS CA and hostname verification, without manual certificate pinning or additional identity confirmation.
 
-Token 归属于稳定的主体，一个主体可以持有多个 Token。任务、状态、结果、取消和重放按任务所有者授权。更新或轮换 Token 不应改变主体及其历史任务归属。
+Tokens belong to a stable subject, which can hold multiple tokens. Jobs, status, results, cancellation and replay are authorized by job ownership. Token replacement or rotation must preserve the subject and historical job ownership.
 
-管理员通过服务器本地凭据工具创建、列出、撤销和轮换凭据。Token 至少使用 256 位随机数，只在创建时输出一次，服务端保存摘要。凭据变更热加载；服务端在每次 RPC 开始时从内存检查凭据。普通 Token 到期或撤销后，已经接纳的 RPC 和结果流继续执行；同一连接上的后续 RPC 必须重新通过检查。
+Administrators create, list, revoke and rotate credentials using local server tooling. Tokens contain at least 256 bits of randomness, are shown only when created, and are stored as digests. Changes reload automatically. The server checks credentials in memory at the start of each RPC. Revoking or expiring an ordinary token leaves admitted RPCs and result streams running; subsequent RPCs on the same connection must pass authentication again.
 
-## Union 与成员节点
+## Union and member nodes
 
-Union 启动时从配置读取唯一 Union 的成员列表，不提供远程成员管理接口。节点管理员签发绑定 Union 身份与客户端证书指纹的服务凭据；Union 配置成员地址与凭据文件即可连接，不采用邀请、审批流程或额外算子白名单。
+At startup, Union reads the member list for its single Union from configuration. There is no remote member management API. A node administrator issues a service credential bound to the Union identity and client certificate fingerprint. Union connects using the configured member address and credential file, without invitation, approval or additional operator allowlists.
 
-节点接受该凭据，即信任 Union 的协作操作。节点仍可独立服务其允许的其他客户端。Union 保持稳定身份，并记录成员身份；不可用成员不会阻止 Union 启动，后续通过轮询重试。
+Accepting the credential grants trust in Union collaboration operations. Nodes can independently serve other clients they permit. Union maintains a stable identity and records member identities. An unavailable member does not prevent startup; polling retries later.
 
-每次协作调用检查服务凭据。与普通 Token 不同，Union 服务凭据撤销或到期时，应停止相应的运行中协作任务与流。
+Each collaboration call checks the service credential. Unlike ordinary tokens, revocation or expiration of a Union service credential must stop the associated active collaboration tasks and streams.
 
-同一 Union 的成员之间无需额外相互授权，但不能仅凭同一 CA 签发的证书任意访问对方数据。执行计划必须约束执行实例、任务、输出端口及接收方。Union 的服务秘密不得转发给下游节点。
+Members of the same Union need no additional peer grants. However, certificates issued by the same CA alone do not grant arbitrary access to another member's data. Execution plans must constrain the execution instance, task, output port and consumer. Union service secrets must never be forwarded to downstream nodes.
 
 ## S3
 
-S3 与 Flight 是独立服务，不要求统一用户或凭据体系。S3 不提供匿名读取，列表、元数据与内容请求均需认证。
+S3 and Flight are independent services and do not require a unified user or credential system. S3 has no anonymous reading mode: listings, metadata and content requests all require authentication.
 
-支持 SigV4 请求头认证，以及用于临时分享对象的预签名 GET URL。密钥撤销后，后续请求（包括新的 Range 请求）被拒绝；已接纳的下载继续。预签名 URL 是临时访问凭据，应避免写入日志或公开传播。
+S3 supports SigV4 header authentication and presigned GET URLs for temporary object sharing. Key revocation rejects subsequent requests, including new Range requests; admitted downloads continue. A presigned URL is a temporary credential and must not be logged or shared publicly.
 
-## 看板与算子仓库
+## Dashboards and operator repository
 
-看板按内网只读服务部署，网络暴露范围由部署环境限制。此设计不提供公网登录保护。
+Dashboards are internal, read-only services. Deployment networking controls their exposure. This design does not provide public internet login protection.
 
-算子仓库的浏览、下载无需认证。发布通过携带 Token 的服务接口完成，不提供网页发布入口，不允许覆盖已有版本。源码、许可证和构建材料帮助用户审查算子，但不构成安全保证。
+Approved operator browsing and downloads are public. Developers submit source through per-submitter Token APIs; private source and pending artifacts are not public. Administrators sign in separately, manage Tokens and environments, inspect automatic scan/build results, assign multiple categories and a final public trust score, and approve publication. Versions cannot be overwritten. Detailed scan reports remain private; scores are review assessments, not safety guarantees. See [source submission and review](operator-submission.md).
 
-## 审计与凭据保管
+## Audit and credential storage
 
-访问日志应记录主体、操作、资源、结果、耗时、字节数及关联任务；凭据和成员生命周期事件也应记录。不得记录原始 Token、私钥、S3 密钥或带签名的完整 URL。
+Access logs should record the subject, operation, resource, outcome, duration, byte counts and associated job. Credential and member lifecycle events should also be recorded. Never log raw tokens, private keys, S3 secrets or complete signed URLs.
 
-凭据文件应限制为运行账户可读写。普通 Token 保存摘要；S3 签名验证需要可恢复的密钥材料，因此不能把所有凭据都描述为仅保存摘要。
+Credential files should be accessible only to the service account. Ordinary tokens are stored as digests. S3 signature verification requires recoverable key material, so it would be incorrect to describe all credentials as digest-only.
 
-## 实现与验证状态
+## Implementation and verification status
 
-已实现本地凭据管理与热加载、普通 Flight Token 认证、Union 服务凭据与证书绑定、任务所有者隔离、节点间精确计划授权、独立协作 SDK、S3 SigV4 和预签名 GET。自动化测试覆盖普通 Token 撤销后已有流继续、后续调用拒绝，服务凭据撤销后运行中任务与流终止，Token 轮换后保留任务归属，以及拒绝请求的审计。真实服务联调验证了三个成员节点的认证、Union 协作调用和 boto3 的签名列表、元数据、内容、Range 及预签名 GET。
+Implemented features include local credential management and hot reload, ordinary Flight token authentication, certificate-bound Union service credentials, job ownership isolation, exact peer plan authorization, separate collaboration SDKs, S3 SigV4 and presigned GET. Automated tests cover admitted streams continuing after ordinary token revocation while subsequent calls fail, active collaboration stopping after service credential revocation, ownership surviving token rotation, and audit records for rejected requests. Live integration verifies authentication on three member nodes, Union collaboration calls, and boto3 signed listing, metadata, content, Range and presigned GET requests.
 
-相关说明：[访问日志](access-logs.md)、[数据访问](dataset-access.md)、[算子仓库](../dacp-operator-repository/README.md)。普通客户端示例应提供 Token 文件；Union 成员配置应提供节点签发的服务凭据文件。
+Related documentation: [access logs](access-logs.md), [data access](dataset-access.md), [operator repository](../dacp-operator-repository/README.md). Ordinary client examples require a token file; Union member configuration requires a node-issued service credential file.
 
-## 本地凭据操作
+## Local credential operations
 
-节点配置 `credential_directory: /protected/node-credentials`，Union 配置自己的 `credential_directory`。未指定时，节点使用进程工作目录下 `.dacp-security/端口`，Union 使用 `state_directory/credentials`。目录权限为 700，凭据文件为 600。
+Set node `credential_directory: /protected/node-credentials` and configure a separate directory for Union. By default, a node uses `.dacp-security/PORT` under its process working directory, and Union uses `state_directory/credentials`. Directory permissions are 700 and credential files are 600.
 
-以下命令在对应模块目录运行；Union 的程序名替换为 `dacp-union-server`，使用它自己的凭据目录：
+Run these commands in the corresponding module. For Union, replace the executable with `dacp-union-server` and use its own credential directory:
 
 ```bash
 target/universal/stage/bin/dacp-server credentials /protected/node-credentials create --subject alice --expires-in 86400
@@ -70,16 +70,16 @@ target/universal/stage/bin/dacp-server credentials /protected/node-credentials r
 target/universal/stage/bin/dacp-server credentials /protected/node-credentials revoke CREDENTIAL_ID
 ```
 
-创建或轮换的 JSON 响应含一次性 `token`；将其值保存为仅运行账户可读的文本文件。列表不返回秘密。Python SDK 通过 `token=` 或 `DACP_TOKEN_FILE` 使用，Scala SDK 通过 `TlsConfig(tokenFile=...)`，Shell 使用 `--token-file`。CA 通过 `--ca`、SDK 参数或 `DACP_CA` 提供。不要将整个 JSON 响应当作 Token 文件。
+Creation and rotation return JSON containing the one-time `token`. Save its value as a text file readable only by the service account. Listing never returns secrets. Python uses `token=` or `DACP_TOKEN_FILE`; Scala uses `TlsConfig(tokenFile=...)`; the shell uses `--token-file`. Supply the CA through `--ca`, SDK parameters or `DACP_CA`. Do not use the complete JSON response as a token file.
 
-Union 先执行 `dacp-union-server identity CONFIG` 获得稳定 `union_id` 和 `scheduler_identity`。然后在每个成员本地签发：
+First run `dacp-union-server identity CONFIG` to obtain the stable `union_id` and `scheduler_identity`. Then issue a credential locally at each member:
 
 ```bash
 target/universal/stage/bin/dacp-server credentials /protected/node-credentials create --subject union-service --kind union --union-id UNION_ID --fingerprint SCHEDULER_IDENTITY
 ```
 
-将返回的 `token` 放入 Union 配置的该成员 `credential_file`。文件更换后，后续调用读取新值。配置中的成员如果不可达、凭据无效或凭据文件暂不可读，会显示不可用，后续轮询重试，不阻止 Union 启动。
+Save the returned `token` in that member's Union `credential_file`. Subsequent calls read replacement file contents. Unreachable members, invalid credentials and temporarily unreadable credential files produce unavailable status and are retried by polling without preventing Union startup.
 
-S3 密钥使用同一管理工具的 `--kind s3` 创建，响应中的 `id` 为 Access Key ID，`secret_key` 为 Secret Access Key；它不能充当 Flight Token。预签名命令和 boto3 示例见 [S3 服务](s3-service.md)。
+Create S3 keys with `--kind s3`. The returned `id` is the Access Key ID and `secret_key` is the Secret Access Key; neither acts as a Flight token. See [S3](s3-service.md) for presigning commands and boto3 examples.
 
-认证层另生成 `authentication-audit.jsonl`，记录 RPC 方法、主体、状态与耗时，含认证和授权拒绝；`credential-audit.jsonl` 记录凭据管理事件。两者超过 1 MiB 时轮换为各自的 `.previous.jsonl`，业务数据量与资源信息由节点访问日志和任务历史补充。
+The authentication layer also writes `authentication-audit.jsonl`, recording RPC methods, subjects, status and duration, including authentication and authorization rejections. `credential-audit.jsonl` records credential management events. Each rotates to its corresponding `.previous.jsonl` after exceeding 1 MiB. Node access logs and execution history supply business payload counts and resource details.

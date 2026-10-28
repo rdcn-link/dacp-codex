@@ -1,10 +1,10 @@
-# Scala 科学算子运行环境
+# Scala scientific operator runtime
 
-EcoFlow 的科学算子保留上游 Scala / Spark 算法，通过私有适配层接入 DACP SDK。不会将 Spark 依赖加入 DACP 核心模块。每个算子分别编译、测试和发布为小型 JAR，共用一个固定镜像摘要的运行环境：JDK 17、Scala 2.13.16、Spark 4.0.1 及其发行包中的依赖。通用 Python 算子继续使用更小的 Python 运行环境。
+EcoFlow scientific operators retain the upstream Scala / Spark algorithms and connect to the DACP SDK through a private adapter. Spark dependencies are not added to DACP core modules. Each operator is compiled, tested, and published individually as a small JAR, sharing one runtime pinned by image digest: JDK 17, Scala 2.13.16, Spark 4.0.1, and dependencies from that distribution. Generic Python operators continue to use the smaller Python runtime.
 
-## 构建
+## Build
 
-在项目根目录准备 SDK 和 API JAR，并获取固定版本的 Spark 发行内容：
+From the project root, prepare the SDK and API JARs and obtain the pinned Spark distribution contents:
 
 ```bash
 (cd dacp-plugin-api && sbt package)
@@ -19,15 +19,17 @@ tar -xzf /tmp/dacp-piflow-deps/pyspark-4.0.1.tar.gz \
   --spark-home /tmp/dacp-piflow-spark
 ```
 
-当前本地辅助脚本使用 `sudo -n -u cnic -g docker` 调用 Docker，以匹配演示机权限；其他机器需按其管理员配置调整这一调用前缀。运行环境由本机 JDK 17 的 `jlink` 和 Spark JAR 构建，不拉取基础镜像。保留 `java.desktop` 中 Spark 需要的 `java.beans` 类，但不包含图形本机库；仅支持无图形计算。发布需访问本地仓库的 token 文件。
+The current local helper scripts invoke Docker through `sudo -n -u cnic -g docker` to match permissions on the demo host; adjust that prefix to the administrator's setup on other machines. The runtime is built using `jlink` from the host JDK 17 and Spark JARs, without pulling a base image. It retains the `java.beans` classes Spark needs from `java.desktop`, but omits graphical native libraries and supports headless computation only. Publication requires access to the local repository token file.
 
-## 合同和限制
+## Contracts and limits
 
-- 输入为具名 `records` 流，输出为 `result` 的 `records` 流。端口对应关系和参数示例见上级目录的 `specs.json`。
-- Spark 适配层完整读取输入后执行，单输入最多 128 MiB 或一百万条记录；这不是常量内存流算法。输出按批次返回，并在收集 Spark 可复用行之前复制行内容，防止记录被覆盖。
-- Spark 采用 `local[2]`、UTC 时区、关闭 Web UI、禁用 ANSI 模式以接近上游 SQL 行为。共享运行环境不意味着多个工作流任务自动共享一个 SparkSession。
-- 每个算子发布前在与节点相同的禁网、只读根目录、1 GiB 内存、128 进程/线程限额、512 MiB 非可执行临时目录约束下测试。Spark 可能在该临时目录生成执行文件和 shuffle；它们不作为可恢复结果保存。
-- 上游原文始终保留；构建时应用可审查的 Scala 2.13 / Spark 4 适配，不直接修改原文。已包含 `StringBuilder.toString.stripSuffix`、稳定的 `spark.implicits` 导入、`Row.fromSeq` 的不可变快照和数学常量 PI 导入修正。
-- 运行成功用例不构成科学模型有效性认证；实际分析仍需检查单位、缺失值、参数范围与适用的数据条件。每个算子的具体修复和已验证数值应分别记录。
+- Inputs are named `records` streams; the output is a `records` stream on `result`. See the parent directory's `specs.json` for port mappings and example parameters.
+- The Spark adapter reads complete inputs before execution, with a limit of 128 MiB or one million records per input. This is not a constant-memory streaming algorithm. Outputs return in batches; reusable Spark rows are copied before partition collection to prevent overwritten records.
+- Spark runs with `local[2]`, UTC, no Web UI, and ANSI mode disabled to approximate upstream SQL behavior. A shared runtime does not imply automatic sharing of a SparkSession across workflow tasks.
+- Before publication, each operator is tested with the same constraints as node execution: no network, read-only root, 1 GiB memory, 128 processes/threads, and a 512 MiB non-executable temporary filesystem. Spark may create execution and shuffle files there; these are not retained as recoverable results.
+- Original upstream files remain unchanged. Builds apply reviewable Scala 2.13 / Spark 4 adaptations, including `StringBuilder.toString.stripSuffix`, stable `spark.implicits` imports, immutable snapshots for `Row.fromSeq`, and the mathematical PI constant import.
+- Passing execution fixtures does not certify a scientific model's validity. Actual analyses still require checking units, missing values, parameter ranges, and applicable data conditions. Operator-specific fixes and verified numeric behavior must be recorded individually.
 
-当前适配关闭自适应查询与自动广播关联，限制 RPC/shuffle 线程，并将 EC 的二十个分区调整为两个，以减少容器线程压力。完整修正和未移植项见 [移植审阅表](../review.md)。Reichstein 使用父目录的 Python 实现，不通过此 Spark 构建器构建。
+The current adapter disables adaptive queries and automatic broadcast joins, limits RPC/shuffle threads, and reduces EC partitions from twenty to two to lower container thread pressure. See the [port review](../review.md) for corrections and unported items. Reichstein uses the Python implementation in the parent directory and is not built with this Spark builder.
+
+The repository accepts source only. Local builds in these examples are for development verification; use the [source submission and review workflow](../../../../docs/operator-submission.md) for public publication.

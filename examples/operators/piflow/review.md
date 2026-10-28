@@ -1,8 +1,8 @@
-# EcoFlow 算子移植审阅表
+# EcoFlow operator review
 
-审阅基线为上游提交 `84de10436a0d382e0d8d2ce1ab3a82f71ebafc29`，清单覆盖全部 67 个派生算子。已发布 44 个，20 个依赖外部执行环境，另外 3 个没有可直接移植的处理实现。每个算子分别验证后立即发布。
+Reviewed against upstream commit `84de10436a0d382e0d8d2ce1ab3a82f71ebafc29`. All 67 derived operators are inventoried. 44 are published; 20 require external execution environments; 3 have no direct callable processing equivalent. Publication is individual, after verification, not a bulk release.
 
-| 上游类 | 仓库名称 | 执行器 | 输入 → 输出 | 执行模式 |
+| Upstream class | Repository name | Executor | Inputs → outputs | Execution mode |
 |---|---|---|---|---|
 | ColumnCheck | `piflow_column_check@1.0` | python | left:records, right:records → result:records | bounded_materialization |
 | ConsistencyCheck | `piflow_consistency_check@1.0` | python | left:records, right:records → result:records | bounded_materialization |
@@ -49,42 +49,42 @@
 | ScatterPlotChart | `piflow_scatter_plot_chart@1.0` | python | source:records → result:records | bounded_materialization |
 | TableShow | `piflow_table_show@1.0` | python | source:records → result:records | bounded_materialization |
 
-## 契约与示例
+## Contracts and examples
 
-每个 manifest 与 `specs.json` 规定准确的端口名和表示形式。参数保留上游拼写，明确改为流输入输出的部分除外。`params` 是 JSON 对象，不是位置参数串。数据集记录输入使用 `view: records`，文件内容使用 `view: bytes`；步骤之间使用 `task`、`port` 连接。
+Each repository manifest and `specs.json` define the exact port names and representations. Parameters retain upstream spelling unless explicitly replaced by streaming inputs/outputs. `params` is a JSON object, not a positional argument string. Use `view: records` for structured dataset inputs and `view: bytes` for file content. Upstream edges use `task` and `port`.
 
-例如，`piflow_select_field@1.0` 参数为 `{"columnNames":"station_id,temperature"}`，把 `[{"station_id":"A","temperature":12.5,"quality":0}]` 转为 `[{"station_id":"A","temperature":12.5}]`。`piflow_csv_save@1.0` 将记录流转换为 UTF-8 字节 `station_id,temperature\nA,12.5\n`。通过 `piflow_csv_parser@1.0` 读回时，温度值为字符串 `"12.5"`。
+For example, `piflow_select_field@1.0` with `{"columnNames":"station_id,temperature"}` transforms `[{"station_id":"A","temperature":12.5,"quality":0}]` into `[{"station_id":"A","temperature":12.5}]`. `piflow_csv_save@1.0` converts that record stream to UTF-8 bytes `station_id,temperature\nA,12.5\n`. `piflow_csv_parser@1.0` returns string values, so reading the CSV produces temperature `"12.5"`.
 
-`piflow_join@1.0` 接收 left/right 记录，参数为 `{"joinMode":"inner","correlationColumn":"station_id"}`。左侧 `[{"station_id":"A","temperature":12.5}]` 与右侧 `[{"station_id":"A","height":30}]` 产生包含这三个字段的关联记录。右侧重名的非键字段添加 `_right` 后缀。`piflow_route@1.0` 参数 `{"condition":"temperature > 30"}` 会将全部记录输出到 `result`，匹配项输出到 `matched`，其余项（包括谓词为 SQL NULL 的记录）输出到 `unmatched`。
+`piflow_join@1.0` receives left/right records and parameters `{"joinMode":"inner","correlationColumn":"station_id"}`. Left `[{"station_id":"A","temperature":12.5}]` and right `[{"station_id":"A","height":30}]` produce one joined record containing all three fields. Colliding non-key right columns receive `_right` suffixes. `piflow_route@1.0` with `{"condition":"temperature > 30"}` sends every record to `result`, matches to `matched`, and the remainder, including SQL NULL predicates, to `unmatched`.
 
-SQL 适配使用 SQLite，而非 Spark SQL；标量类型与结果可能不同，不支持的嵌套值会被拒绝。比较、关联所需的模式约束见对应测试。全局比较、关联、SQL 和科学算法可能物化输入，应查看 `mode` 和资源上限。科学数值样例验证实现行为，不等同于独立的科学模型认证。
+SQL adaptations use SQLite rather than Spark SQL. Scalar types and results can differ; unsupported nested values are rejected. Record comparison/join operations require the schemas documented in their tests. Global comparisons, joins, SQL, and scientific algorithms may materialize inputs; consult `mode` and limits. Statistical fixtures are implementation checks, not independent scientific certification.
 
-## 算法审阅和修正
+## Reviewed algorithm corrections
 
-- 批量阈值：直接读取行内字段值，避免把包含方括号的 Row 字符串用于字段匹配。
-- 固定窗口 MDV 插补：累积删除多个被替换字段，避免重名列。保留上游缺测值按零贡献参与均值的行为，输出仍包含 `zone`。
-- 前后值插补：使用用户指定的缺测标记。连续两个缺测值插补：使用指定标记，并采用有符号差值支持下降序列。
-- 平面拟合旋转：分别取 Fc、Le、Hs、u-star，修复四次重复取 Fc 的错误。
-- 固定窗口异常值剔除：使用指定 `statisticalType`。滑动窗口：修复 SQL 语法和未定义 `contrast_flag`。这些适配明确每步处理一个字段，多字段可串联多步。
-- 显热廓线：使用指定空气密度列。廓线储存项适配要求恰好七层，与上游固定输出元组一致。
-- Reichstein：使用二十个不重叠风速区间、确定的候选顺序，仅对有效阈值求中位数。估计时排除 null、非有限值与缺测标记，要求至少 120 条有效观测。实现使用 Python，不启动 Spark。
-- EC 储存项保留上游缺测/大跳变判定及 1800 秒间隔。降雨剔除保留上游丢弃没有匹配有效降雨值的通量记录的行为。昼夜状态沿用上游近似日出日落公式，小时按北京时间，日序号为真实年内日序；AddDayID 的相对日序不能直接当作年内日序。
+- Batch thresholds: extract the row's field value rather than its bracketed string representation.
+- Fixed MDV interpolation: accumulate dropped fields so multiple replacements do not leave duplicate columns. Preserve the upstream mean's zero contribution for flagged samples; `zone` remains an output field.
+- Forward/back interpolation: honor the supplied quality-control marker. Two-consecutive-missing interpolation: honor the marker and use signed differences for decreasing series.
+- Planar-fit rotation: use distinct Fc/Le/Hs/u-star output indices instead of repeating Fc four times.
+- Fixed outlier windows: honor `statisticalType`. Sliding windows: fix malformed SQL and the undefined `contrast_flag` reference. These adapters explicitly accept one field per step; chain steps for multiple fields.
+- Sensible heat profiles: honor the supplied density column name. Profile storage adapters require exactly seven layers, matching the original fixed output tuple.
+- Reichstein: use twenty non-overlapping wind bins, deterministic candidate ordering, and only valid thresholds in the median. Exclude missing/nonfinite/flagged estimation samples; require at least 120 valid observations. The implementation is Python and does not start Spark.
+- EC storage retains the upstream flag/large-jump condition and 1800-second interval. Rainfall screening retains upstream dropping of rows without a non-null matched rainfall value. Day state uses the upstream approximate sunrise equation, Beijing-time hours and actual day-of-year; AddDayID's relative day index is not automatically a day-of-year.
 
-`upstream/` 保留原文，Scala 修改在 `spark/build.py` 中明确列出，独立实现位于 `operators/`，均随源码包提供。Spark 使用两个本地工作线程和较少 shuffle 分区；EC 适配将原有二十个分区减少为两个。当前适配关闭自适应查询和自动广播关联，以降低 128 线程容器限制下的压力；大规模、复杂负载仍需要资源测试。
+Original files remain unchanged in `upstream/`; Scala build adaptations are explicit in `spark/build.py`, and native rewrites are in `operators/`. Both are included in source archives. Spark runs with two local workers and small shuffle partitions; the EC adapter reduces the original twenty partitions to two. Adaptive queries and automatic broadcast joins are disabled in the current adapter to reduce thread pressure under the 128-thread container limit. Large or complex workloads still require resource testing.
 
-## 未发布项
+## Not published
 
-| 上游类 | 原因 |
+| Upstream class | Reason |
 |---|---|
-| DifferentialFiltering | 其 FluxDifference 直接返回输入，审阅版本没有实际执行差分过滤。 |
-| Trager | perform 方法为空且没有输出；执行顺序通过工作流依赖边表示。 |
-| AddCache | Spark DataFrame.cache 仅存在于 SparkSession 内；独立 DACP 算子不能通过一个原样转发算子提供跨步骤可重用缓存。 |
+| DifferentialFiltering | Its FluxDifference utility returns the input unchanged; no working differential filtering algorithm exists in the reviewed implementation. |
+| Trager | Empty perform method, with no output. Workflow dependency edges express execution order. |
+| AddCache | Spark DataFrame.cache is local to a SparkSession; isolated DACP operators cannot provide reusable downstream cache semantics through an identity operator. |
 
-以下 20 项需要外部服务，以及执行/网络方案的决定，没有发布占位实现。目前 DACP 任务容器使用 network=none，只提供连接参数不能让它访问外部服务。DockerExecute 另外需要明确的 Docker daemon 授权；MysqlReadIncremental 依赖 Stop 实现之外的上游框架变量替换和状态管理。
+The following 20 operators require external services and an execution/network decision. They are not published as placeholders. Current DACP task containers use network=none; endpoint parameters alone cannot enable access. DockerExecute additionally requires explicit Docker daemon access, and MysqlReadIncremental depends on upstream framework substitution/state behavior outside its Stop implementation.
 
-| 类别 | 算子 |
+| Category | Operators |
 |---|---|
 | HDFS | FileDownHdfs, GetHdfs, ListHdfs, PutHdfs, SaveToHdfs, SelectFilesByName |
 | Hive | PutHiveMode, SelectHiveQL |
-| 数据库 | ImpalaRead, JdbcReadFromOracle, MysqlRead, MysqlReadIncremental, MysqlWrite, OracleRead, OracleReadByPartition, OracleWrite, PostgresqlRead, PostgresqlWrite |
-| 远程脚本 | DockerExecute, ExecuteShell |
+| Databases | ImpalaRead, JdbcReadFromOracle, MysqlRead, MysqlReadIncremental, MysqlWrite, OracleRead, OracleReadByPartition, OracleWrite, PostgresqlRead, PostgresqlWrite |
+| Remote scripts | DockerExecute, ExecuteShell |

@@ -1,12 +1,12 @@
-# 持续输出的数据流示例
+# Continuous output stream example
 
-[English](README_en.md)
+[中文](README_zh.md)
 
-`live_ticks@1.0` 使用 Python SDK，每秒输出一条模拟气象观测 JSONL，序号从 1 开始。数据为合成演示值。算子代码为几 KB，复用现有 Python/PyArrow 运行时。这是零输入源算子，声明 `inputs: {}`，启动后直接生成数据，无需读取任何 Item。
+`live_ticks@1.0` uses the Python SDK to emit one synthetic weather observation per second as JSONL, starting at sequence 1. Values are synthetic demonstrations. Its code is a few KB and shares the existing Python/PyArrow runtime. This zero-input source declares `inputs: {}` and starts generating immediately without reading an Item.
 
-## 端口声明
+## Port declaration
 
-算子清单和作业中的输入都为空；只有 `result` 输出端口：
+Both the operator manifest and job have empty inputs; `result` is the only output port:
 
 ```yaml
 inputs: {}
@@ -16,9 +16,9 @@ outputs:
     formats: [ndjson]
 ```
 
-## Shell 观察
+## Observe in the shell
 
-在项目根目录运行，使用现有演示节点 A：
+Run from the project root against existing demonstration node A:
 
 ```bash
 .venv/bin/dacp-shell dacp://localhost:18861 --ca examples/certs/ca.crt --cert examples/certs/client.crt --key examples/certs/client.key
@@ -29,48 +29,42 @@ dacp-shell> use weather
 dacp-shell> run live_ticks@1.0 --params '{"interval_seconds":1,"max_records":0}' --timeout 300
 ```
 
-输出类似：
+Example output:
 
 ```json
 {"sequence":1,"timestamp":"2026-10-23T10:30:00+00:00","station_id":"DEMO-001","temperature_c":20.5}
 {"sequence":2,"timestamp":"2026-10-23T10:30:01+00:00","station_id":"DEMO-001","temperature_c":20.99}
 ```
 
-Shell 默认没有结果预览上限，数据到达后逐块显示；运行过程中按 Ctrl+C 取消，随后可继续输入命令。`max_records: 0` 表示持续生成，仍受服务器和请求的任务时限约束；不是永久任务。`interval_seconds` 范围为 0.01–60 秒，默认 1；`max_records` 为非负整数，默认 0，设为 5 可自动结束。没有后台调度器，背压会阻塞输出写入，不累积待发送记录。
+Shell results have no preview limit by default and print as chunks arrive. Press Ctrl+C during execution to cancel and return to the prompt. `max_records: 0` generates continuously but remains subject to server and request timeouts; it is not a permanent job. `interval_seconds` ranges from 0.01 to 60 seconds, default 1. `max_records` is a nonnegative integer, default 0; set it to 5 to finish automatically. No background scheduler accumulates pending records; backpressure blocks output writes.
 
-从 Union 使用时，先以 `datasets` / `use` 选择公开名称，成员需能获取并执行 `live_ticks@1.0`；本地节点可直接执行。
+For Union, select a public name through `datasets` / `use`, and ensure a member can resolve and execute `live_ticks@1.0`. Local nodes can execute directly.
 
-## 构建、发布和验证
+## Build, publish and validate
 
-构建需要一个含 `piflow_csv_parser@1.0` 清单和运行时 blob 的本地仓库，用以复用已有 Python 环境。发布通过 token 认证 API，不包含 Web 上传功能：
+Building requires a local catalog containing the `piflow_csv_parser@1.0` manifest and runtime blob to reuse its Python environment. Publication uses token-authenticated APIs without a Web upload interface:
 
-```bash
-python3 examples/operators/live-stream/test.py
-python3 examples/operators/live-stream/build.py --runtime-catalog .operator-catalog --output /tmp/live-ticks-catalog
-export DACP_REPOSITORY_PUBLISH_TOKEN="$(cat .operator-catalog/.publish-token)"
-python3 scripts/upload-operator.py live_ticks@1.0 --catalog /tmp/live-ticks-catalog --url http://localhost:8820 --token-env DACP_REPOSITORY_PUBLISH_TOKEN
-```
+See the source-only repository submission guide linked below.
 
-源码归档同时提供代码、构建脚本、测试和双语说明。没有额外的第三方依赖。验证流式执行应记录第一条输出与任务结束的时间，并在持续生成时取消，再检查节点释放任务槽。单凭动态图形或较小的输出文件不足以证明流式执行；算子可自行采用阻塞算法，平台流接口不保证每种算法都能立即输出。
+The source archive includes code, build script, tests and bilingual instructions. No additional third-party dependencies are introduced. Validate streaming by recording first-output and completion times, canceling continuous generation, and checking released task slots. An animated graph or small output file alone does not prove streaming. Operators can implement blocking algorithms; stream interfaces do not guarantee immediate output from every algorithm.
 
-## 多步骤纯流工作流
+## Multi-step streaming workflow
 
-[workflow.yaml](workflow.yaml) 依次执行 `live_ticks → live_ticks_decode → piflow_select_field → piflow_convert_schema → piflow_csv_save`，从 JSONL 字节流转为 Arrow 记录流，选列、重命名，再输出 CSV。所有步骤逐条或逐批处理，无需等待无限输入结束。`live_ticks_decode` 使用明确的气象记录 schema，保留每条观测，不是通用 JSON 展平器；每行最大 64 KiB。
+[workflow.yaml](workflow.yaml) runs `live_ticks → live_ticks_decode → piflow_select_field → piflow_convert_schema → piflow_csv_save`, converting JSONL bytes into Arrow records, projecting and renaming columns, then emitting CSV. Every step processes individual rows or batches without waiting for infinite input to finish. `live_ticks_decode` uses an explicit weather record schema and preserves observations; it is not a generic JSON flattener. Each line is limited to 64 KiB.
 
-[stream-only-policy.yaml](stream-only-policy.yaml) 禁止中间结果物化并设置总时限 300 秒。数据负载通过内存有界队列、FIFO 管道和进程标准输出传递，不保存中间结果文件。执行日志、状态记录、运行时缓存和启动参数文件仍会写入服务器文件系统；本例保证的是中间数据负载不落盘。
+[stream-only-policy.yaml](stream-only-policy.yaml) forbids intermediate output materialization and sets a 300-second overall timeout. Payloads travel through bounded memory queues, FIFO pipes and process stdout, without intermediate result files. Execution logs, status records, runtime caches and startup parameter files still use the server filesystem. This example guarantees no intermediate data payload staging to disk.
 
-在项目根目录启动 Shell，连接节点 A 并选择数据集后提交：
+Start the shell from the project root, connect to node A, and select a Dataset before submitting:
 
 ```text
 use weather
 submit examples/operators/live-stream/workflow.yaml --policy examples/operators/live-stream/stream-only-policy.yaml
 ```
 
-终端会持续输出 `sequence,station_id,timestamp,air_temperature_c` 的 CSV 行，按 Ctrl+C 停止。生成器不需要输入 Item。工作流不指定 node，直接提交给所连接节点；通过 Union 提交时，成员需能获取全部五个算子版本，由调度器选择执行节点。
+The terminal continuously prints CSV rows with `sequence,station_id,timestamp,air_temperature_c`. Press Ctrl+C to stop. The generator needs no input Item. The workflow omits node placement and runs on the connected node. For Union, members must be able to resolve all five operator versions; the scheduler selects execution nodes.
 
-构建和发布解码算子：
+Build and publish the decoder:
 
-```bash
-python3 examples/operators/live-stream/build.py --operator live_ticks_decode --runtime-catalog .operator-catalog --output /tmp/live-ticks-decode-catalog
-python3 scripts/upload-operator.py live_ticks_decode@1.0 --catalog /tmp/live-ticks-decode-catalog --url http://localhost:8820 --token-env DACP_REPOSITORY_PUBLISH_TOKEN
-```
+See the source-only repository submission guide linked below.
+
+The repository accepts source only. Local builds in these examples are for development verification; use the [source submission and review workflow](../../../docs/operator-submission.md) for public publication.

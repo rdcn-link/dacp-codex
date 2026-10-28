@@ -1,0 +1,276 @@
+# 算子与工作流结构推导
+
+[English](structure-inference.md)
+
+每个算子必须提供结构推导方法。清单声明输入及静态参数契约，不再允许 `outputs`；输出端口、表示、格式、schema 和未知信息均由方法返回。无输出算子返回空映射，数据源接受空输入。方法实现缺失、响应格式错误或超时会导致校验失败，不回退到清单。
+
+## 使用方式
+
+在 shell 中，先查看结构，再提交同一个工作流：
+
+```text
+infer workflow.yaml --vars variables.yaml
+submit workflow.yaml --vars variables.yaml
+```
+
+`infer` 只查询元信息，不执行数据处理，不预览实际数据。单机和 Union 均通过 Flight 提供 `dacp.infer`（单算子）及 `dacp.infer_job`（完整工作流）。普通客户端使用自己的服务器连接凭据；Union 向实际执行节点请求推导，公开结果只含任务名与结构，不返回内部成员地址。
+
+Python：
+
+```python
+from dacp import Job
+report = Job.infer("dacp://localhost:18861", workflow_text, variables={"LIMIT": 123})
+# 已连接的 Union SDK 实例：
+report = union.infer(workflow_text, variables={"LIMIT": 123})
+```
+
+Scala：
+
+```scala
+val report = dacp.client.Job.infer("dacp://localhost:18861", workflowText)
+val unionReport = union.infer(workflowText)
+```
+
+结构推导仅在用户显式调用 `infer` 时执行，供工作流编制、校验和预览使用。提交、调度、重试、重放及步骤执行均不自动调用推导方法，假定提交的工作流符合要求。执行时使用实际流头中的表示、格式和 schema，保留协议完整性、端口连接、授权和资源限制检查；无输出算子无需虚构结果端口。
+
+## 统一请求与响应
+
+单次命令行推导使用 `infer /input/inference.json`，读取请求文件并向标准输出写一个 JSON 响应。服务器使用下述常驻 worker 协议，日志写标准错误，不发送 Arrow 数据帧。
+
+请求：
+
+```json
+{
+  "inputs": {
+    "source": {"representations": ["bytes"], "formats": ["text"], "certainty": "known"}
+  },
+  "params": {"uppercase": true}
+}
+```
+
+响应：
+
+```json
+{
+  "outputs": {
+    "result": {"representations": ["bytes"], "formats": ["text"], "certainty": "known"}
+  },
+  "diagnostics": []
+}
+```
+
+`certainty` 必须为 `known` 或 `unknown`。不确定表示时可返回空的 `representations`，不确定格式时返回空的 `formats`；所有输出端口名称仍必须列出。已知 records 必须给出 `schema`，其值为 Base64 编码的 Arrow IPC schema 消息，与流头一致。不得用空 schema 假装未知。可选 `structure` 对象携带领域结构（例如多维数组的维度），不将科学数据自动展开成表格；当前执行协议仍只支持 bytes/records，扩展表示需要相应的执行协议支持。
+
+诊断为 `{"severity":"error","code":"unknown_column","message":"Unknown column: temperature"}` 或 `warning`。错误阻止执行，警告不会。清单输入契约仍用于检查算子能否接受连接进来的流。
+
+## Python 作者
+
+`BytesOperator` 与 `RecordsOperator` 已实现推导方法；表格模板复用 `output_schema`，输入 schema 未知时保留未知。自定义多端口算子实现 `infer_outputs(inputs, params)`，供编辑时显式调用：
+
+```python
+from dacp_operator import descriptor, result, run_operator, preview_process
+
+def infer_outputs(inputs, params):
+    if set(inputs) != {"source"}:
+        raise ValueError("Expected source input")
+    return result({"result": descriptor(["bytes"], ["text"], certainty="known")})
+
+def process(ctx):
+    out = ctx.bytes_output("result", "text")
+    for chunk in ctx.input("source").bytes():
+        out.write(chunk.upper())
+
+def preview_outputs(inputs, params, limits):
+    return preview_process(process, inputs, params, limits)
+
+if __name__ == "__main__":
+    run_operator(process, infer_outputs, preview_outputs=preview_outputs)
+```
+
+`descriptor(..., schema=pyarrow_schema, certainty="known")` 处理 Arrow schema 序列化，`records_schema(input_descriptor)` 读取输入 schema。不要在模块导入或推导方法中启动业务处理。
+
+## Scala 作者
+
+继承 `Operator` 时必须实现方法；字节及表格模板已经提供实现：
+
+```scala
+import dacp.{StreamDescriptor,InferenceResult}
+import dacp.operator.{Operator,OperatorContext}
+import com.fasterxml.jackson.databind.JsonNode
+
+object Uppercase extends Operator {
+  def inferOutputs(inputs: Map[String, StreamDescriptor], params: JsonNode): InferenceResult = {
+    require(inputs.keySet == Set("source"), "Expected source input")
+    InferenceResult(Map("result" -> StreamDescriptor(Set("bytes"), Set("text"), certainty="known")))
+  }
+  def process(ctx: OperatorContext): Unit = {
+    val out = ctx.bytesOutput("result", "text")
+    ctx.input("source").foreachBytes(chunk => out.write(new String(chunk, "UTF-8").toUpperCase.getBytes("UTF-8")))
+  }
+}
+```
+
+原生 `command` 执行器的适配方法根据 stdin/stdout 配置推导 bytes 端口，不启动底层可执行程序。外部执行器插件通过 `inferenceWorkerCommand`（源码为 `sourceInferenceWorkerCommand`）接入相同 JSON 协议，无需修改核心注册表。清单和插件配置不得另建输出 schema 来源。
+
+## 隔离与限制
+
+推导方法只能做元信息计算，不能读实际数据、访问外部服务或产生副作用。服务端在无网络、只读根文件系统的隔离 worker 容器中调用，每个 worker 限制为 512 MiB 内存、64 个进程和一个 CPU；请求及响应各最多 1 MiB。只挂载元数据管道、worker 适配代码和只读算子制品，不挂载数据集或凭据。`read_item` 是核心传输算子，使用 Flight 元信息查询而不打开内容流；数据插件描述 Item 时也应避免扫描内容。
+
+修改 SDK 或运行时后需要重新构建相应运行环境与算子包。仓库发布不在仓库进程中执行用户代码；推导能力在执行节点实际调用时验证。旧的清单输出声明直接移除，不提供兼容路径。
+
+契约测试：`sbt test`（`dacp-operator-sdk`、`dacp-server`），以及仓库根目录 `.venv/bin/python scripts/test-operator-inference.py`。
+
+## 按需启动与空闲回收
+
+节点为显式推导按需启动 worker；相同节点实例、调用主体、算子制品、运行镜像和启动配置的请求复用同一 worker。参数和输入结构不属于复用键，每次都重新调用推导方法，不缓存结果。不同主体、算子内容或镜像不会共用 worker。Python 模块或 wheel 只初始化、安装一次，JVM 只启动并加载一次；SDK 模板实例在 worker 内复用。推导方法必须保持确定性，不依赖前一请求的状态。
+
+节点顶层配置：
+
+```yaml
+inference_workers:
+  max_workers: 4
+  idle_seconds: 60
+  timeout_seconds: 60
+```
+
+以上为默认值。`max_workers` 范围为 1–64，`idle_seconds` 为 1–86400，`timeout_seconds` 为 1–120，均为整数。超时包含排队、冷启动及本次计算；外层 Flight 调用可能具有更短的截止时间。相同 worker 串行处理请求；达到上限时优先淘汰最久未使用的空闲 worker，否则等待可用位置。空闲检查周期为一秒，超过期限的空闲 worker 会销毁。异常、非法响应、超时或执行中的推导请求取消，会销毁对应 worker，下一次显式请求重建；不会自动重试本次推导。取消一个尚在排队的请求不影响正在服务其他请求的 worker。节点关闭时清理全部 worker。
+
+这是运行资源复用，不与任务执行容器混用，也不使提交、调度、执行、重试或重放自动触发推导。Union 将显式推导转发给成员，由成员管理 worker；Union 不加载成员的算子代码。
+
+## 执行器插件的 worker 协议
+
+外部执行器仍通过 `META-INF/services/dacp.OperatorExecutor` 注册，在 `plugin_directory` 中安装 JAR 和依赖。实现 `inferenceWorkerCommand(program, artifactPath)`，支持源码时再实现 `sourceInferenceWorkerCommand(program, artifactPath)`，无须修改核心注册表或客户端。默认实现将普通启动命令的参数改为：
+
+```text
+infer-worker /input/requests.fifo /input/responses.fifo
+```
+
+进程打开请求 FIFO 读取、响应 FIFO 写入，先在响应管道写一个大端 32 位零值，表示初始化完成。之后循环读取“大端 32 位长度 + UTF-8 JSON 请求”，返回相同封装的 JSON 推导结果；长度范围为 1–1048576 字节，请求和结果格式仍采用本文的共享协议。请求之间不退出、不重新加载算子；在请求间 EOF 时退出，截断、超限、方法异常或非法结果时退出并报告标准错误。不要向元数据管道写日志，不接收或发送真实数据流。
+
+Java/Scala SDK 的 `OperatorRunner.infer` 与 `Operator.main` 支持该模式；Python 的 `run_inference`、`run_operator` 和 `Operator.main` 也支持。内置 JVM、Python 和原生命令执行器提供适配器和当前 worker SDK；源码编译和 wheel 安装都只在 worker 初始化时执行。自带容器入口的算子须在镜像内提供支持 worker 模式的 SDK 或实现上述协议。原生命令由适配器推导结构，不启动底层可执行程序。
+
+验证：`InferenceWorkerPoolSpec` 覆盖复用、容量、空闲回收、异常重建、取消、超时和关闭；SDK `InferenceSpec` 与 `scripts/test-operator-inference.py` 覆盖连续请求和帧边界。`scripts/test-inference-workers.py` 使用真实容器和 Flight 验证不同参数复用同一 Python/JVM 进程、空闲回收及故障重建。
+
+参数类型通过[静态参数契约](operator-parameters_zh.md)声明，读取它们无需启动推导 worker。
+
+在线设计器使用 `dacp-operator-inference` 公共模块在本地启动 worker，从配置的仓库解析算子。普通算子不经 Union 或成员节点推导；`read_item` 仅访问配置目标的 Item 元信息。节点服务器与设计器共用算子解析、worker 池及图结构传播实现。
+
+## 有界输出样例接口
+
+结构推导之外，算子必须实现 JVM `previewOutputs(inputs, params, limits)` 或 Python `preview_outputs(inputs, params, limits)`。返回值是“输出端口名 → 样例”的映射；未提供的端口显示样例不可用。输入描述可携带上游样例，方法只处理这些有界样例或自行构造领域样例，不调用完整工作流的 `process`。外部服务或有副作用的算子应自行提供安全的样例实现，不能为预览直接执行生产操作。
+
+推导请求只有在需要样例时才增加：
+
+```yaml
+preview:
+  max_rows: 10
+  max_bytes: 16384
+```
+
+`max_rows` 范围为 1–100；`max_bytes` 范围为 256–65536，按整个样例 JSON 的 UTF-8 序列化大小计算，包含字段、转义及 Base64 开销。两个限制同时生效。SDK 截断后，宿主再次检查；每次算子响应的样例合计最多 64 KiB，设计器整张图的样例最多 256 KiB。单行超过大小限制时舍弃该行，不截断字段结构。`truncated` 明确表示预算截断；样例失败只产生 `sample_unavailable` 警告，保留成功推导的 Schema。
+
+每个输出描述的可选 `sample` 如下：
+
+```yaml
+sample:
+  representation: records
+  format: json
+  rows:
+    - station_id: ST001
+      temperature: 21.5
+  truncated: false
+```
+
+字节样例使用 `representation: bytes`、`format`、`data_base64` 和 `truncated`，不包含 `rows`。样例不得声称具有输出端口不支持的表示。样例来自算子接口，不由浏览器根据 Schema 合成。普通结构推导不打开数据流；设计器先逐步骤展示结构，随后请求样例，内置 `read_item` 使用受限行数的 records 读取或受限字节读取，并及时关闭源流。
+
+Python 示例（恒等转换，在模块入口注册必需方法）：
+
+```python
+from dacp_operator import bounded_sample, run_operator
+
+def preview_outputs(inputs, params, limits):
+    sample = inputs['source'].get('sample')
+    return {'result': bounded_sample(sample, limits)} if sample else {}
+
+# process / infer_outputs 为此算子的正常处理和结构推导方法
+if __name__ == '__main__':
+    run_operator(process, infer_outputs, preview_outputs=preview_outputs)
+```
+
+继承 Python `Operator` 时覆写 `preview_outputs`，`main()` 自动注册。构造新样例可使用 `sample_records(rows)` 或 `sample_bytes(data, format='binary')`，并按 `limits` 约束生成量。
+
+Scala 示例（添加到 `Operator` 或其模板子类）：
+
+```scala
+import dacp.{StreamDescriptor, PreviewLimits, OutputSample}
+import com.fasterxml.jackson.databind.JsonNode
+
+override def previewOutputs(
+    inputs: Map[String, StreamDescriptor],
+    params: JsonNode,
+    limits: PreviewLimits
+): Map[String, OutputSample] =
+  inputs.get("source").flatMap(_.sample)
+    .map(s => Map("result" -> s.bounded(limits))).getOrElse(Map.empty)
+```
+
+JVM 的 `Operator.main` 自动注册该方法，Java 可实现相同 JVM 接口。推导 worker 复用现有生命周期，样例不会混入执行结果流，也不会存入工作流 YAML。
+
+## 界面中的 Schema 类型名称
+
+设计器的步骤框与右侧 Outputs 使用同一套类型名称。以下名称仅用于展示；推导接口和数据流仍传输完整 Arrow Schema，不将数据转换为字符串。完整 Schema 可在 Outputs 的 Complete schema 中查看，包括字典编码及字段元数据。
+
+| 类型 | 展示名称 |
+|---|---|
+| 布尔 | `bool` |
+| 有符号整数 | `int8`、`int16`、`int32`、`int64` |
+| 无符号整数 | `uint8`、`uint16`、`uint32`、`uint64` |
+| 浮点 | `float16`、`float32`、`float64` |
+| 定点小数 | `decimal128(precision, scale)`、`decimal256(precision, scale)` |
+| 字符串 | `string`、`large_string`、`string_view` |
+| 二进制 | `binary`、`large_binary`、`binary_view`、`fixed_binary[N]` |
+| 日期 | `date32`（天）、`date64`（毫秒） |
+| 时间 | `time32(unit)`、`time64(unit)` |
+| 时间戳 | `timestamp(unit)`、`timestamp(unit, timezone)` |
+| 时长、间隔 | `duration(unit)`、`interval(unit)` |
+| 列表 | `list<T>`、`large_list<T>`、`fixed_list<T>[N]`、`list_view<T>`、`large_list_view<T>` |
+| 结构体 | `struct<字段: 类型, …>` |
+| 映射 | `map<K, V>`，键已排序时附加 `[sorted]` |
+| 联合类型 | `union[dense或sparse]<类型编号: 字段: 类型, …>` |
+| 游程编码 | `run_end_encoded<结束位置类型, 值类型>` |
+| 空类型 | `null` |
+
+时间单位使用 `s`、`ms`、`us`、`ns`；interval 保留 `year_month`、`day_time`、`month_day_nano` 等单位。类型末尾的 `?` 表示该字段允许空值，例如 `temperature: float64?`；`list<string?>` 表示列表元素可为空。未知结构显示 `Schema unknown`，未知类型显示 `unknown`，两者均不同于 `null`。尚未识别的类型保留其类型名，可查看完整 Schema，避免误标为已有类型。
+
+例如，Arrow `utf8` 展示为 `string`，`floatingpoint` 的 `DOUBLE` 精度展示为 `float64`；嵌套字段保持原有层级。类型能够被展示不代表所有算子都支持处理该类型，具体能力由算子及数据插件决定。
+
+### 必需的样例接口与现有算子
+
+每个算子必须同时具备处理、结构推导和输出样例接口。JVM `Operator.previewOutputs` 为抽象方法；Python 函数式入口必须注册 `preview_outputs`，未注册会明确报错；自定义 `Operator` 子类也必须实现。SDK 的纯字节模板可复用变换方法实现样例，Python records 模板也可处理有界样例。请求未包含 `preview` 时不调用样例方法。没有输入样例等情况应报告具体原因，不能把上游样例冒充转换后的输出。
+
+无副作用的 Python 算子可显式使用 SDK 的 `preview_process` 简化实现：
+
+```python
+from dacp_operator import preview_process, run_operator
+
+def preview_outputs(inputs, params, limits):
+    return preview_process(process, inputs, params, limits)
+
+if __name__ == "__main__":
+    run_operator(process, infer_outputs, preview_outputs=preview_outputs)
+```
+
+这个辅助方法只提供内存中的受限输入样例、参数和输出收集器，不提供生产输入流、目录或远端访问；输出达到行数或字节数限制时终止样例收集。它不是任意代码的安全沙箱，只适用于作者明确确认无副作用的变换。若推导 Schema 未知，可根据已收到的样例构建仅用于本次预览的内存表；不会把该表的类型发布为已知 Schema。涉及外部访问的算子需要自行实现安全的样例逻辑。
+
+当前仓库的六个算子均实现 `preview_outputs`：
+
+| 算子 | 样例行为 |
+|---|---|
+| `piflow_csv_parser` | 将上游 CSV 字节样例解析为记录 |
+| `piflow_filter` | 对上游记录样例应用筛选条件 |
+| `piflow_join` | 对左右有界记录样例执行关联 |
+| `piflow_merge` | 合并左右样例，达到限制即停止 |
+| `piflow_execute_sql_stop` | 在内存 SQLite 中执行只读样例查询 |
+| `piflow_csv_save` | 将记录样例序列化为 CSV 字节，不写文件 |
+
+这些样例不代表完整数据的统计特征，例如 join 的两个样例未包含相同键时可能为空。默认上限为 10 行、16 KiB；SDK 和宿主再次限制序列化后的大小。运行 `./.venv/bin/python scripts/test-operator-previews.py` 可验证这六个算子的真实样例逻辑、大小限制及未知 Schema 的样例传播，无需启动 Docker。

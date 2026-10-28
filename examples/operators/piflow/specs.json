@@ -38,7 +38,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -83,7 +82,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -128,7 +126,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -172,7 +169,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -217,7 +213,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -263,7 +258,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 4h18l-7 8v7l-4 2V12z",
       "color": "#14866b"
@@ -307,7 +301,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -349,7 +342,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Combine streams",
     "icon": {
       "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
       "color": "#8456c4"
@@ -406,7 +398,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Combine streams",
     "icon": {
       "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
       "color": "#8456c4"
@@ -448,7 +439,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Combine streams",
     "icon": {
       "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
       "color": "#b95f20"
@@ -490,7 +480,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Combine streams",
     "icon": {
       "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
       "color": "#8456c4"
@@ -553,7 +542,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Combine streams",
     "icon": {
       "path": "M10 12a5 5 0 1 1 0-.1M14 12a5 5 0 1 1 0-.1",
       "color": "#8456c4"
@@ -602,7 +590,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -664,7 +651,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -716,7 +702,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M4 5h16v14H4zM8 9l3 3-3 3m5 0h4",
       "color": "#2874bb"
@@ -768,7 +753,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Format conversion",
     "icon": {
       "path": "M8 5 3 12l5 7m8-14 5 7-5 7M14 4l-4 16",
       "color": "#ac6a19"
@@ -825,7 +809,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Format conversion",
     "icon": {
       "path": "M8 5 3 12l5 7m8-14 5 7-5 7M14 4l-4 16",
       "color": "#ac6a19"
@@ -877,7 +860,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Format conversion",
     "icon": {
       "path": "M8 5 3 12l5 7m8-14 5 7-5 7M14 4l-4 16",
       "color": "#ac6a19"
@@ -932,7 +914,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -978,7 +959,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1051,7 +1031,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1118,7 +1097,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1185,7 +1163,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1232,7 +1209,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Combine streams",
     "icon": {
       "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
       "color": "#8456c4"
@@ -1291,7 +1267,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1353,7 +1328,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1389,7 +1363,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1450,7 +1423,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1511,7 +1483,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1566,7 +1537,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1621,7 +1591,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1706,7 +1675,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -1881,7 +1849,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -2056,7 +2023,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -2129,7 +2095,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -2202,7 +2167,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -2269,7 +2233,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -2337,7 +2300,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Combine streams",
     "icon": {
       "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
       "color": "#8456c4"
@@ -2417,7 +2379,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Combine streams",
     "icon": {
       "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
       "color": "#8456c4"
@@ -2497,7 +2458,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Combine streams",
     "icon": {
       "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
       "color": "#8456c4"
@@ -2568,7 +2528,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -2619,7 +2578,6 @@
       ],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -2670,7 +2628,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"
@@ -2723,7 +2680,6 @@
       "required": [],
       "additionalProperties": false
     },
-    "category": "Data transformation",
     "icon": {
       "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
       "color": "#14866b"

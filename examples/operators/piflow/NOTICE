@@ -8,5 +8,5 @@ License: Apache License, Version 2.0 (see LICENSE)
 Original source files and author declarations are retained under upstream/.
 DACP-specific implementations replace PiFlow orchestration interfaces with
 Arrow input/output ports. Adaptations and semantic differences are documented
-in README.md, README_en.md and specs.json. These changes are not endorsed by
+in README.md, README_zh.md and specs.json. These changes are not endorsed by
 the upstream project.

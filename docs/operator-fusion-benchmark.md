@@ -1,23 +1,23 @@
-# 同进程合并执行实测（2026-10-20）
+# Shared-process execution measurements (2026-10-20)
 
-[English](operator-fusion-benchmark_en.md)
+[中文](operator-fusion-benchmark_zh.md)
 
-本机实测：三个连续的轻量文本转换步骤，大写 → 小写 → 大写。使用同一数据、代码、参数、运行时镜像和 Flight 客户端，仅节点配置 `operator_fusion_enabled` 不同。Scala/JVM 与 Python 分别测量；每种策略预热一次，每个规模再测三次，交替执行顺序。下表为三次端到端耗时的中位数，单位秒。
+Local measurements of three lightweight text transformations: upper case → lower case → upper case. Data, code, parameters, runtime images and the Flight client are identical; only the node's `operator_fusion_enabled` setting differs. Scala/JVM and Python were measured separately. Each strategy received one warmup, followed by three measurements per data size with alternating execution order. The table reports median end-to-end time in seconds.
 
-| 运行时 | 数据行数 | 输入 MiB | 独立执行（秒） | 同进程合并（秒） | 耗时降低 | 加速比 |
+| Runtime | Rows | Input MiB | Isolated (s) | Shared process (s) | Time reduction | Speedup |
 |---|---:|---:|---:|---:|---:|---:|
 | Scala/JVM | 1,000,000 | 61.04 | 48.29 | 14.18 | 70.6% | 3.41× |
 | Scala/JVM | 4,000,000 | 244.14 | 60.02 | 13.75 | 77.1% | 4.37× |
 | Python | 1,000,000 | 61.04 | 40.66 | 11.84 | 70.9% | 3.43× |
 | Python | 4,000,000 | 244.14 | 83.04 | 14.93 | 82.0% | 5.56× |
 
-每个 Job 的容器数量经 Docker 创建事件核对：独立执行为 3 个，合并为 1 个。全部 24 个正式样本都校验了完整输出的 SHA-256、字节数、行数和实际执行模式，输出一致。100 万行是 64,000,000 字节，400 万行是 256,000,000 字节；每行 64 字节，内容为带编号的 CSV 文本。
+Docker create events confirmed 3 containers per isolated Job versus 1 per fused Job. All 24 measured samples validated the full output SHA-256, bytes, rows and actual execution mode, with identical output. One million rows are 64,000,000 bytes; four million rows are 256,000,000 bytes. Each row is 64 bytes of numbered CSV text.
 
-## 原始耗时
+## Raw wall times
 
-`fused` 为合并，`isolated` 为独立；每行依次列出三次采样，单位秒。预热不计入。
+`fused` means shared process; `isolated` means separate processes. Each row lists the three measurements in seconds, excluding warmups.
 
-| 运行时 | 行数 | 策略 | 三次耗时（秒） |
+| Runtime | Rows | Strategy | Three measurements (s) |
 |---|---:|---|---|
 | jvm | 1,000,000 | fused | 12.60 / 25.10 / 14.18 |
 | jvm | 1,000,000 | isolated | 48.29 / 51.84 / 37.16 |
@@ -28,24 +28,24 @@
 | python | 4,000,000 | fused | 17.74 / 14.11 / 14.93 |
 | python | 4,000,000 | isolated | 83.04 / 90.08 / 62.80 |
 
-## 首批数据延迟
+## First-data latency
 
-从提交到客户端收到第一帧数据的中位数，单位秒；不等于整个 Job 完成时间。
+Median time from submission to the first data frame reaching the client, in seconds. This is not total Job completion time.
 
-| 运行时 | 行数 | 独立执行（秒） | 同进程合并（秒） |
+| Runtime | Rows | Isolated (s) | Shared process (s) |
 |---|---:|---:|---:|
 | jvm | 1,000,000 | 36.34 | 10.14 |
 | jvm | 4,000,000 | 17.65 | 6.27 |
 | python | 1,000,000 | 27.11 | 6.70 |
 | python | 4,000,000 | 29.58 | 8.11 |
 
-## 测试条件与边界
+## Conditions and limits
 
-- 宿主机为 Linux x86-64，16 个逻辑 CPU，约 31 GiB 内存；与演示服务共享宿主机，没有做 CPU 隔离。镜像固定 ID 见原始 JSON。
-- 计时包含客户端提交、TLS/Flight、算子解析、容器启动和清理、完整流消费与客户端校验；不包含数据生成、节点启动、镜像下载和预热。输入文件缓存没有主动清空。
-- 输入文件预先保存在节点；算子逐块处理。合并的中间数据通过有界内存管道，独立执行通过内存队列、本机 Flight 与 FIFO，不保存中间结果。客户端仅增量校验，不保存最终结果。代码包、配置、日志和执行历史仍使用文件。
-- 测试的是 CSV 文本字节流，不是 Arrow record stream，也未测试跨节点网络。每个容器的既有限制为 1 GiB；三个合并步骤共享这一限制，独立步骤则各有一个容器。
-- 采样有明显波动，且不同规模先后运行，缓存、JIT 和宿主机负载影响绝对值。不能因为部分大数据样本更快，就推断处理更多数据更快。
-- 这是端到端结果，不能将全部收益归于纯 IPC，也不能将加速比例推广到计算密集型、不同依赖或 Python GIL 敏感的算子。
+- Linux x86-64 host with 16 logical CPUs and approximately 31 GiB RAM, shared with demo services without CPU isolation. Fixed image IDs are in the raw JSON.
+- Timing includes client submission, TLS/Flight, operator resolution, container startup and cleanup, complete stream consumption and client validation. It excludes data generation, node startup, image downloads and warmups. Input file caches were not explicitly evicted.
+- Input files were saved on the node in advance; operators process chunks. Fused intermediate data uses bounded memory pipes; isolated execution uses memory queues, local Flight and FIFOs, without saving intermediate results. The client validates incrementally without saving final output. Code bundles, configuration, logs and execution history still use files.
+- This measures a CSV-text byte stream rather than an Arrow record stream, and does not measure cross-node networks. Existing limits are 1 GiB per container: three fused steps share that limit; each isolated step gets its own container.
+- Samples vary substantially. Sizes were run sequentially, so caches, JIT and host load affect absolute times. Some larger-data samples completing sooner do not imply that processing more data is intrinsically faster.
+- These are end-to-end results. The gains cannot all be attributed to pure IPC, nor assumed for compute-intensive operators, different dependencies or Python operators sensitive to the GIL.
 
-[复现命令与算子代码](../examples/operators/stream-benchmark/README.md) · [完整采样 JSON](benchmarks/operator-fusion-20261020.json)
+[Reproduction commands and operator code](../examples/operators/stream-benchmark/README.md) · [Complete sampling JSON](benchmarks/operator-fusion-20261020.json)

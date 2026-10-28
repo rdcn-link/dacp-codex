@@ -1,6 +1,6 @@
-# 用户访问日志
+# User access logs
 
-DACP 节点默认将完成的 Flight 请求写入 JSON Lines 文件，方便采集系统按行读取。日志与任务历史独立，不保存流内容。默认目录是服务器工作目录下的 `.dacp-access/<port>/`，单文件上限为 64 MiB。
+DACP nodes write completed Flight requests as JSON Lines for line-oriented collection. Logs are independent of execution history and do not retain stream contents. The default directory is `.dacp-access/<port>/` relative to the server working directory, with a 64 MiB file limit.
 
 ```yaml
 access_log:
@@ -8,10 +8,10 @@ access_log:
   max_bytes: 67108864
 ```
 
-`max_bytes` 必须为正整数。下一条记录会使当前非空文件超过上限时，先切换新文件再写入，保证一条 JSON 不跨文件。单条记录超过上限时独占一个文件。文件名为 `access-<时间戳>-<UUID>.jsonl`，重启不覆盖旧文件。旧文件保留，不自动删除；采集和保留策略由部署环境管理。请求线程将记录放入最多 1024 条的有界队列后返回，由独立写入线程串行追加；不在每个请求结束时等待磁盘同步。后台每一秒或累计 256 条记录时同步，滚动和正常关闭前也同步。队列满时施加背压，不静默丢弃记录。磁盘写入失败会记录服务端错误，后续追加及关闭会报告失败。异常退出可能丢失尚未写入或同步的记录；访问日志不是逐请求事务提交记录。
+`max_bytes` must be a positive integer. If the next record would exceed the limit of a nonempty file, a new file is opened before appending; one JSON record never spans files. An oversized record occupies its own file. Names are `access-<timestamp>-<UUID>.jsonl`; restarts never overwrite old logs. Old files are retained without automatic deletion; deployment tooling owns collection and retention. Request threads enqueue records in a bounded queue of at most 1024 entries, then return. A dedicated writer appends them serially without making each request wait for disk synchronization. The writer synchronizes every second or after 256 records, and before rotation and orderly shutdown. A full queue applies backpressure rather than silently dropping records. Disk write failures are logged server-side and surfaced on subsequent appends and shutdown. Abnormal termination may lose records not yet written or synchronized; access logs are not per-request transaction commits.
 
-记录包含请求 ID、开始/结束时间、经 TLS 验证的身份摘要、操作、逻辑 Dataset/Item/视图（适用时）、状态、耗时、已发送批次行数和字节数。bytes 视图统计原始二进制单元载荷，records 的字节数是 Arrow 向量缓冲大小之和，不等于网络线速流量；任务交换统计外层帧。未开始流的请求流量为零。
+Fields include request ID, start/end timestamps, TLS-verified identity fingerprint, operation, logical Dataset/Item/view where applicable, status, elapsed time, sent batch rows and bytes. Bytes views count raw binary cell payloads; records bytes sum Arrow vector buffers and are not network wire traffic. Task exchanges count outer frames. Requests without a started stream have zero traffic.
 
-状态包括 `completed`、`failed`、`denied` 和 `cancelled`。列表、元数据、数据流、任务交换和 Union action 都记录。TLS 握手失败发生在 Flight 请求进入之前，应由传输层或代理日志采集。记录不包含 ticket 原文、算子源码、参数、数据内容、凭据或后端物理地址，也不记录原始异常消息。
+Statuses include `completed`, `failed`, `denied`, and `cancelled`. Discovery, metadata, data streams, task exchanges and Union actions are logged. TLS handshake failures happen before Flight request dispatch and require transport/proxy logging. Entries omit raw tickets, operator source, parameters, data content, credentials, physical backend addresses, and raw exception messages.
 
-配置目录需要可写。服务器启动初始化日志目录，正常关闭时等待队列写完并同步，再释放文件句柄。查看任务状态和执行事件应使用[任务历史](execution-history.md)，不能把访问完成等同于业务作业成功。
+The configured directory must be writable. Startup initializes logging; orderly shutdown drains the queue, synchronizes it, and releases file handles. Use [execution history](execution-history.md) for task states and events; request completion does not establish business-job success.
