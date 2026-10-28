@@ -269,11 +269,11 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       }
     }
     private def datasetInput(b:JsonNode):FrameSource={
-      val uri=Json.text(b,"uri");val parts=DacpUri.parse(uri).getPath.stripPrefix("/").split("/",2);val view=Json.text(b,"view")
+      val uri=Json.text(b,"uri");val parts=DacpUri.parse(uri).getPath.stripPrefix("/").split("/",2);val requestedView=Json.text(b,"view")
       val client=remote.dataClient(Json.text(b,"origin"),Some(Json.text(b,"producer_identity")))
       val info=client.getInfo(FlightDescriptor.path("datasets",parts(0),"/"+parts(1)),CallOptions.timeout(10,TimeUnit.SECONDS))
       val meta=dacp.protocol.Metadata.Item.parseFrom(info.getAppMetadata)
-      require(meta.getViewsList.contains(view),"source view unavailable")
+      val view=ItemViews.select(requestedView,meta.getViewsList.asScala)
       val ticket=dacp.protocol.Metadata.Ticket.newBuilder().setDataset(parts(0)).setItem("/"+parts(1)).setView(view).build()
       val reader=client.getStream(new Ticket(ticket.toByteArray),CallOptions.timeout(settings.executionTimeoutSeconds,TimeUnit.SECONDS))
       cancel.add(new AutoCloseable{def close():Unit={reader.cancel("dataset input cancelled",null);reader.close()}})
@@ -295,10 +295,11 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     }
     private def localInput(b:JsonNode):FrameSource={
       if(b.has("origin"))return datasetInput(b)
-      val u=DacpUri.parse(Json.text(b,"uri"));val split=u.getPath.drop(1).split("/",2);val path="/"+split(1);val view=Json.text(b,"view")
+      val u=DacpUri.parse(Json.text(b,"uri"));val split=u.getPath.drop(1).split("/",2);val path="/"+split(1);val requestedView=Json.text(b,"view")
       val access=cancel.add(config.openDataset(split(0),()=>cancel.active()))
       val meta=access.describe(path)
-      require(meta.kind=="data" && config.plugins.views(meta).contains(view),"local input view unavailable")
+      require(meta.kind=="data","local input must be a data item")
+      val view=ItemViews.select(requestedView,config.plugins.views(meta))
       val queue=new FrameQueue(cancel)
       StreamProtocol.thread(cancel){
         var root:VectorSchemaRoot=null
@@ -345,7 +346,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           val original=e.getValue
           val b=readers.get(original.path("task").asText).map { r=>
             require(original.path("port").asText=="result","read_item has only result output")
-            val b=Json.obj().put("uri",r.path("params").path("uri").asText).put("view",r.path("params").path("view").asText).put("source_task",r.path("id").asText)
+            val b=Json.obj().put("uri",r.path("params").path("uri").asText).put("view",r.path("params").path("view").asText("auto")).put("source_task",r.path("id").asText)
             if(r.has("read_source"))b.put("origin",r.path("read_source").path("origin").asText).put("producer_identity",r.path("read_source").path("producer_identity").asText)
             b
           }.getOrElse(original)

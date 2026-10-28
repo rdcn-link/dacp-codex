@@ -82,9 +82,20 @@ def infer_outputs(inputs, params):
     return result({'result': descriptor(['records'], ['arrow'], OUTPUT_SCHEMA, certainty='known')})
 
 
+def preview_outputs(inputs, params, limits):
+    from dacp_operator import bounded_sample, sample_records
+    sample = inputs['source'].get('sample')
+    if sample is None:
+        raise ValueError('Upstream sample unavailable: source')
+    minimum, factor = params.get('min_amount', 0.0), params.get('factor', 1.0)
+    rows = [dict(id=row['id'], amount=row['amount'], scaled_amount=row['amount'] * factor)
+            for row in sample['rows'] if row['amount'] >= minimum]
+    return {'result': bounded_sample(sample_records(rows, truncated=sample.get('truncated', False)), limits)}
+
+
 if __name__ == '__main__':
     from dacp_operator import run_inference
     if len(sys.argv) > 1 and sys.argv[1] == 'infer':
-        run_inference(infer_outputs)
+        run_inference(infer_outputs, preview=preview_outputs)
     else:
         main()

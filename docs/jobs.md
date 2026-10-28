@@ -131,3 +131,5 @@ submit workflow.yaml --policy policy.yaml --vars variables.yaml
 ```
 
 Union 下发的子作业保留全局作业的 `name`。节点与 Union 看板统一展示 Name、Job ID、Source、Type、Status、Started at、Duration；列表优先显示名称，详情保留完整 ID。子作业定义和执行策略均显示为 YAML。YAML 文档限制为 1 MiB，拒绝重复键、不安全对象标签及集合别名；字符串形式的编号、日期和布尔文本应加引号。
+
+`read_item` 的 `view` 可省略：优先使用 Item 提供的 records 视图，否则使用 bytes。显式指定时不会自动改选；不支持所选视图则报错。

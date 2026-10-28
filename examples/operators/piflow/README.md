@@ -79,3 +79,7 @@ Python 发布现在依次执行 SDK 契约测试、构建、打包后容器测�
 清空旧仓库时已经将原内容移至 `.operator-backups/` 下的带时间戳目录，在线仓库仅保留本次逐项发布的集合。网站地址和本次实际发布情况以运行中的仓库为准；无需等到全部算子完成才下载使用。
 
 可运行 `.venv/bin/python examples/operators/piflow/audit.py` 审计上游源文件摘要、在线发布清单、页面，以及代码、源码与许可证下载的文件名、长度和 SHA-256。
+
+## 有界输出样例
+
+所有 Python 适配算子均显式注册 `preview_outputs`。当前仓库的六个算子通过 SDK `preview_process`，只对上游有界样例执行其纯变换逻辑；CSV 保存算子返回字节流样例，不写文件。接口是必需的，缺失时明确报错。详情见[样例接口与限制](../../../docs/structure-inference.md#必需的样例接口与现有算子)。从仓库根目录运行 `./.venv/bin/python scripts/test-operator-previews.py` 验证六个已部署算子的样例及大小限制。

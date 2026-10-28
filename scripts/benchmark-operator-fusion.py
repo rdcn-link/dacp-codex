@@ -32,7 +32,7 @@ def infer_outputs(inputs, params):
     return result({'result': descriptor(['bytes'], ['text'], certainty='known')})
 if __name__ == '__main__':
     from dacp_operator import run_operator
-    run_operator(process, infer_outputs)
+    run_operator(process, infer_outputs, preview_outputs=lambda inputs,params,limits: {})
 '''
 
 

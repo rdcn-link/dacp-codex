@@ -26,6 +26,13 @@ private[dacp] final class DockerInferenceWorker(op:ResolvedOperator,command:Oper
   private var output:DataOutputStream=null
   private val diagnostics=new StringBuilder
   private var ready=false
+  @volatile private var currentPhase="worker preparation"
+  override def phase:String=currentPhase
+  private val logger=org.slf4j.LoggerFactory.getLogger(classOf[DockerInferenceWorker])
+  private def timed[A](name:String)(body: => A):A={
+    currentPhase=name;val started=System.nanoTime()
+    try body finally logger.info("Inference worker {}: {} ms ({})",name,Long.box((System.nanoTime()-started)/1000000),op.program.get.reference)
+  }
   private def active():Unit=require(!stopped.get(),"inference worker is closed")
   private def closePipes():Unit=lock.synchronized{channels.foreach(c=>try c.close()catch{case _:Throwable=>()})}
   private def channel(path:Path,options:StandardOpenOption*):FileChannel={val c=FileChannel.open(path,options:_*);channels+=c;c}
@@ -61,21 +68,24 @@ private[dacp] final class DockerInferenceWorker(op:ResolvedOperator,command:Oper
       .withEnv((command.environment+("DACP_OPERATOR"->op.program.get.reference)).map{case(k,v)=>s"$k=$v"}.toVector.asJava)
       .withLabels(Map("dacp.purpose"->"structure_inference","dacp.inference_mode"->"worker").asJava)
     command.entrypoint.foreach(v=>create.withEntrypoint(v.asJava))
-    container=create.exec().getId
+    container=timed("container creation"){create.exec().getId}
     callback=new ResultCallback.Adapter[Frame] {
       override def onNext(f:Frame):Unit=diagnostics.synchronized {
         if(diagnostics.length<65536)diagnostics.append(new String(f.getPayload,java.nio.charset.StandardCharsets.UTF_8).take(65536-diagnostics.length))
       }
-      override def onComplete():Unit={closePipes();super.onComplete()}
-      override def onError(t:Throwable):Unit={closePipes();super.onError(t)}
+      override def onComplete():Unit=super.onComplete()
+      override def onError(t:Throwable):Unit=super.onError(t)
     }
-    docker.attachContainerCmd(container).withStdOut(true).withStdErr(true).withFollowStream(true).exec(callback).awaitStarted()
-    docker.startContainerCmd(container).exec()
+    timed("container startup"){docker.startContainerCmd(container).exec()}
+    // Attaching diagnostics must not block the FIFO readiness handshake. Docker may
+    // delay attach headers for a quiet worker; its timeout does not mean worker exit.
+    val attach=new Thread(()=>{try docker.attachContainerCmd(container).withStdOut(true).withStdErr(true).withFollowStream(true).exec(callback)catch{case scala.util.control.NonFatal(_)=>()}},"dacp-inference-diagnostics")
+    attach.setDaemon(true);attach.start()
   }
   def request(bytes:Array[Byte]):Array[Byte]={
     if(!ready){
       start()
-      require(input.readInt()==0,"invalid inference worker readiness")
+      timed("worker readiness"){require(input.readInt()==0,"invalid inference worker readiness")}
       lock.synchronized {
         active()
         // Drop the bootstrap read/write holders. A crashed worker now produces EOF/EPIPE.
@@ -87,6 +97,7 @@ private[dacp] final class DockerInferenceWorker(op:ResolvedOperator,command:Oper
     active()
     try {
       require(bytes.nonEmpty && bytes.length<=StructureInference.MaxBytes,"inference request exceeds limits")
+      currentPhase="operator inference"
       output.writeInt(bytes.length);output.write(bytes);output.flush()
       val size=input.readInt();require(size>0 && size<=StructureInference.MaxBytes,"inference response exceeds limits")
       val response=new Array[Byte](size);input.readFully(response)
@@ -95,8 +106,10 @@ private[dacp] final class DockerInferenceWorker(op:ResolvedOperator,command:Oper
     }catch{case scala.util.control.NonFatal(e)=>throw new IllegalArgumentException("inference worker failed: "+diagnostics.synchronized(diagnostics.toString.take(4096)),e)}
   }
   def close():Unit=if(stopped.compareAndSet(false,true)) {
-    lock.synchronized {
-      closePipes()
+    closePipes();
+    // Keep Docker and diagnostic callback shutdown outside the pipe monitor.
+    // Never hold its monitor while waiting for Docker or callback shutdown.
+    {
       if(container!=null)try docker.removeContainerCmd(container).withForce(true).exec()catch{case _:Throwable=>()}
       if(callback!=null)try callback.close()catch{case _:Throwable=>()}
       try docker.close()finally transport.close()

@@ -58,14 +58,15 @@ class CollaborationSpec extends AnyFunSuite {
     intercept[IllegalArgumentException](Jobs.parse(text.replace("source: generate}","source: generate}, depends_on: [generate]")))
     intercept[IllegalArgumentException](Jobs.parse(text.replace("id: generate, operator: generate@1, inputs: {}","id: generate, operator: generate@1, inputs: {source: consume}")))
   }
-  test("read_item requires an Item URI and explicit view") {
+  test("read_item requires an Item URI and defaults to metadata-based view selection") {
     val text="""name: read
       |tasks:
       | - {id: read, operator: read_item@1.0, inputs: {}, params: {uri: 'dacp://localhost:18815/data/item', view: records}}
       |outputs: {result: read}
       |""".stripMargin
     assert(Jobs.readBinding(Jobs.parse(text).tasks.head).get.view=="records")
-    Seq(text.replace("/data/item","/data"),text.replace("view: records","view: image"),text.replace(", view: records",""),text.replace("inputs: {}","inputs: {source: read}"))
+    assert(Jobs.readBinding(Jobs.parse(text.replace(", view: records","")).tasks.head).get.view=="auto")
+    Seq(text.replace("/data/item","/data"),text.replace("view: records","view: image"),text.replace("view: records","view: auto"),text.replace("inputs: {}","inputs: {source: read}"))
       .foreach(s=>intercept[IllegalArgumentException](Jobs.parse(s)))
   }
   test("URI policy rejects traversal and prefix lookalikes") {

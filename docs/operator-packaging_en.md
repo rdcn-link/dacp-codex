@@ -1,5 +1,6 @@
 # Operator packaging and shared environments
 
+Operators must declare a static `parameters` contract alongside `inputs`; see [parameter types and forms](operator-parameters_en.md). Output structures remain exclusively defined by inference methods.
 Output structures come exclusively from the mandatory inference method; manifests declare input contracts only. See [structure inference](structure-inference_en.md).
 
 Operators consist of an immutable `name@version` manifest, a shared runtime image, and an optional small code artifact. Multiple names and versions can reference the same runtime and code bundle. This is implemented for complete containers, thin Java/Scala JARs, Python source files, and Python wheels. Operators always execute in a separate Docker container; public repository artifacts are never loaded into the server JVM.
@@ -14,7 +15,7 @@ A bundle can contain several main classes or Python modules. Publish each operat
 
 ## Definitions and publication
 
-Definitions live at `<operators>/<name>/<version>/operator.yaml`. Required fields are `name`, `version`, `image`, `inputs`, and `outputs`; optional fields are `description`, `executor` (defaults to `container`), `entrypoint`, `artifact`, and plugin-owned `executor_config`. Artifact paths are relative to the definition. Unknown fields and duplicate YAML keys fail.
+Definitions live at `<operators>/<name>/<version>/operator.yaml`. Required fields are `name`, `version`, `image`, `category`, `icon`, `inputs`, and `parameters`; optional fields are `description`, `executor` (defaults to `container`), `entrypoint`, `artifact`, and plugin-owned `executor_config`. Artifact paths are relative to the definition. Unknown fields and duplicate YAML keys fail.
 
 ```yaml
 name: summary
@@ -25,6 +26,15 @@ entrypoint: example.Summary
 artifact: summary.jar
 inputs:
   source: {representations: [records], formats: []}
+category: Data transformation
+icon:
+  path: "M3 5h18v14H3zM3 10h18M9 5v14"
+  color: "#14866b"
+parameters:
+  type: object
+  properties: {}
+  required: []
+  additionalProperties: false
 ```
 
 `jvm` needs a JAR and main class. `python` needs a `.py` or `.whl` artifact and a module name (`entrypoint` selects the module for wheels; source executes the script). `command` adapts native stdin/stdout programs; see [native commands](native-commands_en.md). `container` uses its image's existing entrypoint and accepts neither an entrypoint override nor a code artifact. Every executor receives `operator /input /input/params.json` and `DACP_OPERATOR=name@version`, following the existing [Arrow IPC contract](reference_en.md#task-execution-and-operators).
@@ -117,3 +127,5 @@ The implemented [item-based, stream-only contract](operator-streams_en.md) binds
 ## Optional review evidence
 
 API v2 supports optional `provenance` metadata and SHA-256-addressed source, license and SBOM downloads. These files are separate from execution and never fetched automatically by execution nodes. See [source and review information](operator-provenance_en.md) for YAML fields, CLI flags, manifest descriptors and validation limits.
+
+Operators must also provide `category` and `icon`; see [categories and icons](operator-presentation_en.md) for the contract and publication examples.

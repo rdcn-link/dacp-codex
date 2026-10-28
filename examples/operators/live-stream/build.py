@@ -47,9 +47,12 @@ def build(catalog, output, name="live_ticks"):
     if not target.exists():
         try: os.link(original, target)
         except OSError: shutil.copyfile(original, target)
-    manifest = dict(api_version=2, name=name, version='1.0',
+    manifest = dict(api_version=2,category='Data processing',icon=dict(path='M3 5h18v14H3zM3 10h18M9 5v14',color='#14866b'), name=name, version='1.0',
                     description=('Decode live_ticks JSONL to Arrow records, emitting each line immediately with a 64 KiB line limit.' if decoder else 'Continuously emit timestamped synthetic weather JSONL. Params: interval_seconds (0.01-60, default 1), max_records (0 means continuous). Zero-input source operator. Cancel or timeout to stop.'),
                     inputs=({'source':dict(representations=['bytes'], formats=[])} if decoder else {}),
+                    parameters=dict(type='object', properties=({} if decoder else {
+                        'interval_seconds': dict(type='number', minimum=0.01, maximum=60, default=1.0, description='Seconds between generated observations.'),
+                        'max_records': dict(type='integer', minimum=0, default=0, description='Maximum record count; zero means continuous.')}), required=[], additionalProperties=False),
                     execution=dict(executor='python', entrypoint=name, config={}), runtime=runtime, artifact=artifact,
                     provenance=dict(source_archive=source, source_repository='https://github.com/rdcn-link/dacp-codex', build_instructions='python3 examples/operators/live-stream/build.py --runtime-catalog CATALOG --output OUTPUT. Reuses piflow_csv_parser@1.0 Python runtime; embeds the DACP Python SDK.'))
     directory = output / name / '1.0'

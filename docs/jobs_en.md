@@ -29,7 +29,7 @@ outputs:
 
 `name` is the required readable workflow name, separate from the generated execution ID. It must contain 1–256 characters, cannot be blank, and cannot contain control characters. Each task has a unique `id`, optional descriptive `title`, versioned `operator`, named `inputs`, and optional `params` and placement `node`. Input values and Job outputs use `task` or `task:port`; omitted ports mean `result`. Object bindings and connection-level `view` are not supported. Each output has at most one consumer. Use explicit duplication operators or separate ports for fan-out.
 
-`read_item@1.0` is a built-in transport source requiring no operator container. It takes no inputs and requires `params.uri` addressing one Item and `params.view` set to `bytes` or `records`; its output is `result`. Zero-input generators also have empty inputs. Processing operators consume upstream outputs. Representation conversion is explicit.
+`read_item@1.0` is a built-in transport source requiring no operator container. It takes no inputs and requires `params.uri` addressing one Item; optional `params.view` selects `bytes` or `records`; its output is `result`. Zero-input generators also have empty inputs. Processing operators consume upstream outputs. Representation conversion is explicit.
 
 On Union, use public Union dataset URIs. Omit `node` for automatic placement or use a logical node returned by `dacp.nodes`. Physical member addresses are not accepted in user submissions.
 
@@ -131,3 +131,5 @@ submit workflow.yaml --policy policy.yaml --vars variables.yaml
 ```
 
 Union subjobs retain the global job’s `name`. Node and Union dashboards share Name, Job ID, Source, Type, Status, Started at and Duration columns. Names lead the list, while details retain the full ID. Subjob definitions and execution policies display as YAML. YAML documents are limited to 1 MiB and reject duplicate keys, unsafe object tags and collection aliases. Quote textual numbers, dates and boolean labels.
+
+When `read_item.view` is omitted, Item metadata selects records when available, otherwise bytes. An explicit choice is preserved and fails if unsupported.

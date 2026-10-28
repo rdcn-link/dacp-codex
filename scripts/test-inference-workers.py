@@ -26,7 +26,7 @@ def infer_outputs(inputs,params):
     if params.get('fail'):raise ValueError('requested probe failure')
     if params.get('sleep'):time.sleep(params['sleep'])
     return result({'result':descriptor(['bytes'],[params['format']],certainty='known',structure={'instance':instance,'pid':os.getpid(),'calls':calls})})
-if __name__=='__main__':run_operator(process,infer_outputs)
+if __name__=='__main__':run_operator(process,infer_outputs,preview_outputs=lambda inputs,params,limits: {})
 '''
 JAVA = '''import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -34,7 +34,11 @@ public class InferenceProbe {
   static final String instance=java.util.UUID.randomUUID().toString();
   static int calls=0;
   public static void main(String[] args) {
-    dacp.operator.OperatorRunner.infer(args,System.out,new scala.runtime.AbstractFunction2<scala.collection.immutable.Map<String,dacp.StreamDescriptor>,JsonNode,dacp.InferenceResult>() {
+    dacp.operator.OperatorRunner.infer(args,System.out,new scala.runtime.AbstractFunction3<scala.collection.immutable.Map<String,dacp.StreamDescriptor>,JsonNode,dacp.PreviewLimits,scala.collection.immutable.Map<String,dacp.OutputSample>>() {
+      public scala.collection.immutable.Map<String,dacp.OutputSample> apply(scala.collection.immutable.Map<String,dacp.StreamDescriptor> inputs,JsonNode params,dacp.PreviewLimits limits) {
+        return scala.collection.immutable.Map$.MODULE$.empty();
+      }
+    },new scala.runtime.AbstractFunction2<scala.collection.immutable.Map<String,dacp.StreamDescriptor>,JsonNode,dacp.InferenceResult>() {
       public dacp.InferenceResult apply(scala.collection.immutable.Map<String,dacp.StreamDescriptor> inputs,JsonNode params) {
         calls++;
         if(params.path("fail").asBoolean())throw new IllegalArgumentException("requested probe failure");
@@ -72,7 +76,7 @@ def main():
             z.writestr('worker_probe-1.0.dist-info/RECORD','')
         def publish(name,executor,image,entry,artifact=None,**extra):
             folder=d/'operators'/name/'1';folder.mkdir(parents=True)
-            manifest=dict(name=name,version='1',image=image,executor=executor,entrypoint=entry,inputs={},**extra)
+            manifest=dict(category='Test probes',icon=dict(path='M3 5h18v14H3z',color='#14866b'),parameters=dict(type='object',properties={},required=[],additionalProperties=False),name=name,version='1',image=image,executor=executor,entrypoint=entry,inputs={},**extra)
             if artifact:manifest['artifact']=str(artifact)
             (folder/'operator.yaml').write_text(json.dumps(manifest))
         publish('python','python','dacp/operator-python:1.0','probe',d/'probe.py')

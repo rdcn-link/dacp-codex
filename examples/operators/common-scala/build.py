@@ -12,7 +12,7 @@ import sys
 import zlib
 ROOT=Path(__file__).resolve().parents[3];HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE.parent/'common'))
-from catalog import CATALOG as PYTHON_CATALOG
+from catalog import CATALOG as PYTHON_CATALOG, parameter_schema
 spec=importlib.util.spec_from_file_location('common_builder',HERE.parent/'common/build.py');builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
 
 def specifications():
@@ -70,7 +70,7 @@ def build(runtime_catalog,destination):
         except OSError:__import__('shutil').copyfile(original,target)
     assert hashlib.sha256(target.read_bytes()).hexdigest()==runtime['archive']['sha256']
     for name,s in CATALOG.items():
-        m=dict(api_version=2,name='scala_'+name,version='1.0',description=s['description']+'; params='+json.dumps(s['params'],ensure_ascii=False,separators=(',',':')),
+        m=dict(api_version=2,category='Data processing',icon=dict(path='M3 5h18v14H3zM3 10h18M9 5v14',color='#14866b'),name='scala_'+name,version='1.0',parameters=parameter_schema(s['params']),description=s['description']+'; params='+json.dumps(s['params'],ensure_ascii=False,separators=(',',':')),
                inputs={'source':{'representations':['bytes'],'formats':[]}},
                execution={'executor':'jvm','entrypoint':'dacp.common.Op_'+name,'config':{}},runtime=runtime,artifact=artifact,
                provenance={'source_archive':source,'source_repository':'https://github.com/rdcn-link/dacp-codex','build_instructions':'From the project root publish the plugin API and operator SDK locally, then run .venv/bin/python examples/operators/common-scala/build.py. See bundled bilingual instructions. Runtime dependencies are provided by dacp/operator-jvm:1.1.'})

@@ -68,6 +68,8 @@ object Repository {
     }
   }
   def validate(root: Path, manifest: com.fasterxml.jackson.databind.JsonNode): Unit = {
+    dacp.operator.OperatorPresentation.validate(manifest)
+    dacp.operator.ParameterSchema.validate(manifest.get("parameters"))
     validatePorts(manifest)
     require(manifest.path("api_version").asInt == 2, "unsupported operator manifest")
     parts(s"${manifest.path("name").asText}@${manifest.path("version").asText}")
@@ -88,6 +90,8 @@ object Repository {
       require(manifest.path("api_version").asInt == 2, "unsupported operator manifest; rebuild the development catalog")
       require(manifest.path("name").asText == file.getParent.getParent.getFileName.toString &&
         manifest.path("version").asText == file.getParent.getFileName.toString, "operator identity mismatch")
+      dacp.operator.OperatorPresentation.validate(manifest)
+      dacp.operator.ParameterSchema.validate(manifest.get("parameters"))
       result.add(manifest)
     }
     result
@@ -100,8 +104,9 @@ object Repository {
       val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
       val in = Files.newInputStream(file)
       val d = try new org.yaml.snakeyaml.Yaml(options).load[java.util.Map[String, Object]](in).asScala.toMap finally in.close()
-      require(Set("name", "version", "image", "inputs").subsetOf(d.keySet) &&
-        d.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "executor_config", "provenance")), "invalid operator definition")
+      require(Set("name", "version", "image", "category", "icon", "inputs", "parameters").subsetOf(d.keySet) &&
+        d.keySet.subsetOf(Set("name", "version", "image", "description", "category", "icon", "executor", "entrypoint", "artifact", "inputs", "parameters", "executor_config", "provenance")), "invalid operator definition")
+      dacp.operator.OperatorPresentation.validate(mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](d.asJava))
       val reference = s"${d("name")}@${d("version")}"
       val (name, version) = parts(reference)
       require(name == file.getParent.getParent.getFileName.toString && version == file.getParent.getFileName.toString,
@@ -127,6 +132,8 @@ object Repository {
   }
   def publish(root: Path, reference: String, image: String, ports: com.fasterxml.jackson.databind.JsonNode, exporter: ImageExporter = Docker, description: String = "",
               executor: String = "container", entrypoint: String = "", artifact: Option[Path] = None, configuration: com.fasterxml.jackson.databind.JsonNode = mapper.createObjectNode(), provenance: Provenance = Provenance()): String = synchronized {
+    dacp.operator.OperatorPresentation.validate(ports)
+    dacp.operator.ParameterSchema.validate(ports.get("parameters"))
     validatePorts(ports)
     provenance.validate()
     require(configuration.isObject, "executor_config must be a mapping")
@@ -163,7 +170,10 @@ object Repository {
         }
         val manifest = mapper.createObjectNode()
         manifest.put("api_version", 2).put("name", name).put("version", version).put("description", description)
+        manifest.put("category",ports.path("category").asText)
+        manifest.set[com.fasterxml.jackson.databind.JsonNode]("icon",ports.path("icon"))
         manifest.set[com.fasterxml.jackson.databind.JsonNode]("inputs",ports.path("inputs"))
+        manifest.set[com.fasterxml.jackson.databind.JsonNode]("parameters",ports.path("parameters"))
         manifest.putObject("execution").put("executor", executor).put("entrypoint", entrypoint)
           .set[com.fasterxml.jackson.databind.JsonNode]("config", configuration)
         val runtime = manifest.putObject("runtime"); runtime.put("image", id); runtime.set[com.fasterxml.jackson.databind.JsonNode]("archive", archive)

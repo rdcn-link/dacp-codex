@@ -37,6 +37,9 @@ class OperatorLibrarySpec extends AnyFunSuite {
     node.putObject("runtime").put("image",image).putObject("archive").put("size",archive.length).put("sha256",hash(archive)).put("filename","runtime.tar")
     node.putObject("execution").put("executor",executor).put("entrypoint",if(executor == "container") "" else "example.Main")
     if(executor != "container") node.putObject("artifact").put("size",code.length).put("sha256",hash(code)).put("filename","operators.jar")
+    node.put("category","Data processing")
+    node.set[com.fasterxml.jackson.databind.JsonNode]("icon",Data.mapper.readTree("""{"path":"M3 5h18v14H3z","color":"#14866b"}"""))
+    node.set[com.fasterxml.jackson.databind.JsonNode]("parameters",Data.mapper.readTree("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""))
     Seq("inputs"->"source").foreach {case(key,port)=>
       val p=node.putObject(key).putObject(port);p.putArray("representations").add("bytes");p.putArray("formats")
     }
@@ -104,7 +107,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
     try {
       installed = true
       val local = c.localOperatorLibrary.resolve("first/1/operator.yaml")
-      Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\nprovenance: {source_archive: missing-sources.zip, license: MIT}\ninputs: {source: {representations: [bytes], formats: []}}\n")
+      Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\ncategory: Data processing\nicon: {path: M3 5h18v14H3z, color: '#14866b'}\nparameters: {type: object, properties: {}, required: [], additionalProperties: false}\nprovenance: {source_archive: missing-sources.zip, license: MIT}\ninputs: {source: {representations: [bytes], formats: []}}\n")
       assert(OperatorLibrary.resolve(c,"first@1",docker).image == image && requests.isEmpty)
       Files.delete(local); installed = false
       val first = OperatorLibrary.resolve(c,"first@1",docker)

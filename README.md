@@ -31,12 +31,14 @@ Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs.md)动态提�
 | 组件 | 用途 |
 |---|---|
 | `dacp-server` | 发布数据，处理数据访问请求，执行本地及跨节点任务 |
+| `dacp-job-designer` | 浏览器拖拽设计、跨节点编排、schema 预览与 YAML 导入导出 |
 | `dacp-shell` | 交互式浏览、SQL 查询、运行算子和提交任务文件；随 Python SDK 安装 |
 | `dacp-client` / `dacp-client-scala` | Python / Scala 应用访问数据、执行 Job 和提交 Union 作业 |
 | [dacp-union-server](dacp-union-server/README.md) | 管理一个 Union，按配置连接节点、轮询健康与容量、调度跨节点 DAG、转发最终结果流 |
 | [Union Web 看板](dacp-union-server/README.md#执行与接口) | 管理界面展示节点、任务脚本、可缩放 DAG、流量与执行历史 |
 | [dacp-operator-repository](dacp-operator-repository/README.md) | HTTP/HTTPS 算子仓库；公开搜索、版本浏览和下载，管理员通过 CLI 发布 |
 | `dacp-operator-runtime` / `plugins/dacp-plugin-operator-executors` | 共享算子运行环境、JVM / Python / 容器启动器及原生命令流桥接 |
+| `dacp-operator-contract` | 共享的静态算子参数类型、默认值与约束验证 |
 | `dacp-plugin-api` / `dacp-union-protocol` | 插件公开契约和 Union 共享传输工具 |
 | [plugins](plugins/README.md) | 内置 Dataset、文件格式、归档、Catalog 和算子启动插件 |
 
@@ -50,3 +52,5 @@ Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs.md)动态提�
 - 自定义计算：阅读[算子编写与发布](docs/operator-authoring.md)。
 
 普通数据访问与任务执行使用 TLS 与 Token；Union 协作使用双向 TLS 和节点签发的服务凭据。S3 使用独立 SigV4 认证，算子仓库下载公开、发布要求 Token，内网看板公开只读。见[认证与访问控制](docs/security.md)。算子使用隔离的运行环境；符合条件的节点子作业会合并到同一进程执行，见[算子合并执行](docs/operator-fusion.md)。输出不注册为 Dataset；服务器持久化执行元数据，结果内容只通过一次性流交付。
+
+[在线 Job 设计器](dacp-job-designer/README.md)：拖拽编排、Union 节点选择、实时算子仓库、结构预览、变量、聊天草案和 YAML 导入导出。

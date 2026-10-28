@@ -17,6 +17,7 @@ class YamlWorkflowSpec extends AnyFunSuite {
   test("every workflow requires a readable name distinct from its generated execution id") {
     val text="name: Station screening\ntasks:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: 'dacp://localhost/weather/stations', view: bytes}\noutputs: {result: read}\n"
     assert(Jobs.parse(text).name=="Station screening")
+    assert(Jobs.parse(text+"designer: {version: 1, positions: {read: {x: 80, y: 140}}, generator: {name: DACP Job Designer, version: test}}\n")==Jobs.parse(text))
     Seq(text.replace("name:","job:"),text.replace("Station screening","''"),text.replace("Station screening","123")).foreach { invalid=>intercept[IllegalArgumentException](Jobs.parse(invalid)) }
   }
 }

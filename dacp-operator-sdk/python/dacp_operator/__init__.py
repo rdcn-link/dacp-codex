@@ -8,7 +8,7 @@ import struct
 import sys
 
 import pyarrow as pa
-from .inference import descriptor, result, records_schema, run_inference, run_operator
+from .inference import descriptor, result, records_schema, run_inference, run_operator, sample_records, sample_bytes, bounded_sample, preview_process
 
 
 class OperatorContext:
@@ -201,11 +201,19 @@ class Operator:
     def process(self, ctx):
         raise NotImplementedError
 
+    def preview_outputs(self, inputs, params, limits):
+        raise NotImplementedError('every operator must implement preview_outputs')
+
     def main(self):
-        run_operator(self.process, self.infer_outputs)
+        if type(self).preview_outputs is Operator.preview_outputs:
+            raise TypeError('every operator must implement preview_outputs')
+        run_operator(self.process, self.infer_outputs, preview_outputs=self.preview_outputs)
 
 
 class BytesOperator(Operator):
+    def preview_outputs(self, inputs, params, limits):
+        return preview_process(self.process, inputs, params, limits)
+
     output_format = 'binary'
 
     def infer_outputs(self, inputs, params):
@@ -224,6 +232,9 @@ class BytesOperator(Operator):
 
 
 class RecordsOperator(Operator):
+    def preview_outputs(self, inputs, params, limits):
+        return preview_process(self.process, inputs, params, limits)
+
     def infer_outputs(self, inputs, params):
         if set(inputs) != {'source'} or (inputs['source']['representations'] and 'records' not in inputs['source']['representations']):
             raise ValueError('expected source records input')

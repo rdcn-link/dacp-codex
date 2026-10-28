@@ -190,3 +190,14 @@ def infer_outputs(name, inputs, params):
     if set(params) - {'max_input_bytes'} != set(spec['params']):
         raise ValueError('unexpected or missing parameters')
     return result({'result': descriptor([spec['representation']], [spec['format']], certainty='known' if spec['representation']=='bytes' else 'unknown')})
+
+
+def parameter_schema(example):
+    """Build-time declarations for the fixed, tested common-operator parameter examples."""
+    if isinstance(example, dict):
+        return dict(type='object', properties={k: parameter_schema(v) for k, v in example.items()},
+                    required=list(example), additionalProperties=False)
+    if isinstance(example, list):
+        return dict(type='array', items=parameter_schema(example[0]) if example else dict(type='string'))
+    return dict(type='null' if example is None else 'boolean' if isinstance(example, bool) else
+                'integer' if isinstance(example, int) else 'number' if isinstance(example, float) else 'string')

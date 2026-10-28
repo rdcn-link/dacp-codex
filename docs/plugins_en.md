@@ -81,3 +81,11 @@ See [the extension-boundary review](plugin-roadmap_en.md) ([中文](plugin-roadm
 S3-compatible reading is a core transport using DatasetAccess, not another storage plugin. Dataset plugins need no separate S3 registration. Native bytes pass through; records-only Items receive a UTF-8 JSONL bytes view from the common adapter without staging, also available through Flight and task inputs. See the [S3 service](s3-service_en.md).
 
 Explicit inference uses `OperatorExecutor.inferenceWorkerCommand` / `sourceInferenceWorkerCommand` to start isolated workers on demand and reclaim them when idle. Core owns lifecycle, caller isolation, concurrency limits, timeouts, and bounded metadata channels; executors own language launching and SDK adaptation. See [structure inference](structure-inference_en.md#worker-protocol-for-executor-plugins) for registration and the pipe protocol.
+
+## Designer chat-planning plugins
+
+`dacp-job-designer` independently supplies the `dacp.designer.ChatPlanner` extension contract and discovers implementations through `META-INF/services/dacp.designer.ChatPlanner`. The built-in command assistant, HTTP model adapter and compatible chat-completion adapter share this contract. Third-party JARs require no registry changes or designer rebuild. See the [designer guide](../dacp-job-designer/README_en.md#chat-composition) for configuration, classpath and JSON proposal contracts. Plugins generate proposals only; the designer checks connections, operator provenance and logical nodes, and this interface cannot execute jobs.
+
+All contributed operator definitions include a language-neutral `parameters` contract, validated by `dacp-operator-contract`. The repository and designer read it without loading operator code. See [parameter contracts](operator-parameters_en.md) for registration, publication examples and validation rules.
+
+Operators must also provide `category` and `icon`; see [categories and icons](operator-presentation_en.md) for the contract and publication examples.

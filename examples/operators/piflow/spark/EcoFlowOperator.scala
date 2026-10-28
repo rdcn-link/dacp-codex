@@ -24,6 +24,9 @@ abstract class EcoFlowOperator(className:String,ports:Map[String,String],require
       Vector(dacp.InferenceDiagnostic("warning","spark_dynamic_schema","Spark output schema requires execution")))
   }
 
+  override def previewOutputs(inputs:Map[String,dacp.StreamDescriptor],params:JsonNode,limits:dacp.PreviewLimits):Map[String,dacp.OutputSample]=
+    throw new IllegalArgumentException("This Spark adapter cannot safely preview arbitrary upstream EcoFlow programs")
+
   def process(ctx:OperatorContext):Unit={
     require(ctx.inputNames.toSet==ports.keySet,"unexpected input ports")
     require(ctx.params.fieldNames.asScala.toSet==required,"missing or unexpected parameters")

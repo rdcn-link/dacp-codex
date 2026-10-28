@@ -20,8 +20,8 @@ _sdk=importlib.util.module_from_spec(_spec)
 sys.modules['dacp_operator']=_sdk
 _spec.loader.exec_module(_sdk)
 _protocol=sys.modules['dacp_operator.inference']
-def _serve(method,args=None,output=None):
-    return _protocol.serve_inference(method,_worker_args)
+def _serve(method,args=None,output=None,preview=None):
+    return _protocol.serve_inference(method,_worker_args,preview=preview)
 _protocol.run_inference=_serve
 _sdk.run_inference=_serve
 sys.argv[-3:]=['infer','/input/unused.json']

@@ -24,7 +24,7 @@ def infer_outputs(inputs, params):
     raise AssertionError("execution must not invoke structure inference")
 if __name__=='__main__':
     from dacp_operator.inference import run_operator
-    run_operator(process, infer_outputs)
+    run_operator(process, infer_outputs, preview_outputs=lambda inputs,params,limits: {})
 '''
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--docker-prefix',default='');a=p.parse_args();prefix=shlex.split(a.docker_prefix)

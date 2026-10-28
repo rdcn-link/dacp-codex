@@ -10,20 +10,12 @@ import java.util.concurrent.TimeUnit
 /** Pure DAG propagation; Union supplies its own member-specific inference callback. */
 object WorkflowInference {
   def propagate(plan:JobPlan)(infer:(Task,Map[String,StreamDescriptor])=>InferenceResult):JsonNode={
-    val inferred=mutable.Map.empty[String,InferenceResult]
-    val result=Data.mapper.createObjectNode();val steps=result.putObject("tasks")
-    plan.tasks.foreach { task=>
-      val inputs=task.inputs.map{case(port,b)=>
-        require(b.task.nonEmpty,"workflow inputs must reference step outputs")
-        val upstream=inferred.getOrElse(b.task.get,throw new IllegalArgumentException("upstream structure not available"))
-        port->upstream.outputs.getOrElse(b.port,throw new IllegalArgumentException(s"unknown output ${b.task.get}:${b.port}"))
-      }
-      val output=infer(task,inputs);output.requireValid();inferred(task.id)=output
-      steps.set[JsonNode](task.id,StructureInference.json(output))
-    }
-    val selected=plan.outputs.map{case(label,(task,port))=>label->inferred(task).outputs.getOrElse(port,throw new IllegalArgumentException(s"unknown selected output $task:$port"))}
-    result.set[JsonNode]("outputs",StructureInference.portsJson(selected));result
+    val nodes=plan.tasks.map(t=>InferenceNode(t.id,t.inputs.map{case(port,b)=>
+      require(b.task.nonEmpty,"workflow inputs must reference step outputs");port->(b.task.get,b.port)
+    },t))
+    InferenceGraph.propagate(nodes,plan.outputs)(infer)
   }
+
   def taskJson(task:Task,inputs:Map[String,StreamDescriptor]):JsonNode={
     val n=StructureInference.json(InferenceRequest(inputs,Data.mapper.valueToTree(task.params))).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
     task.source match {
@@ -50,9 +42,10 @@ object WorkflowInference {
         try {
           val info=client.getInfo(FlightDescriptor.path("datasets",parts(0),"/"+parts(1)),CallOptions.timeout(15,TimeUnit.SECONDS))
           val meta=dacp.protocol.Metadata.Item.parseFrom(info.getAppMetadata)
-          require(meta.getKind=="data" && meta.getViewsList.contains(binding.view),"Item does not support requested view")
-          val schema=if(binding.view=="records" && !meta.getArrowSchema.isEmpty)Some(info.getSchema)else None
-          InferenceResult(Map("result"->StreamDescriptor(Set(binding.view),Set(meta.getFormat),schema,if(binding.view=="bytes" || schema.nonEmpty)"known"else "unknown")))
+          require(meta.getKind=="data","input must be a data item")
+          val view=ItemViews.select(binding.view,meta.getViewsList.asScala)
+          val schema=if(view=="records" && !meta.getArrowSchema.isEmpty)Some(info.getSchema)else None
+          InferenceResult(Map("result"->StreamDescriptor(Set(view),Set(meta.getFormat),schema,if(view=="bytes" || schema.nonEmpty)"known"else "unknown")))
         }finally client.close()
       case None=>OperatorInference.withDocker { docker=>
         val tmp=java.nio.file.Files.createTempDirectory("dacp-infer-source-")

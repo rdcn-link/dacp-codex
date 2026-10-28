@@ -1,7 +1,10 @@
 # DACP 算子仓库
 
+每个算子必须声明 `category` 和 `icon`，仓库发布、目录读取和节点加载时统一校验；网页列表、详情和设计器使用同一声明。分类由作者定义，无需修改注册表。图标是 24×24 坐标系的 SVG 路径和颜色，不接受外部 URL 或完整 SVG。详见[分类与图标契约](../docs/operator-presentation.md)。
+
 [English](README_en.md)
 
+每个定义和上传清单都必须包含静态 `parameters` 契约，即使没有参数也要明确声明。发布时验证类型、默认值、枚举及范围，列表和详情页面公开这些定义。详见[参数契约](../docs/operator-parameters.md)。`publish --ports FILE` 同时接收 `category`、`icon`、`inputs` 和 `parameters`。
 独立的 Scala HTTP/HTTPS 仓库，提供公开搜索、版本页面和下载。每个算子由不可变的 `name@version` 清单、共享运行时镜像，以及可选的小型 JAR、Python 源码或 wheel 制品组成。运行时与代码按 SHA-256 只存储一份，可供多个算子引用。提供下载无需 Docker；发布运行时镜像需要 Docker CLI/Engine。使用 JDK 17、Scala 2.13、sbt 1.10.x 构建。
 
 Maven 制品名和可执行程序均为 `dacp-operator-repository`（不带 Scala 后缀），源码包名为 `dacp.repository`。

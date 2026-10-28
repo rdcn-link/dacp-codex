@@ -9,7 +9,14 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
   def logicalNode(member:String):String="nd-"+routes.assign(member,"").stripPrefix("ds-")
   def nodes:com.fasterxml.jackson.databind.JsonNode={
     val n=Json.obj();val nodes=n.putArray("nodes")
-    members.all.foreach { m=>val status=members.inspect(m);if(status.path("state").asText=="approved")nodes.addObject().put("id",logicalNode(status.path("identity").asText)).put("capacity",status.path("status").path("capacity").asInt) };n
+    members.all.foreach { m=>
+      val member=members.inspect(m);val status=member.path("status")
+      val node=nodes.addObject().put("id",logicalNode(member.path("identity").asText)).put("address",member.path("url").asText)
+        .put("state",member.path("state").asText).put("capacity",status.path("capacity").asInt).put("observed_at_ms",member.path("observed_at_ms").asLong)
+      Seq("reserved_tasks","union_reserved_tasks","union_capacity","started_at_ms","uptime_ms","web_enabled","web_url","executors","resources").foreach { key=>
+        if(status.has(key))node.set[com.fasterxml.jackson.databind.JsonNode](key,status.get(key))
+      }
+    };n
   }
   def plan(input:JobPlan,check:()=>Unit):JobPlan={
     val candidates=members.all.map(m=>members.inspect(m)).filter(_.path("state").asText=="approved")

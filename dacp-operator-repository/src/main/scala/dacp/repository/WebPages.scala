@@ -20,6 +20,10 @@ object WebPages {
   }
   private def layout(title:String,content:String):String=render("layout","title"->escape(title),"content"->content)
   private def description(item:JsonNode):String=item.path("description").asText("")
+  private def icon(item:JsonNode):String={
+    dacp.operator.OperatorPresentation.validate(item)
+    s"""<svg viewBox="0 0 24 24" aria-hidden="true" style="color:${escape(item.path("icon").path("color").asText)}"><path d="${escape(item.path("icon").path("path").asText)}"/></svg>"""
+  }
   private def path(item:JsonNode):String=s"/operators/${item.path("name").asText}/${item.path("version").asText}"
   private def bytes(size:Long):String={
     if(size<1024)s"$size B"
@@ -50,13 +54,13 @@ object WebPages {
   def index(items:Seq[JsonNode],query:String):String={
     val needle=query.toLowerCase(Locale.ROOT)
     val matches=items.groupBy(_.path("name").asText).toSeq.sortBy(_._1).collect {
-      case(_,versions) if versions.exists(item=>Seq(item.path("name").asText,item.path("version").asText,description(item)).exists(_.toLowerCase(Locale.ROOT).contains(needle)))=>
+      case(_,versions) if versions.exists(item=>Seq(item.path("name").asText,item.path("version").asText,item.path("category").asText,description(item)).exists(_.toLowerCase(Locale.ROOT).contains(needle)))=>
         versions.maxBy(_.path("version").asText)(versionOrdering)
     }
     val cards=matches.map {item=>
       val artifact=primary(item)
       render("operator-card","name"->escape(item.path("name").asText),"version"->escape(item.path("version").asText),"link"->escape(path(item)),
-        "description"->escape(description(item)),"executor"->escape(item.path("execution").path("executor").asText),"size"->escape(bytes(artifact.path("size").asLong)),
+        "icon"->icon(item),"category"->escape(item.path("category").asText),"description"->escape(description(item)),"executor"->escape(item.path("execution").path("executor").asText),"size"->escape(bytes(artifact.path("size").asLong)),
         "download"->escape(download(artifact)),"filename"->escape(artifact.path("filename").asText))
     }.mkString
     val content=if(matches.nonEmpty)render("operator-grid","cards"->cards)else render("empty",
@@ -84,8 +88,8 @@ object WebPages {
       "filename"->escape(a.path("filename").asText),"sha256"->escape(a.path("sha256").asText),"download"->escape(download(a)))}.mkString
     val commands=artifacts.map {case(_,a)=>s"curl -fLo ${a.path("filename").asText} https://YOUR-REPOSITORY-HOST${download(a)}\nsha256sum ${a.path("filename").asText}"}.mkString("\n")
     val ports=Repository.mapper.createObjectNode().set[com.fasterxml.jackson.databind.node.ObjectNode]("inputs",item.path("inputs")).toPrettyString
-    layout(reference,render("detail","name"->escape(name),"version"->escape(version),"description"->escape(description(item)),"endpoint"->escape(s"/v1/operators/$name/$version"),
-      "reference"->escape(s"operator: $reference"),"ports"->escape(ports),"commands"->escape(commands),"review"->review,"executor"->escape(item.path("execution").path("executor").asText),
+    layout(reference,render("detail","name"->escape(name),"version"->escape(version),"icon"->icon(item),"category"->escape(item.path("category").asText),"description"->escape(description(item)),"endpoint"->escape(s"/v1/operators/$name/$version"),
+      "reference"->escape(s"operator: $reference"),"ports"->escape(ports),"parameters"->escape(item.path("parameters").toPrettyString),"commands"->escape(commands),"review"->review,"executor"->escape(item.path("execution").path("executor").asText),
       "entrypoint"->escape(item.path("execution").path("entrypoint").asText),"image"->escape(item.path("runtime").path("image").asText),"downloads"->downloads,"versions"->links))
   }
   def notFound:String=layout("Operator not found",render("404"))

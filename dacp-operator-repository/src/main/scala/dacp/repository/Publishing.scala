@@ -38,7 +38,7 @@ private[repository] final class Publishing(root:Path, token:String, maxBytes:Lon
     if(!Files.isRegularFile(Repository.blob(root,a.path("sha256").asText)))throw PublishFailure(400,"upload all referenced blobs first")
   }
   private def publish(n:JsonNode):Unit=locked {
-    require(n!=null && n.isObject && n.fieldNames.asScala.toSet.subsetOf(Set("api_version","name","version","description","inputs","execution","runtime","artifact","provenance")),"invalid manifest fields")
+    require(n!=null && n.isObject && n.fieldNames.asScala.toSet.subsetOf(Set("api_version","name","version","description","category","icon","inputs","parameters","execution","runtime","artifact","provenance")),"invalid manifest fields")
     require(n.path("api_version").isIntegralNumber && n.path("api_version").canConvertToInt && n.path("api_version").asInt==2,"unsupported manifest version")
     require(n.path("name").isTextual && n.path("version").isTextual,"operator name and version required")
     val (name,version)=Repository.parts(n.path("name").asText+"@"+n.path("version").asText)

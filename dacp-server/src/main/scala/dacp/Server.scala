@@ -20,7 +20,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
                   remoteOperatorLibraryUrls: Seq[String] = Seq.empty, operatorCache: Path = Path.of(".operator-cache"),
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
                   sources: Map[String, SourceDefinition] = Map.empty, countFileRecordsOnStartup: Boolean = false, debug: Boolean = false, sourceRuntimes: Map[String, SourceRuntime] = Map.empty, union: Option[NodeUnionSettings] = None, executionStore: Option[ExecutionStoreDefinition] = None,
-                  datasetCatalog: Option[DatasetCatalogDefinition] = None, catalogOverride: Option[DatasetCatalog] = None, pluginEnvironment: Option[PluginEnvironment] = None, pluginDirectory: Option[Path] = None, ownsPluginEnvironment:Boolean=false, accessLogDirectory:Option[Path]=None, accessLogMaxBytes:Long=64L*1024*1024, operatorFusionEnabled:Boolean=true, web:NodeWebSettings=NodeWebSettings(), materializationStore:Option[MaterializationStoreDefinition]=None, executionTimeoutSeconds:Long=1800, s3:S3Settings=S3Settings(),credentialDirectory:Option[Path]=None,providedCredentials:Option[dacp.union.Credentials]=None,inferenceWorkers:InferenceWorkerSettings=InferenceWorkerSettings()) extends CatalogContext with AutoCloseable {
+                  datasetCatalog: Option[DatasetCatalogDefinition] = None, catalogOverride: Option[DatasetCatalog] = None, pluginEnvironment: Option[PluginEnvironment] = None, pluginDirectory: Option[Path] = None, ownsPluginEnvironment:Boolean=false, accessLogDirectory:Option[Path]=None, accessLogMaxBytes:Long=64L*1024*1024, operatorFusionEnabled:Boolean=true, web:NodeWebSettings=NodeWebSettings(), materializationStore:Option[MaterializationStoreDefinition]=None, executionTimeoutSeconds:Long=1800, s3:S3Settings=S3Settings(),credentialDirectory:Option[Path]=None,providedCredentials:Option[dacp.union.Credentials]=None,inferenceWorkers:InferenceWorkerSettings=InferenceWorkerSettings()) extends CatalogContext with OperatorEnvironment with AutoCloseable {
   require(executionTimeoutSeconds>0 && executionTimeoutSeconds<=86400,"invalid execution_timeout_seconds")
   lazy val credentials=providedCredentials.getOrElse(new dacp.union.Credentials(credentialDirectory.getOrElse(Path.of(".dacp-security",port.toString))))
   lazy val internalToken:String=credentials.internalToken()
@@ -302,7 +302,11 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
         }
         val bytes=Data.mapper.writeValueAsBytes(result);require(bytes.length<=StructureInference.MaxBytes,"inference result exceeds 1 MiB")
         listener.onNext(new Result(bytes));listener.onCompleted()
-      }catch{case scala.util.control.NonFatal(t)=>
+      }catch{
+        case t:java.util.concurrent.TimeoutException=>
+          org.slf4j.LoggerFactory.getLogger(classOf[Producer]).warn("structure inference timed out",t)
+          throw CallStatus.TIMED_OUT.withDescription(t.getMessage).toRuntimeException
+        case scala.util.control.NonFatal(t)=>
         org.slf4j.LoggerFactory.getLogger(classOf[Producer]).warn("structure inference failed",t);throw t
       }finally c.close()
     } else union match {

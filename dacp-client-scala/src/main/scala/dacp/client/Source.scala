@@ -84,6 +84,19 @@ object Source {
     finally Resources.closeAll(Seq(client,allocator))
   }
 
+  /** Public Union logical execution nodes, using ordinary client credentials. */
+  def nodes(origin:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=30):com.fasterxml.jackson.databind.JsonNode={
+    val canonical=dacp.union.Json.origin(origin)
+    require(timeoutSeconds>0,"timeoutSeconds must be positive")
+    val (client,allocator)=connection(new URI(canonical),tls)
+    try {
+      val results=client.doAction(new Action("dacp.nodes",Array.emptyByteArray),CallOptions.timeout(timeoutSeconds,TimeUnit.SECONDS)).asScala
+      require(results.hasNext,"missing node directory response");val bytes=results.next().getBody
+      require(bytes.length<=1024*1024 && !results.hasNext,"invalid node directory response")
+      dacp.union.Json.mapper.readTree(bytes)
+    }finally Resources.closeAll(Seq(client,allocator))
+  }
+
   private[client] def connection(u:URI,tls:TlsConfig):(FlightClient,RootAllocator)={
     def credential(value: Option[Path], env: String): Option[Path] = value.orElse(sys.env.get(env).map(Path.of(_)))
     val ca = credential(tls.ca, "DACP_CA")
@@ -137,6 +150,17 @@ final class Dataset private[client] (
         if (i.hasTotalSizeBytes) Some(i.getTotalSizeBytes) else None,
         if (i.hasRecordCount) Some(i.getRecordCount) else None)
     }.toVector
+  }
+  /** Item metadata only; never opens a content stream or requests an exact row count. */
+  def describe(path:String):Item={
+    check();logical(path)
+    val info=DacpErrors.protect(client.getInfo(FlightDescriptor.path("datasets",name,path),option))
+    val i=Metadata.Item.parseFrom(info.getAppMetadata)
+    val schema=if(i.getArrowSchema.isEmpty)None else Some(Schema.deserializeMessage(java.nio.ByteBuffer.wrap(i.getArrowSchema.toByteArray)))
+    Item(i.getPath,i.getFormat,schema,i.getKind,i.getViewsList.asScala.toVector,
+      if(i.hasLastModifiedTimeMs)Some(i.getLastModifiedTimeMs)else None,
+      if(i.hasTotalSizeBytes)Some(i.getTotalSizeBytes)else None,
+      if(i.hasRecordCount)Some(i.getRecordCount)else None)
   }
   /** Explicit exact record count; absent for non-record data. */
   def count(path: String): Option[Long] = {

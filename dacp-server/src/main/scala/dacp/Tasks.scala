@@ -19,12 +19,13 @@ object Jobs {
   }
   def readBinding(t:Task):Option[InputBinding]=if(t.operator!=ReadItem)None else {
     require(t.inputs.isEmpty && t.source.isEmpty,"read_item is a zero-input transport source")
-    require(t.params.keySet.asScala.toSet==Set("uri","view"),"read_item params require exactly uri and view")
+    require(t.params.containsKey("uri") && t.params.keySet.asScala.toSet.subsetOf(Set("uri","view")),"read_item params require uri and optional view")
     val uri=t.params.get("uri");val view=t.params.get("view")
-    require(uri.isInstanceOf[String] && view.isInstanceOf[String],"read_item uri/view must be strings")
-    val b=InputBinding(uri=Some(uri.toString),view=view.toString)
+    require(uri.isInstanceOf[String] && (!t.params.containsKey("view") || view.isInstanceOf[String]),"read_item uri/view must be strings")
+    require(!t.params.containsKey("view") || Set("bytes","records")(view.toString),"unsupported read_item view")
+    val b=InputBinding(uri=Some(uri.toString),view=if(t.params.containsKey("view"))view.toString else "auto")
     val parsed=DacpUri.parse(uri.toString);require(parsed.getPath.stripPrefix("/").split("/",2).length==2,"read_item requires an Item URI")
-    require(Set("bytes","records")(b.view),"unsupported read_item view");Some(b)
+    Some(b)
   }
 
   /** Contracting node regions must not turn an acyclic task graph into a cycle. */
@@ -72,7 +73,7 @@ object Jobs {
     val options=new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
     val raw=try dacp.union.Json.mapper.convertValue(dacp.union.YamlDocument.parse(text),classOf[Object])catch{case e:org.yaml.snakeyaml.error.YAMLException=>throw new IllegalArgumentException("invalid job YAML",e)}
     val doc=mapping(raw,"job")
-    require(doc.keySet.subsetOf(Set("name","tasks","outputs")) && doc.contains("name"),"invalid job settings")
+    require(doc.keySet.subsetOf(Set("name","tasks","outputs","designer")) && doc.contains("name"),"invalid job settings")
     require(doc.get("tasks").exists(_.isInstanceOf[java.util.List[_]]),"tasks must be a list")
     val tasks=doc("tasks").asInstanceOf[java.util.List[Object]].asScala.map { raw =>
       val m=mapping(raw,"task")

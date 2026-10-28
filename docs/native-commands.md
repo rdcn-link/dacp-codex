@@ -14,6 +14,15 @@ executor_config:
   stdout: {port: result, representation: bytes, format: text}
 inputs:
   source: {representations: [bytes], formats: []}
+category: Data transformation
+icon:
+  path: "M3 5h18v14H3zM3 10h18M9 5v14"
+  color: "#14866b"
+parameters:
+  type: object
+  properties: {}
+  required: []
+  additionalProperties: false
 ```
 
 运行时须包含 `/usr/local/bin/python`、PyArrow、可执行程序及匹配系统和架构的依赖。桥接器复用 Python 运行时，但原生程序自身无需依赖 Python、Arrow 或 DACP。`dacp/operator-python:1.0` 可运行[独立 C 制品示例](../examples/operators/native/README.md)，不保证包含 `tr` 等系统工具；请在派生镜像中预装所需程序。

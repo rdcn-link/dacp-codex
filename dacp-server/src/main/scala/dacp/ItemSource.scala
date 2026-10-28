@@ -4,6 +4,7 @@ import org.apache.arrow.flight._
 import dacp.protocol.Metadata
 import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.vector.VarBinaryVector
+import scala.jdk.CollectionConverters._
 
 /** Built-in transport source. Backend and format implementations stay behind Item APIs. */
 object ItemSource {
@@ -13,16 +14,17 @@ object ItemSource {
     val client=c.add(NodeConnection.open(config,allocator,uri))
     val info=client.getInfo(FlightDescriptor.path("datasets",split(0),"/"+split(1)))
     val meta=Metadata.Item.parseFrom(info.getAppMetadata)
-    require(meta.getKind=="data" && meta.getViewsList.contains(binding.view),"input must be a data item with the selected view")
-    val ticket=Metadata.Ticket.newBuilder().setDataset(split(0)).setItem("/"+split(1)).setView(binding.view).build()
+    require(meta.getKind=="data","input must be a data item")
+    val view=ItemViews.select(binding.view,meta.getViewsList.asScala)
+    val ticket=Metadata.Ticket.newBuilder().setDataset(split(0)).setItem("/"+split(1)).setView(view).build()
     val stream=c.add(client.getStream(new Ticket(ticket.toByteArray)))
     new FrameSource {
       private var began=false;private var ended=false;private var pending=Iterator.empty[Array[Byte]]
       def next():Option[OperatorFrame]={
         c.active()
-        if(!began){began=true;return Some(StreamProtocol.start("",binding.view,meta.getFormat,if(binding.view=="records")Some(stream.getSchema)else None))}
+        if(!began){began=true;return Some(StreamProtocol.start("",view,meta.getFormat,if(view=="records")Some(stream.getSchema)else None))}
         if(ended)return None
-        if(binding.view=="bytes") {
+        if(view=="bytes") {
           while(!pending.hasNext) {
             if(!stream.next()){ended=true;return Some(StreamProtocol.frame("end"))}
             val root=stream.getRoot;require(root.getSchema==PluginSchemas.bytes,"invalid byte input schema")

@@ -15,3 +15,14 @@ provenance:
   source_repository: https://github.com/rdcn-link/dacp-codex
   build_instructions: |
     Python source is the execution artifact; runtime dependencies: examples/operators/python/Dockerfile.
+
+parameters:
+  type: object
+  properties: {}
+  required: []
+  additionalProperties: false
+
+category: Data processing
+icon:
+  path: "M3 5h18v14H3zM3 10h18M9 5v14"
+  color: "#14866b"

@@ -89,3 +89,5 @@ JVM 模板实现 `Operator`，可由执行器在独立共享 JVM 内调用。Pyt
 ## 结构推导
 
 每个算子必须实现 `inferOutputs`（Scala）或 `infer_outputs`（Python）。模板已经提供实现；自定义算子需与处理方法一同实现。无输出算子返回空映射。清单不再声明输出。详见[统一协议与示例](../docs/structure-inference.md)。
+
+必需的 `previewOutputs`（JVM）/ `preview_outputs`（Python）方法通过与结构推导相同的 worker 提供有界输出样例。默认请求上限为 10 行 / 16 KiB，SDK 与宿主都限制行数和 UTF-8 JSON 大小；自定义算子必须实现接口；纯变换模板可代为实现。方法因当前输入无法提供样例时，应说明原因；样例失败不覆盖 Schema。详见[样例接口与示例](../docs/structure-inference.md#有界输出样例接口)。

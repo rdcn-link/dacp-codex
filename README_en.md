@@ -31,12 +31,14 @@ Job definitions, node subjobs, execution policies and variable files use YAML. E
 | Component | Purpose |
 |---|---|
 | `dacp-server` | Publishes data, handles data access requests, and executes local and distributed tasks |
+| `dacp-job-designer` | Browser visual editing, cross-node composition, schema previews and YAML import / export |
 | `dacp-shell` | Interactive browsing, SQL queries, operator execution, and job-file submission; installed with the Python SDK |
 | `dacp-client` / `dacp-client-scala` | Python / Scala applications access data, execute Jobs, and submit Union jobs |
 | [dacp-union-server](dacp-union-server/README_en.md) | Manages one Union, connects configured nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
 | [Union web dashboard](dacp-union-server/README_en.md#execution-and-interfaces) | Management view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
 | [dacp-operator-repository](dacp-operator-repository/README_en.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; administrators publish through the CLI |
 | `dacp-operator-runtime` / `plugins/dacp-plugin-operator-executors` | Shared operator environments, JVM / Python / container launchers, and native-command stream bridging |
+| `dacp-operator-contract` | Shared static parameter types, defaults and constraint validation |
 | `dacp-plugin-api` / `dacp-union-protocol` | Public plugin contracts and shared Union transport utilities |
 | [plugins](plugins/README_en.md) | Bundled Dataset, file-format, archive, catalog, and operator launch plugins |
 
@@ -50,3 +52,5 @@ Servers use JDK 17 and Scala 2.13; the Python SDK requires Python 3.10+. Browsin
 - Custom computation: read [writing and publishing operators](docs/operator-authoring_en.md).
 
 Ordinary data access and execution use TLS and tokens; Union collaboration uses mutual TLS and node-issued service credentials. S3 uses independent SigV4 authentication. Repository downloads are public, publication requires a token, and internal dashboards are publicly read-only. See [authentication and access control](docs/security_en.md). Operators use isolated runtime environments; eligible node subjobs share one process. See [in-process operator fusion](docs/operator-fusion_en.md). Outputs are not registered as Datasets. Servers persist execution metadata, while result contents are delivered through single-consumption streams.
+
+[Online Job Designer](dacp-job-designer/README_en.md): drag-and-drop composition, Union node selection, live operator repositories, schema previews, variables, chat proposals and YAML import / export.

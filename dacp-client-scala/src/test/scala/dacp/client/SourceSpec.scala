@@ -107,6 +107,14 @@ class SourceSpec extends AnyFunSuite {
     finally { ds.close(); assert(allocator.getAllocatedMemory == 0); flightServer.close(); serverAllocator.close() }
   }
 
+  test("describe fetches only Item metadata without opening data streams") { server { ds=>
+    scanTicket=None
+    val item=ds.describe("/records")
+    assert(item.path=="/records" && item.schema.contains(recordsSchema) && item.views==Seq("records","bytes"))
+    assert(item.recordCount.contains(0L) && scanTicket.isEmpty)
+    assert(ds.describe("/folder").kind=="folder" && scanTicket.isEmpty)
+    intercept[IllegalArgumentException](ds.describe("/../secret"))
+  }}
   test("dataset metadata includes paths, formats and Arrow schema") { server { ds =>
     val item = ds.list().head
     assert(item.path == "/records" && item.format == "csv" && item.kind == "data")

@@ -45,7 +45,7 @@ def main():
     archive = destination / ('dacp-ecoflow-' + args.name + '-sources.zip')
     archive.write_bytes(packaging.archive(files))
     ports = destination / (args.name + '-ports.json')
-    ports.write_text(json.dumps(dict(inputs=spec['inputs'])))
+    ports.write_text(json.dumps(dict(inputs=spec['inputs'],parameters=spec['parameters'],category=spec['category'],icon=spec['icon'])))
     instructions = destination / (args.name + '-build.txt')
     instructions.write_text('See README_en.md and spark/README_en.md in the source archive.\n'
         'Build shared runtime first. Compile and verify individually:\n'

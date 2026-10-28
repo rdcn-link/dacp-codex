@@ -102,7 +102,7 @@ def build(name, runtime_catalog, destination):
         except OSError:
             shutil.copyfile(original, target)
     manifest = dict(api_version=2, name=item['operator'], version='1.0',
-                    description=spec['description'], inputs=spec['inputs'],
+                    description=spec['description'], category=spec['category'], icon=spec['icon'], inputs=spec['inputs'], parameters=spec['parameters'],
                     execution=dict(executor='python', entrypoint=module, config={}),
                     runtime=runtime, artifact=artifact,
                     provenance=dict(source_archive=source, license='Apache-2.0', license_file=license_blob,

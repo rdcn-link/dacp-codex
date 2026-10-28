@@ -10,7 +10,7 @@ import org.apache.arrow.vector.ipc.ArrowStreamReader
 object ScalaIdentity {
   def main(args: Array[String]): Unit = {
     if(args.headOption.contains("infer")) {
-      dacp.operator.OperatorRunner.infer(args)((inputs,params)=>{
+      dacp.operator.OperatorRunner.infer(args,preview=(inputs,params,limits)=>inputs.get("source").flatMap(_.sample).map(s=>Map("result"->s.bounded(limits))).getOrElse(throw new IllegalArgumentException("Upstream sample unavailable")))((inputs,params)=>{
         require(inputs.keySet==Set("source") && params.isEmpty,"expected source and no params")
         dacp.InferenceResult(Map("result"->inputs("source")))
       });return

@@ -1,31 +1,34 @@
-Generated using the built-in image_gen tool. Edit target: previous meeting poster; brand reference: assets/dacp-logo.png.
+Generated using the built-in image_gen tool. Updated 2026-10-27.
 
 Use case: text-localization / ads-marketing.
-Asset type: updated finished English portrait conference poster for the DACP software project, high-resolution portrait A-series aspect ratio, preferably 2048 x 2896 or larger.
-Input 1 is the old poster to update. Input 2 is the authoritative CURRENT DACP logo. Preserve the clean Swiss-inspired white, navy and teal conference-poster design and very large readable headline, but update outdated feature copy and the collaboration diagram to accurately reflect the current project. Use the supplied current logo at modest size at the top; faithfully preserve its C-shaped connected-node symbol with PURPLE, TEAL and AMBER nodes and navy DACP wordmark. No alternative logo.
-Use generous print-safe margins, crisp highly legible English text, clear hierarchy, balanced white space. Flat vector-like graphic styling, opaque white background. The poster fills the image, no mockup.
-Layout: compact logo and full protocol name at top; large two-line headline; subtitle. A polished middle diagram shows three autonomous servers A, B, C, each with a small database/file symbol, direct data-stream connections A to B and C to B. A smaller Union controller above connects with fine dashed scheduling/monitoring lines to all three servers; direct data streams must visibly travel BETWEEN servers rather than via Union. Distinguish servers with blue, teal and violet accents. The controller is labelled UNION; optional node labels A, B, C. Do not imply Union is required for standalone access.
-Below the diagram use four compact clearly separated feature blocks in a two-by-two grid. Footer gives technology line, exact project URL, and MVP badge. Do not include GitHub's mascot or any partner logo.
-All text to include, verbatim:
-"DACP"
-"Data Access and Collaboration Protocol"
-"Collaborate across"
-"autonomous data nodes."
-"Stream data. Run operators. Coordinate workflows."
-"UNION"
-"A"
-"B"
-"C"
+Asset type: finished updated English DACP meeting poster, portrait A4 aspect ratio, high resolution preferably 2048 x 2896.
+Input 1 is the existing poster to edit. Input 2 is the authoritative DACP logo, supporting brand reference. Keep that exact C symbol, three purple/teal/amber nodes and navy DACP wordmark; use at modest size, no replacement logo.
+Update the poster to current functionality and product-focused language. Retain a polished white/navy/teal conference poster style with generous margins, large readable text, flat clean diagram, no 3D or decorative clutter. Rework spacing as needed. No Flight, Arrow, mTLS, framework names or low-level transport details.
+Headline: "Collaborate across" / "autonomous data nodes."
+Subtitle: "Read data. Connect operators. Stream results."
+Top full name: "Data Access and Collaboration Protocol"
+Center diagram: a small "UNION" controller above three independent member nodes "A", "B", "C". Each member has a file/database icon. Thin dashed links connect UNION to each member, representing coordination. Thick solid arrows form direct task data streams A → B → C. A distinct solid final-result arrow goes from C to UNION, then UNION to a small "CLIENT" icon on its upper right. Label that last path "Result stream". Label a dashed link "Coordinate" and one member-to-member arrow "Data stream". Visually distinguish coordination and data streams without tangled arrows or false data direction. Do not imply client data must always use Union; four-block copy explains independent access.
+Below diagram four feature blocks, legible:
 "AUTONOMOUS DATA"
-"Serve files and SQL tables with pluggable catalogs."
-"STREAM FIRST"
-"Read bytes or Arrow records. Process data in batches."
-"COMPUTE NEAR DATA"
-"Java / Scala, Python and native command operators."
-"COORDINATE WITH UNION"
-"Submit YAML workflows. Monitor tasks, health and traffic."
-"Scala servers / Python SDK / Shell / mTLS"
+"Publish datasets with pluggable catalogs."
+"Access nodes independently or through Union."
+"STREAMING JOBS"
+"Connect operator ports in YAML."
+"Read bytes or records. Receive live results."
+"FLEXIBLE OPERATORS"
+"Java / Scala, Python and native commands."
+"Browse reusable operators and source code."
+"EXECUTION CONTROL"
+"Use variables, timeouts and retry policies."
+"Choose materialization and replay when needed."
+Below feature blocks a concise line:
+"Monitor job DAGs, node health and transfer rates."
+Footer:
+"Server / Union / Client SDK / Shell"
 "Explore the project"
 "github.com/rdcn-link/dacp-codex"
-"MVP"
-Constraints: this is an MVP; no invented speed, scalability, security, legal or performance guarantees. No claims that data never moves. No claim that all operators require Docker. Preserve exact URL and spellings. No QR code, no extra body text, no gradients, glows, photography, 3D, stock circuits or decorative clutter. Make body text readable when printed on A4.
+Small "MVP" badge.
+Only include the exact copy specified, with readable text and no invented claims or performance numbers. Preserve existing brand identity; no stock circuits, QR codes, partner logos, gradients or glows. The final image is the poster itself, not a mockup.
+
+Follow-up correction (built-in image_gen edit):
+Preserve all text, layout, logo and existing connections. Add the missing solid teal result-stream arrow from C into UNION, distinct from the dashed coordination link, completing C → UNION → CLIENT. Route it without crossing text or the CLIENT box. No new text.

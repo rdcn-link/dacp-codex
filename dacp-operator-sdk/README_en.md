@@ -89,3 +89,5 @@ JVM templates implement `Operator` and can be invoked inside an isolated shared 
 ## Structure inference
 
 Every operator must implement `inferOutputs` (Scala) or `infer_outputs` (Python). Templates provide implementations; custom operators implement the method alongside processing. Sinks return an empty mapping. Manifests no longer declare outputs. See the [shared protocol and examples](../docs/structure-inference_en.md).
+
+Required `previewOutputs` (JVM) / `preview_outputs` (Python) methods provide bounded output samples through inference workers. Default requests allow 10 rows / 16 KiB; both SDK and host enforce row counts and serialized UTF-8 JSON size. Custom operators must implement this interface; pure-transform templates may supply it. If current inputs cannot yield a sample, report the reason. Preview failures preserve Schema. See [sample interfaces and examples](../docs/structure-inference_en.md#bounded-output-sample-interface).

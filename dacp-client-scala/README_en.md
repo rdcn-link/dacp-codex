@@ -141,3 +141,5 @@ For a records data event, call `event.records(allocator)` with your own Arrow al
 ## Union client
 
 `dacp.client.Union` submits jobs to independent X, exposes separate `results()` and `events()` streams, and provides `status()` and `cancel()`. Close executions and streams with `Using.resource`. See the [Union server](../dacp-union-server/README_en.md) for complete code and authentication configuration.
+
+`Source.nodes(unionOrigin, tls)` returns public logical execution nodes and capacities using ordinary client credentials, without exposing member addresses. The online designer uses it for step placement.

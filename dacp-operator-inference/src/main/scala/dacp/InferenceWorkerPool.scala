@@ -16,7 +16,7 @@ object InferenceWorkerSettings {
     InferenceWorkerSettings(number("max_workers",4,64),number("idle_seconds",60,86400),number("timeout_seconds",60,120))
   }.getOrElse(InferenceWorkerSettings())
 }
-private[dacp] trait InferenceWorker extends AutoCloseable {def request(bytes:Array[Byte]):Array[Byte]}
+private[dacp] trait InferenceWorker extends AutoCloseable {def phase:String="inference";def request(bytes:Array[Byte]):Array[Byte]}
 
 /** Keeps processes, never results. A lease covers startup and one serialized request. */
 private[dacp] final class InferenceWorkerPool(settings:InferenceWorkerSettings) extends AutoCloseable {
@@ -38,8 +38,8 @@ private[dacp] final class InferenceWorkerPool(settings:InferenceWorkerSettings) 
   }
   def request(key:String,bytes:Array[Byte],cancel:StreamCancel)(create:()=>InferenceWorker):Array[Byte]={
     val deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(settings.timeoutSeconds)
-    def active():Unit={cancel.active();synchronized{require(!closed,"inference workers are closed")};if(System.nanoTime()>=deadline)throw new TimeoutException("structure inference worker timed out")}
     var slot:Slot=null
+    def active():Unit={cancel.active();synchronized{require(!closed,"inference workers are closed")};if(System.nanoTime()>=deadline)throw new TimeoutException("structure inference worker timed out during "+Option(slot).flatMap(s=>s.synchronized{Option(s.worker)}).map(_.phase).getOrElse("worker queue"))}
     while(slot==null){
       active()
       val evicted=synchronized {

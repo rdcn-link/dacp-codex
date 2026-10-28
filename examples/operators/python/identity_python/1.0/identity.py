@@ -54,9 +54,17 @@ def infer_outputs(inputs, params):
     return result({'result': inputs['source']})
 
 
+def preview_outputs(inputs, params, limits):
+    from dacp_operator import bounded_sample
+    sample = inputs['source'].get('sample')
+    if sample is None:
+        raise ValueError('Upstream sample unavailable: source')
+    return {'result': bounded_sample(sample, limits)}
+
+
 if __name__ == '__main__':
     from dacp_operator import run_inference
     if len(sys.argv) > 1 and sys.argv[1] == 'infer':
-        run_inference(infer_outputs)
+        run_inference(infer_outputs, preview=preview_outputs)
     else:
         main()

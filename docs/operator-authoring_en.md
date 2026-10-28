@@ -1,5 +1,6 @@
 # Write, publish and run an operator
 
+Operators must declare a static `parameters` contract alongside `inputs`; see [parameter types and forms](operator-parameters_en.md). Output structures remain exclusively defined by inference methods.
 Output structures come exclusively from the mandatory inference method; manifests declare input contracts only. See [structure inference](structure-inference_en.md).
 
 An operator is a data-processing program: it receives named Item input streams and JSON business parameters, then returns named output streams. This guide starts with a complete Python workflow, followed by Scala, packaging, publication and the wire contract.
@@ -100,9 +101,26 @@ inputs:
   source:
     representations: [records]
     formats: []
+category: Data transformation
+icon:
+  path: "M3 5h18v14H3zM3 10h18M9 5v14"
+  color: "#14866b"
+parameters:
+  type: object
+  properties:
+    min_amount:
+      type: number
+      default: 0
+      description: Minimum order amount.
+    factor:
+      type: number
+      default: 1
+      description: Amount scaling factor.
+  required: []
+  additionalProperties: false
 ```
 
-`source` accepts records only. `formats: []` imposes no input-format restriction; the program still validates columns and types. `result` emits records labeled arrow. Port definitions may also contain an Arrow schema JSON value; see [port contracts](reference_en.md#task-execution-and-operators). Business parameters are validated by the program; `params` is not a parameter-schema field in this definition.
+`source` accepts records only. `formats: []` imposes no input-format restriction; the program still validates columns and types. `result` emits records labeled arrow. Port definitions may also contain an Arrow schema JSON value; see [port contracts](reference_en.md#task-execution-and-operators). Job `params` supplies values; operator `parameters` declares their types and constraints. The program remains responsible for business validation.
 
 ## Step 2: read parameters and input batches
 
@@ -310,7 +328,7 @@ Install build tools locally first. Wheels install offline with `--no-index --no-
 
 ## Port declarations and batch publication
 
-`publish --ports FILE` is required and accepts YAML or JSON containing `inputs` only (`outputs` declarations are rejected; the mandatory inference method describes outputs). An operator definition can serve as this file:
+`publish --ports FILE` is required and accepts YAML or JSON containing `category`, `icon`, `inputs` and `parameters` (`outputs` declarations are rejected; the mandatory inference method describes outputs). An operator definition can serve as this file:
 
 ```yaml
 name: identity_python
@@ -323,6 +341,15 @@ inputs:
   source:
     representations: [bytes, records]
     formats: []
+category: Data transformation
+icon:
+  path: "M3 5h18v14H3zM3 10h18M9 5v14"
+  color: "#14866b"
+parameters:
+  type: object
+  properties: {}
+  required: []
+  additionalProperties: false
 ```
 
 Each port declares representations (`bytes`, `records`), format restrictions (`[]` means any), and optionally an Arrow schema JSON value. Every task must bind exactly the declared input ports. Place definitions at `<directory>/<name>/<version>/operator.yaml`; artifact paths resolve relative to the definition. Direct CLI artifact paths resolve relative to the current directory. Container executors omit artifact and entrypoint and implement the same protocol through their image entrypoint.
@@ -377,3 +404,9 @@ Common problems:
 - Failure after end: end closes one port, but the process must still exit successfully. Nonzero exit means failure and displayed data is partial.
 
 Container roots and inputs are read-only; scratch files belong in `/tmp`. Containers have no network and enforce memory, PID, temporary-storage and execution-time limits. Dependencies must be preinstalled. Reuse shared runtimes for small JAR/source/wheel releases; operators are not loaded into the server JVM. Repository operators run in NORMAL/DEBUG, while inline source requires DEBUG. New array/image representations require shared contracts; never silently flatten them into records.
+
+Operators must also provide `category` and `icon`; see [categories and icons](operator-presentation_en.md) for the contract and publication examples.
+
+## Output sample interface
+
+In addition to structure inference, operators must implement the output preview interface. See [inference and sample interfaces](structure-inference_en.md#required-sample-interface-and-existing-operators) for Python/JVM examples, row and byte limits, and the six existing implementations. Samples must reflect the actual transform rather than reuse incompatible input samples. Previewing must not trigger production side effects.

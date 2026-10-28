@@ -70,3 +70,9 @@ Union provides standard DACP discovery, Items, Jobs and S3. For public short nam
 [Streaming versus per-step materialization benchmark](materialization-benchmark_en.md): 500,000 weather observations, three measured runs and actual persisted bytes.
 
 [Measured local versus cross-node streaming job performance](local-vs-union-benchmark_en.md).
+
+Project presentation material: [English meeting poster and A4 PDF](../assets/posters/README_en.md).
+
+[Online Job Designer](../dacp-job-designer/README_en.md): design local and cross-node jobs in the browser and export YAML for Shell / SDK submission.
+
+- [Operator parameter types and designer forms](operator-parameters_en.md)

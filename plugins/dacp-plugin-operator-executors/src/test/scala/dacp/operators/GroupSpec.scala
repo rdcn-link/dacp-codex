@@ -17,6 +17,7 @@ object GroupUpper extends BytesOperator {
 }
 object GroupCopy extends BytesOperator {override def outputFormat="text";def transform(b:Array[Byte],p:JsonNode)=b}
 object GroupRecords extends RecordsOperator {
+  override def previewOutputs(inputs:Map[String,dacp.StreamDescriptor],params:JsonNode,limits:dacp.PreviewLimits)=inputs.get("source").flatMap(_.sample).map(s=>Map("result"->s.bounded(limits))).getOrElse(Map.empty)
   def transform(batch:VectorSchemaRoot,p:JsonNode):Option[VectorSchemaRoot]=Some(batch)
 }
 class GroupSpec extends AnyFunSuite {

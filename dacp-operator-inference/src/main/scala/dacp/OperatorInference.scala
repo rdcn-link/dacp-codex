@@ -18,7 +18,11 @@ object OperatorInference {
   def descriptor(c:PortContract):StreamDescriptor=StreamDescriptor(c.representations,c.formats,c.schema,
     if(c.representations==Set("bytes") || (c.representations==Set("records") && c.schema.nonEmpty))"known"else "unknown")
   def validateInputs(op:ResolvedOperator,inputs:Map[String,StreamDescriptor]):Unit={
-    require(op.inputs.keySet==inputs.keySet,"input ports do not match operator declaration")
+    val missing=(op.inputs.keySet--inputs.keySet).toVector.sorted
+    val unexpected=(inputs.keySet--op.inputs.keySet).toVector.sorted
+    require(missing.isEmpty && unexpected.isEmpty,"input ports do not match operator declaration"+
+      (if(missing.nonEmpty)"; missing: "+missing.mkString(", ")else "")+
+      (if(unexpected.nonEmpty)"; unexpected: "+unexpected.mkString(", ")else ""))
     inputs.foreach{case(p,d)=>
       val expected=op.inputs(p)
       require(d.representations.isEmpty || d.representations.intersect(expected.representations).nonEmpty,s"incompatible representation on input $p")
@@ -26,9 +30,9 @@ object OperatorInference {
       for(a<-d.schema;b<-expected.schema)require(a==b,s"incompatible schema on input $p")
     }
   }
-  def apply(config:Config,op:ResolvedOperator,request:InferenceRequest,cancel:StreamCancel,
+  def apply(config:OperatorEnvironment,op:ResolvedOperator,request:InferenceRequest,cancel:StreamCancel,
     source:Boolean=false):InferenceResult=run(config,op,request,cancel,source)
-  def run(config:Config,op:ResolvedOperator,request:InferenceRequest,cancel:StreamCancel,
+  def run(config:OperatorEnvironment,op:ResolvedOperator,request:InferenceRequest,cancel:StreamCancel,
     source:Boolean=false):InferenceResult={
     validateInputs(op,request.inputs)
     val program=op.program.getOrElse(throw new IllegalArgumentException("operator has no inference program"))
@@ -38,7 +42,9 @@ object OperatorInference {
     require(body.length<=StructureInference.MaxBytes,"inference request exceeds 1 MiB")
     val key=workerKey(op,command,source)
     val response=config.inferenceWorkerPool.request(key,body,cancel)(()=>new DockerInferenceWorker(op,command))
-    StructureInference.result(StructureInference.mapper.readTree(response))
+    val result=StructureInference.result(StructureInference.mapper.readTree(response))
+    request.preview.map(p=>OutputSamples.attach(result,result.outputs.flatMap{case(port,d)=>d.sample.map(port->_)},p))
+      .getOrElse(result.copy(outputs=result.outputs.map{case(port,d)=>port->d.copy(sample=None)}))
   }
   private[dacp] def workerKey(op:ResolvedOperator,command:OperatorCommand,source:Boolean):String={
     val digest=java.security.MessageDigest.getInstance("SHA-256")

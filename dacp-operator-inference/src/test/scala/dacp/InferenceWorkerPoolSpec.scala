@@ -35,7 +35,8 @@ class InferenceWorkerPoolSpec extends AnyFunSuite {
   test("timeout destroys a busy worker and frees capacity") {
     val pool=new InferenceWorkerPool(InferenceWorkerSettings(1,60,1));val stopped=new CountDownLatch(1);val c=new StreamCancel()
     try {
-      intercept[TimeoutException](pool.request("a",Array[Byte](1),c)(()=>new InferenceWorker {def request(b:Array[Byte])={stopped.await();b};def close():Unit=stopped.countDown()}))
+      val error=intercept[TimeoutException](pool.request("a",Array[Byte](1),c)(()=>new InferenceWorker {override def phase="container creation";def request(b:Array[Byte])={stopped.await();b};def close():Unit=stopped.countDown()}))
+      assert(error.getMessage.contains("container creation"))
       await(stopped)
       pool.request("a",Array[Byte](2),c)(()=>new InferenceWorker {def request(b:Array[Byte])=b;def close():Unit=()})
     }finally {pool.close();c.close()}

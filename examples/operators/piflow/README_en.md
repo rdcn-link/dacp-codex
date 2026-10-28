@@ -79,3 +79,7 @@ Container tests use a read-only root, no network, 1 GiB memory, 128 processes/th
 The previous repository contents were moved into a timestamped directory under `.operator-backups/` before clearing the live catalog. The live repository contains only this individually published collection. Consult the running repository for its address and current publication status; operators can be downloaded as soon as each one is published.
 
 Run `.venv/bin/python examples/operators/piflow/audit.py` to audit upstream source hashes, live publication inventory, pages, and filenames, lengths, and SHA-256 of code, source, and license downloads.
+
+## Bounded output samples
+
+All Python adapters explicitly register `preview_outputs`. The six operators in the current repository use SDK `preview_process` to apply their pure transforms only to bounded upstream samples. CSV save returns sample bytes without writing files. The interface is required, and missing implementations fail explicitly. See [sample interfaces and limits](../../../docs/structure-inference_en.md#required-sample-interface-and-existing-operators). From the repository root, run `./.venv/bin/python scripts/test-operator-previews.py` to verify all six deployed operators and size limits.

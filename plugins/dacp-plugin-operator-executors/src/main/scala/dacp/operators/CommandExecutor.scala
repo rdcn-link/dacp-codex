@@ -54,7 +54,9 @@ if len(sys.argv)>2 and sys.argv[2]=='infer':
         if expected and inputs[config['stdin']]['representations'] and inputs[config['stdin']]['representations']!=['bytes']:
             raise ValueError('command requires bytes input')
         return result({} if config['port'] is None else {config['port']:descriptor(['bytes'],[config['format']],certainty='known')})
-    run_inference(infer_outputs,sys.argv[2:])
+    def preview_outputs(inputs,params,limits):
+        raise ValueError('Native commands need a dedicated side-effect-free preview adapter; arbitrary executables are not run for samples')
+    run_inference(infer_outputs,sys.argv[2:],preview=preview_outputs)
     sys.exit(0)
 with open('/input/manifest.json') as f:
     manifest=json.load(f)

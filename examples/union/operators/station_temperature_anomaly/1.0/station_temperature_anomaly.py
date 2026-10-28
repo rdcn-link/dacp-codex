@@ -60,6 +60,11 @@ def infer_outputs(inputs, params):
     return result({'result': descriptor(['bytes'], ['ndjson'], None, certainty='known')})
 
 
+def preview_outputs(inputs, params, limits):
+    from dacp_operator import preview_process
+    return preview_process(process, inputs, params, limits)
+
+
 if __name__ == '__main__':
     from dacp_operator import run_operator
-    run_operator(process, infer_outputs)
+    run_operator(process, infer_outputs, preview_outputs=preview_outputs)

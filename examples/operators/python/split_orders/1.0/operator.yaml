@@ -8,3 +8,18 @@ artifact: split_orders.py
 inputs:
   left: {representations: [records], formats: []}
   right: {representations: [records], formats: []}
+
+parameters:
+  type: object
+  properties:
+    min_amount:
+      type: number
+      default: 20
+      description: Minimum order amount.
+  required: []
+  additionalProperties: false
+
+category: Data processing
+icon:
+  path: "M3 5h18v14H3zM3 10h18M9 5v14"
+  color: "#14866b"

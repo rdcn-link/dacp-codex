@@ -21,6 +21,11 @@ abstract class DocumentOperator(val operation:String) extends Operator {
     require(params.fieldNames.asScala.toSet--Set("max_input_bytes")==spec.get("params").fieldNames.asScala.toSet,"unexpected or missing parameters")
     dacp.InferenceResult(Map("result"->dacp.StreamDescriptor(Set("bytes"),Set(spec.get("format").asText),certainty="known")))
   }
+  override def previewOutputs(inputs:Map[String,dacp.StreamDescriptor],params:JsonNode,limits:dacp.PreviewLimits):Map[String,dacp.OutputSample]={
+    val sample=inputs.get("source").flatMap(_.sample).getOrElse(throw new IllegalArgumentException("Upstream sample unavailable: source"))
+    require(sample.representation=="bytes","bytes sample required")
+    Map("result"->dacp.OutputSample("bytes",Common.specs.get(operation).path("format").asText,data=Common.transform(operation,sample.bounded(limits).data.toArray,params).toVector,truncated=sample.truncated).bounded(limits))
+  }
   final def process(ctx:OperatorContext):Unit={
     val p=ctx.params
     val spec=Common.specs.get(operation)

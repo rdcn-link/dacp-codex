@@ -1,6 +1,7 @@
 # 编写、发布和运行算子
 
-输出结构统一由必选推导方法提供，清单只声明输入契约；详见[结构推导](structure-inference.md)。
+算子必须在 `inputs` 之外声明静态 `parameters` 契约，详见[参数类型与表单](operator-parameters.md)。输出结构仍只由推导方法给出。
+输出结构统一由必选推导方法提供，清单声明输入与参数契约；详见[结构推导](structure-inference.md)。
 
 算子是一个数据处理程序：接收命名的 Item 输入流和一份 JSON 业务参数，处理后返回命名输出流。下面先用一个完整的 Python 示例串起开发过程，再说明 Scala、打包发布和底层协议。
 
@@ -100,9 +101,26 @@ inputs:
   source:
     representations: [records]
     formats: []
+category: Data transformation
+icon:
+  path: "M3 5h18v14H3zM3 10h18M9 5v14"
+  color: "#14866b"
+parameters:
+  type: object
+  properties:
+    min_amount:
+      type: number
+      default: 0
+      description: Minimum order amount.
+    factor:
+      type: number
+      default: 1
+      description: Amount scaling factor.
+  required: []
+  additionalProperties: false
 ```
 
-`source` 只接受 records，`formats: []` 表示不限制输入格式；程序仍必须校验列和类型。`result` 输出 records，格式标为 arrow。也可在端口定义中声明 Arrow schema JSON 值，见[端口契约](reference.md#任务执行与算子)。业务参数由程序校验，`params` 不是此定义中的参数 schema。
+`source` 只接受 records，`formats: []` 表示不限制输入格式；程序仍必须校验列和类型。`result` 输出 records，格式标为 arrow。也可在端口定义中声明 Arrow schema JSON 值，见[端口契约](reference.md#任务执行与算子)。业务参数值写在 Job 的 `params` 中，类型和约束由算子定义的 `parameters` 声明；程序仍负责业务校验。
 
 ## 第二步：读取参数和输入批次
 
@@ -310,7 +328,7 @@ dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository pub
 
 ## 端口声明与批量发布
 
-必须提供 `publish --ports FILE`；该文件可为包含 `inputs` 的 YAML 或 JSON（不允许声明 `outputs`，输出由必选推导方法给出），也可直接使用完整算子定义：
+必须提供 `publish --ports FILE`；该文件可为包含 `category`、`icon`、`inputs` 和 `parameters` 的 YAML 或 JSON（不允许声明 `outputs`，输出由必选推导方法给出），也可直接使用完整算子定义：
 
 ```yaml
 name: identity_python
@@ -323,6 +341,15 @@ inputs:
   source:
     representations: [bytes, records]
     formats: []
+category: Data transformation
+icon:
+  path: "M3 5h18v14H3zM3 10h18M9 5v14"
+  color: "#14866b"
+parameters:
+  type: object
+  properties: {}
+  required: []
+  additionalProperties: false
 ```
 
 每个端口声明表示（`bytes`、`records`）、格式限制（`[]` 表示不限），以及可选的 Arrow schema JSON 值。任务必须准确绑定所有声明的输入端口。定义文件位于 `<directory>/<name>/<version>/operator.yaml`，制品路径相对于定义文件；直接 CLI 制品路径相对于当前目录。container 执行器不设置 artifact 与 entrypoint，由镜像入口实现相同协议。
@@ -377,3 +404,9 @@ python3 scripts/upload-operator.py filter_amount@1.0 \
 - 发送 end 后仍失败：end 只结束一个端口，程序还需正常退出；非零退出表示失败，已显示结果属于部分结果。
 
 容器根和输入只读，临时文件放 `/tmp`；容器禁用网络，并限制内存、PID、临时空间和执行期限。依赖需预置。需要 JAR/源码/wheel 的小型发布时复用共享运行环境；不将算子加载进服务器 JVM。仓库算子可在 NORMAL/DEBUG 执行，内联源码仅允许 DEBUG。多维数组、图像等新表示必须先定义共享契约，不得静默展开为记录。
+
+算子还必须提供 `category` 和 `icon`，规则和发布示例见[分类与图标](operator-presentation.md)。
+
+## 输出样例接口
+
+除了结构推导，算子必须实现输出样例接口。接口定义、Python／JVM 示例、行数与字节数限制，以及现有六个算子的实现行为，参见[结构推导与样例接口](structure-inference.md#必需的样例接口与现有算子)。样例应反映算子的实际转换，不能直接复用不相符的上游样例；不得为预览触发生产副作用。

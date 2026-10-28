@@ -12,7 +12,7 @@ import shutil
 import sys
 import urllib.request
 import zipfile
-from catalog import CATALOG
+from catalog import CATALOG, parameter_schema
 
 ROOT=Path(__file__).resolve().parents[3]
 HERE=Path(__file__).resolve().parent
@@ -32,7 +32,7 @@ def build(runtime_catalog,destination,version="1.1"):
            'dacp_operator/__init__.py':(ROOT/'dacp-operator-sdk/python/dacp_operator/__init__.py').read_bytes()}
     files['dacp_operator/inference.py'] = (ROOT / 'dacp-operator-sdk/python/dacp_operator/inference.py').read_bytes()
     for name in CATALOG:
-        files[f'dacp_common/{name}.py']=(f'from dacp_operator import run_operator\nfrom .catalog import execute, infer_outputs as infer\ndef process(ctx):\n    execute({name!r}, ctx)\ndef infer_outputs(inputs, params):\n    return infer({name!r}, inputs, params)\nif __name__ == "__main__":\n    run_operator(process, infer_outputs)\n').encode()
+        files[f'dacp_common/{name}.py']=(f'from dacp_operator import run_operator, preview_process\nfrom .catalog import execute, infer_outputs as infer\ndef process(ctx):\n    execute({name!r}, ctx)\ndef infer_outputs(inputs, params):\n    return infer({name!r}, inputs, params)\ndef preview_outputs(inputs, params, limits):\n    return preview_process(process, inputs, params, limits)\nif __name__ == "__main__":\n    run_operator(process, infer_outputs, preview_outputs=preview_outputs)\n').encode()
     dist=f'dacp_common_operators-{version}.dist-info/'
     files[dist+'METADATA']=f'Metadata-Version: 2.1\nName: dacp-common-operators\nVersion: {version}\nRequires-Python: >=3.10\nRequires-Dist: pyarrow>=23.0.1\n'.encode()
     files[dist+'WHEEL']=b'Wheel-Version: 1.0\nGenerator: dacp\nRoot-Is-Purelib: true\nTag: py3-none-any\n'
@@ -56,7 +56,7 @@ def build(runtime_catalog,destination,version="1.1"):
     assert hashlib.sha256(dst.read_bytes()).hexdigest()==runtime['archive']['sha256']
     for name,s in CATALOG.items():
         desc=s['description']+'; params='+json.dumps(s['params'],ensure_ascii=False,separators=(',',':'))
-        m=dict(api_version=2,name=name,version=version,description=desc,
+        m=dict(api_version=2,category='Data processing',icon=dict(path='M3 5h18v14H3zM3 10h18M9 5v14',color='#14866b'),name=name,version=version,description=desc,parameters=parameter_schema(s['params']),
                inputs={'source':{'representations':[s['representation']],'formats':[]}},
                execution={'executor':'python','entrypoint':'dacp_common.'+name,'config':{}},runtime=runtime,artifact=artifact,
                provenance={'source_archive':source,'source_repository':'https://github.com/rdcn-link/dacp-codex',

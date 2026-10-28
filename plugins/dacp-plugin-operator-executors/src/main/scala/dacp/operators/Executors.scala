@@ -105,7 +105,7 @@ finally:
     sys.stdout=protocol
 if len(sys.argv)>2 and sys.argv[2]=='infer':
     from dacp_operator.inference import run_inference
-    run_inference(namespace['infer_outputs'],sys.argv[2:])
+    run_inference(namespace['infer_outputs'],sys.argv[2:],preview=namespace['preview_outputs'])
     sys.exit(0)
 with open('/input/manifest.json') as f:
     manifest=json.load(f)

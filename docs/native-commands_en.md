@@ -16,6 +16,15 @@ executor_config:
   stdout: {port: result, representation: bytes, format: text}
 inputs:
   source: {representations: [bytes], formats: []}
+category: Data transformation
+icon:
+  path: "M3 5h18v14H3zM3 10h18M9 5v14"
+  color: "#14866b"
+parameters:
+  type: object
+  properties: {}
+  required: []
+  additionalProperties: false
 ```
 
 The runtime must provide `/usr/local/bin/python`, PyArrow, the executable, and its OS/architecture-compatible dependencies. The bridge reuses the existing Python runtime; it does not require Python or Arrow dependencies in the native program. `dacp/operator-python:1.0` can run the [C artifact example](../examples/operators/native/README_en.md), but does not necessarily contain tools such as `tr`. Install required tools in a derived image before publishing.

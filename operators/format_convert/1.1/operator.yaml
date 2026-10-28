@@ -10,3 +10,59 @@ inputs:
   source:
     representations: [bytes]
     formats: [csv, ndjson]
+
+parameters:
+  type: object
+  properties:
+    from:
+      type: string
+      enum:
+      - auto
+      - csv
+      - json
+      - jsonl
+      - ndjson
+      default: auto
+      description: Source format.
+    to:
+      type: string
+      enum:
+      - parquet
+      default: parquet
+      description: Target format.
+    schema:
+      type:
+      - string
+      - object
+      properties: {}
+      required: []
+      additionalProperties:
+        type: string
+      default: infer
+      description: infer, or a mapping of column names to types.
+    infer_sample:
+      type: integer
+      minimum: 1
+      default: 4
+      description: Number of batches sampled for type inference.
+    on_conflict:
+      type: string
+      enum:
+      - fail
+      default: fail
+      description: Conflict behavior.
+    compression:
+      type: string
+      default: zstd
+      description: Parquet compression codec.
+    row_group_size:
+      type: string
+      default: 128MB
+      description: Parquet row group size, e.g. 128MB.
+  required: []
+  additionalProperties: false
+
+category: Data processing
+icon:
+  path: "M3 5h18v14H3zM3 10h18M9 5v14"
+  color: "#14866b"

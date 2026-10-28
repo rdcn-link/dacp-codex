@@ -1,7 +1,10 @@
 # DACP operator repository
 
+Every operator must declare `category` and `icon`, validated on repository publication, catalog reads and node loading. Repository lists, details and the Designer use the same declarations. Authors define categories without a registry. Icons contain a 24×24 SVG path and color, never an external URL or full SVG. See [category and icon contracts](../docs/operator-presentation_en.md).
+
 [中文](README.md)
 
+Every definition and uploaded manifest must include a static `parameters` contract, even for an operator with no parameters. Publication validates types, defaults, enums and bounds; lists and detail pages expose the declarations. See [parameter contracts](../docs/operator-parameters_en.md). `publish --ports FILE` accepts `category`, `icon`, `inputs` and `parameters` together.
 A standalone Scala HTTP/HTTPS repository with public search, version pages, and downloads. Operators have immutable `name@version` manifests, shared runtime images, and optional small JAR, Python source, or wheel artifacts. Runtime and code blobs are stored once per SHA-256, even when several operators reference them. Serving needs no Docker; publishing runtime images needs the Docker CLI/engine. Build with JDK 17, Scala 2.13, and sbt 1.10.x.
 
 The Maven artifact and executable are `dacp-operator-repository` (no Scala suffix); source package is `dacp.repository`.

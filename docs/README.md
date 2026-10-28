@@ -70,3 +70,9 @@ Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名�
 [流传递与逐步物化实测](materialization-benchmark.md)：50 万条气象记录、三轮耗时和实际落盘量。
 
 本地与跨节点流式作业的[效率对比实测](local-vs-union-benchmark.md)。
+
+项目交流材料：[英文会议海报与 A4 PDF](../assets/posters/README.md)。
+
+[在线 Job 设计器](../dacp-job-designer/README.md)：从浏览器设计单机与跨节点作业，导出 YAML 供 Shell / SDK 提交。
+
+- [算子参数类型及设计器表单](operator-parameters.md)

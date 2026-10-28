@@ -69,3 +69,9 @@ Compile / resourceGenerators += Def.task {
 
 lazy val collaborationClient=RootProject(file("../dacp-collaboration-client-scala"))
 dependsOn(collaborationClient)
+
+lazy val operatorContract = RootProject(file("../dacp-operator-contract"))
+dependsOn(operatorContract)
+
+lazy val operatorInference = RootProject(file("../dacp-operator-inference"))
+dependsOn(operatorInference)

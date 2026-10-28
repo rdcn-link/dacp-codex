@@ -20,7 +20,7 @@ class PublishingSpec extends AnyFunSuite {
     HttpClient.newHttpClient().send(b.method(method,HttpRequest.BodyPublishers.ofByteArray(body)).build(),HttpResponse.BodyHandlers.ofByteArray())
   }
   private def manifest(root:Path):com.fasterxml.jackson.databind.node.ObjectNode={
-    val ports=Repository.mapper.readTree("""{"inputs":{"source":{"representations":["bytes"],"formats":[]}}}""")
+    val ports=Repository.mapper.readTree("""{"category":"Data processing","icon":{"path":"M3 5h18v14H3zM3 10h18M9 5v14","color":"#14866b"},"parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"inputs":{"source":{"representations":["bytes"],"formats":[]}}}""")
     val code=root.resolve("code.jar");Files.writeString(code,"operator")
     val source=root.resolve("sources.zip");Files.writeString(source,"source archive")
     val exporter=new Repository.ImageExporter {
@@ -37,6 +37,10 @@ class PublishingSpec extends AnyFunSuite {
       val bytes=Files.readAllBytes(Repository.blob(prepared,a.path("sha256").asText))
       assert(request(s,path,"PUT",bytes,kind="application/octet-stream").statusCode()==201)
       assert(request(s,path,"PUT",bytes,kind="application/octet-stream").statusCode()==201)
+    }
+    for(field<-Seq("category","icon")){
+      val bad=n.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();bad.remove(field)
+      assert(request(s,"/v1/operators","POST",Repository.mapper.writeValueAsBytes(bad)).statusCode()==400)
     }
     val body=Repository.mapper.writeValueAsBytes(n)
     val result=request(s,"/v1/operators","POST",body)

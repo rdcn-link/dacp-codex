@@ -703,7 +703,14 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
   test("public multi-source operator transfers foreign input to the data-local execution node") {
     val f=new Fixture(allowStranger=true);val client=publicClient(f,"stranger")
     try {
-      f.approved();val entries=catalog(client).getDatasetsList.asScala.toVector
+      f.approved()
+      val nodeResponses=client.doAction(new Action("dacp.nodes",Array.emptyByteArray)).asScala.toVector
+      assert(nodeResponses.size==1)
+      val directory=Json.mapper.readTree(nodeResponses.head.getBody).path("nodes").elements.asScala.toVector
+      assert(directory.size==2)
+      assert(directory.map(_.path("address").asText).toSet==Set(DacpUri.origin(f.ca.uri("")),DacpUri.origin(f.cb.uri(""))))
+      assert(directory.forall(n=>n.path("id").asText.startsWith("nd-") && n.has("capacity") && n.path("state").asText=="approved" && n.has("resources") && n.has("uptime_ms")))
+      val entries=catalog(client).getDatasetsList.asScala.toVector
       val inputs=entries.zipWithIndex.map{case(e,i)=>s"p$i: read$i"}.mkString(", ")
       val readers=entries.zipWithIndex.map{case(e,i)=>s" - {id: read$i, operator: read_item@1.0, inputs: {}, params: {uri: '${e.getUri}/input', view: bytes}}"}.mkString("\n")
       val job=s"name: joined\ntasks:\n$readers\n - id: join\n   operator: identity@1.3\n   inputs: {$inputs}\noutputs: {result: join}\n"

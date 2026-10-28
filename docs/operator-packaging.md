@@ -1,6 +1,7 @@
 # 算子打包与共享运行环境
 
-输出结构统一由必选推导方法提供，清单只声明输入契约；详见[结构推导](structure-inference.md)。
+算子必须在 `inputs` 之外声明静态 `parameters` 契约，详见[参数类型与表单](operator-parameters.md)。输出结构仍只由推导方法给出。
+输出结构统一由必选推导方法提供，清单声明输入与参数契约；详见[结构推导](structure-inference.md)。
 
 算子由不可变的 `name@version` 清单、共享运行环境镜像和可选的小型代码文件组成。多个名称和版本可以引用相同运行环境及代码包。已支持完整容器、精简 Java/Scala JAR、Python 源文件和 wheel。算子始终在独立 Docker 容器内运行，公共仓库文件不加载到服务器 JVM。
 
@@ -14,7 +15,7 @@ JVM 环境提供 `/opt/java/bin/java` 和 `/opt/lib/*` 中的依赖；Python 环
 
 ## 定义和发布
 
-定义位于 `<operators>/<name>/<version>/operator.yaml`。必需字段为 `name`、`version`、`image`、`inputs`、`outputs`；可选字段包括 `description`、`executor`（默认 `container`）、`entrypoint`、`artifact` 及插件定义的 `executor_config`。artifact 相对于定义文件。拒绝未知字段和重复 YAML 键。
+定义位于 `<operators>/<name>/<version>/operator.yaml`。必需字段为 `name`、`version`、`image`、`category`、`icon`、`inputs`、`parameters`；可选字段包括 `description`、`executor`（默认 `container`）、`entrypoint`、`artifact` 及插件定义的 `executor_config`。artifact 相对于定义文件。拒绝未知字段和重复 YAML 键。
 
 ```yaml
 name: summary
@@ -25,6 +26,15 @@ entrypoint: example.Summary
 artifact: summary.jar
 inputs:
   source: {representations: [records], formats: []}
+category: Data transformation
+icon:
+  path: "M3 5h18v14H3zM3 10h18M9 5v14"
+  color: "#14866b"
+parameters:
+  type: object
+  properties: {}
+  required: []
+  additionalProperties: false
 ```
 
 `jvm` 需要 JAR 和 main 类。`python` 需要 `.py` 或 `.whl`，wheel 用 `entrypoint` 选择模块，源码直接执行脚本。`command` 适配原生 stdin/stdout 程序，见[原生命令](native-commands.md)。`container` 使用镜像自带入口，不接受入口覆盖或代码文件。每个执行器接收 `operator /input /input/params.json` 和 `DACP_OPERATOR=name@version`，遵守 [Arrow IPC 契约](reference.md#任务执行与算子)。
@@ -117,3 +127,5 @@ scripts/test-operator-repository.sh
 ## 可选审查材料
 
 API v2 支持可选 `provenance` 元数据，以及 SHA-256 寻址的源码、许可证和 SBOM 下载。这些文件与执行分离，执行节点不自动获取。YAML 字段、CLI 参数、清单描述和校验限制见[源码与审查信息](operator-provenance.md)。
+
+算子还必须提供 `category` 和 `icon`，规则和发布示例见[分类与图标](operator-presentation.md)。

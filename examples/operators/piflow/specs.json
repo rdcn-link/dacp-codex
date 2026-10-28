@@ -24,7 +24,25 @@
       }
     },
     "mode": "streaming",
-    "test": "select_field"
+    "test": "select_field",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "columnNames": {
+          "type": "string",
+          "description": "columnNames parameter. Select named record columns in order, incrementally by Arrow batch. Params: columnNames (comma-separated string)."
+        }
+      },
+      "required": [
+        "columnNames"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "drop_field": {
     "class": "DropField",
@@ -51,7 +69,25 @@
       }
     },
     "mode": "streaming",
-    "test": "drop_field"
+    "test": "drop_field",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "columnNames": {
+          "type": "string",
+          "description": "columnNames parameter. Remove record columns incrementally. Params: columnNames (comma-separated string); absent names ignored."
+        }
+      },
+      "required": [
+        "columnNames"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "convert_schema": {
     "class": "ConvertSchema",
@@ -78,7 +114,25 @@
       }
     },
     "mode": "streaming",
-    "test": "convert_schema"
+    "test": "convert_schema",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "description": "schema parameter. Rename columns; does not cast data types. Params: schema, e.g. station_id->station,temperature->air_c."
+        }
+      },
+      "required": [
+        "schema"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "distinct": {
     "class": "Distinct",
@@ -105,7 +159,24 @@
       }
     },
     "mode": "streaming_with_bounded_state",
-    "test": "distinct"
+    "test": "distinct",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "columnNames": {
+          "type": "string",
+          "description": "columnNames parameter. Deduplicate records across Arrow batches; retains the first row per key. Params: optional columnNames; empty means all columns. Key-state limit: 128 MiB.",
+          "default": ""
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "add_uuid_stop": {
     "class": "AddUUIDStop",
@@ -132,7 +203,25 @@
       }
     },
     "mode": "streaming",
-    "test": "add_uuid_stop"
+    "test": "add_uuid_stop",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "column": {
+          "type": "string",
+          "description": "column parameter. Prepend a distinct 32-character hexadecimal UUID per row. Params: column (new column name)."
+        }
+      },
+      "required": [
+        "column"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "filter": {
     "class": "Filter",
@@ -160,7 +249,25 @@
     },
     "mode": "streaming",
     "test": "filter",
-    "dialect": "SQLite"
+    "dialect": "SQLite",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "condition": {
+          "type": "string",
+          "description": "SQLite SQL predicate applied to each record batch, e.g. quality = 0."
+        }
+      },
+      "required": [
+        "condition"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 4h18l-7 8v7l-4 2V12z",
+      "color": "#14866b"
+    }
   },
   "fork": {
     "class": "Fork",
@@ -193,7 +300,18 @@
       }
     },
     "mode": "streaming",
-    "test": "fork"
+    "test": "fork",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "column_check": {
     "class": "ColumnCheck",
@@ -224,7 +342,18 @@
       }
     },
     "mode": "bounded_materialization",
-    "test": "column_check"
+    "test": "column_check",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Combine streams",
+    "icon": {
+      "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
+      "color": "#8456c4"
+    }
   },
   "consistency_check": {
     "class": "ConsistencyCheck",
@@ -258,7 +387,30 @@
       }
     },
     "mode": "bounded_materialization",
-    "test": "consistency_check"
+    "test": "consistency_check",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "flagField": {
+          "type": "string",
+          "description": "flagField parameter. Left-join reference keys; prepend flagField=0 for matches, 1 otherwise. Params: flagField, correlationColumn (comma-separated). Duplicate reference keys retain join multiplicity. 128 MiB input limit each."
+        },
+        "correlationColumn": {
+          "type": "string",
+          "description": "correlationColumn parameter. Left-join reference keys; prepend flagField=0 for matches, 1 otherwise. Params: flagField, correlationColumn (comma-separated). Duplicate reference keys retain join multiplicity. 128 MiB input limit each."
+        }
+      },
+      "required": [
+        "flagField",
+        "correlationColumn"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Combine streams",
+    "icon": {
+      "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
+      "color": "#8456c4"
+    }
   },
   "merge": {
     "class": "Merge",
@@ -289,7 +441,18 @@
       }
     },
     "mode": "streaming",
-    "test": "merge"
+    "test": "merge",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Combine streams",
+    "icon": {
+      "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
+      "color": "#b95f20"
+    }
   },
   "subtract": {
     "class": "Subtract",
@@ -320,7 +483,18 @@
       }
     },
     "mode": "bounded_materialization",
-    "test": "subtract"
+    "test": "subtract",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Combine streams",
+    "icon": {
+      "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
+      "color": "#8456c4"
+    }
   },
   "join": {
     "class": "Join",
@@ -354,7 +528,36 @@
       }
     },
     "mode": "bounded_materialization",
-    "test": "join"
+    "test": "join",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "joinMode": {
+          "type": "string",
+          "description": "Join semantics: inner, left, right, or full_outer.",
+          "enum": [
+            "inner",
+            "left",
+            "right",
+            "full_outer"
+          ]
+        },
+        "correlationColumn": {
+          "type": "string",
+          "description": "Comma-separated join key column names."
+        }
+      },
+      "required": [
+        "joinMode",
+        "correlationColumn"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Combine streams",
+    "icon": {
+      "path": "M10 12a5 5 0 1 1 0-.1M14 12a5 5 0 1 1 0-.1",
+      "color": "#8456c4"
+    }
   },
   "add_day_id": {
     "class": "AddDayID",
@@ -385,7 +588,25 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "partitionNum": {
+          "type": "string",
+          "description": "partitionNum parameter. Spark EcoFlow: sort year/month/day/hour; add id and day_id. Params: partitionNum string. Inputs materialized, max 128 MiB / one million rows."
+        }
+      },
+      "required": [
+        "partitionNum"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "route": {
     "class": "Route",
@@ -429,7 +650,25 @@
     },
     "mode": "streaming",
     "test": "route",
-    "dialect": "SQLite"
+    "dialect": "SQLite",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "condition": {
+          "type": "string",
+          "description": "condition parameter. Route by SQLite condition. Outputs: result (all rows), matched, unmatched (including SQL null predicates). Fixed ports replace dynamic PiFlow routing."
+        }
+      },
+      "required": [
+        "condition"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "execute_sql_stop": {
     "class": "ExecuteSQLStop",
@@ -458,7 +697,30 @@
     },
     "mode": "bounded_materialization",
     "test": "execute_sql_stop",
-    "dialect": "SQLite"
+    "dialect": "SQLite",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "viewName": {
+          "type": "string",
+          "description": "Relation name used to expose the input to the query."
+        },
+        "sql": {
+          "type": "string",
+          "description": "Read-only SQLite SELECT query."
+        }
+      },
+      "required": [
+        "sql",
+        "viewName"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M4 5h16v14H4zM8 9l3 3-3 3m5 0h4",
+      "color": "#2874bb"
+    }
   },
   "csv_save": {
     "class": "CsvSave",
@@ -486,7 +748,31 @@
       }
     },
     "mode": "streaming",
-    "test": "csv_save"
+    "test": "csv_save",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "header": {
+          "type": "boolean",
+          "description": "Include a header row in the output.",
+          "default": true
+        },
+        "delimiter": {
+          "type": "string",
+          "description": "One-character CSV field separator.",
+          "default": ",",
+          "minLength": 1,
+          "maxLength": 1
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Format conversion",
+    "icon": {
+      "path": "M8 5 3 12l5 7m8-14 5 7-5 7M14 4l-4 16",
+      "color": "#ac6a19"
+    }
   },
   "csv_parser": {
     "class": "CsvParser",
@@ -514,7 +800,36 @@
       }
     },
     "mode": "streaming",
-    "test": "csv_parser"
+    "test": "csv_parser",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "header": {
+          "type": "boolean",
+          "description": "Treat the first CSV row as column names.",
+          "default": true
+        },
+        "delimiter": {
+          "type": "string",
+          "description": "One-character CSV field separator.",
+          "default": ",",
+          "minLength": 1,
+          "maxLength": 1
+        },
+        "schema": {
+          "type": "string",
+          "description": "Comma-separated column names for headerless CSV.",
+          "default": ""
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Format conversion",
+    "icon": {
+      "path": "M8 5 3 12l5 7m8-14 5 7-5 7M14 4l-4 16",
+      "color": "#ac6a19"
+    }
   },
   "csv_string_parser": {
     "class": "CsvStringParser",
@@ -542,7 +857,31 @@
       }
     },
     "mode": "streaming",
-    "test": "csv_string_parser"
+    "test": "csv_string_parser",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "delimiter": {
+          "type": "string",
+          "description": "delimiter parameter. Parse headerless UTF-8 CSV text bytes to string records. Params: delimiter, schema; absent schema generates _0, _1, etc. Input stream replaces PiFlow string property.",
+          "default": ",",
+          "minLength": 1,
+          "maxLength": 1
+        },
+        "schema": {
+          "type": "string",
+          "description": "schema parameter. Parse headerless UTF-8 CSV text bytes to string records. Params: delimiter, schema; absent schema generates _0, _1, etc. Input stream replaces PiFlow string property.",
+          "default": ""
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Format conversion",
+    "icon": {
+      "path": "M8 5 3 12l5 7m8-14 5 7-5 7M14 4l-4 16",
+      "color": "#ac6a19"
+    }
   },
   "add_day_state": {
     "class": "AddDayState",
@@ -574,7 +913,30 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "longitude": {
+          "type": "string",
+          "description": "longitude parameter. EcoFlow sunrise/sunset day/night classifier using longitude, latitude and day_id (day-of-year); hour uses Beijing time. Params: longitude, latitude as strings. Spark batch, 128 MiB input limit."
+        },
+        "latitude": {
+          "type": "string",
+          "description": "latitude parameter. EcoFlow sunrise/sunset day/night classifier using longitude, latitude and day_id (day-of-year); hour uses Beijing time. Params: longitude, latitude as strings. Spark batch, 128 MiB input limit."
+        }
+      },
+      "required": [
+        "longitude",
+        "latitude"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "table_show": {
     "class": "TableShow",
@@ -603,7 +965,24 @@
     "mode": "bounded_materialization",
     "test": "table_show",
     "dialect": "SQLite",
-    "uses_sql": true
+    "uses_sql": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "showField": {
+          "type": "string",
+          "description": "showField parameter. Return table columns/expressions for client display. Params: showField (SQLite projection, default *). No chart rendering. Scalar columns, bounded 128 MiB.",
+          "default": "*"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "single_field_threshold_clean": {
     "class": "SingleFieldThresholdClean",
@@ -638,7 +1017,45 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "string",
+          "description": "fields parameter. EcoFlow inclusive field thresholds with an additional Spark SQL condition; replace invalid values with flagValue. Params: fields,maxValue,minValue,flagValue,additionalCondition (strings). Spark may coerce affected column types."
+        },
+        "maxValue": {
+          "type": "string",
+          "description": "maxValue parameter. EcoFlow inclusive field thresholds with an additional Spark SQL condition; replace invalid values with flagValue. Params: fields,maxValue,minValue,flagValue,additionalCondition (strings). Spark may coerce affected column types."
+        },
+        "minValue": {
+          "type": "string",
+          "description": "minValue parameter. EcoFlow inclusive field thresholds with an additional Spark SQL condition; replace invalid values with flagValue. Params: fields,maxValue,minValue,flagValue,additionalCondition (strings). Spark may coerce affected column types."
+        },
+        "flagValue": {
+          "type": "string",
+          "description": "flagValue parameter. EcoFlow inclusive field thresholds with an additional Spark SQL condition; replace invalid values with flagValue. Params: fields,maxValue,minValue,flagValue,additionalCondition (strings). Spark may coerce affected column types."
+        },
+        "additionalCondition": {
+          "type": "string",
+          "description": "additionalCondition parameter. EcoFlow inclusive field thresholds with an additional Spark SQL condition; replace invalid values with flagValue. Params: fields,maxValue,minValue,flagValue,additionalCondition (strings). Spark may coerce affected column types."
+        }
+      },
+      "required": [
+        "fields",
+        "maxValue",
+        "minValue",
+        "flagValue",
+        "additionalCondition"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "histogram": {
     "class": "Histogram",
@@ -670,7 +1087,42 @@
     "mode": "bounded_materialization",
     "test": "histogram",
     "dialect": "SQLite",
-    "uses_sql": true
+    "uses_sql": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "abscissa": {
+          "type": "string",
+          "description": "abscissa parameter. Produce grouped histogram data as records, not an image. Params: abscissa, customizedProperties mapping columns to COUNT/SUM/AVG/MAX/MIN. SQLite aggregates, scalar columns, 128 MiB."
+        },
+        "customizedProperties": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "AVG",
+              "SUM",
+              "MIN",
+              "MAX",
+              "COUNT"
+            ]
+          },
+          "description": "Column names mapped to aggregate functions."
+        }
+      },
+      "required": [
+        "abscissa",
+        "customizedProperties"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "line_chart": {
     "class": "LineChart",
@@ -702,7 +1154,42 @@
     "mode": "bounded_materialization",
     "test": "line_chart",
     "dialect": "SQLite",
-    "uses_sql": true
+    "uses_sql": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "abscissa": {
+          "type": "string",
+          "description": "abscissa parameter. Produce grouped line-chart data as records, not an image. Params: abscissa, customizedProperties mapping columns to COUNT/SUM/AVG/MAX/MIN. SQLite aggregates, scalar columns, 128 MiB."
+        },
+        "customizedProperties": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "AVG",
+              "SUM",
+              "MIN",
+              "MAX",
+              "COUNT"
+            ]
+          },
+          "description": "Column names mapped to aggregate functions."
+        }
+      },
+      "required": [
+        "abscissa",
+        "customizedProperties"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "batch_field_threshold_clean": {
     "class": "BatchFieldThresholdClean",
@@ -738,7 +1225,18 @@
       "left": "MasterTablePort",
       "right": "ThresholdTablePort"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Combine streams",
+    "icon": {
+      "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
+      "color": "#8456c4"
+    }
   },
   "pie_chart": {
     "class": "PieChart",
@@ -769,7 +1267,35 @@
     "mode": "bounded_materialization",
     "test": "pie_chart",
     "dialect": "SQLite",
-    "uses_sql": true
+    "uses_sql": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "description": "dimension parameter. Grouped pie-chart data as records, not an image. Params: dimension,indicator,indicatorOption COUNT/SUM/AVG/MAX/MIN. SQLite scalar aggregates, bounded 128 MiB. Output indicator_ACTION column."
+        },
+        "indicator": {
+          "type": "string",
+          "description": "indicator parameter. Grouped pie-chart data as records, not an image. Params: dimension,indicator,indicatorOption COUNT/SUM/AVG/MAX/MIN. SQLite scalar aggregates, bounded 128 MiB. Output indicator_ACTION column."
+        },
+        "indicatorOption": {
+          "type": "string",
+          "description": "indicatorOption parameter. Grouped pie-chart data as records, not an image. Params: dimension,indicator,indicatorOption COUNT/SUM/AVG/MAX/MIN. SQLite scalar aggregates, bounded 128 MiB. Output indicator_ACTION column."
+        }
+      },
+      "required": [
+        "dimension",
+        "indicator",
+        "indicatorOption"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "scatter_plot_chart": {
     "class": "ScatterPlotChart",
@@ -802,7 +1328,36 @@
     "mode": "bounded_materialization",
     "test": "scatter_plot_chart",
     "dialect": "SQLite",
-    "uses_sql": true
+    "uses_sql": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "legend": {
+          "type": "string",
+          "description": "legend parameter. Scatter-plot records, not an image. Params: legend column, customizedProperties mapping dimension column to unique integer order. Select legend and ordered dimensions; sort by legend then first dimension. SQLite scalar columns, bounded128MiB."
+        },
+        "customizedProperties": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Numeric field names mapped to axis indexes."
+        }
+      },
+      "required": [
+        "legend",
+        "customizedProperties"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "custom_view": {
     "class": "CustomView",
@@ -827,7 +1382,18 @@
       }
     },
     "mode": "streaming",
-    "test": "custom_view"
+    "test": "custom_view",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "mdv_g": {
     "class": "MDV_G",
@@ -860,7 +1426,35 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "string",
+          "description": "fields parameter. EcoFlow MDV sliding-window interpolation at the same hour on neighboring days, excluding current day. Requires day_id,hour. Params fields,mdv_num (positive odd string),qualityControlMarkerValue (integer string)."
+        },
+        "mdv_num": {
+          "type": "string",
+          "description": "mdv_num parameter. EcoFlow MDV sliding-window interpolation at the same hour on neighboring days, excluding current day. Requires day_id,hour. Params fields,mdv_num (positive odd string),qualityControlMarkerValue (integer string)."
+        },
+        "qualityControlMarkerValue": {
+          "type": "string",
+          "description": "qualityControlMarkerValue parameter. EcoFlow MDV sliding-window interpolation at the same hour on neighboring days, excluding current day. Requires day_id,hour. Params fields,mdv_num (positive odd string),qualityControlMarkerValue (integer string)."
+        }
+      },
+      "required": [
+        "fields",
+        "mdv_num",
+        "qualityControlMarkerValue"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "mdv_i": {
     "class": "MDV_I",
@@ -893,7 +1487,35 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "string",
+          "description": "fields parameter. EcoFlow fixed-window MDV interpolation grouped by ceiling(day_id/mdv_num),hour. Preserves original zero contribution of flagged values to the group mean. Adds zone; fixes multiple-field replacement. Params fields,mdv_num positive string,qualityControlMarkerValue integer string."
+        },
+        "mdv_num": {
+          "type": "string",
+          "description": "mdv_num parameter. EcoFlow fixed-window MDV interpolation grouped by ceiling(day_id/mdv_num),hour. Preserves original zero contribution of flagged values to the group mean. Adds zone; fixes multiple-field replacement. Params fields,mdv_num positive string,qualityControlMarkerValue integer string."
+        },
+        "qualityControlMarkerValue": {
+          "type": "string",
+          "description": "qualityControlMarkerValue parameter. EcoFlow fixed-window MDV interpolation grouped by ceiling(day_id/mdv_num),hour. Preserves original zero contribution of flagged values to the group mean. Adds zone; fixes multiple-field replacement. Params fields,mdv_num positive string,qualityControlMarkerValue integer string."
+        }
+      },
+      "required": [
+        "fields",
+        "mdv_num",
+        "qualityControlMarkerValue"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "front_and_back_values_are_valid": {
     "class": "FrontAndBackValuesAreValid",
@@ -925,7 +1547,30 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "string",
+          "description": "fields parameter. EcoFlow same-hour interpolation using valid preceding and following days. Requires day_id,hour. Params fields and qualityControlMarkerValue integer string; fixes upstream ignored marker."
+        },
+        "qualityControlMarkerValue": {
+          "type": "string",
+          "description": "qualityControlMarkerValue parameter. EcoFlow same-hour interpolation using valid preceding and following days. Requires day_id,hour. Params fields and qualityControlMarkerValue integer string; fixes upstream ignored marker."
+        }
+      },
+      "required": [
+        "fields",
+        "qualityControlMarkerValue"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "current_and_post_value_interpolation": {
     "class": "CurrentAndPostValueInterpolation",
@@ -957,7 +1602,30 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "string",
+          "description": "fields parameter. Interpolate two consecutive missing same-hour daily observations between valid endpoints. Requires year,month,day,hour. Params fields,qualityControlMarkerValue string. Fixes ignored marker and upstream absolute-difference error to support decreasing series."
+        },
+        "qualityControlMarkerValue": {
+          "type": "string",
+          "description": "qualityControlMarkerValue parameter. Interpolate two consecutive missing same-hour daily observations between valid endpoints. Requires year,month,day,hour. Params fields,qualityControlMarkerValue string. Fixes ignored marker and upstream absolute-difference error to support decreasing series."
+        }
+      },
+      "required": [
+        "fields",
+        "qualityControlMarkerValue"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "wpl_correction": {
     "class": "WplCorrection",
@@ -994,7 +1662,55 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "Fc": {
+          "type": "string",
+          "description": "Fc parameter. EcoFlow WPL flux correction, preserves original conversions and five-decimal string output Fc,Le,Hs. All params are column-name strings. co2_Avg in mg/m3,h2o_Avg in g/m3,rho_a_Avg in kg/m3,Ts_Avg in Celsius. Requires non-null numeric columns."
+        },
+        "Le": {
+          "type": "string",
+          "description": "Le parameter. EcoFlow WPL flux correction, preserves original conversions and five-decimal string output Fc,Le,Hs. All params are column-name strings. co2_Avg in mg/m3,h2o_Avg in g/m3,rho_a_Avg in kg/m3,Ts_Avg in Celsius. Requires non-null numeric columns."
+        },
+        "Hs": {
+          "type": "string",
+          "description": "Hs parameter. EcoFlow WPL flux correction, preserves original conversions and five-decimal string output Fc,Le,Hs. All params are column-name strings. co2_Avg in mg/m3,h2o_Avg in g/m3,rho_a_Avg in kg/m3,Ts_Avg in Celsius. Requires non-null numeric columns."
+        },
+        "co2_Avg": {
+          "type": "string",
+          "description": "co2_Avg parameter. EcoFlow WPL flux correction, preserves original conversions and five-decimal string output Fc,Le,Hs. All params are column-name strings. co2_Avg in mg/m3,h2o_Avg in g/m3,rho_a_Avg in kg/m3,Ts_Avg in Celsius. Requires non-null numeric columns."
+        },
+        "h2o_Avg": {
+          "type": "string",
+          "description": "h2o_Avg parameter. EcoFlow WPL flux correction, preserves original conversions and five-decimal string output Fc,Le,Hs. All params are column-name strings. co2_Avg in mg/m3,h2o_Avg in g/m3,rho_a_Avg in kg/m3,Ts_Avg in Celsius. Requires non-null numeric columns."
+        },
+        "Ts_Avg": {
+          "type": "string",
+          "description": "Ts_Avg parameter. EcoFlow WPL flux correction, preserves original conversions and five-decimal string output Fc,Le,Hs. All params are column-name strings. co2_Avg in mg/m3,h2o_Avg in g/m3,rho_a_Avg in kg/m3,Ts_Avg in Celsius. Requires non-null numeric columns."
+        },
+        "rho_a_Avg": {
+          "type": "string",
+          "description": "rho_a_Avg parameter. EcoFlow WPL flux correction, preserves original conversions and five-decimal string output Fc,Le,Hs. All params are column-name strings. co2_Avg in mg/m3,h2o_Avg in g/m3,rho_a_Avg in kg/m3,Ts_Avg in Celsius. Requires non-null numeric columns."
+        }
+      },
+      "required": [
+        "Fc",
+        "Le",
+        "Hs",
+        "co2_Avg",
+        "h2o_Avg",
+        "Ts_Avg",
+        "rho_a_Avg"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "dr_coordinate_rotation": {
     "class": "DRCoordinateRotation",
@@ -1046,7 +1762,130 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "Fc": {
+          "type": "string",
+          "description": "Fc parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "Le": {
+          "type": "string",
+          "description": "Le parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "Hs": {
+          "type": "string",
+          "description": "Hs parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "u_star": {
+          "type": "string",
+          "description": "u_star parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Uz_Uz": {
+          "type": "string",
+          "description": "cov_Uz_Uz parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Uz_Ux": {
+          "type": "string",
+          "description": "cov_Uz_Ux parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Uz_Uy": {
+          "type": "string",
+          "description": "cov_Uz_Uy parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Uz_co2": {
+          "type": "string",
+          "description": "cov_Uz_co2 parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Uz_h2o": {
+          "type": "string",
+          "description": "cov_Uz_h2o parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Uz_Ts": {
+          "type": "string",
+          "description": "cov_Uz_Ts parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Ux_Ux": {
+          "type": "string",
+          "description": "cov_Ux_Ux parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Ux_Uy": {
+          "type": "string",
+          "description": "cov_Ux_Uy parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Ux_co2": {
+          "type": "string",
+          "description": "cov_Ux_co2 parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Ux_h2o": {
+          "type": "string",
+          "description": "cov_Ux_h2o parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Ux_Ts": {
+          "type": "string",
+          "description": "cov_Ux_Ts parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Uy_Uy": {
+          "type": "string",
+          "description": "cov_Uy_Uy parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Uy_co2": {
+          "type": "string",
+          "description": "cov_Uy_co2 parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Uy_h2o": {
+          "type": "string",
+          "description": "cov_Uy_h2o parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "cov_Uy_Ts": {
+          "type": "string",
+          "description": "cov_Uy_Ts parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "Ux_Avg": {
+          "type": "string",
+          "description": "Ux_Avg parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "Uy_Avg": {
+          "type": "string",
+          "description": "Uy_Avg parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        },
+        "Uz_Avg": {
+          "type": "string",
+          "description": "Uz_Avg parameter. EcoFlow double coordinate rotation. Params map covariance/wind columns and output Fc,Le,Hs,u_star names. Nonzero horizontal wind required; outputs five-decimal strings. Original Breeze matrix algorithm."
+        }
+      },
+      "required": [
+        "Fc",
+        "Le",
+        "Hs",
+        "u_star",
+        "cov_Uz_Uz",
+        "cov_Uz_Ux",
+        "cov_Uz_Uy",
+        "cov_Uz_co2",
+        "cov_Uz_h2o",
+        "cov_Uz_Ts",
+        "cov_Ux_Ux",
+        "cov_Ux_Uy",
+        "cov_Ux_co2",
+        "cov_Ux_h2o",
+        "cov_Ux_Ts",
+        "cov_Uy_Uy",
+        "cov_Uy_co2",
+        "cov_Uy_h2o",
+        "cov_Uy_Ts",
+        "Ux_Avg",
+        "Uy_Avg",
+        "Uz_Avg"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "pf_coordinate_rotation": {
     "class": "PFCoordinateRotation",
@@ -1098,7 +1937,130 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "Fc": {
+          "type": "string",
+          "description": "Fc parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "Le": {
+          "type": "string",
+          "description": "Le parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "Hs": {
+          "type": "string",
+          "description": "Hs parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "u_star": {
+          "type": "string",
+          "description": "u_star parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Uz_Uz": {
+          "type": "string",
+          "description": "cov_Uz_Uz parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Uz_Ux": {
+          "type": "string",
+          "description": "cov_Uz_Ux parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Uz_Uy": {
+          "type": "string",
+          "description": "cov_Uz_Uy parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Uz_co2": {
+          "type": "string",
+          "description": "cov_Uz_co2 parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Uz_h2o": {
+          "type": "string",
+          "description": "cov_Uz_h2o parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Uz_Ts": {
+          "type": "string",
+          "description": "cov_Uz_Ts parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Ux_Ux": {
+          "type": "string",
+          "description": "cov_Ux_Ux parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Ux_Uy": {
+          "type": "string",
+          "description": "cov_Ux_Uy parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Ux_co2": {
+          "type": "string",
+          "description": "cov_Ux_co2 parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Ux_h2o": {
+          "type": "string",
+          "description": "cov_Ux_h2o parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Ux_Ts": {
+          "type": "string",
+          "description": "cov_Ux_Ts parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Uy_Uy": {
+          "type": "string",
+          "description": "cov_Uy_Uy parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Uy_co2": {
+          "type": "string",
+          "description": "cov_Uy_co2 parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Uy_h2o": {
+          "type": "string",
+          "description": "cov_Uy_h2o parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "cov_Uy_Ts": {
+          "type": "string",
+          "description": "cov_Uy_Ts parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "Ux_Avg": {
+          "type": "string",
+          "description": "Ux_Avg parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "Uy_Avg": {
+          "type": "string",
+          "description": "Uy_Avg parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        },
+        "Uz_Avg": {
+          "type": "string",
+          "description": "Uz_Avg parameter. EcoFlow planar-fit coordinate rotation using OLS and Breeze matrices. Params covariance/wind column names and output names. Requires a full-rank wind regression sample. Fixes upstream repeated Fc output into Le,Hs,u_star."
+        }
+      },
+      "required": [
+        "Fc",
+        "Le",
+        "Hs",
+        "u_star",
+        "cov_Uz_Uz",
+        "cov_Uz_Ux",
+        "cov_Uz_Uy",
+        "cov_Uz_co2",
+        "cov_Uz_h2o",
+        "cov_Uz_Ts",
+        "cov_Ux_Ux",
+        "cov_Ux_Uy",
+        "cov_Ux_co2",
+        "cov_Ux_h2o",
+        "cov_Ux_Ts",
+        "cov_Uy_Uy",
+        "cov_Uy_co2",
+        "cov_Uy_h2o",
+        "cov_Uy_Ts",
+        "Ux_Avg",
+        "Uy_Avg",
+        "Uz_Avg"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "wild_spot_culling_mdv_i": {
     "class": "WildSpotCullingMDV_I",
@@ -1133,7 +2095,45 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "string",
+          "description": "fields parameter. EcoFlow outlier removal in fixed windows ceiling(id/mdv_num). Requires id. Params fields (one column),mdv_num positive string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream ignored statistic."
+        },
+        "mdv_num": {
+          "type": "string",
+          "description": "mdv_num parameter. EcoFlow outlier removal in fixed windows ceiling(id/mdv_num). Requires id. Params fields (one column),mdv_num positive string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream ignored statistic."
+        },
+        "multiple": {
+          "type": "string",
+          "description": "multiple parameter. EcoFlow outlier removal in fixed windows ceiling(id/mdv_num). Requires id. Params fields (one column),mdv_num positive string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream ignored statistic."
+        },
+        "statisticalType": {
+          "type": "string",
+          "description": "statisticalType parameter. EcoFlow outlier removal in fixed windows ceiling(id/mdv_num). Requires id. Params fields (one column),mdv_num positive string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream ignored statistic."
+        },
+        "flagValue": {
+          "type": "string",
+          "description": "flagValue parameter. EcoFlow outlier removal in fixed windows ceiling(id/mdv_num). Requires id. Params fields (one column),mdv_num positive string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream ignored statistic."
+        }
+      },
+      "required": [
+        "fields",
+        "mdv_num",
+        "multiple",
+        "statisticalType",
+        "flagValue"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "wild_spot_culling_mdv_g": {
     "class": "WildSpotCullingMDV_G",
@@ -1168,7 +2168,45 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "string",
+          "description": "fields parameter. EcoFlow outlier removal from neighboring id windows, excluding current row. One field per step. Requires id; params fields,mdv_num positive odd string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream SQL syntax and undefined contrast_flag."
+        },
+        "mdv_num": {
+          "type": "string",
+          "description": "mdv_num parameter. EcoFlow outlier removal from neighboring id windows, excluding current row. One field per step. Requires id; params fields,mdv_num positive odd string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream SQL syntax and undefined contrast_flag."
+        },
+        "multiple": {
+          "type": "string",
+          "description": "multiple parameter. EcoFlow outlier removal from neighboring id windows, excluding current row. One field per step. Requires id; params fields,mdv_num positive odd string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream SQL syntax and undefined contrast_flag."
+        },
+        "statisticalType": {
+          "type": "string",
+          "description": "statisticalType parameter. EcoFlow outlier removal from neighboring id windows, excluding current row. One field per step. Requires id; params fields,mdv_num positive odd string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream SQL syntax and undefined contrast_flag."
+        },
+        "flagValue": {
+          "type": "string",
+          "description": "flagValue parameter. EcoFlow outlier removal from neighboring id windows, excluding current row. One field per step. Requires id; params fields,mdv_num positive odd string,multiple nonnegative string,statisticalType stddev/variance,flagValue numeric string. Fixes upstream SQL syntax and undefined contrast_flag."
+        }
+      },
+      "required": [
+        "fields",
+        "mdv_num",
+        "multiple",
+        "statisticalType",
+        "flagValue"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "storage_item_ec": {
     "class": "StorageItemEC",
@@ -1202,7 +2240,40 @@
     "upstream_ports": {
       "source": "Default"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "Fc": {
+          "type": "string",
+          "description": "Fc parameter. EcoFlow EC CO2 storage correction for 30-minute observations sorted by day_id,hour. Params Fc,co2_Avg column names,para_H height metres string,flagValue numeric string. Adds id; retains upstream missing/large-jump condition."
+        },
+        "co2_Avg": {
+          "type": "string",
+          "description": "co2_Avg parameter. EcoFlow EC CO2 storage correction for 30-minute observations sorted by day_id,hour. Params Fc,co2_Avg column names,para_H height metres string,flagValue numeric string. Adds id; retains upstream missing/large-jump condition."
+        },
+        "para_H": {
+          "type": "string",
+          "description": "para_H parameter. EcoFlow EC CO2 storage correction for 30-minute observations sorted by day_id,hour. Params Fc,co2_Avg column names,para_H height metres string,flagValue numeric string. Adds id; retains upstream missing/large-jump condition."
+        },
+        "flagValue": {
+          "type": "string",
+          "description": "flagValue parameter. EcoFlow EC CO2 storage correction for 30-minute observations sorted by day_id,hour. Params Fc,co2_Avg column names,para_H height metres string,flagValue numeric string. Adds id; retains upstream missing/large-jump condition."
+        }
+      },
+      "required": [
+        "Fc",
+        "co2_Avg",
+        "para_H",
+        "flagValue"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "rainfall_data_culling": {
     "class": "RainfallDataCulling",
@@ -1242,7 +2313,35 @@
       "left": "fluxCbsPort",
       "right": "metroCbsPort"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "string",
+          "description": "fields parameter. EcoFlow rainfall quality control: flag selected flux columns at rainy timestamps and following 30 minutes. left=flux,right=meteorology; both require year,month,day,hour. Params fields,rainFallField,flagValue integer string. Upstream drops flux rows whose rainfall is null or unmatched."
+        },
+        "rainFallField": {
+          "type": "string",
+          "description": "rainFallField parameter. EcoFlow rainfall quality control: flag selected flux columns at rainy timestamps and following 30 minutes. left=flux,right=meteorology; both require year,month,day,hour. Params fields,rainFallField,flagValue integer string. Upstream drops flux rows whose rainfall is null or unmatched."
+        },
+        "flagValue": {
+          "type": "string",
+          "description": "flagValue parameter. EcoFlow rainfall quality control: flag selected flux columns at rainy timestamps and following 30 minutes. left=flux,right=meteorology; both require year,month,day,hour. Params fields,rainFallField,flagValue integer string. Upstream drops flux rows whose rainfall is null or unmatched."
+        }
+      },
+      "required": [
+        "fields",
+        "rainFallField",
+        "flagValue"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Combine streams",
+    "icon": {
+      "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
+      "color": "#8456c4"
+    }
   },
   "storage_item_pm_hs": {
     "class": "StorageItemPM_Hs",
@@ -1284,7 +2383,45 @@
       "left": "fluxCbsPort",
       "right": "metroCbsPort"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "Hs": {
+          "type": "string",
+          "description": "Hs parameter. EcoFlow seven-layer sensible heat profile storage correction. left flux,right meteorology; date columns year,month,day,hour. Params Hs,rho_a_Avg column names,equipmentHeightDifference seven metre heights,everyTaFields seven temperature columns,time_interval positive seconds string. Fixes ignored density column name."
+        },
+        "rho_a_Avg": {
+          "type": "string",
+          "description": "rho_a_Avg parameter. EcoFlow seven-layer sensible heat profile storage correction. left flux,right meteorology; date columns year,month,day,hour. Params Hs,rho_a_Avg column names,equipmentHeightDifference seven metre heights,everyTaFields seven temperature columns,time_interval positive seconds string. Fixes ignored density column name."
+        },
+        "equipmentHeightDifference": {
+          "type": "string",
+          "description": "equipmentHeightDifference parameter. EcoFlow seven-layer sensible heat profile storage correction. left flux,right meteorology; date columns year,month,day,hour. Params Hs,rho_a_Avg column names,equipmentHeightDifference seven metre heights,everyTaFields seven temperature columns,time_interval positive seconds string. Fixes ignored density column name."
+        },
+        "everyTaFields": {
+          "type": "string",
+          "description": "everyTaFields parameter. EcoFlow seven-layer sensible heat profile storage correction. left flux,right meteorology; date columns year,month,day,hour. Params Hs,rho_a_Avg column names,equipmentHeightDifference seven metre heights,everyTaFields seven temperature columns,time_interval positive seconds string. Fixes ignored density column name."
+        },
+        "time_interval": {
+          "type": "string",
+          "description": "time_interval parameter. EcoFlow seven-layer sensible heat profile storage correction. left flux,right meteorology; date columns year,month,day,hour. Params Hs,rho_a_Avg column names,equipmentHeightDifference seven metre heights,everyTaFields seven temperature columns,time_interval positive seconds string. Fixes ignored density column name."
+        }
+      },
+      "required": [
+        "Hs",
+        "rho_a_Avg",
+        "equipmentHeightDifference",
+        "everyTaFields",
+        "time_interval"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Combine streams",
+    "icon": {
+      "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
+      "color": "#8456c4"
+    }
   },
   "storage_item_pm_le": {
     "class": "StorageItemPM_LE",
@@ -1326,7 +2463,45 @@
       "left": "fluxCbsPort",
       "right": "metroCbsPort"
     },
-    "executor": "jvm"
+    "executor": "jvm",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "equipmentHeightDifference": {
+          "type": "string",
+          "description": "equipmentHeightDifference parameter. EcoFlow seven-layer latent heat profile storage correction. left flux,right meteorology; year,month,day,hour required. Params LE column,equipmentHeightDifference seven metre heights,everyTaFields seven Celsius columns,everyPvaporFields seven vapor-pressure columns,time_interval seconds string. Original vapor conversion216.5*p/(273.15+T)."
+        },
+        "everyTaFields": {
+          "type": "string",
+          "description": "everyTaFields parameter. EcoFlow seven-layer latent heat profile storage correction. left flux,right meteorology; year,month,day,hour required. Params LE column,equipmentHeightDifference seven metre heights,everyTaFields seven Celsius columns,everyPvaporFields seven vapor-pressure columns,time_interval seconds string. Original vapor conversion216.5*p/(273.15+T)."
+        },
+        "time_interval": {
+          "type": "string",
+          "description": "time_interval parameter. EcoFlow seven-layer latent heat profile storage correction. left flux,right meteorology; year,month,day,hour required. Params LE column,equipmentHeightDifference seven metre heights,everyTaFields seven Celsius columns,everyPvaporFields seven vapor-pressure columns,time_interval seconds string. Original vapor conversion216.5*p/(273.15+T)."
+        },
+        "LE": {
+          "type": "string",
+          "description": "LE parameter. EcoFlow seven-layer latent heat profile storage correction. left flux,right meteorology; year,month,day,hour required. Params LE column,equipmentHeightDifference seven metre heights,everyTaFields seven Celsius columns,everyPvaporFields seven vapor-pressure columns,time_interval seconds string. Original vapor conversion216.5*p/(273.15+T)."
+        },
+        "everyPvaporFields": {
+          "type": "string",
+          "description": "everyPvaporFields parameter. EcoFlow seven-layer latent heat profile storage correction. left flux,right meteorology; year,month,day,hour required. Params LE column,equipmentHeightDifference seven metre heights,everyTaFields seven Celsius columns,everyPvaporFields seven vapor-pressure columns,time_interval seconds string. Original vapor conversion216.5*p/(273.15+T)."
+        }
+      },
+      "required": [
+        "equipmentHeightDifference",
+        "everyTaFields",
+        "time_interval",
+        "LE",
+        "everyPvaporFields"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Combine streams",
+    "icon": {
+      "path": "M3 5h5l5 7h8M3 19h5l5-7m4-4 4 4-4 4",
+      "color": "#8456c4"
+    }
   },
   "reichstein_check": {
     "class": "ReichsteinCheck",
@@ -1357,7 +2532,47 @@
       }
     },
     "mode": "bounded_materialization",
-    "test": "reichstein_check"
+    "test": "reichstein_check",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "soilTemperatureField": {
+          "type": "string",
+          "description": "soilTemperatureField parameter. EcoFlow Reichstein u-star screening implemented without Spark: six equal-count temperature groups, twenty wind bins, Pearson<0.4, median valid threshold; flag nighttime low-wind FC. Params soilTemperatureField,frictionWindSpeedField,FC strings,flagValue int32,percentFlux numeric(0,1]. Excludes null/nonfinite/flagged samples from estimation; requires120 valid observations. Fixes upper-bin bound and deterministic threshold order. Bounded128MiB."
+        },
+        "frictionWindSpeedField": {
+          "type": "string",
+          "description": "frictionWindSpeedField parameter. EcoFlow Reichstein u-star screening implemented without Spark: six equal-count temperature groups, twenty wind bins, Pearson<0.4, median valid threshold; flag nighttime low-wind FC. Params soilTemperatureField,frictionWindSpeedField,FC strings,flagValue int32,percentFlux numeric(0,1]. Excludes null/nonfinite/flagged samples from estimation; requires120 valid observations. Fixes upper-bin bound and deterministic threshold order. Bounded128MiB."
+        },
+        "FC": {
+          "type": "string",
+          "description": "FC parameter. EcoFlow Reichstein u-star screening implemented without Spark: six equal-count temperature groups, twenty wind bins, Pearson<0.4, median valid threshold; flag nighttime low-wind FC. Params soilTemperatureField,frictionWindSpeedField,FC strings,flagValue int32,percentFlux numeric(0,1]. Excludes null/nonfinite/flagged samples from estimation; requires120 valid observations. Fixes upper-bin bound and deterministic threshold order. Bounded128MiB."
+        },
+        "flagValue": {
+          "type": "integer",
+          "description": "flagValue parameter. EcoFlow Reichstein u-star screening implemented without Spark: six equal-count temperature groups, twenty wind bins, Pearson<0.4, median valid threshold; flag nighttime low-wind FC. Params soilTemperatureField,frictionWindSpeedField,FC strings,flagValue int32,percentFlux numeric(0,1]. Excludes null/nonfinite/flagged samples from estimation; requires120 valid observations. Fixes upper-bin bound and deterministic threshold order. Bounded128MiB."
+        },
+        "percentFlux": {
+          "type": "number",
+          "description": "percentFlux parameter. EcoFlow Reichstein u-star screening implemented without Spark: six equal-count temperature groups, twenty wind bins, Pearson<0.4, median valid threshold; flag nighttime low-wind FC. Params soilTemperatureField,frictionWindSpeedField,FC strings,flagValue int32,percentFlux numeric(0,1]. Excludes null/nonfinite/flagged samples from estimation; requires120 valid observations. Fixes upper-bin bound and deterministic threshold order. Bounded128MiB.",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "soilTemperatureField",
+        "frictionWindSpeedField",
+        "FC",
+        "flagValue",
+        "percentFlux"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "mock_data": {
     "class": "MockData",
@@ -1385,7 +2600,30 @@
       }
     },
     "mode": "streaming",
-    "test": "mock_data"
+    "test": "mock_data",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "description": "schema parameter. Random Arrow records. source is a trigger stream consumed and discarded (matching upstream unused default input); output independent of input. Params schema e.g. name:String,age:Int,optional:Double:true; count string0..1000000. Types String/Int/Long/Float/Double/Boolean. Batches1024."
+        },
+        "count": {
+          "type": "string",
+          "description": "count parameter. Random Arrow records. source is a trigger stream consumed and discarded (matching upstream unused default input); output independent of input. Params schema e.g. name:String,age:Int,optional:Double:true; count string0..1000000. Types String/Int/Long/Float/Double/Boolean. Batches1024."
+        }
+      },
+      "required": [
+        "schema",
+        "count"
+      ],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "excel_write": {
     "class": "ExcelWrite",
@@ -1414,7 +2652,29 @@
     },
     "mode": "bounded_materialization",
     "test": "excel_write",
-    "uses_excel": true
+    "uses_excel": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "header": {
+          "type": "boolean",
+          "description": "header parameter. Records to XLSX byte stream; replaces filePath/saveMode with a new workbook output. Params optional header boolean(default true),dataAddress start cell e.g. Sheet1!A1 (no bounded write ranges). Dates become ISO text, formula-looking strings remain text. Bounded128MiB/one million rows; temporary XLSX serialization, not constant-memory streaming. Vendored openpyxl3.1.5/et_xmlfile2.0.0.",
+          "default": true
+        },
+        "dataAddress": {
+          "type": "string",
+          "description": "dataAddress parameter. Records to XLSX byte stream; replaces filePath/saveMode with a new workbook output. Params optional header boolean(default true),dataAddress start cell e.g. Sheet1!A1 (no bounded write ranges). Dates become ISO text, formula-looking strings remain text. Bounded128MiB/one million rows; temporary XLSX serialization, not constant-memory streaming. Vendored openpyxl3.1.5/et_xmlfile2.0.0.",
+          "default": "Sheet1!A1"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   },
   "excel_read": {
     "class": "ExcelRead",
@@ -1445,6 +2705,28 @@
     },
     "mode": "bounded_materialization",
     "test": "excel_read",
-    "uses_excel": true
+    "uses_excel": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "header": {
+          "type": "boolean",
+          "description": "header parameter. XLSX byte stream to string records (no inference), dates as ISO strings, blanks null, cached formula values only. Params optional header boolean(default true),dataAddress [Sheet!]A1[:F35]. Replaces filePath with source bytes. Limits compressed/expanded128MiB and one million selected cells; materializes workbook bytes, preserves worksheet selection. No legacy XLS.",
+          "default": true
+        },
+        "dataAddress": {
+          "type": "string",
+          "description": "dataAddress parameter. XLSX byte stream to string records (no inference), dates as ISO strings, blanks null, cached formula values only. Params optional header boolean(default true),dataAddress [Sheet!]A1[:F35]. Replaces filePath with source bytes. Limits compressed/expanded128MiB and one million selected cells; materializes workbook bytes, preserves worksheet selection. No legacy XLS.",
+          "default": "A1"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "category": "Data transformation",
+    "icon": {
+      "path": "M3 5h18v14H3zM3 10h18M3 14h18M9 5v14",
+      "color": "#14866b"
+    }
   }
 }

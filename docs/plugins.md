@@ -81,3 +81,11 @@ Dataset 提供者和格式处理器可通过 `Scan` 优化过滤、投影和限�
 S3 兼容读取是复用 DatasetAccess 的核心传输层，不是新的存储插件。Dataset 插件无需独立注册 S3 实现；原生 bytes 直接传递，仅声明 records 的 Item 则通过通用适配层以 UTF-8 JSONL 提供 bytes（不落盘），同样适用于 Flight 和任务输入。见 [S3 服务](s3-service.md)。
 
 显式结构推导通过 `OperatorExecutor.inferenceWorkerCommand` / `sourceInferenceWorkerCommand` 启动隔离 worker，支持按需启动和空闲回收；核心管理生命周期、主体隔离、并发容量、超时和有界元数据通道，执行器负责语言启动与 SDK 适配。外部插件的注册和管道协议见[结构推导](structure-inference.md#执行器插件的-worker-协议)。
+
+## 设计器聊天编排插件
+
+`dacp-job-designer` 独立提供 `dacp.designer.ChatPlanner` 扩展契约，通过 `META-INF/services/dacp.designer.ChatPlanner` 发现实现。内置命令助手、HTTP 模型适配器和兼容聊天补全服务均使用这一契约；第三方 JAR 无需修改注册表或重建设计器。配置、类路径和 JSON 草案契约见[设计器手册](../dacp-job-designer/README.md#聊天编排)。插件只产生候选草案，设计器统一校验连接、算子来源及逻辑节点，不能通过该接口执行作业。
+
+第三方算子定义必须包含语言无关的 `parameters` 契约，由 `dacp-operator-contract` 验证。仓库和设计器读取这些定义时不加载算子代码。注册、发布示例和校验规则见[参数契约](operator-parameters.md)。
+
+算子还必须提供 `category` 和 `icon`，规则和发布示例见[分类与图标](operator-presentation.md)。

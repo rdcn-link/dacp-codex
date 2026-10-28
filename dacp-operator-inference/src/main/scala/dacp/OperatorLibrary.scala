@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.JsonNode
 import org.yaml.snakeyaml.Yaml
 import scala.jdk.CollectionConverters._
 
-case class SourceRuntime(image: String, executor: String)
 case class ResolvedOperator(image: String, artifact: Option[Path], artifactPath: Option[String], command: OperatorCommand, inputs: Map[String,PortContract], outputs: Map[String,PortContract], executor:String="", program:Option[OperatorProgram]=None)
 
 /** Immutable operator metadata plus globally shared, content-addressed runtime/code artifacts. */
@@ -42,7 +41,7 @@ object OperatorLibrary {
     val lock = c.lock()
     try f finally { lock.release(); c.close() }
   }
-  private def plan(config: Config, reference: String, image: String, executor: String, entrypoint: String,
+  private def plan(config: OperatorEnvironment, reference: String, image: String, executor: String, entrypoint: String,
                    artifact: Option[Path], filename: Option[String], ports: JsonNode, configuration: JsonNode): ResolvedOperator = {
     val target = filename.map { name =>
       require(name.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*"), "invalid artifact filename")
@@ -50,6 +49,8 @@ object OperatorLibrary {
     }
     require(configuration.isObject, "executor_config must be a mapping")
     val settings = Data.mapper.convertValue(configuration,classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap
+    dacp.operator.OperatorPresentation.validate(ports)
+    dacp.operator.ParameterSchema.validate(ports.get("parameters"))
     require(!ports.has("outputs"),"output declarations belong in inferOutputs, not the manifest")
     val inputs = OperatorPorts.read(ports.path("inputs")); val outputs = Map.empty[String,PortContract]
     val program=OperatorProgram(reference,entrypoint,artifact,settings,
@@ -57,7 +58,7 @@ object OperatorLibrary {
     val command=config.plugins.byId(classOf[OperatorExecutor],executor).command(program,target)
     ResolvedOperator(image,artifact,target,command,inputs,outputs,executor,Some(program))
   }
-  def resolve(config: Config, reference: String, docker: DockerClient): ResolvedOperator = synchronized {
+  def resolve(config: OperatorEnvironment, reference: String, docker: DockerClient): ResolvedOperator = synchronized {
     val p = reference.split("@",-1)
     require(p.length == 2 && p.forall(_.matches("[A-Za-z0-9_-][A-Za-z0-9_.-]*")),"operator must be name@version")
     val local = config.localOperatorLibrary.resolve(p(0)).resolve(p(1)).resolve("operator.yaml")
@@ -65,7 +66,9 @@ object OperatorLibrary {
       val options = new org.yaml.snakeyaml.LoaderOptions(); options.setAllowDuplicateKeys(false)
       val in = Files.newInputStream(local)
       val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala.toMap finally in.close()
-      require(m.keySet.subsetOf(Set("name", "version", "image", "description", "executor", "entrypoint", "artifact", "inputs", "executor_config", "provenance")), "unknown operator setting")
+      require(m.keySet.subsetOf(Set("name", "version", "image", "description", "category", "icon", "executor", "entrypoint", "artifact", "inputs", "parameters", "executor_config", "provenance")), "unknown operator setting")
+      dacp.operator.OperatorPresentation.validate(Data.mapper.valueToTree[JsonNode](m.asJava))
+      dacp.operator.ParameterSchema.validate(Data.mapper.valueToTree[JsonNode](m.getOrElse("parameters",null)))
       require(m("name").toString == p(0) && m("version").toString == p(1), "operator identity mismatch")
       val artifact = m.get("artifact").map(v => local.getParent.resolve(v.toString).toAbsolutePath.normalize)
       artifact.foreach(f => require(Files.isRegularFile(f) && Files.size(f) > 0 && Files.size(f) <= config.operatorMaxBytes, "invalid operator artifact size"))
@@ -82,6 +85,8 @@ object OperatorLibrary {
         def metadata(file: Path): JsonNode = {
           val m = Data.mapper.readTree(file.toFile)
           require(m.path("api_version").asInt == 2 && m.path("name").asText == p(0) && m.path("version").asText == p(1),"operator identity mismatch or unsupported manifest")
+          dacp.operator.OperatorPresentation.validate(m)
+          dacp.operator.ParameterSchema.validate(m.get("parameters"))
           require(m.path("runtime").path("image").asText.matches("sha256:[a-f0-9]{64}"), "operator runtime must be pinned by ID")
           m
         }

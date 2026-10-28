@@ -22,7 +22,7 @@ object OperatorMain {
   }
   def main(args: Array[String]): Unit = {
     if(args.headOption.contains("infer")) {
-      dacp.operator.OperatorRunner.infer(args)(inferOutputs);return
+      dacp.operator.OperatorRunner.infer(args,preview=(inputs,params,limits)=>{require(sys.env.getOrElse("DACP_OPERATOR","").takeWhile(_!='@')=="identity","format conversion sample unavailable in this runtime");inputs.get("source").flatMap(_.sample).map(s=>Map("result"->s.bounded(limits))).getOrElse(throw new IllegalArgumentException("Upstream sample unavailable"))})(inferOutputs);return
     }
     require(args.length == 3 && args(0) == "operator", "expected operator INPUT PARAMS")
     val allocator = new RootAllocator(Long.MaxValue)

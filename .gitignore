@@ -37,3 +37,7 @@ examples/sql/*.trace.db
 .dacp-access/
 
 **/.dacp-security/
+
+.designer-operator-cache/
+
+node_modules/
