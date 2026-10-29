@@ -405,7 +405,7 @@
   },
   "merge": {
     "class": "Merge",
-    "description": "Stream left records followed by right records, retaining duplicates. Identical ordered schemas required. No params. Fixed ports replace dynamic inports.",
+    "description": "Stream left records followed by right records, retaining duplicates. Merge schemas by field name: preserve left field order, append right-only fields and fill missing values with null. Conflicting types are rejected. No params. Fixed left/right ports.",
     "params": {},
     "inputs": {
       "left": {
@@ -543,7 +543,7 @@
       "additionalProperties": false
     },
     "icon": {
-      "path": "M10 12a5 5 0 1 1 0-.1M14 12a5 5 0 1 1 0-.1",
+      "path": "M14 12a5 5 0 1 1-10 0a5 5 0 1 1 10 0M20 12a5 5 0 1 1-10 0a5 5 0 1 1 10 0",
       "color": "#8456c4"
     }
   },
@@ -754,8 +754,8 @@
       "additionalProperties": false
     },
     "icon": {
-      "path": "M8 5 3 12l5 7m8-14 5 7-5 7M14 4l-4 16",
-      "color": "#ac6a19"
+      "path": "M13 3h5l3 3v15h-8M18 3v4h3M3 4h7v9H3zM3 7h7M6.5 4v9M3 17h11m-3-3 3 3-3 3",
+      "color": "#c17c22"
     }
   },
   "csv_parser": {
@@ -810,8 +810,8 @@
       "additionalProperties": false
     },
     "icon": {
-      "path": "M8 5 3 12l5 7m8-14 5 7-5 7M14 4l-4 16",
-      "color": "#ac6a19"
+      "path": "M3 3h6l3 3v5M9 3v4h3M3 3v15h4M5 10h3M5 13h3M14 12h7v9h-7zM14 15h7M17.5 12v9M6 20h5m-2-2 2 2-2 2",
+      "color": "#2378cb"
     }
   },
   "csv_string_parser": {

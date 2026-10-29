@@ -23,9 +23,10 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
     val placements=scala.collection.mutable.Map.empty[String,String]
     val used=scala.collection.mutable.Map.empty[String,Int].withDefaultValue(0)
     val readSizes=scala.collection.mutable.Map.empty[String,(String,Option[Long])]
-    val tasks=input.tasks.map { t=>
+    val decisions=scala.collection.mutable.ArrayBuffer.empty[PlacementDecision]
+    val tasks=Jobs.resolveReads(input,origin).tasks.map { t=>
       require(t.source.isEmpty,"Union requires versioned operators")
-      val sources=Jobs.readBinding(t).toVector.flatMap { b=>b.uri.map { uri=>
+      val sources=Jobs.readBinding(t).toVector.flatMap { b=>b.uri.filter(uri=>DacpUri.origin(uri)==origin).map { uri=>
         val port="result"
         require(DacpUri.origin(uri)==origin,"input must use the Union public URI")
         val parts=DacpUri.parse(uri).getPath.stripPrefix("/").split("/",2)
@@ -34,7 +35,9 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
         val published=catalog.open(parts(0),check);val access=published.open(check)
         val size=try access.describe("/"+parts(1)).totalSizeBytes finally {access.close();published.close()}
         (port,m.path("identity").asText,new java.net.URI("dacp",null,java.net.URI.create(m.path("data_origin").asText).getHost,java.net.URI.create(m.path("data_origin").asText).getPort,"/"+local+"/"+parts(1),null,null).toASCIIString,size)
-      }}
+      }} ++ Jobs.readBinding(t).toVector.flatMap(_.uri).filter(uri=>DacpUri.origin(uri)!=origin).flatMap { uri=>
+        candidates.find(m=>m.path("data_origin").asText==DacpUri.origin(uri)).map(m=>("result",m.path("identity").asText,uri,None:Option[Long]))
+      }
       sources.headOption.foreach(s=>readSizes(t.id)=s._2->s._4)
       val rawInputs=t.inputs.values.toVector.flatMap(_.task.flatMap(readSizes.get))
       val preference=(sources.map(_._2)++Jobs.dependencies(t).flatMap(placements.get)).distinct
@@ -54,10 +57,14 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
           else preference.iterator.flatMap(id=>pool.find(_.path("identity").asText==id)).take(1).toVector.headOption.getOrElse(pool.sortBy(_.path("identity").asText).head)
       }
       val id=selected.path("identity").asText;used(id)+=1;placements(t.id)=id
+      val original=input.tasks.find(_.id==t.id).get
+      val requested=Jobs.readBinding(original).flatMap(_.uri)
+      val reason=if(t.node.nonEmpty)"explicit_placement"else if(sources.nonEmpty)"data_locality"else if(requested.nonEmpty)"remote_read_capacity"else if(rawInputs.nonEmpty && rawInputs.size==t.inputs.size && rawInputs.forall(_._2.isDefined))"minimize_transfer"else if(preference.contains(id))"upstream_locality"else"available_capacity"
+      decisions+=PlacementDecision(t.id,selected.path("url").asText,reason,requested,sources.headOption.map(_._3).orElse(Jobs.readBinding(t).flatMap(_.uri)))
       val params=new java.util.LinkedHashMap[String,Object](t.params)
       sources.headOption.foreach(s=>params.put("uri",s._3))
       t.copy(node=Some(selected.path("data_origin").asText),params=params)
     }
-    JobPlan(tasks,input.outputs,input.name)
+    JobPlan(tasks,input.outputs,input.name,decisions.toVector)
   }
 }

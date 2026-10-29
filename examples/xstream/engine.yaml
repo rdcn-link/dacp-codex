@@ -1,0 +1,19 @@
+# Paths are relative to the process working directory (repository root in this example).
+datasets:
+  weather:
+    provider: directory
+    source:
+      root: examples/data
+remote_operator_library_urls:
+  - http://localhost:8820
+operator_cache: .xstream-operators
+execution_directory: .xstream-executions
+max_concurrent_tasks: 8
+compute_pushdown_enabled: true
+nodes: []
+# To enable remote reads and automatic processing-chain pushdown, configure nodes:
+# nodes:
+#   - url: dacp://node-a.example.org:18861
+#     ca: /etc/dacp/ca.crt
+#     token_file: /etc/dacp/node-a.token
+#     compute_pushdown: true

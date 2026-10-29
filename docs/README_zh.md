@@ -6,7 +6,7 @@
 
 协议总览：[DACP（Data Access and Collaboration Protocol）](protocol_zh.md)。
 
-动态数据集目录与程序内启动：[DatasetCatalog](dataset-catalogs_zh.md)、[嵌入式服务器](embedded-server_zh.md)。
+动态数据集目录与程序内启动：[DataCatalog](dataset-catalogs_zh.md)、[嵌入式服务器](embedded-server_zh.md)。
 
 当前协作部署的[算子库清单](operator-catalog_zh.md)：6 个已发布算子的端口、参数、输入输出和 Shell / Job 示例。
 
@@ -74,7 +74,7 @@ Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名�
 
 项目交流材料：[英文会议海报与 A4 PDF](../assets/posters/README_zh.md)。
 
-[在线 Job 设计器](../dacp-job-designer/README_zh.md)：从浏览器设计单机与跨节点作业，导出 YAML 供 Shell / SDK 提交。
+[在线 Job 设计器](../xstream-designer/README_zh.md)：从浏览器设计单机与跨节点作业，导出 YAML 供 Shell / SDK 提交。
 
 - [算子参数类型及设计器表单](operator-parameters_zh.md)
 

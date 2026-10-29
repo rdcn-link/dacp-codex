@@ -42,7 +42,7 @@ final class BoundScan(scan: Scan, schema: Schema) {
           "decimal literal out of range")
         n
       case _: ArrowType.FloatingPoint =>
-        if(!Set("integer","float")(l.kind)) invalid
+        if(!Set("integer","float","decimal")(l.kind)) invalid
         val n = l.value.toDouble; require(n.isFinite,"floating literal must be finite"); n
       case _: ArrowType.Utf8 => if(l.kind != "string") invalid else l.value
       case _: ArrowType.Bool =>

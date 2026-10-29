@@ -45,7 +45,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     def config(name:String):Config={
       val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin"))))++(if(withRecords)Seq(PublishedItem("/observations",file=Some(dir.resolve("observations.csv"))))else Seq.empty)).copy(description="""{"summary":"公开数据说明","html":"<script>alert(1)</script>"}""")
       val c=Config("localhost",port(),"localhost",if(dynamicCatalog)Map.empty else Map("data"->definition),root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,accessLogDirectory=Some(dir.resolve(name+"-access")),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve(s"$name-executions")).toString))))
-      if(dynamicCatalog)c.installCatalog(new DatasetCatalog {
+      if(dynamicCatalog)c.installCatalog(new DataCatalog {
         def list():Seq[DatasetInfo]={if(catalogFailure)throw new IllegalStateException("catalog unavailable");if(catalogVisible)Seq(DatasetInfo("data",definition.description))else Seq.empty}
         def open(name:String):PublishedDataset={require(name=="data");c.createDataset(definition)}
       })
@@ -413,6 +413,14 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(details.path("tasks").elements.asScala.find(_.path("id").asText=="ta").get.path("title").asText=="汇总本地数据")
       assert(details.path("tasks").elements.asScala.find(_.path("id").asText=="tb").get.path("inputs").elements.asScala.exists(_.path("task").asText=="ta"))
       assert(details.path("job_yaml").asText.contains("tasks:"))
+      assert(details.path("submitted_job_yaml").asText.contains("tasks:"))
+      assert(details.path("logical_plan").path("tasks").size()==4)
+      assert(details.path("logical_plan").path("tasks").elements.asScala.forall(t=> !t.has("node")))
+      assert(details.path("placement_decisions").size()==4)
+      assert(details.path("placement_decisions").elements.asScala.exists(_.path("requested_source").asText.contains("ds-")))
+      assert(details.path("sub_jobs").size()==2)
+      assert(http(webPort,s"/job?id=$id").body.contains("Logical plan"))
+      eventually(Json.parse(http(webPort,s"/api/jobs/$id").body()).path("sub_jobs").elements.asScala.forall(_.path("definition_yaml").asText.contains("tasks:")))
       val statuses=Json.parse(http(webPort,"/api/overview").body()).path("members").elements.asScala.map(_.path("status")).toVector
       assert(statuses.forall(s=>s.path("started_at_ms").asLong>0 && s.path("uptime_ms").asLong>=0))
       val stream=f.client.stream(f.settings.publicUrl,"results",Json.obj().put("job_id",id))
@@ -515,12 +523,12 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(intercept[UnionFailure](f.x.members.remote.action(f.ca.uri(""),"node_status",Json.obj().put("union_id",f.x.members.unionId))).code==UNAUTHENTICATED)
     }finally f.close()
   }
-  test("planner rejects fan-out, unknown source nodes and inline operators before scheduling") {
+  test("planner rejects fan-out, unsafe source URIs and inline operators before scheduling") {
     val f=new Fixture
     try {
       f.approved()
       assert(intercept[UnionFailure](f.submit(f.yaml.replace("right: read_tb_right","right: ta"))).code==INVALID_ARGUMENT)
-      assert(intercept[UnionFailure](f.submit(f.yaml.replace(f.cb.uri("data","/input"),"dacp://localhost:1/data/input"))).code==INVALID_ARGUMENT)
+      assert(intercept[UnionFailure](f.submit(f.yaml.replace(f.cb.uri("data","/input"),"https://localhost/data/input"))).code==INVALID_ARGUMENT)
       assert(intercept[UnionFailure](f.submit(f.yaml.replace("identity@1.3","{runtime: python@1.0, source: pass}"))).code==INVALID_ARGUMENT)
     }finally f.close()
   }
@@ -673,7 +681,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     |  operator: read_item@1.0
     |  inputs: {}
     |  params:
-    |    uri: ${entry.getUri}/input
+    |    uri: context:/${entry.getName}/input
     |    view: bytes
     |- id: copied
     |  operator: identity@1.3

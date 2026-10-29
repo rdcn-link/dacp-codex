@@ -43,7 +43,7 @@ server.start()
 // Call server.close() on shutdown.
 ```
 
-`MyDatabaseCatalog` is your implementation of `DatasetCatalog`. Direct injection needs no ServiceLoader registration. It replaces file-configured `datasets` or `dataset_catalog`, without creating the replaced provider. With `.config(config)`, inject before initializing that Config's catalog; do not call `Config.load` to initialize its default catalog and then replace it. Use `.configFile(...).catalog(...)` when loading a configuration file.
+`MyDatabaseCatalog` is your implementation of `DataCatalog`. Direct injection needs no ServiceLoader registration. It replaces file-configured `datasets` or `data_catalog`, without creating the replaced provider. With `.config(config)`, inject before initializing that Config's catalog; do not call `Config.load` to initialize its default catalog and then replace it. Use `.configFile(...).catalog(...)` when loading a configuration file.
 
 Each `catalog.open` returns a caller-owned `PublishedDataset` lease. The server closes the access handle and lease, and closes the catalog on shutdown. Catalogs must not close a shared database pool owned by the host. See [dynamic catalogs](dataset-catalogs.md) for the full contract.
 

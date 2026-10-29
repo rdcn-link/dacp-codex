@@ -8,7 +8,7 @@ DACP provides data access and collaborative computation across nodes. Servers pu
 
 For the data model, transport, trust, and collaboration contracts of DACP (Data Access and Collaboration Protocol), see the [protocol overview](docs/protocol.md).
 
-[DatasetCatalog plugins](docs/dataset-catalogs.md) can supply Dataset identities dynamically; Scala/JVM applications can host nodes through the [DacpServer API](docs/embedded-server.md).
+[DataCatalog plugins](docs/dataset-catalogs.md) can supply Dataset identities dynamically; Scala/JVM applications can host nodes through the [DacpServer API](docs/embedded-server.md).
 
 Nodes also expose an [S3-compatible read-only service](docs/s3-service.md) by default, allowing S3 clients to list dataset buckets and download Item byte streams.
 
@@ -30,9 +30,10 @@ Job definitions, node subjobs, execution policies and variable files use YAML. E
 
 | Component | Purpose |
 |---|---|
+| [xstream-engine](xstream-engine/README.md) | Standalone and embeddable streaming Job engine, including the xstream-runner program |
 | `dacp-server` | Publishes data, handles data access requests, and executes local and distributed tasks |
 | [dacp-proxy-server](dacp-proxy-server/README.md) | Expose one private DACP service through a relay preserving end-to-end TLS and authentication |
-| `dacp-job-designer` | Browser visual editing, cross-node composition, schema previews and YAML import / export |
+| [xstream-designer](xstream-designer/README.md) | Browser visual editing, catalog browsing, schema previews and YAML import / export |
 | `dacp-shell` | Interactive browsing, SQL queries, operator execution, and job-file submission; installed with the Python SDK |
 | `dacp-client` / `dacp-client-scala` | Python / Scala applications access data, execute Jobs, and submit Union jobs |
 | [dacp-union-server](dacp-union-server/README.md) | Manages one Union, connects configured nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
@@ -54,6 +55,8 @@ Servers use JDK 17 and Scala 2.13; the Python SDK requires Python 3.10+. Browsin
 
 Ordinary data access and execution use TLS and tokens; Union collaboration uses mutual TLS and node-issued service credentials. S3 uses independent SigV4 authentication. Repository downloads are public, publication requires a token, and internal dashboards are publicly read-only. See [authentication and access control](docs/security.md). Operators use isolated runtime environments; eligible node subjobs share one process. See [in-process operator fusion](docs/operator-fusion.md). Outputs are not registered as Datasets. Servers persist execution metadata, while result contents are delivered through single-consumption streams.
 
-[Online Job Designer](dacp-job-designer/README.md): drag-and-drop composition, Union node selection, live operator repositories, schema previews, variables, chat proposals and YAML import / export.
+[Online Job Designer](xstream-designer/README.md): drag-and-drop composition, Union node selection, live operator repositories, schema previews, variables, chat proposals and YAML import / export.
 
 Source-only operator publication: [submission, isolated builds, review and trust scores](docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
+
+The independent [XStream engine](xstream-engine/README.md) provides the `xstream-runner` local launcher and is embedded by DACP Server. [XStream Designer](xstream-designer/README.md) browses local and configured remote catalogs lazily.

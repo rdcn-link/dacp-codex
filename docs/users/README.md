@@ -339,4 +339,4 @@ Both single-node DACP Server multi-step jobs and Union collaborative jobs accept
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy.md).
 
-[Online Job Designer](../../dacp-job-designer/README.md): design local and cross-node jobs in the browser and export YAML for Shell / SDK submission.
+[Online Job Designer](../../xstream-designer/README.md): design local and cross-node jobs in the browser and export YAML for Shell / SDK submission.

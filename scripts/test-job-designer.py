@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Browser contract test against a configured designer, Union and operator repository.
 Requires playwright + Chromium. Does not submit or execute jobs. Uses public API
-configuration and live logical nodes; --item-uri must be a records Item with a
+configuration and the public dataset catalog; --item-uri must be a records Item with a
 quality column. The repository must contain piflow_filter/csv_save@1.0.
 """
 import argparse
@@ -21,12 +21,10 @@ def main():
     def api(path, value):
         with urlopen(Request(args.url.rstrip('/')+'/api/'+path, json.dumps(value).encode(), {'Content-Type': 'application/json'}), timeout=130) as response:
             return json.load(response)
-    nodes = api('nodes', {})['nodes']
-    assert len(nodes) >= 3, 'Test requires three Union members'
     job = {'name': 'Designer cross-node preview', 'tasks': [
-        {'id': 'read', 'title': 'Read observations', 'operator': 'read_item@1.0', 'inputs': {}, 'params': {'uri': '$INPUT_URI', 'view': 'records'}, 'node': nodes[0]['id']},
-        {'id': 'filter', 'title': 'Filter observations', 'operator': 'piflow_filter@1.0', 'inputs': {'source': 'read'}, 'params': {'condition': '$CONDITION'}, 'node': nodes[1]['id']},
-        {'id': 'export', 'title': 'CSV result', 'operator': 'piflow_csv_save@1.0', 'inputs': {'source': 'filter'}, 'node': nodes[2]['id']}
+        {'id': 'read', 'title': 'Read observations', 'operator': 'read_item@1.0', 'inputs': {}, 'params': {'uri': '$INPUT_URI', 'view': 'records'}},
+        {'id': 'filter', 'title': 'Filter observations', 'operator': 'piflow_filter@1.0', 'inputs': {'source': 'read'}, 'params': {'condition': '$CONDITION'}},
+        {'id': 'export', 'title': 'CSV result', 'operator': 'piflow_csv_save@1.0', 'inputs': {'source': 'filter'}}
     ], 'outputs': {'result': 'export'}}
     exported = api('export', {'job_yaml': json.dumps(job), 'variables_yaml': '{}'})['job_yaml']
     with sync_playwright() as p, tempfile.TemporaryDirectory() as directory:
@@ -78,8 +76,6 @@ def main():
         expect(page.locator('#connection')).to_contain_text('Connected', timeout=25000)
         expect(page.locator('#repository-state')).to_contain_text('published', timeout=20000)
         expect(page.locator('#connections')).to_have_count(0)
-        for node in nodes:
-            expect(page.locator(f'[data-node="{node["id"]}"]')).to_contain_text(node['address'].split('://', 1)[-1].rstrip('/'))
         sources = page.locator('[data-category="Data sources"]')
         expect(sources.locator('summary')).to_contain_text('Data sources')
         sources.locator('summary').click()
@@ -298,42 +294,6 @@ def main():
         page.locator('#redo').click()
         expect(page.locator('.card')).to_have_count(1)
         page.locator('#undo').click()
-        # Ordinary jobs omit node; cross-node placement is controlled by regions.
-        page.locator('#new').click()
-        expect(page.locator('.lane')).to_have_count(0)
-        page.locator('#library-nodes-tab').click()
-        page.locator('[data-node="'+nodes[0]['id']+'"]').click()
-        page.locator('#library-operators-tab').click()
-        expect(page.locator('[data-node-region]')).to_have_count(1)
-        page.locator('[data-operator="read_item@1.0"]').drag_to(page.locator('#canvas'), target_position={'x': 110, 'y': 110})
-        expect(page.locator('.placement')).to_have_text(nodes[0]['address'].split('://',1)[-1].rstrip('/'))
-        assert page.evaluate('job.tasks[0].node') == nodes[0]['id']
-        region = page.locator('[data-node-region]')
-        region_before = region.bounding_box()
-        step_before = page.locator('.card').bounding_box()
-        header = region.locator('.lane-handle').bounding_box()
-        page.mouse.move(header['x']+20,header['y']+10);page.mouse.down()
-        page.mouse.move(header['x']+80,header['y']+40,steps=8);page.mouse.up()
-        expect(region).to_have_class('lane selected')
-        assert abs(region.bounding_box()['x']-region_before['x']-60)<1
-        assert abs(page.locator('.card').bounding_box()['x']-step_before['x']-60)<1
-        assert page.evaluate('job.tasks[0].node') == nodes[0]['id']
-        page.locator('#undo').click()
-        assert abs(region.bounding_box()['x']-region_before['x'])<1
-
-        head = page.locator('.card-head').bounding_box()
-        canvas = page.locator('#canvas').bounding_box()
-        page.mouse.move(head['x']+30, head['y']+15)
-        page.mouse.down()
-        page.mouse.move(canvas['x']+350, canvas['y']+420, steps=8)
-        page.mouse.up()
-        expect(page.locator('.placement')).to_have_count(0)
-        assert page.evaluate('Object.hasOwn(job.tasks[0], "node")') is False
-        page.locator('#undo').click()
-        expect(page.locator('.placement')).to_have_text(nodes[0]['address'].split('://',1)[-1].rstrip('/'))
-        page.reload()
-        expect(page.locator('[data-node-region]')).to_have_count(1)
-        expect(page.locator('.placement')).to_have_text(nodes[0]['address'].split('://',1)[-1].rstrip('/'))
         page.locator('[data-tab="variables"]').click()
         page.locator('#variables .cm-content').fill('INPUT_URI: '+json.dumps(args.item_uri)+'\nCONDITION: "quality = \'0\'"\nLIMIT: 123\n')
         page.locator('#file').set_input_files({'name': 'history.yaml', 'mimeType': 'application/yaml', 'buffer': exported.encode()})
@@ -351,7 +311,7 @@ def main():
         actual = path.read_text()
         assert 'source: read' in actual and '$CONDITION' in actual
         assert 'outlet' not in actual.lower(), 'Outlet is editor layout, not an execution step'
-        assert all('node: '+node['id'] in actual for node in nodes[:3])
+        assert 'node:' not in actual
         page.locator('#export-close').dispatch_event('click')
         page.evaluate('()=>{selected=job.tasks[1].id;inspect();setInspector(true);inspectorTab("outputs")}')
         expect(page.locator('#step-output-preview table').first).to_be_visible(timeout=130000)
@@ -368,7 +328,7 @@ def main():
         assert not errors, errors
         # One unavailable upstream must not prevent startup loading of the other.
         failed_target = browser.new_page()
-        failed_target.route('**/api/nodes', lambda route: route.fulfill(status=503, json={'error': 'Test target unavailable'}))
+        failed_target.route('**/api/datasets', lambda route: route.fulfill(status=503, json={'error': 'Test target unavailable'}))
         failed_target.goto(args.url)
         expect(failed_target.locator('#connection')).to_contain_text('Server unavailable', timeout=25000)
         expect(failed_target.locator('#repository-state')).to_contain_text('published', timeout=20000)
@@ -380,7 +340,7 @@ def main():
         expect(failed_repo.locator('#repository-state')).to_contain_text('Repository unavailable', timeout=20000)
         failed_repo.close()
         browser.close()
-    print('Passed marquee selection, group movement/deletion, node region dragging, folding sidebars, click wiring, singleton Outlet, undo/redo, YAML import/export, live schema preview and chat')
+    print('Passed marquee selection, group movement/deletion, folding sidebars, click wiring, singleton Outlet, undo/redo, YAML import/export, live schema preview and chat')
 
 
 if __name__ == '__main__':

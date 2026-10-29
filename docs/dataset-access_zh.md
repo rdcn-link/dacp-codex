@@ -1,12 +1,12 @@
 # 数据集、Item 与流访问
 
-DACP 的访问链为 `DatasetCatalog → PublishedDataset → DatasetAccess → ItemAccess → stream`。`ItemAccess` 是可选的逐 Item 实现方式；需要自行管理多个 Item 的插件也可直接实现 `DatasetAccess`。
+DACP 的访问链为 `DataCatalog → PublishedDataset → DatasetAccess → ItemAccess → stream`。`ItemAccess` 是可选的逐 Item 实现方式；需要自行管理多个 Item 的插件也可直接实现 `DatasetAccess`。
 
 目录决定有哪些 Dataset，Provider 决定如何访问 Dataset；Item 是公开元数据，不包含本地文件、SQL 连接、MongoDB collection 或 S3 对象凭证。客户端始终使用 Dataset 名称、逻辑 Item 路径和视图。
 
 | 层次 | 职责与生命周期 |
 |---|---|
-| `DatasetCatalog` | 动态列出、打开 Dataset；`open` 返回调用方负责关闭的 Dataset 租约 |
+| `DataCatalog` | 动态列出、打开 Dataset；`open` 返回调用方负责关闭的 Dataset 租约 |
 | `PublishedDataset` | 持有 Dataset 资源，`open(check)` 创建请求级访问对象 |
 | `DatasetAccess` | 递归列举、子项列举、元数据、计数、扫描和读取；请求结束时关闭 |
 | `ItemAccess` | 插件内部对象或游标的内容访问句柄；每次计数、扫描或读取后关闭 |

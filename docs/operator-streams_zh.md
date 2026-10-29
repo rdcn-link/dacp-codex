@@ -1,7 +1,7 @@
 # 基于 Item 的算子输入与纯流式输出
 
 已通过 Flight DoExchange、Python Shell/SDK 和 Scala SDK 实现。当前端口支持 bytes 和 records；其他科学数据表示需要明确扩展契约。每个输出端口最多有一个下游消费者，需要复制时使用独立端口。多个输入端口按名称字典序消费。
-源算子可以声明 `inputs: {}`，任务也显式填写 `inputs: {}`；不需要虚构触发 Item。汇算子的必选推导方法返回空的输出映射。Shell 直接使用 `run read_item@1.0 --params '{"uri":"dacp://localhost:18861/weather/observations","view":"bytes"}'`，省略 `--input`。本地任务默认在所连接节点执行，也可显式指定 `node`。
+源算子可以声明 `inputs: {}`，任务也显式填写 `inputs: {}`；不需要虚构触发 Item。汇算子的必选推导方法返回空的输出映射。Shell 直接使用 `run read_item@1.0 --params '{"uri":"context:/weather/observations","view":"bytes"}'`，省略 `--input`。本地任务默认在所连接节点执行，也可显式指定 `node`。
 
 
 详细格式、流依赖和零输出步骤见[作业说明](jobs_zh.md)。
@@ -36,7 +36,7 @@ join:
 
 每个端口声明接受或产生的表示，以及适用的 schema/格式约束。Item 可以是表、文件、图像、结构化科学对象或多维数组。以 Item 为单位不要求展开结构、物化整个对象或让它完全放入内存。新表示必须先定义公共契约再实现。
 
-输入绑定只允许 `task[:port]`，省略端口表示 `result`。外部 Item 由 `read_item@1.0` 源算子通过 `params.uri`、`params.view` 读取。连接处不携带 `view`。明确拒绝仅指定 Dataset、缺少必需端口、重复绑定、不支持的表示及 schema 不匹配。不得隐式选择所有 Item、合并内容或重复调用算子。Shell Item 编号在提交前解析为当前列表中的明确路径。
+输入绑定只允许 `task[:port]`，省略端口表示 `result`。外部 Item 由 `read_item@1.0` 源算子通过 `params.uri`（`context:/dataset/item` 或 `dacp://host:port/dataset/item`），以及可选 `params.view`、`params.sql` 读取。连接处不携带 `view`。明确拒绝仅指定 Dataset、缺少必需端口、重复绑定、不支持的表示及 schema 不匹配。不得隐式选择所有 Item、合并内容或重复调用算子。Shell Item 编号在提交前解析为当前列表中的明确路径。
 
 Dataset 范围的处理属于作业编排：
 
@@ -80,3 +80,5 @@ Map 必须显式请求，不能从 Dataset 选择推断。实现前需要说明�
 ## SDK 资源所有权
 
 Python `Job.run` 返回支持上下文管理的 `JobStream`。Scala `Job.run` 返回 `AutoCloseable` 的 `OutputEvent` 迭代器，应使用 `Using.resource`。两者在耗尽或失败时释放传输资源；提前退出必须显式关闭以取消执行。Scala 事件字节数组在迭代推进或关闭后仍有效；从数组创建的 records 读取器需要单独关闭。见 [Scala SDK](../dacp-client-scala/README_zh.md) 和 [内联源码示例](operator-source_zh.md)。
+
+Python `OperatorContext` 允许在消费记录前读取多个输入端口的 `.schema`，仅打开 Arrow 流头，不加载全部数据。记录批次仍按输入端口字典序、每个端口一次消费；例如 Merge 可先检查左右结构，再依次处理 left、right。

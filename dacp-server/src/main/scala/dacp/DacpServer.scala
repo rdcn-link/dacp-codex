@@ -10,6 +10,8 @@ final class DacpServer private(config:Config) extends AutoCloseable {
   private var state="built"
   private var allocator:RootAllocator=null
   private var tasks:TaskService=null
+  private var engine:JobEngine=null
+  def jobEngine:JobEngine=synchronized {require(engine!=null,"server is not started");engine}
   private var union:Option[UnionWorker]=None
   private var flight:FlightServer=null
   private var flightThreads:java.util.concurrent.ExecutorService=null
@@ -27,7 +29,8 @@ final class DacpServer private(config:Config) extends AutoCloseable {
       allocator=new RootAllocator(Long.MaxValue)
       config.accessLog
       config.executionHistory
-      tasks=new TaskService(config,allocator,new TaskExecutor(config,allocator))
+      engine=new JobEngine(config,allocator)
+      tasks=new TaskService(config,allocator,engine.executor,Some(engine))
       union=config.union.map(s=>new UnionWorker(config,s,allocator))
       flightThreads=java.util.concurrent.Executors.newFixedThreadPool(128)
       flight=dacp.union.Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),new Producer(config,allocator,Some(tasks),union)),new dacp.union.Tls(config.cert,config.key,config.ca),Some(config.credentials))
@@ -56,7 +59,7 @@ final class DacpServer private(config:Config) extends AutoCloseable {
       var failure:Throwable=null
       val resources=Option(s3).toSeq++Option(dashboard).toSeq++union.toSeq++Option(tasks).toSeq++Option(flight).toSeq++Option(flightThreads).toSeq.map(pool=>new AutoCloseable {
         def close():Unit={pool.shutdownNow();require(pool.awaitTermination(10,java.util.concurrent.TimeUnit.SECONDS),"Flight handlers failed to stop")}
-      })++Seq(config)++Option(allocator).toSeq
+      })++Option(engine).toSeq++Seq(config)++Option(allocator).toSeq
       resources.foreach(r=>try r.close()catch{case NonFatal(e)=>if(failure==null)failure=e else failure.addSuppressed(e)})
       if(failure!=null)throw failure
     }
@@ -67,14 +70,14 @@ object DacpServer {
   final class Builder private[DacpServer]() {
     private var file:Option[Path]=None
     private var supplied:Option[Config]=None
-    private var catalogInstance:Option[DatasetCatalog]=None
+    private var catalogInstance:Option[DataCatalog]=None
     private var pluginInstance:Option[(PluginEnvironment,Boolean)]=None
     def plugins(value:PluginEnvironment,owned:Boolean=false):Builder={require(!built && value!=null,"invalid plugins or reused builder");pluginInstance=Some(value->owned);this}
     private var built=false
     def configFile(path:String):Builder=configFile(Path.of(path))
     def configFile(path:Path):Builder={require(!built,"builder already used");file=Some(path);supplied=None;this}
     def config(value:Config):Builder={require(!built,"builder already used");supplied=Some(value);file=None;this}
-    def catalog(value:DatasetCatalog):Builder={require(!built && value!=null,"invalid catalog or reused builder");catalogInstance=Some(value);this}
+    def catalog(value:DataCatalog):Builder={require(!built && value!=null,"invalid catalog or reused builder");catalogInstance=Some(value);this}
     def build():DacpServer={
       require(!built,"builder already used")
       require(file.isDefined || supplied.isDefined,"configFile or config required")

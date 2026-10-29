@@ -33,6 +33,24 @@ class SDKTest(unittest.TestCase):
                 pass
             self.assertEqual(output.getvalue(), b'')
 
+    def test_input_schemas_can_be_inspected_before_lexical_batch_consumption(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            entries = []
+            for port in ('left', 'right'):
+                table = pa.table({port: [1, 2]})
+                with (directory / (port + '.arrow')).open('wb') as raw:
+                    with pa.ipc.new_stream(raw, table.schema) as writer: writer.write_table(table)
+                entries.append(dict(port=port, file=port+'.arrow', representation='records', format='arrow'))
+            (directory / 'manifest.json').write_text(json.dumps(entries))
+            (directory / 'params.json').write_text('{}')
+            with OperatorContext(['operator', tmp, str(directory / 'params.json')], io.BytesIO()) as ctx:
+                self.assertEqual(ctx.input('right').schema.names, ['right'])
+                self.assertEqual(ctx.input('left').schema.names, ['left'])
+                with self.assertRaisesRegex(ValueError, 'lexical'): list(ctx.input('right').records())
+                self.assertEqual(sum(b.num_rows for b in ctx.input('left').records()), 2)
+                self.assertEqual(sum(b.num_rows for b in ctx.input('right').records()), 2)
+
     def test_templates_and_parameters(self):
         for records in (False, True):
             with tempfile.TemporaryDirectory() as tmp:

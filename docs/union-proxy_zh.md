@@ -64,11 +64,11 @@ outputs:
 
 ## 开发与验证
 
-`DatasetCatalog.directory` 扩展目录完整性契约，默认包装插件的 `list`。`ProxyCatalog` 通过相同的 `DatasetAccess` 契约转发元数据、扫描和流，不识别具体数据库或文件格式。插件仍使用现有注册方式，无须修改核心注册表。记录型 Item 的共享 JSONL bytes 视图同样适用于代理与 S3。
+`DataCatalog.directory` 扩展目录完整性契约，默认包装插件的 `list`。`ProxyCatalog` 通过相同的 `DatasetAccess` 契约转发元数据、扫描和流，不识别具体数据库或文件格式。插件仍使用现有注册方式，无须修改核心注册表。记录型 Item 的共享 JSONL bytes 视图同样适用于代理与 S3。
 
 ```bash
 (cd dacp-union-server && sbt test)
-(cd dacp-server && sbt 'testOnly dacp.DatasetCatalogSpec dacp.DacpServerSpec dacp.S3ServiceSpec')
+(cd dacp-server && sbt 'testOnly dacp.DataCatalogSpec dacp.DacpServerSpec dacp.S3ServiceSpec')
 (cd dacp-client-scala && sbt test)
 PYTHONPATH=dacp-client .venv/bin/python -m pytest dacp-client/tests
 ```

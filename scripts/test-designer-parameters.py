@@ -15,7 +15,7 @@ with sync_playwright() as p:
     browser = p.chromium.launch(**options)
     page = browser.new_page()
     page.set_content('<div id="params"></div>')
-    page.add_script_tag(path=str(Path(__file__).resolve().parents[1] / 'dacp-job-designer/src/main/resources/web/parameters.js'))
+    page.add_script_tag(path=str(Path(__file__).resolve().parents[1] / 'xstream-designer/src/main/resources/web/parameters.js'))
     original = {'text': 'a:\n  YAML stays text', 'count': 123, 'flag': False, 'missing': None,
                 'variable': '$INPUT_URI', 'nested': {'values': [1, True, {'x': 'y'}]}, '__proto__': 'safe'}
     page.evaluate('(v) => {window.editor = ParameterEditor.mount(document.querySelector("#params"), JSON.parse(v))}', json.dumps(original))

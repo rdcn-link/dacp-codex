@@ -2,7 +2,7 @@
 
 [中文](s3-service_zh.md)
 
-DACP Server starts Flight, its Web dashboard, and a separate HTTPS S3-compatible endpoint by default. S3 reuses the live DatasetCatalog and DatasetAccess contracts: each dataset is a bucket, and an Item's logical path without its leading `/` is the object key. For example, `/observations/day.csv` in `climate` becomes `s3://climate/observations/day.csv`. Data is not copied, and no second catalog configuration is needed.
+DACP Server starts Flight, its Web dashboard, and a separate HTTPS S3-compatible endpoint by default. S3 reuses the live DataCatalog and DatasetAccess contracts: each dataset is a bucket, and an Item's logical path without its leading `/` is the object key. For example, `/observations/day.csv` in `climate` becomes `s3://climate/observations/day.csv`. Data is not copied, and no second catalog configuration is needed.
 
 ## Configuration and lifecycle
 
@@ -16,7 +16,7 @@ s3:
   port: 10815
 ```
 
-Merge this snippet with the node's existing datasets or dataset_catalog, TLS, and other settings. Omitting `s3` enables the endpoint on `0.0.0.0`, using the actual bound Flight port plus 2000. Set an explicit S3 port when Flight uses a port above 63535. `port: 0` requests an OS-assigned port. `s3: {enabled: false}` disables the service. `web.enabled` and S3 are independent.
+Merge this snippet with the node's existing datasets or data_catalog, TLS, and other settings. Omitting `s3` enables the endpoint on `0.0.0.0`, using the actual bound Flight port plus 2000. Set an explicit S3 port when Flight uses a port above 63535. `port: 0` requests an OS-assigned port. `s3: {enabled: false}` disables the service. `web.enabled` and S3 are independent.
 
 The service starts with `DacpServer.start()` and stops with `close()`. A bind failure rolls back the entire node startup. Embedded applications can obtain the actual port through `server.s3Port`. Startup logs report the S3 listening address; access it at `https://node-host:S3-port/`.
 

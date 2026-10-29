@@ -207,9 +207,9 @@ Service errors use Flight/gRPC statuses and explicit dacp error names: missing r
 
 Server `mode` defaults to `NORMAL`. Inline source requires `DEBUG` at both coordinator and worker; `source_runtimes` maps runtime references to administrator-selected `image` and `executor` settings.
 
-## DatasetCatalog
+## DataCatalog
 
-`dataset_catalog` selects a catalog provider and passes private plugin settings through `source`; it cannot coexist with nonempty `datasets`. Omission selects the static catalog. See [dynamic catalogs](dataset-catalogs.md) for contracts, JDBC examples, discovery, and authorization. Standard Flight `ListFlights` returns public Dataset URIs and descriptions without additional data grants without Item contents.
+`data_catalog` selects a catalog provider and passes private plugin settings through `source`; it cannot coexist with nonempty `datasets`. Omission selects the static catalog. See [dynamic catalogs](dataset-catalogs.md) for contracts, JDBC examples, discovery, and authorization. Standard Flight `ListFlights` returns public Dataset URIs and descriptions without additional data grants without Item contents.
 
 ## S3-compatible endpoint
 

@@ -11,7 +11,7 @@
 | `dacp-plugin-parquet` | `FormatHandler`：`parquet`，含扫描下推 | Parquet、Hadoop |
 | `dacp-plugin-excel` | `FormatHandler`：`excel` | Apache POI |
 | `dacp-plugin-archives` | `ContainerReader`：`zip`、`gzip`、`tar`、`tar-gzip` | Apache Commons Compress |
-| `dacp-plugin-catalog-static` | `DatasetCatalogProvider`：`static` | 无额外依赖 |
+| `dacp-plugin-catalog-static` | `DataCatalogProvider`：`static` | 无额外依赖 |
 | `dacp-plugin-operator-executors` | `OperatorExecutor`：`container`、`jvm`、`python`、`command` | 无额外依赖 |
 | `dacp-plugin-mounted` | `DatasetProvider`：`mounted`；通用命名空间组合 | 无额外依赖 |
 | `dacp-plugin-execution-file` | `ExecutionStoreProvider`、`MaterializationStoreProvider`：`file`；原子执行元数据、带配额/过期/完整性校验的输出物化 | 无额外依赖 |
@@ -41,7 +41,7 @@ datasets:
     source: {root: /srv/data}
 ```
 
-`plugins/` 是受版本控制的源码目录；`.dacp-plugins/` 是 Git 忽略的本地安装目录。服务器不会递归扫描源码目录。不要重复安装标准包已附带的相同插件 ID。目录、后端、格式、归档和启动器的服务文件分别为 `dacp.DatasetCatalogProvider`、`dacp.DatasetProvider`、`dacp.FormatHandler`、`dacp.ContainerReader`、`dacp.OperatorExecutor`。
+`plugins/` 是受版本控制的源码目录；`.dacp-plugins/` 是 Git 忽略的本地安装目录。服务器不会递归扫描源码目录。不要重复安装标准包已附带的相同插件 ID。目录、后端、格式、归档和启动器的服务文件分别为 `dacp.DataCatalogProvider`、`dacp.DatasetProvider`、`dacp.FormatHandler`、`dacp.ContainerReader`、`dacp.OperatorExecutor`。
 
 ## 架构边界与扩展
 

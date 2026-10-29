@@ -33,7 +33,7 @@ object WorkflowInference {
   }
   def task(config:Config,allocator:BufferAllocator,t:Task,inputs:Map[String,StreamDescriptor],cancel:StreamCancel):InferenceResult={
     Jobs.authorizeSource(config,t)
-    Jobs.readBinding(t) match {
+    Jobs.readBinding(Jobs.resolveReads(JobPlan(Vector(t),Map.empty),config.uri("")).tasks.head) match {
       case Some(binding)=>
         require(inputs.isEmpty,"read_item has no inputs")
         require(config.taskInputPrefixes.isEmpty || config.taskInputPrefixes.exists(DacpUri.within(binding.uri.get,_)),"FORBIDDEN: task input URI prefix denied")
@@ -44,7 +44,7 @@ object WorkflowInference {
           val meta=dacp.protocol.Metadata.Item.parseFrom(info.getAppMetadata)
           require(meta.getKind=="data","input must be a data item")
           val view=ItemViews.select(binding.view,meta.getViewsList.asScala)
-          val schema=if(view=="records" && !meta.getArrowSchema.isEmpty)Some(info.getSchema)else None
+          val schema=if(view=="records" && !meta.getArrowSchema.isEmpty)Some(binding.scan.map(_.bind(info.getSchema).outputSchema).getOrElse(info.getSchema))else None
           InferenceResult(Map("result"->StreamDescriptor(Set(view),Set(meta.getFormat),schema,if(view=="bytes" || schema.nonEmpty)"known"else "unknown")))
         }finally client.close()
       case None=>OperatorInference.withDocker { docker=>
@@ -67,10 +67,9 @@ object WorkflowInference {
   def plan(config:Config,allocator:BufferAllocator,plan:JobPlan,cancel:StreamCancel):JsonNode={
     val local=DacpUri.origin(config.uri(""));val allowed=config.taskPeers.map(DacpUri.node).toSet+local
     val placement=mutable.Map.empty[String,String]
-    propagate(plan){(t,inputs)=>
+    propagate(Jobs.resolveReads(plan,config.uri(""))){(t,inputs)=>
       cancel.active()
-      val target=t.node.map(DacpUri.node).getOrElse(Jobs.readBinding(t).flatMap(_.uri).map(DacpUri.origin)
-        .orElse(t.inputs.toVector.sortBy(_._1).headOption.flatMap(_._2.task).flatMap(placement.get)).getOrElse(local))
+      val target=t.node.map(DacpUri.node).getOrElse(t.inputs.toVector.sortBy(_._1).headOption.flatMap(_._2.task).flatMap(placement.get).getOrElse(local))
       require(allowed(target),"FORBIDDEN: inference target not in task_peers");placement(t.id)=target
       if(target==local)task(config,allocator,t,inputs,cancel)
       else {

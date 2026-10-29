@@ -10,7 +10,7 @@ import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
 /** A request-time namespace. Only approved members are readable; no catalog snapshots are cached. */
-private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,routes:DatasetRoutes,uploads:StreamInputs) extends DatasetCatalog {
+private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,routes:DatasetRoutes,uploads:StreamInputs) extends DataCatalog {
   private val directories=new MemberDatasets(members)
   private val monitor=Executors.newScheduledThreadPool(2)
   private val slots=new Semaphore(32)

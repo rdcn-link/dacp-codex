@@ -1,0 +1,6 @@
+{"station_id":"S001","observed_at":"2026-10-29T08:00:00Z","temperature_c":22.5,"humidity_pct":68.0,"quality":0}
+{"station_id":"S002","observed_at":"2026-10-29T08:00:00Z","temperature_c":31.2,"humidity_pct":54.0,"quality":0}
+{"station_id":"S003","observed_at":"2026-10-29T08:00:00Z","temperature_c":18.7,"humidity_pct":81.0,"quality":1}
+{"station_id":"S001","observed_at":"2026-10-29T09:00:00Z","temperature_c":24.1,"humidity_pct":65.0,"quality":0}
+{"station_id":"S002","observed_at":"2026-10-29T09:00:00Z","temperature_c":32.8,"humidity_pct":51.0,"quality":0}
+{"station_id":"S003","observed_at":"2026-10-29T09:00:00Z","temperature_c":19.4,"humidity_pct":79.0,"quality":0}

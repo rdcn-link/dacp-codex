@@ -14,7 +14,7 @@ object EmbeddedServerExample {
     val config=Config("127.0.0.1",8815,"localhost",Map.empty,
       certificates.resolve("server.crt"),certificates.resolve("server.key"),certificates.resolve("ca.crt"))
     val registry=new ConcurrentHashMap[String,DatasetDefinition]()
-    val catalog=new DatasetCatalog {
+    val catalog=new DataCatalog {
       def list():Seq[DatasetInfo]=registry.keySet.asScala.toVector.sorted.map(DatasetInfo(_))
       def open(name:String):PublishedDataset={
         val definition=Option(registry.get(name)).getOrElse(throw new FileNotFoundException("dataset unavailable"))

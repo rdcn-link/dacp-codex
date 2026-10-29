@@ -2,7 +2,7 @@
 
 [English](s3-service.md)
 
-DACP Server 默认同时启动 Flight、Web 看板和一个独立的 HTTPS S3 兼容端口。S3 服务复用实时 DatasetCatalog 与 DatasetAccess：dataset 对应 bucket，Item 的逻辑路径去掉开头的 `/` 后对应 object key。例如 `climate` 中的 `/observations/day.csv` 对应 `s3://climate/observations/day.csv`。不复制数据，不产生第二份目录配置。
+DACP Server 默认同时启动 Flight、Web 看板和一个独立的 HTTPS S3 兼容端口。S3 服务复用实时 DataCatalog 与 DatasetAccess：dataset 对应 bucket，Item 的逻辑路径去掉开头的 `/` 后对应 object key。例如 `climate` 中的 `/observations/day.csv` 对应 `s3://climate/observations/day.csv`。不复制数据，不产生第二份目录配置。
 
 ## 配置与生命周期
 
@@ -16,7 +16,7 @@ s3:
   port: 10815
 ```
 
-这段配置应与现有 datasets 或 dataset_catalog、TLS 等节点配置合并使用。省略 `s3` 时默认启用，绑定 `0.0.0.0`，端口为实际 Flight 监听端口加 2000；Flight 端口超过 63535 时需明确设置 S3 端口。`port: 0` 由系统分配端口。`s3: {enabled: false}` 关闭服务。`web.enabled` 与 S3 相互独立。
+这段配置应与现有 datasets 或 data_catalog、TLS 等节点配置合并使用。省略 `s3` 时默认启用，绑定 `0.0.0.0`，端口为实际 Flight 监听端口加 2000；Flight 端口超过 63535 时需明确设置 S3 端口。`port: 0` 由系统分配端口。`s3: {enabled: false}` 关闭服务。`web.enabled` 与 S3 相互独立。
 
 服务随 `DacpServer.start()` 启动，随 `close()` 关闭；绑定失败会回滚整个节点启动。嵌入式应用通过 `server.s3Port` 获取实际端口。启动日志输出 S3 监听地址；通过 `http://节点主机:S3端口/` 访问。
 

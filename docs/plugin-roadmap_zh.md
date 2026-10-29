@@ -20,7 +20,7 @@
 | 优先级 | 现有耦合与位置 | 建议与实际收益 |
 |---|---|---|
 | 中 | 核心验证 Token 主体、Union 服务凭据、任务所有权和精确节点间流计划 | 可扩展可发现的机构授权策略。插件必须保留核心认证、凭据撤销和执行计划边界 |
-| 中 | [TaskExecutor](../dacp-server/src/main/scala/dacp/TaskExecutor.scala) 直接创建 Docker 客户端和容器；[OperatorLibrary.resolve](../dacp-operator-inference/src/main/scala/dacp/OperatorLibrary.scala) 也接受 DockerClient | 将制品解析与运行环境分开，再定义完整 `ExecutionBackend` 生命周期。现有 `OperatorExecutor` 继续生成语言/入口启动命令；Docker、未来 Podman/Kubernetes 后端负责运行、取消、资源和清理。拆分不表示允许直接在宿主机执行不受约束的代码 |
+| 中 | [TaskExecutor](../xstream-engine/src/main/scala/dacp/TaskExecutor.scala) 直接创建 Docker 客户端和容器；[OperatorLibrary.resolve](../dacp-operator-inference/src/main/scala/dacp/OperatorLibrary.scala) 也接受 DockerClient | 将制品解析与运行环境分开，再定义完整 `ExecutionBackend` 生命周期。现有 `OperatorExecutor` 继续生成语言/入口启动命令；Docker、未来 Podman/Kubernetes 后端负责运行、取消、资源和清理。拆分不表示允许直接在宿主机执行不受约束的代码 |
 
 当前原生 Dataset Provider 已可直接提供 MongoDB/S3 风格的 Item 和流；格式字节源、通用挂载解决的是**复用格式插件和跨后端组合**，不是接入单一后端的前置条件。`mixed` 目前明确仍是文件/JDBC 的组合。
 

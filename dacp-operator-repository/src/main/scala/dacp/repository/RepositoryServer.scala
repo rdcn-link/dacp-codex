@@ -114,7 +114,7 @@ final class RepositoryServer(root: Path, host: String = "127.0.0.1", port: Int =
         case detailRoute(name, version) =>
           val versions = administration.publicCatalog.elements.asScala.filter(_.path("name").asText == name).toSeq
           versions.find(_.path("version").asText == version) match {
-            case Some(item) => html(exchange, 200, WebPages.detail(item, versions))
+            case Some(item) => html(exchange, 200, WebPages.detail(item, versions, administration.runtimes.elements.asScala.toVector))
             case None => html(exchange, 404, WebPages.notFound)
           }
         case route if blobRoute.pattern.matcher(route).matches() =>

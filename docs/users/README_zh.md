@@ -339,4 +339,4 @@ DACP 与 Union 默认持久化全部执行记录；Union 看板支持重启后�
 
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy_zh.md)。
 
-[在线 Job 设计器](../../dacp-job-designer/README_zh.md)：从浏览器设计单机与跨节点作业，导出 YAML 供 Shell / SDK 提交。
+[在线 Job 设计器](../../xstream-designer/README_zh.md)：从浏览器设计单机与跨节点作业，导出 YAML 供 Shell / SDK 提交。

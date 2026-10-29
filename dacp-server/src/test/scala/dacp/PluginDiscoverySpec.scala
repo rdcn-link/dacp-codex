@@ -15,7 +15,7 @@ class PluginDiscoverySpec extends AnyFunSuite {
     val datasets = services(classOf[DatasetProvider])
     val formats = services(classOf[FormatHandler])
     val archives = services(classOf[ContainerReader])
-    val catalogs = services(classOf[DatasetCatalogProvider])
+    val catalogs = services(classOf[DataCatalogProvider])
     val executors = services(classOf[OperatorExecutor])
     assert(Set("directory","sqldb","mixed").subsetOf(datasets.map(_.id).toSet))
     assert(Set("csv","ndjson","json","bin","parquet","excel").subsetOf(formats.map(_.id).toSet))

@@ -88,7 +88,7 @@ The Scala client uses `Source.datasets(origin, tls)` to query nodes directly. No
 ## Validation
 
 ```bash
-(cd dacp-server && sbt 'testOnly dacp.DatasetCatalogSpec dacp.DacpServerSpec')
+(cd dacp-server && sbt 'testOnly dacp.DataCatalogSpec dacp.DacpServerSpec')
 (cd dacp-union-server && sbt test)
 (cd dacp-client-scala && sbt test)
 PYTHONPATH=dacp-client .venv/bin/python -m pytest dacp-client/tests

@@ -7,9 +7,9 @@ import java.io.FileNotFoundException
 import scala.util.Using
 
 /** Example metadata tables select public Dataset names and file-backed Items at request time. */
-class JdbcCatalogProvider extends DatasetCatalogProvider {
+class JdbcCatalogProvider extends DataCatalogProvider {
   val id="example-jdbc-catalog"
-  def create(settings:Map[String,Object],context:CatalogContext):DatasetCatalog={
+  def create(settings:Map[String,Object],context:CatalogContext):DataCatalog={
     require(settings.keySet.subsetOf(Set("jdbc_url","user_env","password_env")) && settings.get("jdbc_url").exists(_.isInstanceOf[String]),"catalog requires source.jdbc_url")
     def credential(key:String):Option[String]=settings.get(key).map { value=>
       require(value.isInstanceOf[String],"credential environment name must be text")
@@ -22,7 +22,7 @@ class JdbcCatalogProvider extends DatasetCatalogProvider {
       case Some(u)=>DriverManager.getConnection(url,u,password.get)
       case None=>DriverManager.getConnection(url)
     }
-    new DatasetCatalog {
+    new DataCatalog {
       def list():Seq[DatasetInfo]=list(()=>())
       override def list(check:()=>Unit):Seq[DatasetInfo]=Using.Manager { use=>
         check();val db=use(connection());val query=use(db.prepareStatement("SELECT name FROM dacp_datasets ORDER BY name"));query.setQueryTimeout(10)

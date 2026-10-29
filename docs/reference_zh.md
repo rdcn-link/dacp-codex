@@ -207,9 +207,9 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 
 服务端 `mode` 默认为 `NORMAL`。内嵌源码要求协调与执行节点均为 `DEBUG`；`source_runtimes` 将运行时引用映射为管理员选择的 `image` 与 `executor` 配置。
 
-## DatasetCatalog
+## DataCatalog
 
-`dataset_catalog` 选择目录 provider，通过 `source` 传入插件私有参数；不能同时配置非空 `datasets`。未配置时使用静态目录。具体契约、JDBC 示例、发现和授权见[动态目录](dataset-catalogs_zh.md)。标准 Flight `ListFlights` 返回公开 Dataset URI 及描述，不额外要求数据授权，不返回 Item 内容。
+`data_catalog` 选择目录 provider，通过 `source` 传入插件私有参数；不能同时配置非空 `datasets`。未配置时使用静态目录。具体契约、JDBC 示例、发现和授权见[动态目录](dataset-catalogs_zh.md)。标准 Flight `ListFlights` 返回公开 Dataset URI 及描述，不额外要求数据授权，不返回 Item 内容。
 
 ## S3 兼容端口
 

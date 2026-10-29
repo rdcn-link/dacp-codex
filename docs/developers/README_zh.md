@@ -6,7 +6,7 @@
 
 面向实现算子、Dataset provider、格式处理器、执行器、SDK 或服务端的贡献者。连接节点、浏览数据、配置内置 provider 和运行作业请先阅读用户指南。除非另有说明，命令均从项目根目录执行。
 
-目录级扩展和程序内启动见 [DatasetCatalog](../dataset-catalogs_zh.md)与[嵌入式服务器](../embedded-server_zh.md)。
+目录级扩展和程序内启动见 [DataCatalog](../dataset-catalogs_zh.md)与[嵌入式服务器](../embedded-server_zh.md)。
 
 ## 架构与扩展点
 

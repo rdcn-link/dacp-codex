@@ -54,6 +54,6 @@ Registration files live in `src/main/resources/META-INF/services/`. File and str
 
 The server's [PluginSpec](../../dacp-server/src/test/scala/dacp/PluginSpec.scala) compiles this source into its tests and exercises it over Flight, alongside registered archive plugins and lifecycle checks. Run `PluginChecks.listing(access)` in your own tests to check recursive listing, immediate children, paths, and metadata. Add format-specific streaming, bounded-memory, error, cancellation, and resource-release tests.
 
-The dynamic catalog example `example.JdbcCatalogProvider` registers through `META-INF/services/dacp.DatasetCatalogProvider`, queries database registry tables, and constructs Datasets on demand. After building this project, install its JAR and the JDBC driver in the plugin directory. See the [DatasetCatalog guide](../../docs/dataset-catalogs.md) for configuration and table definitions.
+The dynamic catalog example `example.JdbcCatalogProvider` registers through `META-INF/services/dacp.DataCatalogProvider`, queries database registry tables, and constructs Datasets on demand. After building this project, install its JAR and the JDBC driver in the plugin directory. See the [DataCatalog guide](../../docs/dataset-catalogs.md) for configuration and table definitions.
 
 Once published by a node, `/summary` also receives an automatic JSONL `bytes` view. With `message: hello`, its bytes are `{"characters":5}` followed by a newline; the plugin still implements only records. See the [common view rules](../../docs/dataset-access.md#common-jsonl-bytes-view).

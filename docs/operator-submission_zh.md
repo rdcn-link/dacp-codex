@@ -118,3 +118,11 @@ Java/Scala 编译为 JAR，Python 完成语法检查后编译为字节码 ZIP。
 省略 `trust_score` 时使用已完成的扫描得分。登录 JSON 包含 `password`；后续写请求携带会话 Cookie 和 `X-CSRF-Token`。提交 Token 不能调用管理接口。没有匿名发布或自动批准路径，手工放入本地打包目录的文件也不会自动公开。
 
 Python 字节码和 JVM JAR 可能被反编译。`source_public` 控制原始源码材料的公开，不保证可下载代码的算法保密。Python 构建与执行版本必须匹配。
+
+管理员可以在已发布算子的审核详情中修改分类标签。此操作仅调整公开分类，不改变已批准的构建产物或可信度评分。认证接口为 `POST /api/admin/submissions/{id}/categories`，JSON 请求体示例为 `{"categories":["Data processing","Merging"]}`。
+
+Python/Arrow、JVM 和 Python 科学计算环境的准备方式见[常用运行环境示例](../examples/runtimes/README_zh.md)。
+
+算子详情页提供 **Operator package**（算子程序包）及允许公开的源码、许可证和 SBOM 下载。共用的执行与构建环境统一在 **Runtimes** 目录下载，算子详情页提供对应环境的跳转链接。Docker 镜像 ID 标识执行镜像，归档 SHA-256 用于校验下载文件。
+
+管理员可通过 `POST /api/admin/submissions/{id}/icon` 修改已发布算子的图标，请求示例为 `{"icon":{"path":"M3 4h18v16H3z","color":"#2378cb"}}`。此接口同样要求管理员会话及 CSRF 校验。仅修改校验通过的 SVG 路径和颜色，保留已批准的构建产物、运行环境和可信度评估。

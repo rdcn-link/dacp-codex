@@ -12,7 +12,7 @@ tasks:
     operator: read_item@1.0
     inputs: {}
     params:
-      uri: dacp://localhost:18861/weather/observations
+      uri: context:/weather/observations
       view: records
   - id: copy
     title: Filter valid observations
@@ -27,11 +27,11 @@ outputs:
 
 ## Fields and stream connections
 
-`name` is the required readable workflow name, separate from the generated execution ID. It must contain 1–256 characters, cannot be blank, and cannot contain control characters. Each task has a unique `id`, optional descriptive `title`, versioned `operator`, named `inputs`, and optional `params` and placement `node`. Input values and Job outputs use `task` or `task:port`; omitted ports mean `result`. Object bindings and connection-level `view` are not supported. Each output has at most one consumer. Use explicit duplication operators or separate ports for fan-out.
+`name` is the required readable workflow name, separate from the generated execution ID. It must contain 1–256 characters, cannot be blank, and cannot contain control characters. Each task has a unique `id`, optional descriptive `title`, versioned `operator`, named `inputs`, and optional `params`. Input values and Job outputs use `task` or `task:port`; omitted ports mean `result`. Object bindings and connection-level `view` are not supported. Each output has at most one consumer. Use explicit duplication operators or separate ports for fan-out.
 
-`read_item@1.0` is a built-in transport source requiring no operator container. It takes no inputs and requires `params.uri` addressing one Item; optional `params.view` selects `bytes` or `records`; its output is `result`. Zero-input generators also have empty inputs. Processing operators consume upstream outputs. Representation conversion is explicit.
+`read_item@1.0` is a built-in, zero-input transport source with output port `result`, requiring no operator container. Set `uri` to `context:/dataset/item` for the receiving JVM’s DataCatalog, or to a complete `dacp://host:port/dataset/item` URI for an explicitly addressed service. There is no `path` parameter. Optional `view` selects `bytes` or `records`; omission prefers records when available, otherwise bytes. Optional `sql` queries the records view, selects records by default and rejects explicit bytes.
 
-On Union, use public Union dataset URIs. Omit `node` for automatic placement or use a logical node returned by `dacp.nodes`. Physical member addresses are not accepted in user submissions.
+For a Union target, use its public dataset paths. Union resolves the owning members, places steps and dispatches node sub-jobs; authors describe only the logical stream graph.
 
 ## Structure inference and sinks
 
@@ -133,3 +133,33 @@ submit workflow.yaml --policy policy.yaml --vars variables.yaml
 Union subjobs retain the global job’s `name`. Node and Union dashboards share Name, Job ID, Source, Type, Status, Started at and Duration columns. Names lead the list, while details retain the full ID. Subjob definitions and execution policies display as YAML. YAML documents are limited to 1 MiB and reject duplicate keys, unsafe object tags and collection aliases. Quote textual numbers, dates and boolean labels.
 
 When `read_item.view` is omitted, Item metadata selects records when available, otherwise bytes. An explicit choice is preserved and fails if unsupported.
+
+## Item paths, remote services and SQL
+
+```yaml
+name: hot-weather-observations
+tasks:
+- id: read
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: context:/ds-6zmr-crvh/observations
+    sql: |
+      SELECT station_id, temperature
+      FROM source
+      WHERE temperature > 30
+      LIMIT 100
+outputs:
+  result: read
+```
+
+For an explicitly addressed service, use `uri: dacp://remote.example:18861/weather/observations`. A `context:` URI refers to the DataCatalog bound in the receiving JVM; it is resolved before remote dispatch. Paths address the submission target’s public directory: a node resolves local names, while Union resolves its public names and schedules readers on the owning members. Authors need no internal member addresses.
+
+SQL supports `SELECT *` or a column list, fixed `FROM source`, optional `WHERE` and `LIMIT`. Predicates support `= != <> < <= > >=`, `IN`, `IS NULL`, `IS NOT NULL`, `AND`, `OR`, `NOT` and parentheses. Strings use single quotes (double an embedded quote); double quotes delimit column names. Only single-Item read-only queries are supported: no joins, aggregation, functions, ordering, multiple statements or mutations. SQL lowers to the shared `Scan` contract, executed by the dataset plugin rather than interpolated into database SQL. Plugins may push down supported operations and explicitly reject unsupported capabilities. Data remains batch-streamed, and projected schemas apply to inference and bounded samples.
+
+Configure remote credentials on nodes that actually execute reads and separately on the designer. The target service’s token is never forwarded to another service; credentials are not Job parameters. Every member eligible to read an external service should have its required credentials.
+
+```yaml
+remote_item_credentials:
+  "dacp://remote.example:18861": /etc/dacp/remote-reader.token
+```

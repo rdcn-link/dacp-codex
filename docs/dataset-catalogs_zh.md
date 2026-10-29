@@ -2,7 +2,7 @@
 
 [English](dataset-catalogs.md) · [插件体系](plugins_zh.md) · [嵌入式服务器](embedded-server_zh.md)
 
-`DatasetCatalog` 决定服务器当前发布哪些 Dataset；`DatasetProvider` 决定一个 Dataset 如何访问内容。数据集名称来自数据库、业务服务或用户程序时，使用目录插件；单个 Dataset 内的动态 Item 列表仍由 Dataset provider 实现。
+`DataCatalog` 决定服务器当前发布哪些 Dataset；`DatasetProvider` 决定一个 Dataset 如何访问内容。数据集名称来自数据库、业务服务或用户程序时，使用目录插件；单个 Dataset 内的动态 Item 列表仍由 Dataset provider 实现。
 
 ## 命令行部署
 
@@ -10,7 +10,7 @@
 
 ```yaml
 plugin_directory: ./.dacp-plugins
-dataset_catalog:
+data_catalog:
   provider: example-jdbc-catalog
   source:
     jdbc_url: jdbc:postgresql://localhost:5432/metadata
@@ -42,16 +42,16 @@ INSERT INTO dacp_items VALUES ('reports', '/orders', '/srv/data/orders.csv');
 公开类型位于 `dacp-plugin-api`：
 
 ```scala
-trait DatasetCatalog extends AutoCloseable {
+trait DataCatalog extends AutoCloseable {
   def list(): Seq[DatasetInfo]
   def directory(check: () => Unit): DatasetDirectory = DatasetDirectory(list(check))
   def open(name: String): PublishedDataset
   // 另提供带 check: () => Unit 的重载，以便执行取消检查。
 }
 
-trait DatasetCatalogProvider {
+trait DataCatalogProvider {
   def id: String
-  def create(settings: Map[String, Object], context: CatalogContext): DatasetCatalog
+  def create(settings: Map[String, Object], context: CatalogContext): DataCatalog
 }
 ```
 
@@ -60,7 +60,7 @@ trait DatasetCatalogProvider {
 实现类提供公开无参构造函数，并在 JAR 中加入：
 
 ```text
-META-INF/services/dacp.DatasetCatalogProvider
+META-INF/services/dacp.DataCatalogProvider
 ```
 
 文件内容为完整类名，例如：
@@ -100,4 +100,4 @@ with flight.FlightClient(
 
 ## 契约测试
 
-运行 `(cd dacp-server && sbt test)`。`DatasetCatalogSpec` 使用 ServiceLoader 加载独立 JDBC 示例，通过真实 Flight 验证增删目录、数据读取、公开访问、后端故障和租约保留；同时验证无效名称、重复名称、取消、初始化失败及关闭次数。插件作者应覆盖同类场景，并验证自己的缓存、数据库事务与连接池资源管理。
+运行 `(cd dacp-server && sbt test)`。`DataCatalogSpec` 使用 ServiceLoader 加载独立 JDBC 示例，通过真实 Flight 验证增删目录、数据读取、公开访问、后端故障和租约保留；同时验证无效名称、重复名称、取消、初始化失败及关闭次数。插件作者应覆盖同类场景，并验证自己的缓存、数据库事务与连接池资源管理。

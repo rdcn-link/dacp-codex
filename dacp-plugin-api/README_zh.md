@@ -13,7 +13,7 @@
 
 贡献插件以 `Provided` 方式依赖 `io.github.rdcn-link:dacp-plugin-api_2.13:0.1.0-SNAPSHOT` 编译，服务器在运行时提供匹配的 API。本 API 尚未发布，契约变化时应同步更新插件和核心。
 
-- `DatasetCatalog`、`DatasetCatalogProvider`、`CatalogContext`、`DatasetInfo`：动态发现 Dataset 并取得独立访问租约，见[动态目录](../docs/dataset-catalogs_zh.md)。
+- `DataCatalog`、`DataCatalogProvider`、`CatalogContext`、`DatasetInfo`：动态发现 Dataset 并取得独立访问租约，见[动态目录](../docs/dataset-catalogs_zh.md)。
 - `DatasetProvider`、`DatasetDefinition`、`DatasetContext`、`PublishedDataset`、`DatasetAccess`：构建和访问原生命名空间。
 - `ItemDatasetAccess`、`ItemAccess`：按 Item 打开对象或游标，统一关闭内容句柄，见[访问契约](../docs/dataset-access_zh.md)。
 - `FormatHandler`、`FileOptions`、`Records`：解释文件并流式传输 Arrow 批次。

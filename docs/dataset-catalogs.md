@@ -2,7 +2,7 @@
 
 [中文](dataset-catalogs_zh.md) · [Plugin architecture](plugins.md) · [Embedded server](embedded-server.md)
 
-`DatasetCatalog` determines which Datasets a server currently publishes; `DatasetProvider` determines how one Dataset accesses its contents. Use catalog plugins when Dataset identities come from a database, business service, or application. Dynamic Items inside one Dataset remain the responsibility of its Dataset provider.
+`DataCatalog` determines which Datasets a server currently publishes; `DatasetProvider` determines how one Dataset accesses its contents. Use catalog plugins when Dataset identities come from a database, business service, or application. Dynamic Items inside one Dataset remain the responsibility of its Dataset provider.
 
 ## Command-line deployment
 
@@ -10,7 +10,7 @@ The default `static` catalog builds Datasets from `datasets` configuration. Conf
 
 ```yaml
 plugin_directory: ./.dacp-plugins
-dataset_catalog:
+data_catalog:
   provider: example-jdbc-catalog
   source:
     jdbc_url: jdbc:postgresql://localhost:5432/metadata
@@ -42,16 +42,16 @@ Clients access `dacp://host:8815/reports`. `/orders` is public; `file_path` is p
 Public types reside in `dacp-plugin-api`:
 
 ```scala
-trait DatasetCatalog extends AutoCloseable {
+trait DataCatalog extends AutoCloseable {
   def list(): Seq[DatasetInfo]
   def directory(check: () => Unit): DatasetDirectory = DatasetDirectory(list(check))
   def open(name: String): PublishedDataset
   // Overloads accepting check: () => Unit support cancellation checks.
 }
 
-trait DatasetCatalogProvider {
+trait DataCatalogProvider {
   def id: String
-  def create(settings: Map[String, Object], context: CatalogContext): DatasetCatalog
+  def create(settings: Map[String, Object], context: CatalogContext): DataCatalog
 }
 ```
 
@@ -60,7 +60,7 @@ trait DatasetCatalogProvider {
 Provide a public no-argument implementation constructor and include this file in the JAR:
 
 ```text
-META-INF/services/dacp.DatasetCatalogProvider
+META-INF/services/dacp.DataCatalogProvider
 ```
 
 Its contents are fully qualified implementation names, for example:
@@ -100,4 +100,4 @@ with flight.FlightClient(
 
 ## Contract tests
 
-Run `(cd dacp-server && sbt test)`. `DatasetCatalogSpec` loads the independent JDBC example through ServiceLoader and verifies registry additions/removals, reading, public access, backend failures, and lease retention through real Flight. It also checks invalid and duplicate identities, cancellation, initialization failures, and close counts. Plugin authors should cover equivalent cases along with their cache, transaction, and pool management policies.
+Run `(cd dacp-server && sbt test)`. `DataCatalogSpec` loads the independent JDBC example through ServiceLoader and verifies registry additions/removals, reading, public access, backend failures, and lease retention through real Flight. It also checks invalid and duplicate identities, cancellation, initialization failures, and close counts. Plugin authors should cover equivalent cases along with their cache, transaction, and pool management policies.

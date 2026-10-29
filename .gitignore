@@ -41,3 +41,7 @@ examples/sql/*.trace.db
 .designer-operator-cache/
 
 node_modules/
+
+# Standalone XStream runtime state
+.xstream-executions/
+.xstream-operators/

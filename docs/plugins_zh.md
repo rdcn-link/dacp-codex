@@ -12,7 +12,7 @@ DACP 通过独立贡献的插件扩展。添加已有扩展点的数据集后端
 
 | 扩展内容 | 当前机制 | 指南 |
 |---|---|---|
-| Dataset 目录 | 实现 `DatasetCatalogProvider` 并通过 Java `ServiceLoader` 注册，或向 `DacpServer` 注入 `DatasetCatalog` | [动态目录](dataset-catalogs_zh.md)、[嵌入启动](embedded-server_zh.md) |
+| Dataset 目录 | 实现 `DataCatalogProvider` 并通过 Java `ServiceLoader` 注册，或向 `DacpServer` 注入 `DataCatalog` | [动态目录](dataset-catalogs_zh.md)、[嵌入启动](embedded-server_zh.md) |
 | Dataset 提供者 | 实现 `DatasetProvider`，通过 Java `ServiceLoader` 注册 | [Dataset 提供者](dataset-providers_zh.md) |
 | 文件格式处理器 | 实现 `FormatHandler` 或 `StructuredFileHandler`，通过 Java `ServiceLoader` 注册 | [格式处理器](format-handlers_zh.md) |
 | 归档读取器 | 实现 `ContainerReader`，通过 Java `ServiceLoader` 注册 | [归档读取器](format-handlers_zh.md#归档读取器) |
@@ -84,7 +84,7 @@ S3 兼容读取是复用 DatasetAccess 的核心传输层，不是新的存储�
 
 ## 设计器聊天编排插件
 
-`dacp-job-designer` 独立提供 `dacp.designer.ChatPlanner` 扩展契约，通过 `META-INF/services/dacp.designer.ChatPlanner` 发现实现。内置命令助手、HTTP 模型适配器和兼容聊天补全服务均使用这一契约；第三方 JAR 无需修改注册表或重建设计器。配置、类路径和 JSON 草案契约见[设计器手册](../dacp-job-designer/README_zh.md#聊天编排)。插件只产生候选草案，设计器统一校验连接、算子来源及逻辑节点，不能通过该接口执行作业。
+`xstream-designer` 独立提供 `xstream.designer.ChatPlanner` 扩展契约，通过 `META-INF/services/xstream.designer.ChatPlanner` 发现实现。内置命令助手、HTTP 模型适配器和兼容聊天补全服务均使用这一契约；第三方 JAR 无需修改注册表或重建设计器。配置、类路径和 JSON 草案契约见[设计器手册](../xstream-designer/README_zh.md#聊天编排)。插件只产生候选草案，设计器统一校验连接、算子来源及逻辑节点，不能通过该接口执行作业。
 
 第三方算子定义必须包含语言无关的 `parameters` 契约，由 `dacp-operator-contract` 验证。仓库和设计器读取这些定义时不加载算子代码。注册、发布示例和校验规则见[参数契约](operator-parameters_zh.md)。
 

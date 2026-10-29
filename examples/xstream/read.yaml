@@ -1,0 +1,10 @@
+name: Local catalog read
+tasks:
+  - id: read
+    operator: read_item@1.0
+    inputs: {}
+    params:
+      uri: context:/weather/nested/orders.csv
+      view: records
+outputs:
+  result: read

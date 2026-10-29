@@ -77,6 +77,7 @@ class ScanSpec extends AnyFunSuite {
       .setProjection(Metadata.Scan.Projection.newBuilder().addColumns("name")).setLimit(2)
     try {
       assert(read(query.build()) == (Seq("name") -> Seq("c","d")))
+      assert(read(ScanProtocol.encode(ItemSql.parse("SELECT name FROM source WHERE id > 2 LIMIT 2"))) == (Seq("name") -> Seq("c","d")))
       assert(read(query.build(),path="/parquet") == (Seq("name") -> Seq("c","d")))
       val ne = predicate.clone().setOp("ne")
       assert(read(query.clone().setPredicate(ne).clearLimit().build(),path="/parquet")._2 == Seq("a","c","d","e"))

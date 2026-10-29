@@ -35,3 +35,18 @@
 .network-stage .network-labels{z-index:2;pointer-events:none}
 .wire-total{font-size:10px;stroke-width:3px}
 .wire-rate{font-size:8px;stroke-width:3px}
+
+
+.plan-panel{margin:24px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden}.plan-tabs{display:flex;gap:4px;padding:8px;background:#edf2f7;border-bottom:1px solid var(--line)}.plan-tabs button{border:0;border-radius:7px;background:transparent;color:var(--muted);padding:10px 20px;font-weight:650}.plan-tabs button[aria-selected=true]{background:white;color:#265f97;box-shadow:0 2px 5px #253b5314}.plan-panel>[role=tabpanel]{padding:18px}.plan-view-tabs{display:flex;gap:4px;margin:14px 0}.plan-view-tabs button{padding:5px 13px;font-size:12px}.plan-view-tabs button[aria-pressed=true]{background:#e5effa;border-color:#7d9cbe;color:#265f97}.plan-panel pre{max-height:600px;overflow:auto}.plan-panel details>summary{cursor:pointer;margin:14px 0;font-size:13px;font-weight:600}.placement-decision{display:grid;grid-template-columns:1fr 2fr 1fr;gap:8px;padding:12px 0;border-bottom:1px solid var(--line);font-size:12px}.placement-decision code{overflow-wrap:anywhere}.source-resolution{grid-column:1/-1;color:var(--muted)}.sub-job{border:1px solid var(--line);padding:14px;margin-top:10px;border-radius:8px;background:white}@media(max-width:700px){.placement-decision{grid-template-columns:1fr}.plan-panel>[role=tabpanel]{padding:10px}}
+/* Browser-style plan tabs join the active page to its content surface. */
+.plan-tabs{gap:0;padding:9px 14px 0;background:#e8edf4;overflow-x:auto;align-items:stretch;border-bottom:1px solid #d8e2ed;box-shadow:none;isolation:isolate}
+.plan-tabs button{position:relative;display:flex;flex-direction:column;justify-content:center;gap:3px;flex-shrink:0;min-height:53px;min-width:145px;max-width:260px;margin:0;padding:9px 20px 11px;border:0;border-radius:12px 12px 0 0;background:transparent;color:#63758b;text-align:left;box-shadow:none;transition:background .15s,color .15s;z-index:1}
+.plan-tabs button::after{content:'';position:absolute;right:0;top:13px;bottom:13px;width:1px;height:auto;background:#c6d0dd;border-radius:0}
+.plan-tabs button:hover{background:#f3f6fa;color:#244d7a;border:0}
+.plan-tabs button:hover::after,.plan-tabs button[aria-selected=true]::after,.plan-tabs button:has(+button[aria-selected=true])::after{background:transparent}
+.plan-tabs button[aria-selected=true]{background:#fff;border:0;color:#1d548c;box-shadow:0 -2px 5px #244b7408;z-index:2}
+.plan-tabs button[aria-selected=true]::before{content:'';position:absolute;left:-12px;right:-12px;bottom:0;height:12px;background:radial-gradient(circle at 0 0,transparent 12px,#fff 12.5px) left bottom/12px 12px no-repeat,radial-gradient(circle at 100% 0,transparent 12px,#fff 12.5px) right bottom/12px 12px no-repeat;pointer-events:none}
+.plan-tabs button:focus-visible{outline:2px solid #397bbd;outline-offset:-5px}
+.plan-panel>[role=tabpanel]{background:#fff}
+.plan-tab-title{font-size:13px;font-weight:650}.plan-tab-subtitle{font-size:11px;font-weight:400;color:#718096;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.placement-toggle{display:flex;align-items:center;gap:7px;margin:12px 0;color:#45617e;font-size:13px;cursor:pointer}.placement-toggle input{accent-color:#397bbd}

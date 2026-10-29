@@ -62,6 +62,18 @@ window.DacpDag=(()=>{
    details.set(id,{title:'Output · '+label,lines:[binding.task+'.'+binding.port,job.output_route||'Forwarded through Union to the submitting client']});
    edge('task:'+binding.task,id,binding.port,tasks.get(binding.task),'outputs',binding.port);
   }
+  if(job.logical){
+   combos.length=0;
+   for(const node of nodes){delete node.combo;node.data.logical=true;node.data.color='#5679a6';node.data.fill='#f4f8fd';node.data.dash=[];
+    if(node.data.kind==='task'){const task=tasks.get(node.id.slice(5)),placement=task.placement;
+     node.data.stateLabel=placement?compact(placement.node,34):'Logical step';
+     if(placement){node.data.color='#2563eb';node.data.fill='#edf5ff';}
+     const reasons={local_execution:'Execute on this server',data_locality:'Execute where the data resides',minimize_transfer:'Minimize estimated input transfer',upstream_locality:'Keep processing with upstream steps',available_capacity:'Use available node capacity',remote_read_capacity:'Read external data on an available member',explicit_placement:'Explicit internal placement'};
+     details.set(node.id,{title:task.title||task.id,lines:['Step: '+task.id,'Operator: '+task.operator,...(placement?['Placement: '+placement.node,'Reason: '+(reasons[placement.reason]||placement.reason),...(placement.requested_source?['Source: '+placement.requested_source+' → '+placement.resolved_source]:[])]:[]),...Object.entries(task.params||{}).map(([key,value])=>key+': '+String(value))]});}
+   }
+   for(const edge of edges){edge.style.labelText=edge.data.port;edge.style.stroke='#94a7bd';details.set(edge.id,{title:'Stream dependency',lines:[edge.data.port]});}
+   for(const id of [...details.keys()])if(id.startsWith('server:')||id==='client')details.delete(id);
+  }
   const topology=JSON.stringify({nodes:nodes.map(n=>[n.id,n.combo]),edges:edges.map(e=>[e.id,e.source,e.target]),combos:combos.map(c=>c.id)});
   return {data:{nodes,edges,combos},details,topology};
  }
@@ -95,8 +107,8 @@ window.DacpDag=(()=>{
     if(task){
      text('status',d.stateLabel,left,top+73,11,d.color,600);
      this.upsert('divider','line',{x1:left,x2:width/2-18,y1:top+91,y2:top+91,stroke:'#e1e9f0',lineWidth:1},container);
-     text('input-label','Input',left,top+109,10,'#8291a5');text('output-label','Output',12,top+109,10,'#8291a5');
-     text('input',d.incoming,left,top+130,16,'#324c65',600);text('output',d.outgoing,12,top+130,16,'#324c65',600);
+     text('input-label',d.logical?'Inputs':'Input',left,top+109,10,'#8291a5');text('output-label',d.logical?'Outputs':'Output',12,top+109,10,'#8291a5');
+     text('input',d.logical?'Stream':d.incoming,left,top+130,16,'#324c65',600);text('output',d.logical?'Stream':d.outgoing,12,top+130,16,'#324c65',600);
     }
    }
   }

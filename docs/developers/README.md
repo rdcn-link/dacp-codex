@@ -6,7 +6,7 @@ The built-in `read_item@1.0` handles transport only; Dataset/Item plugins own ba
 
 For contributors implementing operators, dataset providers, formats, executors, SDKs, or the server. For connecting to a node, browsing data, configuring built-in providers, and running jobs, start with the user guide. Commands below run from the project root unless stated otherwise.
 
-For catalog-level extensions and application startup, see [DatasetCatalog](../dataset-catalogs.md) and the [embedded server](../embedded-server.md).
+For catalog-level extensions and application startup, see [DataCatalog](../dataset-catalogs.md) and the [embedded server](../embedded-server.md).
 
 ## Architecture and extension points
 

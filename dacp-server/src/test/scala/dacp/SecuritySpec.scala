@@ -11,7 +11,7 @@ import scala.jdk.CollectionConverters._
 class SecuritySpec extends AnyFunSuite {
   private def fixture(run:(Config,DacpServer,RootAllocator)=>Unit):Unit={
     val dir=Files.createTempDirectory("security-contract-");val socket=new java.net.ServerSocket(0);val port=socket.getLocalPort;socket.close()
-    val catalog=new DatasetCatalog {
+    val catalog=new DataCatalog {
       def list():Seq[DatasetInfo]=Seq(DatasetInfo("live"))
       def open(name:String):PublishedDataset=new PublishedDataset {
         def open(check:()=>Unit):DatasetAccess=new DatasetAccess {

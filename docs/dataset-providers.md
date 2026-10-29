@@ -89,6 +89,6 @@ Dataset providers, [container readers](format-handlers.md#container-readers), an
 
 ## Dynamic Dataset identities
 
-`DatasetProvider` handles one Dataset. To discover the server-level Dataset list from a database or application, use [DatasetCatalog](dataset-catalogs.md). Static `datasets` configuration uses the built-in `static` catalog; a configured dynamic catalog owns the list instead. Existing Item browsing and read contracts remain unchanged.
+`DatasetProvider` handles one Dataset. To discover the server-level Dataset list from a database or application, use [DataCatalog](dataset-catalogs.md). Static `datasets` configuration uses the built-in `static` catalog; a configured dynamic catalog owns the list instead. Existing Item browsing and read contracts remain unchanged.
 
 For per-Item object/cursor handles, use `ItemDatasetAccess` and `ItemAccess`; see [the access contract guide](dataset-access.md) ([中文](dataset-access_zh.md)). `PublishedItem` is specific to built-in file/JDBC publication, not a required representation for native backends.

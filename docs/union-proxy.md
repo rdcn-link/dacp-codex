@@ -64,11 +64,11 @@ Members are configured in Union's startup configuration and use node-issued serv
 
 ## Development and validation
 
-`DatasetCatalog.directory` adds completeness to the catalog contract, defaulting to a wrapper over plugin `list`. `ProxyCatalog` forwards metadata, scans and streams through the same `DatasetAccess` contract without database or format branches. Plugins retain their existing registration mechanism and require no core registry changes. The shared JSONL bytes view for records Items also applies to proxy access and S3.
+`DataCatalog.directory` adds completeness to the catalog contract, defaulting to a wrapper over plugin `list`. `ProxyCatalog` forwards metadata, scans and streams through the same `DatasetAccess` contract without database or format branches. Plugins retain their existing registration mechanism and require no core registry changes. The shared JSONL bytes view for records Items also applies to proxy access and S3.
 
 ```bash
 (cd dacp-union-server && sbt test)
-(cd dacp-server && sbt 'testOnly dacp.DatasetCatalogSpec dacp.DacpServerSpec dacp.S3ServiceSpec')
+(cd dacp-server && sbt 'testOnly dacp.DataCatalogSpec dacp.DacpServerSpec dacp.S3ServiceSpec')
 (cd dacp-client-scala && sbt test)
 PYTHONPATH=dacp-client .venv/bin/python -m pytest dacp-client/tests
 ```

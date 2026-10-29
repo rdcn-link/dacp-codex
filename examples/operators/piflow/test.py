@@ -174,12 +174,34 @@ def verify(name):
     elif name == 'merge':
         assert execute(name, {}, dict(left=table, right=table.slice(0, 1))) == {'result': table.to_pylist() + table.slice(0, 1).to_pylist()}
         assert execute(name, {}, dict(left=table.slice(0, 0), right=table)) == {'result': table.to_pylist()}
-        try:
-            execute(name, {}, dict(left=table, right=table.select(['station_id'])))
-        except ValueError:
-            pass
-        else:
-            raise AssertionError('incompatible merge accepted')
+        right = pa.table({'station_id': ['C'], 'humidity': [75]})
+        expected = [dict(row, humidity=None) for row in table.to_pylist()]
+        expected.append(dict.fromkeys(table.schema.names + ['humidity']))
+        expected[-1].update(station_id='C', humidity=75)
+        assert execute(name, {}, dict(left=table, right=right)) == {'result': expected}
+        reordered = table.select(list(reversed(table.schema.names)))
+        assert execute(name, {}, dict(left=table, right=reordered)) == {'result': table.to_pylist() * 2}
+        spec = importlib.util.spec_from_file_location('merge_inference', HERE / 'operators/merge.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        from dacp_operator import descriptor, records_schema
+        inputs = {'left': descriptor(['records'], ['arrow'], table.schema, 'known'),
+                  'right': descriptor(['records'], ['arrow'], right.schema, 'known')}
+        inferred = module.infer_outputs(inputs, {})['outputs']['result']
+        schema = records_schema(inferred)
+        assert inferred['certainty'] == 'known' and schema.names == table.schema.names + ['humidity']
+        assert schema.field('humidity').nullable and schema.field('temperature').nullable
+        assert module.infer_outputs(dict(inputs, right=descriptor(['records'])), {})['outputs']['result']['certainty'] == 'unknown'
+        null_type = pa.schema([pa.field('station_id', pa.null())])
+        assert module.merged_schema(null_type, right.schema).field('station_id').type == pa.string()
+        nested = pa.schema([pa.field('image', pa.list_(pa.struct([pa.field('x', pa.int32())])))])
+        assert module.merged_schema(nested, nested) == nested
+        incompatible = pa.table({'station_id': [123]})
+        for check in [lambda: execute(name, {}, dict(left=table, right=incompatible)),
+                      lambda: module.infer_outputs(dict(inputs, right=descriptor(['records'], ['arrow'], incompatible.schema, 'known')), {}),
+                      lambda: module.merged_schema(pa.schema([('duplicate',pa.int32()),('duplicate',pa.int32())]), right.schema)]:
+            try: check()
+            except ValueError: pass
+            else: raise AssertionError('incompatible or ambiguous merge accepted')
     elif name == 'subtract':
         assert execute(name, {}, dict(left=table, right=table.slice(1, 1))) == {'result': table.slice(0, 1).to_pylist()}
         assert execute(name, {}, dict(left=table, right=table.slice(0, 0))) == {'result': table.slice(0, 2).to_pylist()}

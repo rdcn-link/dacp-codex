@@ -9,6 +9,11 @@ import scala.jdk.CollectionConverters._
 /** Built-in transport source. Backend and format implementations stay behind Item APIs. */
 object ItemSource {
   def open(config:Config,allocator:BufferAllocator,binding:InputBinding,c:StreamCancel):FrameSource={
+    val authorizedUri=if(binding.uri.get.startsWith("context:"))DacpUri.origin(config.uri(""))+java.net.URI.create(binding.uri.get).getRawPath else binding.uri.get
+    require(config.taskInputPrefixes.isEmpty || config.taskInputPrefixes.exists(DacpUri.within(authorizedUri,_)),"FORBIDDEN: task input URI prefix denied")
+    if(binding.uri.exists(_.startsWith("context:"))){config.initializeDatasets();return CatalogItemSource.open(DataCatalogRuntime.catalog,config.plugins,allocator,binding,c)}
+    val local=binding.uri.exists(u=>DacpUri.origin(u)==DacpUri.origin(config.uri("")))
+    if(local){config.initializeDatasets();val u=java.net.URI.create(binding.uri.get);return CatalogItemSource.open(DataCatalogRuntime.catalog,config.plugins,allocator,binding.copy(uri=Some("context:"+u.getRawPath)),c)}
     require(config.taskInputPrefixes.isEmpty || config.taskInputPrefixes.exists(DacpUri.within(binding.uri.get,_)),"FORBIDDEN: task input URI prefix denied")
     val uri=binding.uri.get;val u=DacpUri.parse(uri);val split=u.getPath.stripPrefix("/").split("/",2)
     val client=c.add(NodeConnection.open(config,allocator,uri))
@@ -16,7 +21,9 @@ object ItemSource {
     val meta=Metadata.Item.parseFrom(info.getAppMetadata)
     require(meta.getKind=="data","input must be a data item")
     val view=ItemViews.select(binding.view,meta.getViewsList.asScala)
-    val ticket=Metadata.Ticket.newBuilder().setDataset(split(0)).setItem("/"+split(1)).setView(view).build()
+    val ticketBuilder=Metadata.Ticket.newBuilder().setDataset(split(0)).setItem("/"+split(1)).setView(view)
+    binding.scan.foreach { scan=>require(view=="records","sql requires records view");scan.bind(info.getSchema);ticketBuilder.setScan(ScanProtocol.encode(scan)) }
+    val ticket=ticketBuilder.build()
     val stream=c.add(client.getStream(new Ticket(ticket.toByteArray)))
     new FrameSource {
       private var began=false;private var ended=false;private var pending=Iterator.empty[Array[Byte]]

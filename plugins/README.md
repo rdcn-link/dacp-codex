@@ -11,7 +11,7 @@ All bundled extension implementations live here. Plugins depend on `dacp-plugin-
 | `dacp-plugin-parquet` | `FormatHandler`: `parquet`, including scan pushdown | Parquet and Hadoop |
 | `dacp-plugin-excel` | `FormatHandler`: `excel` | Apache POI |
 | `dacp-plugin-archives` | `ContainerReader`: `zip`, `gzip`, `tar`, `tar-gzip` | Apache Commons Compress |
-| `dacp-plugin-catalog-static` | `DatasetCatalogProvider`: `static` | No additional dependencies |
+| `dacp-plugin-catalog-static` | `DataCatalogProvider`: `static` | No additional dependencies |
 | `dacp-plugin-operator-executors` | `OperatorExecutor`: `container`, `jvm`, `python`, `command` | No additional dependencies |
 | `dacp-plugin-mounted` | `DatasetProvider`: `mounted`; generic namespace composition | No additional dependencies |
 | `dacp-plugin-execution-file` | `ExecutionStoreProvider`, `MaterializationStoreProvider`: `file`; atomic execution metadata and output materialization with quotas, expiry, and integrity validation | No additional dependencies |
@@ -41,7 +41,7 @@ datasets:
     source: {root: /srv/data}
 ```
 
-`plugins/` is a version-controlled source directory; `.dacp-plugins/` is the Git-ignored local installation directory. The server does not recursively scan the source tree. Do not install duplicate copies of plugin IDs already bundled with the distribution. Catalogs, backends, formats, archives, and launchers register in `dacp.DatasetCatalogProvider`, `dacp.DatasetProvider`, `dacp.FormatHandler`, `dacp.ContainerReader`, and `dacp.OperatorExecutor` respectively.
+`plugins/` is a version-controlled source directory; `.dacp-plugins/` is the Git-ignored local installation directory. The server does not recursively scan the source tree. Do not install duplicate copies of plugin IDs already bundled with the distribution. Catalogs, backends, formats, archives, and launchers register in `dacp.DataCatalogProvider`, `dacp.DatasetProvider`, `dacp.FormatHandler`, `dacp.ContainerReader`, and `dacp.OperatorExecutor` respectively.
 
 ## Architecture and extensions
 

@@ -43,7 +43,7 @@ server.start()
 // 停机时调用 server.close()。
 ```
 
-这里的 `MyDatabaseCatalog` 是用户实现的 `DatasetCatalog`。直接传入实例时无需 ServiceLoader 注册；它替代文件中的 `datasets` 或 `dataset_catalog`，不会创建被替代的 provider。使用 `.config(config)` 时必须在该 Config 的目录初始化之前注入，不能先调用 `Config.load` 初始化默认目录，再替换它；需要配置文件时使用 `.configFile(...).catalog(...)`。
+这里的 `MyDatabaseCatalog` 是用户实现的 `DataCatalog`。直接传入实例时无需 ServiceLoader 注册；它替代文件中的 `datasets` 或 `data_catalog`，不会创建被替代的 provider。使用 `.config(config)` 时必须在该 Config 的目录初始化之前注入，不能先调用 `Config.load` 初始化默认目录，再替换它；需要配置文件时使用 `.configFile(...).catalog(...)`。
 
 每次 `catalog.open` 返回调用方拥有的 `PublishedDataset` 租约，服务器负责关闭访问句柄和租约。服务器停机关闭目录实例；目录不能关闭由宿主程序管理的共享数据库连接池。完整契约见[动态目录](dataset-catalogs_zh.md)。
 

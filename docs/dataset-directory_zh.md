@@ -88,7 +88,7 @@ Scala 客户端使用 `Source.datasets(origin, tls)` 直接查询节点。节点
 ## 验证
 
 ```bash
-(cd dacp-server && sbt 'testOnly dacp.DatasetCatalogSpec dacp.DacpServerSpec')
+(cd dacp-server && sbt 'testOnly dacp.DataCatalogSpec dacp.DacpServerSpec')
 (cd dacp-union-server && sbt test)
 (cd dacp-client-scala && sbt test)
 PYTHONPATH=dacp-client .venv/bin/python -m pytest dacp-client/tests

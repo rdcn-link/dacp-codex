@@ -8,7 +8,7 @@ DACP 提供数据访问与跨节点协作计算。服务器以 Dataset / Item �
 
 DACP（Data Access and Collaboration Protocol，数据访问与协作协议）的数据模型、传输、信任和协作约定见[协议说明](docs/protocol_zh.md)。
 
-Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs_zh.md)动态提供；Scala/JVM 应用可通过 [DacpServer API](docs/embedded-server_zh.md)直接启动节点。
+Dataset 列表可由 [DataCatalog 插件](docs/dataset-catalogs_zh.md)动态提供；Scala/JVM 应用可通过 [DacpServer API](docs/embedded-server_zh.md)直接启动节点。
 
 节点默认提供 [S3 兼容只读服务](docs/s3-service_zh.md)，可使用 S3 客户端列举 dataset bucket 并下载 Item 字节流。
 
@@ -30,9 +30,10 @@ Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs_zh.md)动态�
 
 | 组件 | 用途 |
 |---|---|
+| [xstream-engine](xstream-engine/README_zh.md) | 可独立运行或嵌入的流式作业引擎，提供 xstream-runner 程序 |
 | `dacp-server` | 发布数据，处理数据访问请求，执行本地及跨节点任务 |
 | [dacp-proxy-server](dacp-proxy-server/README_zh.md) | 单上游内网 DACP 公网代理，端到端保留 TLS 和认证 |
-| `dacp-job-designer` | 浏览器拖拽设计、跨节点编排、schema 预览与 YAML 导入导出 |
+| [xstream-designer](xstream-designer/README_zh.md) | 浏览器拖拽设计、目录浏览、schema 预览与 YAML 导入导出 |
 | `dacp-shell` | 交互式浏览、SQL 查询、运行算子和提交任务文件；随 Python SDK 安装 |
 | `dacp-client` / `dacp-client-scala` | Python / Scala 应用访问数据、执行 Job 和提交 Union 作业 |
 | [dacp-union-server](dacp-union-server/README_zh.md) | 管理一个 Union，按配置连接节点、轮询健康与容量、调度跨节点 DAG、转发最终结果流 |
@@ -54,6 +55,8 @@ Dataset 列表可由 [DatasetCatalog 插件](docs/dataset-catalogs_zh.md)动态�
 
 普通数据访问与任务执行使用 TLS 与 Token；Union 协作使用双向 TLS 和节点签发的服务凭据。S3 使用独立 SigV4 认证，算子仓库下载公开、发布要求 Token，内网看板公开只读。见[认证与访问控制](docs/security_zh.md)。算子使用隔离的运行环境；符合条件的节点子作业会合并到同一进程执行，见[算子合并执行](docs/operator-fusion_zh.md)。输出不注册为 Dataset；服务器持久化执行元数据，结果内容只通过一次性流交付。
 
-[在线 Job 设计器](dacp-job-designer/README_zh.md)：拖拽编排、Union 节点选择、实时算子仓库、结构预览、变量、聊天草案和 YAML 导入导出。
+[在线 Job 设计器](xstream-designer/README_zh.md)：拖拽编排、本地及远程目录浏览、实时算子仓库、结构预览、变量、聊天草案和 YAML 导入导出。
 
 算子仅源码发布：[提交、隔离构建、审核和可信度](docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
+
+独立的 [XStream 引擎](xstream-engine/README_zh.md)提供本地 `xstream-runner` 程序，并由 DACP Server 内嵌使用。[XStream Designer](xstream-designer/README_zh.md)按需浏览本地及配置的远程目录。

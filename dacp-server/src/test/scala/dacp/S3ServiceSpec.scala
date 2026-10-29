@@ -14,7 +14,7 @@ class S3ServiceSpec extends AnyFunSuite {
     val dir=Files.createTempDirectory("s3-contract-");val allocator=new RootAllocator()
     val closed=new AtomicInteger();var exists=true
     val objects=Seq("/folder/a +&.bin","/folder/b.bin","/z.bin")
-    val catalog=new DatasetCatalog {
+    val catalog=new DataCatalog {
       def list():Seq[DatasetInfo]=if(exists)Seq(DatasetInfo("science"))else Seq.empty
       def open(name:String):PublishedDataset={
         if(!exists || name!="science")throw new java.io.FileNotFoundException()
@@ -143,7 +143,7 @@ class S3ServiceSpec extends AnyFunSuite {
   test("closing the endpoint cancels an active download and releases its dataset lease") {
     val dir=Files.createTempDirectory("s3-cancel-");val allocator=new RootAllocator()
     val released=new java.util.concurrent.CountDownLatch(1)
-    val cat=new DatasetCatalog {
+    val cat=new DataCatalog {
       def list():Seq[DatasetInfo]=Seq(DatasetInfo("large"))
       def open(name:String):PublishedDataset=new PublishedDataset {
         def open(check:()=>Unit):DatasetAccess=new DatasetAccess {

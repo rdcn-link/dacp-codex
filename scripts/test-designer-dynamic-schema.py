@@ -42,6 +42,24 @@ async def main():
 
   await page.wait_for_function('()=>!inferenceRunning',polling=100)
   count=len(requests)
+  # Deleting a downstream step must not request schemas for its retained upstream.
+  await page.evaluate("job.tasks=job.tasks.filter(t=>t.id!=='filter');job.outputs={result:'read'};changed()")
+  await page.wait_for_timeout(900)
+  assert len(requests)==count,requests
+  await expect(page.locator('[data-schema-port="read:result"]')).to_contain_text('initial')
+  await page.evaluate('(draft)=>loadDocument(JSON.stringify(draft))',draft)
+  await page.wait_for_function('()=>!inferenceRunning&&!inferencePending',polling=100)
+  # Independent branch changes retain the other branch immediately, without flicker.
+  await page.evaluate("job.tasks.push({id:'other',operator:'read_item@1.0',inputs:{},params:{uri:'dacp://localhost:19860/example/other'}});changed()")
+  await page.wait_for_function('()=>!inferenceRunning&&!inferencePending',polling=100)
+  await page.evaluate("job.tasks.find(t=>t.id==='other').params.uri='dacp://localhost:19860/example/other2';changed()")
+  await expect(page.locator('[data-schema-port="read:result"]')).to_contain_text('initial')
+  await expect(page.locator('[data-schema-port="filter:result"]')).to_contain_text('initial')
+  await page.wait_for_function('()=>!inferenceRunning&&!inferencePending',polling=100)
+  count=len(requests)
+  await page.evaluate("job.tasks=job.tasks.filter(t=>t.id!=='other');changed()")
+  await page.wait_for_timeout(900)
+  assert len(requests)==count,requests
   await page.evaluate("selected='read';selectedSteps=new Set(['read']);setInspector(true);render();inspectorTab('outputs');inspectorTab('parameters');job.name='Renamed';job.tasks[0].title='New title';positions.read={x:400,y:300};invalidate();render()")
   await page.wait_for_timeout(1000)
   assert len(requests)==count,requests
@@ -82,7 +100,7 @@ async def main():
   await page.locator('#undo').dispatch_event('click')
   assert await page.evaluate('job.tasks.length')==2
   # Move the existing multi-selection using a real pointer drag.
-  await page.evaluate("selectedSteps=new Set(['read','filter']);selected=null;outletSelected=false;positions={read:{x:80,y:120},filter:{x:380,y:120}};nodeAreas={};setInspector(false);render();document.getElementById('canvas').scrollTo(0,0)")
+  await page.evaluate("selectedSteps=new Set(['read','filter']);selected=null;outletSelected=false;positions={read:{x:80,y:120},filter:{x:380,y:120}};setInspector(false);render();document.getElementById('canvas').scrollTo(0,0)")
   before=await page.evaluate('JSON.parse(JSON.stringify(positions))')
   head=await page.locator('[data-task="read"] .card-head').bounding_box()
   x,y=head['x']+25,head['y']+12

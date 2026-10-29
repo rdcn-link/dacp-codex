@@ -21,7 +21,7 @@ class DacpServerSpec extends AnyFunSuite {
     val socket=new ServerSocket(0);val port=try socket.getLocalPort finally socket.close()
     Config("localhost",port,"localhost",Map.empty,cert,key,cert,s3=S3Settings(port=Some(0)),web=NodeWebSettings(port=Some(0)),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve("history")).toString))))
   }
-  private def catalog(counter:AtomicInteger)=new DatasetCatalog {
+  private def catalog(counter:AtomicInteger)=new DataCatalog {
     def list():Seq[DatasetInfo]=Seq(DatasetInfo("public"))
     def open(name:String):PublishedDataset=throw new java.io.FileNotFoundException("no items")
     override def close():Unit={counter.incrementAndGet();()}
@@ -70,7 +70,7 @@ class DacpServerSpec extends AnyFunSuite {
   }}
   test("catalog shutdown failure still releases the execution history lock and listening port") {fixture{(dir,cert,key)=>
     val c=config(dir,cert,key)
-    val cat=new DatasetCatalog {
+    val cat=new DataCatalog {
       def list():Seq[DatasetInfo]=Seq.empty
       def open(name:String):PublishedDataset=throw new java.io.FileNotFoundException()
       override def close():Unit=throw new IllegalStateException("catalog close failed")
@@ -90,7 +90,7 @@ tls_cert: $cert
 tls_key: $key
 tls_ca: $cert
 execution_store: {provider: file, settings: {directory: '${dir.resolve("history")}'}}
-dataset_catalog: {provider: does-not-exist}
+data_catalog: {provider: does-not-exist}
 s3: {host: localhost, port: 0}
 web: {host: localhost, port: 0}
 """)

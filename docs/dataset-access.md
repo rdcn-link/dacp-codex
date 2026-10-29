@@ -1,12 +1,12 @@
 # Dataset, Item, and stream access
 
-The DACP access chain is `DatasetCatalog → PublishedDataset → DatasetAccess → ItemAccess → stream`. `ItemAccess` is an optional per-Item implementation style; plugins that manage several Items together may implement `DatasetAccess` directly.
+The DACP access chain is `DataCatalog → PublishedDataset → DatasetAccess → ItemAccess → stream`. `ItemAccess` is an optional per-Item implementation style; plugins that manage several Items together may implement `DatasetAccess` directly.
 
 The catalog determines which Datasets exist; the provider determines how to access them. An Item is public metadata, without local files, SQL connections, MongoDB collections, or S3 object credentials. Clients always use Dataset names, logical Item paths, and views.
 
 | Layer | Responsibility and lifetime |
 |---|---|
-| `DatasetCatalog` | Dynamically lists and opens Datasets; `open` returns a caller-owned Dataset lease |
+| `DataCatalog` | Dynamically lists and opens Datasets; `open` returns a caller-owned Dataset lease |
 | `PublishedDataset` | Owns Dataset resources; `open(check)` creates request-scoped access |
 | `DatasetAccess` | Recursive and immediate-child listing, metadata, counting, scanning, and reading; closed at request end |
 | `ItemAccess` | Content handle for a plugin-private object or cursor; closed after each count, scan, or read |

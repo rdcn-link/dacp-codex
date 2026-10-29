@@ -118,3 +118,11 @@ Review example:
 Omit `trust_score` to use the completed scan's score. Login uses a JSON `password`; subsequent mutations send the session cookie and `X-CSRF-Token`. Publisher Tokens cannot call admin endpoints. There is no anonymous publication or auto-approval path, including files manually placed in the local packaging directory.
 
 Python bytecode and JVM JARs can be decompiled. `source_public` controls the original source materials, not mathematical secrecy of downloadable code. Python build and execution versions must match.
+
+Administrators can update the category labels of an already published operator in its review detail panel. This changes public classification only; the approved artifact and trust score remain unchanged. The authenticated endpoint is `POST /api/admin/submissions/{id}/categories`, with a JSON object such as `{"categories":["Data processing","Merging"]}`.
+
+For common Python/Arrow, JVM and scientific Python environments, see [runtime examples](../examples/runtimes/README.md).
+
+Operator detail pages provide the **Operator package** and any public source, license and SBOM downloads. Shared execution and build environments are downloaded from the **Runtimes** catalog, linked from the operator details. The Docker image ID identifies the execution image; an archive SHA-256 verifies the downloaded file.
+
+An administrator can update a published operator’s icon using `POST /api/admin/submissions/{id}/icon`, with `{"icon":{"path":"M3 4h18v16H3z","color":"#2378cb"}}`. The same administrator session and CSRF checks apply. Only the validated SVG path and color change; the approved artifact, runtime and trust assessment are preserved.

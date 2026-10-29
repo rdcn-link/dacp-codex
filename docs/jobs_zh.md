@@ -12,7 +12,7 @@ tasks:
     operator: read_item@1.0
     inputs: {}
     params:
-      uri: dacp://localhost:18861/weather/observations
+      uri: context:/weather/observations
       view: records
   - id: copy
     title: Filter valid observations
@@ -27,11 +27,11 @@ outputs:
 
 ## 字段与流连接
 
-`name` 是必填的可读工作流名称，与自动生成的执行 ID 分开；最多 256 个字符，不允许空白名称或控制字符。每个 task 包含唯一 `id`、可选说明 `title`、带版本的 `operator`、命名输入 `inputs`，以及可选的参数 `params` 和执行位置 `node`。输入值和 Job 输出使用 `task` 或 `task:port`，省略端口时使用 `result`。不支持对象形式连接或连接级 `view`。每个输出最多有一个消费者；分发数据需要显式复制算子或不同输出端口。
+`name` 是必填的可读工作流名称，与自动生成的执行 ID 分开；最多 256 个字符，不允许空白名称或控制字符。每个 task 包含唯一 `id`、可选说明 `title`、带版本的 `operator`、命名输入 `inputs`，以及可选的参数 `params`。输入值和 Job 输出使用 `task` 或 `task:port`，省略端口时使用 `result`。不支持对象形式连接或连接级 `view`。每个输出最多有一个消费者；分发数据需要显式复制算子或不同输出端口。
 
-`read_item@1.0` 是无需算子容器的内置传输源。它没有输入，参数 `uri` 指向一个 Item，`view` 为 `bytes` 或 `records`，输出端口为 `result`。生成器的输入也为空。处理算子消费上游输出，表示形式转换必须显式完成。
+`read_item@1.0` 是无需算子容器的内置传输源，无输入，输出端口为 `result`。只提供 `uri` 参数：`context:/dataset/item` 指向接收 Job 的 JVM 的 DataCatalog，`dacp://host:port/dataset/item` 显式指定服务。可选 `view` 为 `bytes` 或 `records`；未指定时优先 records，否则 bytes。可选 `sql` 查询 records 视图，提供后默认选择 records，显式选择 bytes 则报错。
 
-向 Union 提交时，数据 URI 使用 Union 公开的数据集名称。省略 `node` 时自动调度，也可使用 `dacp.nodes` 返回的逻辑节点。用户提交的工作流不能直接使用成员实际地址。
+向 Union 提交时，使用其公开数据项路径。Union 负责解析数据所在成员、分配步骤并下发节点子 Job；用户仅描述逻辑数据流。
 
 ## 结构推导与无输出步骤
 
@@ -133,3 +133,33 @@ submit workflow.yaml --policy policy.yaml --vars variables.yaml
 Union 下发的子作业保留全局作业的 `name`。节点与 Union 看板统一展示 Name、Job ID、Source、Type、Status、Started at、Duration；列表优先显示名称，详情保留完整 ID。子作业定义和执行策略均显示为 YAML。YAML 文档限制为 1 MiB，拒绝重复键、不安全对象标签及集合别名；字符串形式的编号、日期和布尔文本应加引号。
 
 `read_item` 的 `view` 可省略：优先使用 Item 提供的 records 视图，否则使用 bytes。显式指定时不会自动改选；不支持所选视图则报错。
+
+## 读取路径、远程服务与 SQL
+
+```yaml
+name: hot-weather-observations
+tasks:
+- id: read
+  operator: read_item@1.0
+  inputs: {}
+  params:
+    uri: context:/ds-6zmr-crvh/observations
+    sql: |
+      SELECT station_id, temperature
+      FROM source
+      WHERE temperature > 30
+      LIMIT 100
+outputs:
+  result: read
+```
+
+显式指定服务时，使用 `uri: dacp://remote.example:18861/weather/observations`。`context:` URI 引用接收 Job 的 JVM 绑定的 DataCatalog，在远程下发之前固定数据源。路径属于提交目标的公开目录：普通节点解析本地名称，Union 解析其公开名称并调度至数据所在成员。Job 不需要知道内部成员地址。
+
+SQL 支持 `SELECT *` 或字段列表、固定的 `FROM source`、可选 `WHERE` 和 `LIMIT`。谓词支持 `= != <> < <= > >=`、`IN`、`IS NULL`、`IS NOT NULL`、`AND`、`OR`、`NOT` 和括号；字符串使用单引号（内部单引号写成两个），字段名可使用双引号。仅支持单数据项只读查询，不支持 JOIN、聚合、函数、排序、多语句或数据修改。SQL 转换为通用 `Scan` 契约，由数据源插件执行，不拼接到数据库 SQL；插件可以下推，不支持的能力明确报错。数据保持分批流式传输，投影后的结构用于结构推导和有界样例。
+
+远程凭据配置在实际执行读取的节点，设计器也需单独配置相同服务的读取凭据；不会将目标服务的 Token 转发给其他服务，也不允许在 Job 中携带凭据。Union 选中的任意读取成员应具备所需凭据。
+
+```yaml
+remote_item_credentials:
+  "dacp://remote.example:18861": /etc/dacp/remote-reader.token
+```

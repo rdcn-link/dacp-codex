@@ -98,10 +98,16 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   private[unionserver] def memberSnapshots:Vector[JsonNode]=members.all.map { m=>
     Option(observed.get(m.path("identity").asText)).getOrElse(m.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]().put("state","unknown").put("observed_at_ms",0))
   }.sortBy(_.path("url").asText)
+  private def addLogicalPlan(n:com.fasterxml.jackson.databind.node.ObjectNode):Unit={
+      Option(n.get("submitted_job_yaml")).filter(_.isTextual).foreach { source=>
+        try n.set[JsonNode]("logical_plan",dacp.RecordedJobGraph(source.asText))
+        catch {case scala.util.control.NonFatal(_)=>n.put("logical_plan_error","Stored script cannot be rendered") }
+      }
+  }
   private[unionserver] def jobSnapshots:Vector[JsonNode]=jobs.values.asScala.toVector.sortBy(j=> -j.created).take(100).map { j=>
     val n=j.dashboardSnapshot.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode];n.remove("nodes");n
   }
-  private[unionserver] def jobSnapshot(id:String):Option[JsonNode]=history.get(id).orElse(Option(jobs.get(Json.id(id))).map(_.dashboardSnapshot))
+  private[unionserver] def jobSnapshot(id:String):Option[JsonNode]=history.get(id).orElse(Option(jobs.get(Json.id(id))).map(_.dashboardSnapshot)).map { record=>val copy=record.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();addLogicalPlan(copy);copy }
   private[unionserver] def historyPage(offset:Int,limit:Int):JsonNode={
     val n=Json.obj().put("offset",offset).put("limit",limit);val records=n.putArray("jobs");history.list(offset,limit).foreach { record=>
       val summary=record.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();summary.remove("nodes");summary.remove("events");records.add(summary)
@@ -162,6 +168,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       }
       sink.completed();audit.finish("completed")
     }catch{case scala.util.control.NonFatal(t)=>
+      org.slf4j.LoggerFactory.getLogger(getClass).warn("Public Job request failed",t)
       if(job!=null && !job.terminal)job.stop(if(ctx.isCancelled || out.isCancelled)"cancelled"else "failed")
       audit.finish("failed")
       val status=t match {
@@ -321,8 +328,8 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     private val placements=plan.tasks.map(t=>t.id->known.getOrElse(DacpUri.node(t.node.get),throw new IllegalArgumentException("task node is not configured"))).toMap
     plan.tasks.foreach { t=>Jobs.readBinding(t).foreach { b=>
       val origin=DacpUri.origin(b.uri.get)
-      require(origin==settings.publicUrl || known.contains(origin),"unknown read_item source node")
-      require(origin==settings.publicUrl || origin==placements(t.id).path("data_origin").asText,"read_item must execute at the data owner")
+
+      require(!known.contains(origin) || origin==placements(t.id).path("data_origin").asText,"member read_item must execute at the data owner")
     }}
     private def identity(n:JsonNode)=n.path("identity").asText
     private def url(n:JsonNode)=n.path("url").asText
@@ -344,6 +351,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     @volatile var finished=0L
     @volatile private var state="queued"
     private val prepared=new ConcurrentHashMap[String,JsonNode]()
+    private val dispatchedDefinitions=new ConcurrentHashMap[String,JsonNode]()
     private val nodeStates=new ConcurrentHashMap[String,JsonNode]()
     private val ring=mutable.Queue.empty[JsonNode]
     private var sequence=0L
@@ -370,6 +378,18 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       val n=snapshot.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
       val policyView=Json.obj();policyView.set[JsonNode]("submitted",policy.submitted);policyView.set[JsonNode]("effective",policy.effective);n.put("policy_yaml",dacp.union.YamlDocument.dump(policyView))
       n.put("job_yaml",script);submittedScript.foreach(n.put("submitted_job_yaml",_))
+      addLogicalPlan(n)
+      val decisions=n.putArray("placement_decisions")
+      plan.placements.foreach { d=>
+        val decision=decisions.addObject().put("step",d.step).put("node",d.node).put("reason",d.reason)
+        d.requestedSource.foreach(decision.put("requested_source",_));d.resolvedSource.foreach(decision.put("resolved_source",_))
+      }
+      val subjobs=n.putArray("sub_jobs")
+      nodes.sortBy(url).foreach { member=>
+        val sub=subjobs.addObject().put("node",url(member)).put("state",Option(nodeStates.get(identity(member))).map(_.path("state").asText).getOrElse(if(prepared.containsKey(identity(member)))"prepared"else"not_dispatched"))
+        val steps=sub.putArray("steps");activeTasks.filter(t=>identity(placements(t.id))==identity(member)).foreach(t=>steps.add(t.id))
+        Option(dispatchedDefinitions.get(identity(member))).foreach(d=>sub.put("definition_yaml",dacp.union.YamlDocument.dump(d)))
+      }
       n.put("execution_policy_yaml",dacp.union.YamlDocument.dump(policy.submitted)).put("effective_execution_policy_yaml",dacp.union.YamlDocument.dump(policy.effective))
       n.set[JsonNode]("execution_policy",policy.submitted);n.set[JsonNode]("effective_execution_policy",policy.effective)
       replayOf.foreach(n.put("replay_of",_))
@@ -415,8 +435,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         replaySources.get(t.id).foreach(j.put("replay_from",_))
         Jobs.readBinding(t).foreach { b=>
           val uri=b.uri.get
-          if(DacpUri.origin(uri)!=n.path("data_origin").asText){
-            require(DacpUri.origin(uri)==settings.publicUrl,"read_item must execute at the data owner")
+          if(DacpUri.origin(uri)==settings.publicUrl){
             j.putObject("read_source").put("origin",settings.publicUrl).put("producer_identity",members.tls.identity)
           }
         }
@@ -479,7 +498,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         change("waiting_resources")
         while(!capacity()){cancel.checkState();Thread.sleep(settings.pollMs)}
         change("preparing")
-        nodes.foreach { n=>cancel.checkState();prepared.put(identity(n),n);request(n,"prepare",Json.obj().put("job_yaml",dacp.union.YamlDocument.dump(definition(n))));cancel.checkState() }
+        nodes.foreach { n=>cancel.checkState();prepared.put(identity(n),n);val sub=definition(n);request(n,"prepare",Json.obj().put("job_yaml",dacp.union.YamlDocument.dump(sub)));dispatchedDefinitions.put(identity(n),sub);cancel.checkState() }
         attemptStarted=true
         nodes.foreach(n=>{cancel.checkState();request(n,"start",executionBody)})
         change("running")
@@ -553,7 +572,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
               val previousAttempt=attemptId;val nextAttempt=Json.uuid()
               val notice=Json.obj().put("type","attempt_failed").put("port","").put("attempt_id",previousAttempt).put("next_attempt_id",nextAttempt).put("retry_count",retryCount+1).put("message",Option(t.getMessage).getOrElse("execution failed").take(2048))
               output.put(OperatorFrame(Json.mapper.writeValueAsBytes(notice)))
-              prepared.clear();nodeStates.clear();replaySources=sources;retryCount+=1;attemptId=nextAttempt
+              prepared.clear();dispatchedDefinitions.clear();nodeStates.clear();replaySources=sources;retryCount+=1;attemptId=nextAttempt
               change("retrying");Thread.sleep(settings.pollMs)
             }
           }

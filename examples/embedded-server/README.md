@@ -2,7 +2,7 @@
 
 [中文](README_zh.md) · [Embedding API](../../docs/embedded-server.md) · [Catalog contract](../../docs/dataset-catalogs.md)
 
-This application starts DACP Server in its own JVM and directly injects a `DatasetCatalog`, without ServiceLoader registration. After startup, it adds `reports` to a concurrent registry and publishes the `/orders` CSV Item. The application can continue adding or removing entries while running.
+This application starts DACP Server in its own JVM and directly injects a `DataCatalog`, without ServiceLoader registration. After startup, it adds `reports` to a concurrent registry and publishes the `/orders` CSV Item. The application can continue adding or removing entries while running.
 
 Run from the project root with port 8815 available:
 

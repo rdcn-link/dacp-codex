@@ -1,7 +1,7 @@
 # Item-based operator inputs and stream-only outputs
 
 Status: implemented through Flight DoExchange and the Python shell/SDK and Scala SDK. Current ports support bytes and records. Other scientific representations require explicit contract extensions. Each output port has at most one downstream consumer; use distinct ports for duplication. Consume multiple input ports in lexical order.
-Source operators may declare `inputs: {}`; tasks must also explicitly provide `inputs: {}`. No trigger Item is needed. Sink operators return an empty output mapping from their mandatory inference method. In the shell, use `run read_item@1.0 --params '{"uri":"dacp://localhost:18861/weather/observations","view":"bytes"}'` without `--input`. Local tasks default to the connected node; `node` may explicitly select placement.
+Source operators may declare `inputs: {}`; tasks must also explicitly provide `inputs: {}`. No trigger Item is needed. Sink operators return an empty output mapping from their mandatory inference method. In the shell, use `run read_item@1.0 --params '{"uri":"context:/weather/observations","view":"bytes"}'` without `--input`. Local tasks default to the connected node; `node` may explicitly select placement.
 
 
 See [Jobs](jobs.md) for the format, stream dependencies and sinks.
@@ -36,7 +36,7 @@ join:
 
 Every port declares its accepted or produced representation and applicable schema/format constraints. A data item may be a table, file, image, structured scientific object, or multidimensional array. Restricting ports to items does not require flattening structures, materializing the item, or fitting it in memory. New representations must have explicit shared contracts before implementation.
 
-Input bindings use only `task[:port]`, defaulting to `result`. External Items enter through `read_item@1.0` with `params.uri` and `params.view`. Connections have no `view` field. Reject dataset-only bindings, missing required ports, duplicate bindings, unsupported representations, and schema mismatches explicitly. Do not silently select all dataset items, merge their contents, or invoke the operator repeatedly. A shell item number resolves to a specific path in the current listing before submission.
+Input bindings use only `task[:port]`, defaulting to `result`. External Items enter through `read_item@1.0` with `params.uri` (`context:/dataset/item` or `dacp://host:port/dataset/item`), plus optional `params.view` and `params.sql`. Connections have no `view` field. Reject dataset-only bindings, missing required ports, duplicate bindings, unsupported representations, and schema mismatches explicitly. Do not silently select all dataset items, merge their contents, or invoke the operator repeatedly. A shell item number resolves to a specific path in the current listing before submission.
 
 Dataset-wide work belongs to job orchestration:
 
@@ -80,3 +80,5 @@ Each output has at most one consumer. Multiple input ports must be consumed in l
 ## SDK resource ownership
 
 Python `Job.run` returns a context-managed `JobStream`. Scala `Job.run` returns an `AutoCloseable` iterator of `OutputEvent`; use `Using.resource`. Both release transport resources on exhaustion or failure; explicitly close on early exit to cancel execution. Scala event byte arrays remain valid after advancing or closing; close record readers created from those arrays separately. See the [Scala SDK](../dacp-client-scala/README.md) and [inline-source examples](operator-source.md).
+
+Python `OperatorContext` allows inspecting `.schema` on multiple input ports before consuming records; this opens Arrow stream headers without materializing the data. Record batches must still be consumed once per port in lexical port order. For example, Merge can inspect both schemas before processing left then right.

@@ -34,7 +34,6 @@ with sync_playwright() as playwright:
     page.on('request', lambda request: external.append(request.url)
         if not request.url.startswith((args.url, 'blob:')) else None)
     page.route('**/api/operators', lambda route: route.fulfill(json=[]))
-    page.route('**/api/nodes', lambda route: route.fulfill(json={'nodes': []}))
     page.route('**/api/infer', lambda route: route.fulfill(json={
         'tasks': {'read': {'outputs': {'result': {
             'certainty': 'unknown', 'representations': ['bytes'], 'formats': []}}, 'diagnostics': []}},
@@ -85,7 +84,7 @@ with sync_playwright() as playwright:
     expect(page.locator('#variables .yaml-literal')).to_contain_text('true')
     parsed = page.evaluate('async()=>api("mapping",{yaml:variablesEditor.getText()})')
     assert parsed['COUNT'] == 123 and parsed['ENABLED'] is True and parsed['LABEL'] == '001'
-    assert page.evaluate('JSON.parse(localStorage.getItem("dacp-job-designer")).variables') == variables
+    assert page.evaluate('JSON.parse(localStorage.getItem("xstream-designer")).variables') == variables
 
     # Help is rendered in a shared lower region, never in browser title tooltips.
     page.evaluate('()=>{selected="read";inspect();setInspector(true);inspectorTab("parameters")}')
@@ -127,7 +126,7 @@ with sync_playwright() as playwright:
     page.locator('#export-close').dispatch_event('click')
     page.evaluate('(text)=>loadDocument(text)', full)
     restored = page.evaluate('designLayout()')
-    for key in ['positions', 'node_areas', 'outlet', 'viewport']:
+    for key in ['positions', 'outlet', 'viewport']:
         assert restored[key] == layout[key], key
     assert not errors, errors
     assert not external, external

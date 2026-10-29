@@ -13,6 +13,7 @@ import org.apache.arrow.vector.ipc.ArrowStreamWriter
 class OperatorPackageSpec extends AnyFunSuite {
   private def run(executor: String, image: String, file: Path, entrypoint: String): Unit = {
     assume(sys.env.get("DACP_TEST_OPERATOR_PACKAGES").contains("1"), "requires built runtime images, example JAR, and Docker")
+    val plugins=new PluginEnvironment()
     val base = Files.createTempDirectory("operator-package-")
     val allocator = new RootAllocator(64L * 1024 * 1024)
     val payload = "id,value\n1,example\n".getBytes(java.nio.charset.StandardCharsets.UTF_8)
@@ -27,7 +28,7 @@ class OperatorPackageSpec extends AnyFunSuite {
       Files.writeString(input.resolve("manifest.json"),"""[{"file":"0.arrow","port":"source","representation":"bytes","format":"csv"}]""")
       Files.writeString(input.resolve("params.json"),"{}")
       val target = "/operator/"+file.getFileName.toString
-      val launch = OperatorExecutors.command(executor,OperatorProgram("example@1",entrypoint,Some(file)),Some(target))
+      val launch = plugins.byId(classOf[OperatorExecutor],executor).command(OperatorProgram("example@1",entrypoint,Some(file)),Some(target))
       val command = Seq("docker","run","--rm","--network","none","--read-only","--tmpfs","/tmp:rw,size=512m",
         "-v",s"$input:/input:ro","-v",s"${file.toAbsolutePath}:$target:ro") ++
         launch.environment.toSeq.flatMap { case (k,v) => Seq("-e",s"$k=$v") } ++
@@ -45,7 +46,7 @@ class OperatorPackageSpec extends AnyFunSuite {
         frame=OperatorFrames.read(stream)
       }
       assert(ended && result.toByteArray.sameElements(payload))
-    } finally { allocator.close(); Data.deleteTree(base) }
+    } finally { allocator.close(); plugins.close(); Data.deleteTree(base) }
   }
   test("independently compiled thin Scala JAR runs with shared dependencies") {
     run("jvm","dacp/operator-jvm:1.1",Path.of("../examples/operators/scala/target/scala-2.13/scala-identity_2.13-1.0.jar"),"example.ScalaIdentity")

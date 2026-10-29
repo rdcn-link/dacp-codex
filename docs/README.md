@@ -6,7 +6,7 @@ For job format and stream dependencies, see [Jobs](jobs.md).
 
 Protocol overview: [DACP (Data Access and Collaboration Protocol)](protocol.md).
 
-Dynamic catalogs and application embedding: [DatasetCatalog](dataset-catalogs.md), [embedded server](embedded-server.md).
+Dynamic catalogs and application embedding: [DataCatalog](dataset-catalogs.md), [embedded server](embedded-server.md).
 
 The [collaboration operator catalog](operator-catalog.md) documents the six published operators, ports, parameters, input/output and Shell / Job examples.
 
@@ -74,7 +74,7 @@ Union provides standard DACP discovery, Items, Jobs and S3. For public short nam
 
 Project presentation material: [English meeting poster and A4 PDF](../assets/posters/README.md).
 
-[Online Job Designer](../dacp-job-designer/README.md): design local and cross-node jobs in the browser and export YAML for Shell / SDK submission.
+[Online Job Designer](../xstream-designer/README.md): design local and cross-node jobs in the browser and export YAML for Shell / SDK submission.
 
 - [Operator parameter types and designer forms](operator-parameters.md)
 

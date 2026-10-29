@@ -12,11 +12,15 @@ paths = subprocess.check_output([
     '-g', '!**/.union-demo/**', '-g', '!**/.bsp/**',
 ], cwd=root, text=True).splitlines()
 errors = []
+for relative in paths:
+    path = root / relative
+    if path.name == 'README_en.md' and path.read_text() != path.with_name('README.md').read_text():
+        errors.append(f'{relative}: English README copy is out of sync')
 pairs = 0
 for relative in sorted(paths):
     path = root / relative
     # Agent instructions are tooling configuration, not published documentation.
-    if path.name == 'AGENTS.md':
+    if path.name in ('AGENTS.md', 'README_en.md'):
         continue
     chinese = path.stem.endswith('_zh')
     mate = path.with_name(path.stem[:-3] + '.md' if chinese else path.stem + '_zh.md')
@@ -30,7 +34,7 @@ for relative in sorted(paths):
             errors.append(f'{relative}: English text missing')
 for relative in paths:
     path = root / relative
-    if path.name == 'AGENTS.md':
+    if path.name in ('AGENTS.md', 'README_en.md'):
         continue
     prose = re.sub(r'```.*?```', '', path.read_text(), flags=re.S)
     for link in re.findall(r'\]\(([^)]+)\)', prose):

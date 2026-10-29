@@ -119,11 +119,11 @@ class _Input:
         self._consumed = False
         self._iterating = False
 
-    def _open(self):
+    def _open(self, metadata_only=False):
         ctx = self._context
         ctx._active()
         if (self._consumed or self._iterating or ctx._index >= len(ctx.input_names)
-                or ctx.input_names[ctx._index] != self.name):
+                or (not metadata_only and ctx.input_names[ctx._index] != self.name)):
             raise ValueError('consume inputs once in lexical port order')
         if self._reader is None:
             filename = self._entry['file']
@@ -137,7 +137,7 @@ class _Input:
 
     @property
     def schema(self):
-        return self._open().schema
+        return self._open(metadata_only=True).schema
 
     def _batches(self):
         reader = self._open()

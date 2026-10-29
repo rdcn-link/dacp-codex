@@ -17,29 +17,6 @@ import org.apache.arrow.vector.dictionary.DictionaryProvider
 import org.apache.arrow.flight.FlightProducer.ServerStreamListener
 import scala.jdk.CollectionConverters._
 
-/** Payload counters count each input/output independently, excluding framing/TLS overhead. */
-private[dacp] final class UnionPortMetrics(allocator:BufferAllocator) {
-  private val bytes=new AtomicLong();private val remoteBytes=new AtomicLong();private val rows=new AtomicLong()
-  @volatile private var records=false
-  private val last=new AtomicLong()
-  def observe(f:OperatorFrame,remote:Boolean):Unit={
-    val h=StreamProtocol.header(f);last.set(Json.now)
-    if(h.path("type").asText=="start")records=h.path("representation").asText=="records"
-    if(h.path("type").asText=="data") {
-      bytes.addAndGet(f.data.length);if(remote)remoteBytes.addAndGet(f.data.length)
-      if(records){val r=new ArrowStreamReader(new java.io.ByteArrayInputStream(f.data),allocator);try {require(r.loadNextBatch(),"missing records");rows.addAndGet(r.getVectorSchemaRoot.getRowCount)}finally r.close()}
-    }
-  }
-  def summary(h:JsonNode,remote:Boolean=false):Unit={
-    last.set(Json.now)
-    if(h.path("phase").asText=="start")records=h.path("representation").asText=="records"
-    val count=h.path("payload_bytes").asLong;require(count>=0,"invalid group metric")
-    bytes.addAndGet(count);if(remote)remoteBytes.addAndGet(count)
-    if(h.has("records"))rows.addAndGet(h.path("records").asLong)
-  }
-  def snapshot:JsonNode={val n=Json.obj().put("payload_bytes",bytes.get).put("remote_payload_bytes",remoteBytes.get).put("last_activity_ms",last.get);if(records)n.put("records",rows.get);n}
-}
-
 /** Optional execution transport. Local data never traverses the coordinator. */
 final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:BufferAllocator,
   runner:Option[(Task,Map[String,FrameSource],OperatorFrame=>Unit,StreamCancel)=>Unit]=None) extends AutoCloseable {
@@ -122,7 +99,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         require(t.path("inputs").isObject && t.path("inputs").size()==0,"read_item has no input ports")
         if(DacpUri.origin(binding.uri.get)==DacpUri.origin(config.uri(""))){
           require(!t.has("read_source"),"local read_item must not have a remote source")
-        }else {
+        }else if(t.has("read_source")){
           val source=t.path("read_source");Json.fields(source,Set("origin","producer_identity"))
           require(Json.text(source,"producer_identity")==who && Json.origin(Json.text(source,"origin"))==DacpUri.origin(binding.uri.get),"remote read_item must use the scheduler's pinned stream namespace")
         }
@@ -274,7 +251,10 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       val info=client.getInfo(FlightDescriptor.path("datasets",parts(0),"/"+parts(1)),CallOptions.timeout(10,TimeUnit.SECONDS))
       val meta=dacp.protocol.Metadata.Item.parseFrom(info.getAppMetadata)
       val view=ItemViews.select(requestedView,meta.getViewsList.asScala)
-      val ticket=dacp.protocol.Metadata.Ticket.newBuilder().setDataset(parts(0)).setItem("/"+parts(1)).setView(view).build()
+      require(!b.has("sql") || view=="records","sql requires records view")
+      val ticketBuilder=dacp.protocol.Metadata.Ticket.newBuilder().setDataset(parts(0)).setItem("/"+parts(1)).setView(view)
+      if(b.has("sql"))ticketBuilder.setScan(ScanProtocol.encode(ItemSql.parse(b.path("sql").asText)))
+      val ticket=ticketBuilder.build()
       val reader=client.getStream(new Ticket(ticket.toByteArray),CallOptions.timeout(settings.executionTimeoutSeconds,TimeUnit.SECONDS))
       cancel.add(new AutoCloseable{def close():Unit={reader.cancel("dataset input cancelled",null);reader.close()}})
       new FrameSource {
@@ -296,6 +276,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     private def localInput(b:JsonNode):FrameSource={
       if(b.has("origin"))return datasetInput(b)
       val u=DacpUri.parse(Json.text(b,"uri"));val split=u.getPath.drop(1).split("/",2);val path="/"+split(1);val requestedView=Json.text(b,"view")
+      if(DacpUri.origin(b.path("uri").asText)!=DacpUri.origin(config.uri("")))return ItemSource.open(config,allocator,InputBinding(uri=Some(b.path("uri").asText),view=requestedView,scan=Option(b.get("sql")).map(x=>ItemSql.parse(x.asText))),cancel)
       val access=cancel.add(config.openDataset(split(0),()=>cancel.active()))
       val meta=access.describe(path)
       require(meta.kind=="data","local input must be a data item")
@@ -317,7 +298,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           def error(t:Throwable):Unit=throw t
           def completed():Unit=()
         }
-        try {access.stream(path,view,allocator,listener,()=>cancel.active());queue.put(StreamProtocol.frame("end"));queue.end()}finally access.close()
+        try {if(b.has("sql")){require(view=="records","sql requires records view");access.scan(path,ItemSql.parse(b.path("sql").asText),allocator,listener,()=>cancel.active())}else access.stream(path,view,allocator,listener,()=>cancel.active());queue.put(StreamProtocol.frame("end"));queue.end()}finally access.close()
       }
       queue
     }
@@ -346,7 +327,8 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           val original=e.getValue
           val b=readers.get(original.path("task").asText).map { r=>
             require(original.path("port").asText=="result","read_item has only result output")
-            val b=Json.obj().put("uri",r.path("params").path("uri").asText).put("view",r.path("params").path("view").asText("auto")).put("source_task",r.path("id").asText)
+            val b=Json.obj().put("uri",r.path("params").path("uri").asText).put("view",r.path("params").path("view").asText(if(r.path("params").has("sql"))"records"else"auto")).put("source_task",r.path("id").asText)
+            if(r.path("params").has("sql"))b.put("sql",r.path("params").path("sql").asText)
             if(r.has("read_source"))b.put("origin",r.path("read_source").path("origin").asText).put("producer_identity",r.path("read_source").path("producer_identity").asText)
             b
           }.getOrElse(original)
@@ -470,10 +452,11 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
             Jobs.readBinding(task) match {
               case Some(binding)=>
                 val descriptor=Json.obj().put("uri",binding.uri.get).put("view",binding.view)
+                if(task.params.containsKey("sql"))descriptor.put("sql",task.params.get("sql").toString)
                 val source=if(t.has("read_source")){
                   descriptor.put("origin",t.path("read_source").path("origin").asText).put("producer_identity",t.path("read_source").path("producer_identity").asText)
                   datasetInput(descriptor)
-                }else localInput(descriptor)
+                }else if(DacpUri.origin(binding.uri.get)!=DacpUri.origin(config.uri("")))ItemSource.open(config,allocator,binding,cancel)else localInput(descriptor)
                 try {var f=source.next();while(f.nonEmpty){emit(StreamProtocol.rename(f.get,"result"));f=source.next()}}finally source.close()
               case None=>runner match {case Some(run)=>run(task,inputs,emit,cancel);case None=>executor.execute(task,inputs,emit,cancel)}
             }

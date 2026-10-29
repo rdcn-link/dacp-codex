@@ -35,7 +35,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
   private val threads=new ThreadPoolExecutor(4,4,0L,java.util.concurrent.TimeUnit.MILLISECONDS,new ArrayBlockingQueue[Runnable](64),new ThreadPoolExecutor.AbortPolicy())
   private val closed=new AtomicBoolean()
   private val origin=new java.net.URI("dacp",null,config.publicHost,flightPort,null,null,null).toASCIIString
-  private val files=Map("/job-script.js"->("job-script.js","text/javascript"),"/attempts.js"->("attempts.js","text/javascript"),"/"->("index.html","text/html"),"/duration.js"->("duration.js","text/javascript"),"/app.js"->("app.js","text/javascript"),"/dag.js"->("dag.js","text/javascript"),"/style.css"->("style.css","text/css"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"))
+  private val files=Map("/job"->("job.html","text/html; charset=utf-8"),"/job.js"->("job.js","text/javascript; charset=utf-8"),"/job-script.js"->("job-script.js","text/javascript"),"/attempts.js"->("attempts.js","text/javascript"),"/"->("index.html","text/html"),"/duration.js"->("duration.js","text/javascript"),"/app.js"->("app.js","text/javascript"),"/dag.js"->("dag.js","text/javascript"),"/style.css"->("style.css","text/css"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"))
   server.setExecutor(threads)
   server.createContext("/",(e:HttpExchange)=>handle(e))
   def port:Int=server.getAddress.getPort
@@ -64,12 +64,15 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     val tasks=n.putArray("graph_tasks");val outputs=n.putObject("graph_outputs");val ports=Json.obj()
     var definitions=values(record.path("task_definitions"))
     if(definitions.isEmpty && record.has("job_yaml")) {
-      val plan=Jobs.parse(record.path("job_yaml").asText)
-      definitions=plan.tasks.map { t=>
-        val d=Json.obj().put("id",t.id).put("title",t.title.getOrElse(t.id)).put("operator",t.source.map(s=>"inline:"+s.runtime).getOrElse(t.operator)).put("node",t.node.getOrElse(origin))
-        val inputs=d.putObject("inputs");t.inputs.foreach {case(p,b)=>val i=inputs.putObject(p);b.uri.foreach(i.put("uri",_));b.task.foreach(i.put("task",_));i.put("port",b.port).put("view",b.view)};d
-      }
-      plan.outputs.foreach {case(label,(task,port))=>outputs.putObject(label).put("task",task).put("port",port)}
+      try {
+        val graph=RecordedJobGraph(record.path("job_yaml").asText)
+        definitions=values(graph.path("tasks")).map { task=>
+          val d=task.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();d.put("node",origin)
+          val bindings=task.path("inputs");val inputs=d.putObject("inputs")
+          bindings.elements.asScala.foreach { b=>inputs.putObject(b.path("port").asText).put("task",b.path("task").asText).put("port",b.path("output_port").asText) };d
+        }
+        graph.path("outputs").fields.asScala.foreach(e=>outputs.set[JsonNode](e.getKey,e.getValue))
+      } catch {case scala.util.control.NonFatal(_)=>n.put("graph_error","Stored script cannot be rendered") }
     }
     if(definitions.isEmpty && record.has("task_id")) {
       val d=Json.obj().put("id",record.path("task_id").asText).put("title",record.path("title").asText(record.path("task_id").asText)).put("operator",record.path("operator").asText)
@@ -105,6 +108,16 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     val consumed=tasks.elements.asScala.flatMap(_.path("inputs").elements.asScala.filter(_.has("task")).map(b=>b.path("task").asText->b.path("output_port").asText)).toSet
     outputs.fields.asScala.toVector.filter(e=>consumed(e.getValue.path("task").asText->e.getValue.path("port").asText)).foreach(e=>outputs.remove(e.getKey))
     val nodes=n.putObject("graph_nodes");val node=nodes.putObject("local").put("observed_at_ms",current.map(_=>System.currentTimeMillis()).getOrElse(n.path("updated_at_ms").asLong));node.set[JsonNode]("ports",ports)
+    if(record.has("job_yaml") || record.has("task_definitions")){
+      n.put("logical_yaml",n.path("definition_yaml").asText)
+      val logical=n.putObject("logical_plan");val lt=logical.putArray("tasks")
+      tasks.elements.asScala.foreach { task=>
+        val copy=task.deepCopy[ObjectNode]();Seq("node","node_identity","state","replayed").foreach(copy.remove)
+        definitions.find(_.path("id").asText==task.path("id").asText).foreach(d=>if(d.has("params"))copy.set[JsonNode]("params",d.path("params").deepCopy[JsonNode]()))
+        lt.add(copy)
+      }
+      logical.set[JsonNode]("outputs",outputs.deepCopy[JsonNode]())
+    }
     n.put("job_id",id).put("output_route",if(n.path("kind").asText.startsWith("union"))"Node → downstream / Union"else "Node → client")
     n
   }
@@ -114,7 +127,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     h.set("Content-Security-Policy","default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
     if(e.getRequestMethod!="GET"){h.set("Allow","GET");error(e,405,"read-only dashboard");return}
     val path=e.getRequestURI.getRawPath
-    if(path!="/api/history" && e.getRequestURI.getRawQuery!=null){error(e,400,"unexpected query parameters");return}
+    if(path!="/api/history" && path!="/job" && e.getRequestURI.getRawQuery!=null){error(e,400,"unexpected query parameters");return}
     path match {
       case "/api/overview"=>
         val n=Json.obj().put("web_url",publicUrl).put("flight_uri",origin).put("started_at_ms",startedAt).put("uptime_ms",System.currentTimeMillis()-startedAt).put("capacity",config.maxConcurrentTasks).put("reserved_tasks",config.maxConcurrentTasks-config.taskSlots.availablePermits()).put("mode",if(config.debug)"DEBUG"else "NORMAL")

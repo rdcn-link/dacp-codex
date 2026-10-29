@@ -59,6 +59,14 @@ private[repository] final class AdminApi(root:Path,admin:Administration,secureCo
       case ("POST","/api/admin/runtimes")=>admin.addRuntime(body(e));reply(e,201,Repository.mapper.createObjectNode().put("status","registered"))
       case ("GET","/api/admin/submissions")=>reply(e,200,admin.submissions())
       case ("GET",p) if p.matches("/api/admin/submissions/[a-f0-9-]{36}")=>reply(e,200,admin.submission(p.split('/').last))
+      case ("POST",p) if p.matches("/api/admin/submissions/[a-f0-9-]{36}/icon")=>
+        val n=body(e);require(n.isObject && n.fieldNames.asScala.toSet==Set("icon"),"icon required")
+        admin.updateIcon(p.split('/')(4),n.path("icon"))
+        reply(e,200,Repository.mapper.createObjectNode().put("status","updated"))
+      case ("POST",p) if p.matches("/api/admin/submissions/[a-f0-9-]{36}/categories")=>
+        val n=body(e);require(n.isObject && n.fieldNames.asScala.toSet==Set("categories"),"categories required")
+        admin.updateCategories(p.split('/')(4),n.path("categories"))
+        reply(e,200,Repository.mapper.createObjectNode().put("status","updated"))
       case ("POST",p) if p.matches("/api/admin/submissions/[a-f0-9-]{36}/review")=>
         val n=body(e)
         require(n.fieldNames.asScala.toSet.subsetOf(Set("decision","categories","note","trust_score")) && n.path("decision").isTextual && (!n.has("note") || n.path("note").isTextual),"invalid review fields")

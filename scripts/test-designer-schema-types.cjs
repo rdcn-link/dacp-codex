@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict');
-require('../dacp-job-designer/src/main/resources/web/schema-types.js');
+require('../xstream-designer/src/main/resources/web/schema-types.js');
 const {typeName,fieldType}=globalThis.SchemaTypes;
 const cases=[
  ['utf8','string'],['DOUBLE','float64'],['bool','bool'],

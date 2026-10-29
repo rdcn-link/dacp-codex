@@ -72,6 +72,38 @@ class PublishingSpec extends AnyFunSuite {
     assert(c.request("/api/admin/submissions/"+id+"/files/"+sourceHash+"/sources.zip",admin=true).statusCode()==200)
     assert(approve(c,id).statusCode()==409)
   }}
+  test("administrators can reclassify a published operator without changing its approved code or trust") {fixture{(root,c)=>
+    val(n,token,_)=setup(root,c);val id=submit(c,n,token);waitBuild(c,id)
+    val endpoint="/api/admin/submissions/"+id+"/categories"
+    val categories=Repository.mapper.createObjectNode();categories.putArray("categories").add("Data processing").add("Merging")
+    assert(c.json(endpoint,"POST",categories,false).statusCode()==401)
+    assert(c.request(endpoint,"POST",categories.toString.getBytes,admin=true,withCsrf=false).statusCode()==403)
+    assert(c.json(endpoint,"POST",categories).statusCode()==409)
+    assert(approve(c,id,Some(5)).statusCode()==200)
+    val before=Repository.mapper.readTree(c.request("/v1/operators/example/1").body())
+    assert(c.json(endpoint,"POST",categories).statusCode()==200)
+    val after=Repository.mapper.readTree(c.request("/v1/operators/example/1").body())
+    assert(after.path("categories")==categories.path("categories"))
+    assert(after.path("artifact")==before.path("artifact") && after.path("trust")==before.path("trust"))
+    assert(c.json(endpoint,"POST",Repository.mapper.createObjectNode().putArray("categories")).statusCode()==400)
+  }}
+  test("administrator icon changes validate SVG metadata and preserve approved operator contents") {fixture{(root,c)=>
+    val(n,token,_)=setup(root,c);val id=submit(c,n,token);waitBuild(c,id)
+    val endpoint="/api/admin/submissions/"+id+"/icon"
+    val update=Repository.mapper.createObjectNode();update.putObject("icon").put("path","M3 4h8v16H3zM14 6h7v14h-7z").put("color","#2378cb")
+    assert(c.json(endpoint,"POST",update,false).statusCode()==401)
+    assert(c.request(endpoint,"POST",update.toString.getBytes,admin=true,withCsrf=false).statusCode()==403)
+    assert(c.json(endpoint,"POST",update).statusCode()==409)
+    assert(approve(c,id,Some(5)).statusCode()==200)
+    val before=Repository.mapper.readTree(c.request("/v1/operators/example/1").body())
+    assert(c.json(endpoint,"POST",update).statusCode()==200)
+    val after=Repository.mapper.readTree(c.request("/v1/operators/example/1").body())
+    assert(after.path("icon")==update.path("icon"))
+    for(field<-Seq("artifact","runtime","trust","categories"))assert(after.path(field)==before.path(field))
+    update.withObject("/icon").put("path","<script>alert(1)</script>")
+    assert(c.json(endpoint,"POST",update).statusCode()==400)
+    assert(Repository.mapper.readTree(c.request("/v1/operators/example/1").body()).path("icon")==after.path("icon"))
+  }}
   test("public source is exposed only after approval; scan default remains separate from administrator trust") {fixture{(root,c)=>
     val(n,token,_)=setup(root,c,true,"import requests\nrequests.post('https://example.org',data='data')\n")
     val id=submit(c,n,token);val s=waitBuild(c,id);assert(s.path("analysis").path("score").asInt<3)

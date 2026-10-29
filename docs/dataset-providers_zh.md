@@ -89,6 +89,6 @@ Dataset 提供者、[归档读取器](format-handlers_zh.md#归档读取器)和[
 
 ## 动态 Dataset 名称
 
-`DatasetProvider` 处理单个 Dataset。需要从数据库或应用发现服务器级 Dataset 列表时，使用 [DatasetCatalog](dataset-catalogs_zh.md)。静态 `datasets` 使用内置 static catalog；动态 catalog 自行维护列表，Item 浏览和读取契约相同。
+`DatasetProvider` 处理单个 Dataset。需要从数据库或应用发现服务器级 Dataset 列表时，使用 [DataCatalog](dataset-catalogs_zh.md)。静态 `datasets` 使用内置 static catalog；动态 catalog 自行维护列表，Item 浏览和读取契约相同。
 
 逐 Item 对象和游标句柄使用 `ItemDatasetAccess`、`ItemAccess`，见[访问契约](dataset-access_zh.md)。`PublishedItem` 属于内置文件/JDBC 插件，不是原生后端必需的表示。

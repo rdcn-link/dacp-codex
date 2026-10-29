@@ -149,8 +149,11 @@ class RepositorySpec extends AnyFunSuite {
       val detail = request("/operators/convert/1.0")
       assert(detail.statusCode() == 200 && detail.body().contains("operator: convert@1.0"))
       assert(detail.body().contains("/operators/convert/2.0"))
-      assert(detail.body().contains("/v1/blobs/sha256/"))
-      assert(detail.body().contains(Repository.catalog(root).get(0).path("runtime").path("archive").path("sha256").asText))
+      assert(detail.body().contains("href=\"/runtimes#runtime-"))
+      assert(!home.body().contains("Catalog JSON"))
+      val runtimeHash=Repository.catalog(root).get(0).path("runtime").path("archive").path("sha256").asText
+      assert(!detail.body().contains("/v1/blobs/sha256/"+runtimeHash))
+      assert(request("/runtimes").body().contains("/v1/blobs/sha256/"+runtimeHash))
       assert(request("/operators/missing/1.0").statusCode() == 404)
       assert(request("/operators/%2e%2e/1.0").statusCode() == 404)
       assert(home.body().contains("/assets/dacp-logo.png") && !home.body().contains("brand-mark"))
@@ -195,7 +198,9 @@ class RepositorySpec extends AnyFunSuite {
     try {
       val page = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(
         s"http://127.0.0.1:${server.boundPort}/operators/first/1")).build(), HttpResponse.BodyHandlers.ofString())
-      assert(page.body().contains("Operator code") && page.body().contains("Shared runtime"))
+      assert(page.body().contains("Operator package") && !page.body().contains("Shared runtime"))
+      assert(page.body().contains("href=\"/runtimes#runtime-") && page.body().contains("View environment &amp; downloads"))
+      assert(!page.body().contains("/v1/blobs/sha256/"+first.path("runtime").path("archive").path("sha256").asText))
       assert(page.body().contains("SHA-256: " + first.path("artifact").path("sha256").asText))
       assert(!page.body().contains("{{"))
     } finally server.close()

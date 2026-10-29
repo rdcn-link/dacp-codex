@@ -75,3 +75,6 @@ dependsOn(operatorContract)
 
 lazy val operatorInference = RootProject(file("../dacp-operator-inference"))
 dependsOn(operatorInference)
+
+lazy val xstreamEngine = RootProject(file("../xstream-engine"))
+dependsOn(xstreamEngine)

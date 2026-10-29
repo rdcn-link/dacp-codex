@@ -128,6 +128,23 @@ private[repository] final class Administration(root:Path, initialPassword:Option
     }
     entry.put("status",decision).put("reviewed_at_ms",System.currentTimeMillis()).put("review_note",reason);()
   }
+  def updateCategories(id:String,labels:JsonNode):Unit=change {n=>
+    dacp.operator.OperatorPresentation.validateCategories(labels,required=true)
+    val entry=all(n,"submissions").find(_.path("id").asText==id).getOrElse(throw PublishFailure(404,"submission not found")).asInstanceOf[ObjectNode]
+    if(entry.path("status").asText!="approved")throw PublishFailure(409,"only published operators can be reclassified")
+    entry.path("manifest").asInstanceOf[ObjectNode].set[JsonNode]("categories",labels.deepCopy[JsonNode]())
+    entry.put("categories_updated_at_ms",System.currentTimeMillis())
+    labels.elements.asScala.foreach(v=>if(!all(n,"categories").contains(v))array(n,"categories").add(v.asText))
+    ()
+  }
+  def updateIcon(id:String,icon:JsonNode):Unit=change {n=>
+    val metadata=Repository.mapper.createObjectNode();metadata.set[JsonNode]("icon",icon)
+    dacp.operator.OperatorPresentation.validate(metadata)
+    val entry=all(n,"submissions").find(_.path("id").asText==id).getOrElse(throw PublishFailure(404,"submission not found")).asInstanceOf[ObjectNode]
+    if(entry.path("status").asText!="approved")throw PublishFailure(409,"only published operators can update icons")
+    entry.path("manifest").asInstanceOf[ObjectNode].set[JsonNode]("icon",icon.deepCopy[JsonNode]())
+    entry.put("icon_updated_at_ms",System.currentTimeMillis());()
+  }
   def runtimeFor(manifest:JsonNode):JsonNode=synchronized {all(state,"runtimes").find(r=>r.path("image")==manifest.path("runtime").path("image") && r.path("archive")==manifest.path("runtime").path("archive")).map(_.deepCopy[JsonNode]()).getOrElse(throw new IllegalArgumentException("runtime not registered"))}
   def grantBlob(submitter:String,hash:String):Unit=change{n=>if(!all(n,"blob_grants").exists(g=>g.path("submitter").asText==submitter && g.path("sha256").asText==hash))array(n,"blob_grants").addObject().put("submitter",submitter).put("sha256",hash);()}
   def ownsBlob(submitter:String,hash:String):Boolean=synchronized {all(state,"blob_grants").exists(g=>g.path("submitter").asText==submitter && g.path("sha256").asText==hash)}
