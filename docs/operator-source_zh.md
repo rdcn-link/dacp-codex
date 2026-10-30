@@ -13,7 +13,7 @@ source_runtimes:
 
 镜像必须预先安装到执行节点的 Docker 中。服务端将镜像解析为本地不可变 ID。提交的源码不能选择镜像、安装依赖或更换执行插件；依赖应由管理员加入运行时镜像。源码和编译产物均为临时资源。编译与执行使用同一个隔离容器：禁止网络、根文件系统只读、`/tmp` 有容量限制，并限制内存与进程数。DEBUG 模式面向通过 mTLS 认证的可信开发客户端。
 
-在 `dacp-server` 目录运行 `sbt 'run ../examples/source-debug.yaml'` 可启动示例：端口为 18815，`data1` 数据集发布 `/orders`。Python 运行时构建方法见[算子编写指南](operator-authoring_zh.md)。Scala 源码需要编译器镜像：先在项目根目录运行 `scripts/build-operator-image.sh` 构建共享 JVM 运行时，再运行 `scripts/build-scala-source-runtime.sh`。后者将 Scala compiler/reflect 2.13.16 和 JDK 编译模块加入独立的 DEBUG 镜像。普通 JAR 执行镜像无需编译器。
+在 `dacp-server` 目录运行 `sbt 'run ../examples/source-debug.yaml'` 可启动示例：端口为 18815，`data1` 数据集发布 `/orders`。Python 运行时构建方法见[算子编写指南](operator-authoring_zh.md)。Scala 源码需要编译器镜像：先在项目根目录运行 `scripts/build-jvm-runtime.sh` 构建共享 JVM 运行时，再运行 `scripts/build-scala-source-runtime.sh`。后者将 Scala compiler/reflect 2.13.16 和 JDK 编译模块加入独立的 DEBUG 镜像。普通 JAR 执行镜像无需编译器。
 
 使用示例客户端证书连接 shell 到 `dacp://localhost:18815/data1`，以 heredoc 输入源码：
 

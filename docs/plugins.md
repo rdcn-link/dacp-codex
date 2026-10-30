@@ -86,11 +86,11 @@ Explicit inference uses `OperatorExecutor.inferenceWorkerCommand` / `sourceInfer
 
 `xstream-designer` independently supplies the `xstream.designer.ChatPlanner` extension contract and discovers implementations through `META-INF/services/xstream.designer.ChatPlanner`. The built-in command assistant, HTTP model adapter and compatible chat-completion adapter share this contract. Third-party JARs require no registry changes or designer rebuild. See the [designer guide](../xstream-designer/README.md#chat-composition) for configuration, classpath and JSON proposal contracts. Plugins generate proposals only; the designer checks connections, operator provenance and logical nodes, and this interface cannot execute jobs.
 
-All contributed operator definitions include a language-neutral `parameters` contract, validated by `dacp-operator-contract`. The repository and designer read it without loading operator code. See [parameter contracts](operator-parameters.md) for registration, publication examples and validation rules.
+All contributed operator definitions include a language-neutral `parameters` contract, validated by `dacp-operator-sdk/contract`. The repository and designer read it without loading operator code. See [parameter contracts](operator-parameters.md) for registration, publication examples and validation rules.
 
 Operators must also provide `icon`; administrators assign public `categories`; see [categories and icons](operator-presentation.md) for the contract and publication examples.
 
-[Repository source analysis/build extension](../plugins/dacp-plugin-source-analysis/README.md): `SourceAnalyzer`, `SourceArchive`, `SourceBuildRecipe` are implemented ServiceLoader contracts in `dacp-operator-contract`.
+[Repository source analysis/build extension](../plugins/dacp-plugin-source-analysis/README.md): `SourceAnalyzer`, `SourceArchive`, `SourceBuildRecipe` are implemented ServiceLoader contracts in `dacp-operator-sdk/contract`.
 
 ## Typed data views
 

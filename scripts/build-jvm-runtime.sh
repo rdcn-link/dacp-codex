@@ -3,23 +3,18 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 project_root="$PWD"
-image_tag="${1:-dacp/format-convert:1.1}"
-runtime_tag="dacp/operator-jvm:1.1"
+runtime_tag="${1:-dacp/operator-jvm:1.1}"
 if [[ "$(uname -s)" != Linux ]]; then echo 'Build the operator image on Linux.' >&2; exit 2; fi
-(cd dacp-operator-runtime && sbt -batch stage)
+(cd operators/runtime-jvm && sbt -batch stageRuntime)
 build_dir=$(mktemp -d "${TMPDIR:-/tmp}/dacp-operator-image-XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT
 jlink --add-modules java.base,java.logging,java.management,java.naming,java.security.jgss,java.sql,java.xml,jdk.unsupported,jdk.crypto.ec,jdk.security.auth \
   --strip-debug --no-header-files --no-man-pages --compress=2 --output "$build_dir/rootfs/opt/java"
-python3 - "$build_dir/rootfs" "$project_root/dacp-operator-runtime/target/universal/stage/lib" <<'PY'
+python3 - "$build_dir/rootfs" "$project_root/operators/runtime-jvm/target/runtime/lib" <<'PY'
 import os, platform, re, shutil, subprocess, sys, zipfile
 from pathlib import Path
 root = Path(sys.argv[1])
 shutil.copytree(sys.argv[2], root / 'opt/lib')
-operator_jars = list((root / 'opt/lib').glob('*.dacp-operator-runtime-*.jar'))
-if len(operator_jars) != 1:
-    raise RuntimeError('Expected one operator bundle JAR')
-shutil.move(operator_jars[0], root.parent / 'operator.jar')
 runtime = root / 'opt/java'
 # Load compression JNI from the image rather than extracting into a noexec /tmp.
 native = root / 'opt/native'
@@ -29,8 +24,8 @@ zstd_arch = {'x86_64': 'amd64', 'aarch64': 'aarch64'}.get(arch)
 if zstd_arch is None:
     raise RuntimeError('Supported image build architectures: x86_64, aarch64')
 for pattern, resource_pattern, destination in [
-    ('com.github.luben.zstd-jni-*.jar', f'linux/{zstd_arch}/libzstd-jni-', 'libzstd-jni.so'),
-    ('org.xerial.snappy.snappy-java-*.jar', f'org/xerial/snappy/native/Linux/{arch}/libsnappyjava.so', 'libsnappyjava.so')]:
+    ('zstd-jni-*.jar', f'linux/{zstd_arch}/libzstd-jni-', 'libzstd-jni.so'),
+    ('snappy-java-*.jar', f'org/xerial/snappy/native/Linux/{arch}/libsnappyjava.so', 'libsnappyjava.so')]:
     jars = list((root / 'opt/lib').glob(pattern))
     if len(jars) != 1:
         raise RuntimeError(f'Expected one codec JAR: {pattern}')
@@ -60,4 +55,3 @@ os.chmod(root / 'tmp', 0o1777)
 (root / 'etc/group').write_text('root:x:0:\n')
 PY
 docker build -f operators/runtime-jvm/Dockerfile -t "$runtime_tag" "$build_dir"
-docker build -f operators/format_convert/1.1/Dockerfile --build-arg "RUNTIME_IMAGE=$runtime_tag" -t "$image_tag" "$build_dir"

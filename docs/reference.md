@@ -147,21 +147,6 @@ Operators resolve from the local directory and installed image first, then compl
 
 Runtime images and operator code are separate content-addressed artifacts. Built-in launch plugins support complete containers, Java/Scala JARs, Python source, and wheels, all within isolated runtime containers. See [operator packaging](operator-packaging.md) for definitions, shared caching, executor registration, and current limitations.
 
-### format_convert parameters
-
-| Parameter | Default / supported values |
-|---|---|
-| `from` | `auto`; `csv` / `ndjson` |
-| `to` | `parquet` |
-| `schema` | `infer` or an ordered column declaration, such as `{id: int64, amount: float64}` |
-| `infer_sample` | 4; each chunk contains 1024 parsed records; the schema is fixed after sampling |
-| `on_conflict` | `fail` only |
-| `compression` | `zstd` / `snappy` / `none`; defaults to zstd |
-| `row_group_size` | `128MB`; also accepts B / KB / GB or a byte count |
-
-Explicit schemas support `int64`, `float64`, `bool`, and `utf8` (or `string`); column names and order must match. Empty CSV fields and JSON null values become null. JSON uses NDJSON, with one flat object per line. Conflicting types during sampling immediately produce `SCHEMA_CONFLICT`, and subsequent batches are checked against the fixed types. Explicit float64 permits valid integer representations, while explicit utf8 preserves text. There is no automatic type widening. Memory usage depends on sampled chunks, the current Arrow batch, parser buffers, and the Parquet row group, rather than total file size. An exceptionally large individual record must still fit in memory.
-
-The converter uses Arrow Java to decode IPC and build vectors, and the native Apache Parquet Java writer with an Avro row bridge to produce Parquet; Arrow Java has no native Parquet writer. The output Arrow schema is written to both `dacp.arrow.schema` in the Parquet footer only; no result dataset or metadata sidecar is published.
 
 ## Protocol and configuration
 

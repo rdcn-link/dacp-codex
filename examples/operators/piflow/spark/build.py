@@ -68,7 +68,7 @@ def build(spark_home, name):
         path.write_text(text)
         sources.append(path)
     jars = spark_home / 'deps/jars'
-    sdk = ROOT / 'dacp-operator-sdk/target/scala-2.13/dacp-operator-sdk_2.13-0.1.0-SNAPSHOT.jar'
+    sdk = ROOT / 'dacp-operator-sdk/jvm/target/scala-2.13/dacp-operator-sdk_2.13-0.1.0-SNAPSHOT.jar'
     if not sdk.is_file():
         raise ValueError('build dacp-operator-sdk first')
     api = ROOT / 'dacp-plugin-api/target/scala-2.13/dacp-plugin-api_2.13-0.1.0-SNAPSHOT.jar'

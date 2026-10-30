@@ -22,7 +22,7 @@ def route(req):
   elif name=='operators':data=[]
   elif name=='catalogs':data=[{'name':'In-context catalog','uri':'context:/'}]
   elif name=='datasets':data={'complete':True,'datasets':[{'name':'science','uri':'context:/science'}]}
-  elif name=='items':data={'items':[{'path':'/genome','kind':'folder','views':['bytes'],'format':'fasta'}]} if n['path']=='/' else {'items':[{'path':'/genome/sequences','kind':'data','views':['sequence'],'format':'fasta'}]}
+  elif name=='items':data={'items':[{'path':'/genome','kind':'folder','views':['bytes'],'format':'fasta'}]} if n['path']=='/' else {'items':[{'path':'/genome/sequences','kind':'data','views':['sequence','bytes'],'format':'fasta'}]}
   elif name=='document':data={'job':json.loads(n['job_yaml']),'job_yaml':n['job_yaml'],'variables_yaml':n.get('variables_yaml','{}')}
   elif name in ('infer','infer_stream'):
    job=json.loads(n['job_yaml']);tasks={}
@@ -51,10 +51,33 @@ with sync_playwright() as p:
  page.locator('#library-datasets-tab').click()
  page.get_by_role('button',name='In-context catalog',exact=True).click()
  page.get_by_role('button',name='science',exact=True).click()
+ expect(page.locator('.item-label')).to_have_text('genome')
  page.locator('.item[data-kind=folder]').click()
+ expect(page.get_by_role('toolbar',name='Item actions')).to_be_visible()
+ expect(page.get_by_role('dialog',name='Item views')).to_have_count(0)
+ expect(page.get_by_role('button',name='Copy path',exact=True)).to_have_attribute('title','Copy path: /science/genome')
+ page.evaluate("document.execCommand=()=>{window.copiedItemPath=document.activeElement.value;return true}")
+ page.get_by_role('button',name='Copy path',exact=True).click()
+ assert page.evaluate('window.copiedItemPath')=='/science/genome'
+ page.keyboard.press('Escape')
+ expect(page.get_by_role('toolbar',name='Item actions')).to_have_count(0)
+ assert page.evaluate('job.tasks.length')==0
+ expect(page.locator('.item[data-kind=item] .item-label')).to_have_text('sequences')
  page.locator('.item[data-kind=item]').click()
+ expect(page.get_by_role('button',name='Use bytes view',exact=True)).to_be_visible()
+ assert page.evaluate('job.tasks.length')==0
+ page.get_by_role('button',name='Use sequence view',exact=True).click()
+ assert page.evaluate('job.tasks[0].params')=={'uri':'context:/science/genome/sequences','view':'sequence'}
+ assert page.evaluate('executionDocument().tasks[0].params.view')=='sequence'
+ page.locator('.item[data-kind=item]').click()
+ page.get_by_role('button',name='Use bytes view',exact=True).click()
+ assert page.evaluate('job.tasks.length')==1
+ assert page.evaluate('executionDocument().tasks[0].params.view')=='bytes'
+ page.locator('.item[data-kind=item]').click()
+ page.get_by_role('button',name='Use sequence view',exact=True).click()
+ assert page.evaluate('job.tasks.length')==1
  expect(page.locator('[data-schema-port="step_1:result"]')).to_contain_text('dna')
- assert page.locator('[data-view=sequence]').count()==1
+ assert page.locator('#datasets .item-capability').count()==0
  page.evaluate("job.outputs={result:'step_1'};selected='step_1';setInspector(true);render();inspectorTab('parameters')")
  expect(page.get_by_role('group',name='selection',exact=True)).to_be_visible()
  length=page.locator('[data-parameter-path="params.selection.length"]')

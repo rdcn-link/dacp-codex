@@ -98,7 +98,7 @@ def test_invalid_selection_and_mode_do_not_exit(browser):
     b.onecmd('cat 0')
     b.onecmd('cat 1 unknown')
     assert 'out of range' in out.getvalue()
-    assert 'view must be' in out.getvalue()
+    assert 'item does not support unknown view' in out.getvalue()
     assert not ds.closed
     assert b.onecmd('quit')
 
@@ -162,9 +162,9 @@ def test_listing_table_headers_utc_time_and_unknown_values(browser, monkeypatch)
     out.truncate()
     b.onecmd('ls')
     lines = out.getvalue().splitlines()
-    assert [cell.strip() for cell in lines[1].split('|')[1:-1]] == ['#', 'Path', 'Format', 'Bytes', 'Records', 'Modified (UTC)']
-    assert [cell.strip() for cell in lines[3].split('|')[1:-1]] == ['1', '/orders', 'csv', '0', '0', '2026-10-16 06:22:02']
-    assert [cell.strip() for cell in lines[4].split('|')[1:-1]] == ['2', r'/file\nname', 'txt', '-', '-', '-']
+    assert [cell.strip() for cell in lines[1].split('|')[1:-1]] == ['#', 'Path', 'Format', 'Views', 'Bytes', 'Records', 'Modified (UTC)']
+    assert [cell.strip() for cell in lines[3].split('|')[1:-1]] == ['1', '/orders', 'csv', 'records, bytes', '0', '0', '2026-10-16 06:22:02']
+    assert [cell.strip() for cell in lines[4].split('|')[1:-1]] == ['2', r'/file\nname', 'txt', 'bytes', '-', '-', '-']
     assert len(lines) == 7
 
 
@@ -204,6 +204,7 @@ def test_folder_highlighting_preserves_table_and_escapes_paths(browser, monkeypa
     items = ds.list()
     items[1].kind = 'folder'
     items[1].format = ''
+    items[1].views = ()
     items[1].path = '/folder\x1b[31m'
     monkeypatch.setattr(ds, 'list', lambda: items)
     out.seek(0)
@@ -216,7 +217,7 @@ def test_folder_highlighting_preserves_table_and_escapes_paths(browser, monkeypa
     rows = rendered.splitlines()
     plain = rows[4].replace('\x1b[1;36m', '').replace('\x1b[0m', '')
     assert len(plain) == len(rows[0])
-    assert [cell.strip() for cell in plain.split('|')[1:-1]][2:] == ['-', '-', '-', '-']
+    assert [cell.strip() for cell in plain.split('|')[1:-1]][2:] == ['-', '-', '-', '-', '-']
 
 
 @pytest.mark.parametrize('command,headers', [('cat 1', ['id'])])
@@ -686,3 +687,70 @@ def test_submit_rejects_nonobject_variable_files(browser, monkeypatch, tmp_path,
     monkeypatch.setattr(b, 'print_job', lambda *a, **k: pytest.fail('must not submit'))
     b.onecmd(f'submit {job} --vars {variables}')
     assert 'YAML document must be a mapping' in out.getvalue()
+
+
+@pytest.mark.parametrize('view,dtype,payload,expected', [
+    ('array', 'float32', __import__('struct').pack('<4f', 1, 2, 3, 4), '[1.0,2.0,3.0]'),
+    ('image', 'int16', __import__('struct').pack('>4h', 2, 5, 8, 9), '[2,5,8]'),
+    ('sequence', None, b'ACGTACGT', 'ACGTACGT'),
+    ('custom-view', None, b'AB', '41 42'),
+])
+def test_scientific_cat_number_preview_and_cancellation(browser, view, dtype, payload, expected):
+    from dacp.source import ScientificChunk
+    b, ds, out = browser
+    class Reader:
+        descriptor = dict(version=1, view=view, data_type=dtype,
+                          byte_order='big' if view == 'image' else 'little')
+        closed = False
+        def __enter__(self): return self
+        def __exit__(self, *args): self.closed = True
+        def __iter__(self):
+            yield ScientificChunk({'origin': [0], 'shape': [4]}, payload)
+            if view in ('array', 'image'):
+                raise AssertionError('read beyond element preview limit')
+    reader = Reader()
+    ds.stream.views = (view,)
+    ds.stream.as_view = lambda selected: reader
+    b.onecmd('cat 1 ' + view)
+    assert 'View: ' + view in out.getvalue()
+    assert expected in out.getvalue()
+    assert reader.closed
+
+
+def test_scientific_cat_auto_empty_and_payload_budget(browser):
+    from dacp.source import ScientificChunk
+    b, ds, out = browser
+    class Reader:
+        descriptor = dict(version=1, view='sequence', alphabet='DNA')
+        closed = False
+        def __enter__(self): return self
+        def __exit__(self, *args): self.closed = True
+        def __iter__(self):
+            yield ScientificChunk({'id': 'chr1'}, b'A' * 100)
+            raise AssertionError('read beyond byte budget')
+    reader = Reader()
+    ds.stream.views = ('sequence',)
+    ds.stream.as_view = lambda view: reader
+    b.onecmd('cat 1')
+    assert '32 payload bytes' in out.getvalue()
+    assert reader.closed
+    reader.__class__.__iter__ = lambda self: iter(())
+    b.onecmd('cat 1 sequence')
+    assert '0 blocks shown' in out.getvalue()
+
+
+def test_scientific_preview_error_closes_reader(browser):
+    from dacp.source import ScientificChunk
+    b, ds, out = browser
+    class Reader:
+        descriptor = dict(version=1, view='array', data_type='float64', byte_order='little')
+        closed = False
+        def __enter__(self): return self
+        def __exit__(self, *args): self.closed = True
+        def __iter__(self): yield ScientificChunk({}, b'bad')
+    reader = Reader()
+    ds.stream.views = ('array',)
+    ds.stream.as_view = lambda view: reader
+    b.onecmd('cat 1 array')
+    assert reader.closed
+    assert 'misaligned' in out.getvalue()

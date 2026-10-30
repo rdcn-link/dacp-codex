@@ -19,7 +19,7 @@
 
 ```bash
 # 首次构建共享环境，已安装时可跳过。
-scripts/build-operator-image.sh
+scripts/build-jvm-runtime.sh
 (cd examples/operators/scala && sbt package)
 (cd dacp-operator-repository && sbt stage)
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository seed --operators examples/operators/scala/operators --root .operator-catalog

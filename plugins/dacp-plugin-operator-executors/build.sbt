@@ -4,7 +4,7 @@ lazy val pluginApi = RootProject(file("../../dacp-plugin-api"))
 dependsOn(pluginApi)
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
 
-lazy val operatorSdk = RootProject(file("../../dacp-operator-sdk"))
+lazy val operatorSdk = RootProject(file("../../dacp-operator-sdk/jvm"))
 dependsOn(operatorSdk)
 Test / fork := true
 Test / javaOptions ++= Seq("--add-opens=java.base/java.nio=ALL-UNNAMED", "-Dio.netty.tryReflectionSetAccessible=true")

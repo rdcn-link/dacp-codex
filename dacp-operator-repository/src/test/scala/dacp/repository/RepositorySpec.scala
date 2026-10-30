@@ -61,17 +61,17 @@ class RepositorySpec extends AnyFunSuite {
     }
     val definitions = root.resolve("definitions")
     val bundle = root.resolve("bundle.jar"); Files.writeString(bundle, "operator code")
-    Seq("format_convert", "identity").foreach { name =>
+    Seq("example_a", "example_b").foreach { name =>
       val target = definitions.resolve(s"$name/1.1/operator.yaml")
       Files.createDirectories(target.getParent)
-      val source = Files.readString(Path.of(s"../operators/$name/1.1/operator.yaml"))
+      val source = s"name: $name\nversion: '1.1'\nimage: shared:jvm\nexecutor: jvm\nentrypoint: example.Main\nartifact: ignored.jar\ndescription: Shared example package\nicon: {path: M3 5h18v14H3z, color: '#14866b'}\nparameters: {type: object, properties: {}, required: [], additionalProperties: false}\ninputs: {source: {representations: [bytes], formats: []}}\n"
       Files.writeString(target, source.replaceAll("(?m)^artifact:.*$", "artifact: " + bundle.toString))
     }
-    val expected = Seq("format_convert@1.1", "identity@1.1")
+    val expected = Seq("example_a@1.1", "example_b@1.1")
     assert(Repository.seed(root, definitions, counting) == expected)
     assert(exports == 1)
     assert(Repository.catalog(root).size() == 2)
-    assert(Repository.catalog(root).get(0).path("description").asText.contains("Parquet"))
+    assert(Repository.catalog(root).get(0).path("description").asText.contains("Shared example"))
     assert(Repository.seed(root, definitions, counting) == expected)
     assert(exports == 1)
     Files.writeString(Repository.blob(root, Repository.catalog(root).get(0).path("runtime").path("archive").path("sha256").asText), "corrupt")

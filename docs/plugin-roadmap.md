@@ -39,7 +39,6 @@ The instance-scoped plugin environment defines ownership rules for construction,
 
 [Item.views](../xstream-data/xstream-data-core/src/main/scala/xstream/data/Models.scala), stream ports, and Flight reads explicitly support records/bytes. Arrays, images, multidimensional variables, and selections require cross-client descriptions, schemas, capabilities, and selection semantics before plugins implement them. Registering arbitrary strings or silently flattening scientific structures into records is insufficient.
 
-[OperatorMain](../dacp-operator-runtime/src/main/scala/dacp/OperatorMain.scala) dispatches identity/format_convert by operator name. These are concrete example behaviors that can become ordinary operator JARs, leaving the shared runtime generic. Thin JARs, Python, and independent entrypoints already support user-defined operators, so each operator does not need a new server plugin interface. FormatConvert's CSV/NDJSON/Parquet business constraints are not core protocol limits.
 
 Flight, URI/ticket parsing, namespace security validation, basic stream protocols, cancellation, backpressure, and resource limits remain core responsibilities. Extract policies and implementations that actual user scenarios need to replace, rather than creating an extension point for every branch.
 

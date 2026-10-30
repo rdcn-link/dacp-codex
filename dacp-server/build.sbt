@@ -21,8 +21,7 @@ enablePlugins(JavaAppPackaging)
 Universal / javaOptions ++= Seq("-J--add-opens=java.base/java.nio=ALL-UNNAMED", "-J-Dio.netty.tryReflectionSetAccessible=true")
 
 lazy val pluginApi = RootProject(file("../dacp-plugin-api"))
-lazy val operatorRuntime = RootProject(file("../dacp-operator-runtime"))
-dependsOn(pluginApi, operatorRuntime % "test->compile")
+dependsOn(pluginApi)
 
 // Compile the standalone contributor example against the same API during contract tests.
 Test / unmanagedSourceDirectories += baseDirectory.value / ".." / "examples" / "plugins" / "src" / "main" / "scala"
@@ -70,7 +69,7 @@ Compile / resourceGenerators += Def.task {
 lazy val collaborationClient=RootProject(file("../dacp-collaboration-client-scala"))
 dependsOn(collaborationClient)
 
-lazy val operatorContract = RootProject(file("../dacp-operator-contract"))
+lazy val operatorContract = RootProject(file("../dacp-operator-sdk/contract"))
 dependsOn(operatorContract)
 
 lazy val operatorInference = RootProject(file("../dacp-operator-inference"))

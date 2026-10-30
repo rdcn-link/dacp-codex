@@ -3,7 +3,7 @@ organization := "io.github.rdcn-link"
 version := "0.1.0-SNAPSHOT"
 scalaVersion := "2.13.16"
 lazy val pluginApi = RootProject(file("../dacp-plugin-api"))
-lazy val operatorContract = RootProject(file("../dacp-operator-contract"))
+lazy val operatorContract = RootProject(file("../dacp-operator-sdk/contract"))
 lazy val unionProtocol = RootProject(file("../dacp-union-protocol"))
 dependsOn(pluginApi, operatorContract, unionProtocol)
 libraryDependencies ++= Seq(

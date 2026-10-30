@@ -86,11 +86,11 @@ S3 兼容读取是复用 DatasetAccess 的核心传输层，不是新的存储�
 
 `xstream-designer` 独立提供 `xstream.designer.ChatPlanner` 扩展契约，通过 `META-INF/services/xstream.designer.ChatPlanner` 发现实现。内置命令助手、HTTP 模型适配器和兼容聊天补全服务均使用这一契约；第三方 JAR 无需修改注册表或重建设计器。配置、类路径和 JSON 草案契约见[设计器手册](../xstream-designer/README_zh.md#聊天编排)。插件只产生候选草案，设计器统一校验连接、算子来源及逻辑节点，不能通过该接口执行作业。
 
-第三方算子定义必须包含语言无关的 `parameters` 契约，由 `dacp-operator-contract` 验证。仓库和设计器读取这些定义时不加载算子代码。注册、发布示例和校验规则见[参数契约](operator-parameters_zh.md)。
+第三方算子定义必须包含语言无关的 `parameters` 契约，由 `dacp-operator-sdk/contract` 验证。仓库和设计器读取这些定义时不加载算子代码。注册、发布示例和校验规则见[参数契约](operator-parameters_zh.md)。
 
 算子还必须提供 `icon`；公开 `categories` 由管理员指定，规则和发布示例见[分类与图标](operator-presentation_zh.md)。
 
-[仓库源码分析/构建扩展](../plugins/dacp-plugin-source-analysis/README_zh.md)：`SourceAnalyzer`、`SourceArchive`、`SourceBuildRecipe` 为 `dacp-operator-contract` 中已实现的 ServiceLoader 契约。
+[仓库源码分析/构建扩展](../plugins/dacp-plugin-source-analysis/README_zh.md)：`SourceAnalyzer`、`SourceArchive`、`SourceBuildRecipe` 为 `dacp-operator-sdk/contract` 中已实现的 ServiceLoader 契约。
 
 ## 类型化数据视图
 

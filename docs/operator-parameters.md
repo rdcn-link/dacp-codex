@@ -119,6 +119,6 @@ parameters:
 - Valid edits save automatically and synchronize Job YAML. Incomplete or invalid input stays in the form with a message. Variable references are resolved on submission. Without the corresponding repository definition, the editor asks for it to be loaded instead of treating manually selected types as a formal contract. Browser numbers use JavaScript Number; integer inputs are restricted to its safe integer range.
 - This adds no pre-execution `inferSchema` or parameter inference call and no runtime default injection. Operator implementations remain responsible for business validation and omitted-value behavior. Authors must keep declarations consistent with implementations.
 
-The shared Scala validator lives in `dacp-operator-contract`. The repository, node resolver, and designer use the same implementation, without operator-name or executor-specific branches. Third-party definitions are discoverable without editing core registries.
+The shared Scala validator lives in `dacp-operator-sdk/contract`. The repository, node resolver, and designer use the same implementation, without operator-name or executor-specific branches. Third-party definitions are discoverable without editing core registries.
 
 Operators must also provide `icon`; administrators assign public `categories`; see [categories and icons](operator-presentation.md) for the contract and publication examples.

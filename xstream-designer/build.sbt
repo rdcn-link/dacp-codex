@@ -16,7 +16,7 @@ Compile / resourceGenerators += Def.task {
   }
 }.taskValue
 
-lazy val operatorContract = RootProject(file("../dacp-operator-contract"))
+lazy val operatorContract = RootProject(file("../dacp-operator-sdk/contract"))
 dependsOn(operatorContract)
 
 lazy val operatorInference = RootProject(file("../dacp-operator-inference"))

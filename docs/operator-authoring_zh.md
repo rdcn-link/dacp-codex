@@ -287,7 +287,7 @@ HELLO
 在项目根目录运行：
 
 ```bash
-scripts/build-operator-image.sh
+scripts/build-jvm-runtime.sh
 (cd examples/operators/scala && sbt package)
 (cd dacp-operator-repository && sbt stage)
 dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository publish scala_identity@1.0 \

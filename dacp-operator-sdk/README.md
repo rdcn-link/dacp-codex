@@ -2,6 +2,14 @@
 
 The SDK handles input discovery, parameter loading, Arrow IPC, output frames, end events and resource cleanup. Single-input templates use `source` / `result`; use `OperatorContext` for multiple ports.
 
+## Layout and builds
+
+- `contract/`: lightweight metadata, parameter and source-analysis contracts; depends only on Jackson at runtime.
+- `jvm/`: Java/Scala stream-processing SDK and templates; published as `dacp-operator-sdk`.
+- `python/`: Python SDK and templates.
+
+Run `sbt test` or `sbt publishLocal` here to build both JVM subprojects. Hosts needing only metadata depend on `contract/`; operator executors depend on `jvm/`. The aggregate root publishes no artifact. Operators are authored and published independently; inference workers and the repository remain separate modules.
+
 ## Python
 
 Install from the repository root:

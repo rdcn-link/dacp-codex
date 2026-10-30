@@ -142,9 +142,9 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 ### dacp-shell
 
-`ls` 以带外边框的表格显示 #、Path、Format、Bytes、Records 和 Modified (UTC)，首列为从 1 开始的条目编号。未知值显示为 `-`，时间格式为 `2026-10-16 06:22:02`；终端中集合路径以加粗青色高亮。
+`ls` 以带外边框的表格显示 #、Path、Format、Views、Bytes、Records 和 Modified (UTC)，首列为从 1 开始的条目编号。未知值显示为 `-`，时间格式为 `2026-10-16 06:22:02`；终端中集合路径以加粗青色高亮。
 
-`cat` 接受路径或最近一次列表中的编号；默认优先显示记录，否则显示十六进制。记录使用带列名的表格，`text` 显示文本，`hex` 显示偏移量、十六进制及 ASCII。默认最多预览 20 行或 4096 字节，可通过 `--rows` 和 `--bytes` 调整。
+`cat` 接受路径或最近一次列表中的编号；默认优先显示 records，其次是 bytes（十六进制），再选择第一个已声明的科学视图。记录使用带列名的表格，`text` 显示文本，`hex` 显示偏移量、十六进制及 ASCII。默认最多预览 20 行或 4096 字节，可通过 `--rows` 和 `--bytes` 调整。`cat 2 array`、`cat /sky.fits/hdu0 image`、`cat /genome.fa/sequences sequence` 显示有界的结构描述，以及包含块位置/标识和样例的表格。array/image 根据声明的数据类型和字节序解码数值；image 不渲染为图片。科学视图达到元素/块数量或载荷字节预算后停止并取消读取器；单个传入块可能大于展示预算。未知科学表示或编码展示元数据与十六进制载荷，不假设文件格式。`cat ITEM bytes` 等同于 `hex`。请求 Item 未声明的视图会明确报错。`Views` 列列出全部已声明的表示；空列表显示为 `-`。
 
 `datasets` 显示 `#`、`Name`、`Description (JSON)` 三列，不显示 URI。使用 `use NAME` 按名称切换同一服务器上的数据集，也可用 `use 1` 选择最近一次 `datasets` 列表中的第 1 行。行号从 1 开始，刷新列表会更新映射，重新连接会清空映射；纯数字参数按行号解释。使用 `connect URI` 连接其他位置，`help` 查看命令。证书也可通过 `--ca`、`--cert`、`--key` 指定。
 
@@ -268,10 +268,9 @@ Item 可携带修改时间、字节大小和精确记录数。未知值与 `0` �
 
 DACP 通过 YAML DAG 组织任务。协调节点解析依赖，默认将任务放在第一个输入所在节点，也可显式指定执行节点；各节点通过双向 TLS 保护的服务连接协作。符合[合并执行条件](../operator-fusion_zh.md)的节点子作业共享一个容器和进程，其余任务独立执行；命名端口消费数据项流，输出直接流向客户端或下游任务，不保存输出数据集。
 
-运行任务还需要 Linux、`mkfifo` 和可访问的 Docker Engine。从项目根目录构建转换算子，再启动服务；若快速开始的服务仍在运行，先将其停止：
+运行任务还需要 Linux、`mkfifo` 和可访问的 Docker Engine。从项目根目录配置提供已审批算子的仓库，再启动服务；若快速开始的服务仍在运行，先将其停止：
 
 ```bash
-scripts/build-operator-image.sh
 cd dacp-server
 sbt 'run ../examples/server.yaml'
 ```
@@ -285,9 +284,9 @@ sbt 'run ../examples/server.yaml'
 - [自定义算子编写与上传](../operator-authoring_zh.md)：Scala/Python 完整源码、构建、发布、远程上传和任务执行。
 - [任务与算子参考](../reference_zh.md#任务执行与算子)：DAG、容器输入输出契约和转换参数。
 
-使用 `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820` 启动包含初始算子的仓库，然后打开 `http://localhost:8820/`，无需登录即可搜索、查看和下载算子。HTTPS 部署参见仓库指南。
+使用 `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820` 启动空仓库，通过源码提交与审批发布算子后，打开 `http://localhost:8820/`，无需登录即可搜索、查看和下载算子。HTTPS 部署参见仓库指南。
 
-算子可共享依赖环境和代码包。初始算子通过薄 JAR 使用 `dacp/operator-jvm:1.1`；也支持在共享运行时容器中执行 Python 源码和 wheel。运行时与代码按 SHA-256 存储和缓存，每个节点只下载一次相同制品。详见 [算子打包设计](../operator-packaging_zh.md) 和 [Python 示例](../../examples/operators/python/README_zh.md)。
+算子可共享依赖环境和代码包。JVM 算子可以通过薄 JAR 使用 `dacp/operator-jvm:1.1`；也支持在共享运行时容器中执行 Python 源码和 wheel。运行时与代码按 SHA-256 存储和缓存，每个节点只下载一次相同制品。详见 [算子打包设计](../operator-packaging_zh.md) 和 [Python 示例](../../examples/operators/python/README_zh.md)。
 
 
 `run` 和 `submit` 在完成、失败或取消后打印 `Execution time: 1.234 s`。这是 shell 从提交开始到结果流关闭的总耗时，包括连接、运行时准备、执行、传输、结果显示及客户端清理；不包含输入 heredoc 的时间，也不是单个服务器任务的 CPU 时间。多任务作业显示整个作业的一次总耗时。

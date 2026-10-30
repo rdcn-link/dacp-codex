@@ -142,9 +142,9 @@ See [records query semantics and plugin contracts](../records-scans.md) for Pyth
 
 ### dacp-shell
 
-`ls` displays a bordered table with #, Path, Format, Bytes, Records, and Modified (UTC). The first column numbers items starting from 1. Unknown values appear as `-`, timestamps use `2026-10-16 06:22:02`, and terminal folder paths are highlighted in bold cyan.
+`ls` displays a bordered table with #, Path, Format, Views, Bytes, Records, and Modified (UTC). The first column numbers items starting from 1. Unknown values appear as `-`, timestamps use `2026-10-16 06:22:02`, and terminal folder paths are highlighted in bold cyan.
 
-`cat` accepts a path or a number from the latest listing. It prefers records when available and otherwise shows hexadecimal bytes. Records appear in a table with column names; `text` displays text, and `hex` displays offsets, hexadecimal bytes, and ASCII. Previews default to at most 20 rows or 4096 bytes, adjustable with `--rows` and `--bytes`.
+`cat` accepts a path or a number from the latest listing. It prefers records, then bytes (hex), then the first advertised scientific view. Records appear in a table with column names; `text` displays text, and `hex` displays offsets, hexadecimal bytes, and ASCII. Previews default to at most 20 rows or 4096 bytes, adjustable with `--rows` and `--bytes`. `cat 2 array`, `cat /sky.fits/hdu0 image`, and `cat /genome.fa/sequences sequence` show a bounded structure descriptor and a table of block locations/identities and samples. Array/image samples decode numeric values using the declared data type and byte order; images are not rendered. Scientific previews stop at the element/block or payload-byte budget and cancel the reader; one incoming block can be larger than the display budget. Unknown scientific representations/encodings show metadata and hexadecimal payload instead of assuming a file format. `cat ITEM bytes` is equivalent to `hex`. Views not advertised by the Item fail explicitly. The `Views` column lists all advertised representations; an empty list displays `-`.
 
 `datasets` shows `#`, `Name`, and `Description (JSON)`, without URIs. Use `use NAME` to select a dataset by name, or `use 1` for the first row of the latest `datasets` output. Row numbers start at 1; refreshing the list updates the mapping and reconnecting clears it. Numeric arguments are interpreted as row numbers. Use `connect URI` to connect elsewhere, and `help` for commands. Certificate paths can also be passed through `--ca`, `--cert`, and `--key`.
 
@@ -268,10 +268,9 @@ Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Save
 
 DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and places each task on the node hosting its first input unless an execution node is specified. Nodes collaborate through service connections protected by mutual TLS. Eligible node subjobs [share one container and process](../operator-fusion.md), while other tasks execute independently; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
 
-Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, build the conversion operator and start the server. Stop the quick-start server first if it is still running:
+Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, configure an operator repository containing approved operators and start the server. Stop the quick-start server first if it is still running:
 
 ```bash
-scripts/build-operator-image.sh
 cd dacp-server
 sbt 'run ../examples/server.yaml'
 ```
@@ -285,9 +284,9 @@ Further reading:
 - [Write and upload custom operators](../operator-authoring.md): complete Scala/Python source, packaging, publication, remote transfer, and execution.
 - [Task and operator reference](../reference.md#task-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
 
-Start a repository with the starter operators using `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820`, then open `http://localhost:8820/` to search, view, and download operators without signing in. See the repository guide for HTTPS deployment.
+Start an empty repository using `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820`, publish operators through source submission and approval, then open `http://localhost:8820/` to search, view, and download operators without signing in. See the repository guide for HTTPS deployment.
 
-Operators can share a dependency environment and a code bundle. The starter operators use thin JARs with `dacp/operator-jvm:1.1`; Python source and wheels are also supported in shared runtime containers. Runtime and code artifacts are stored and cached by SHA-256, so each distinct artifact is downloaded once per node. See [operator packaging](../operator-packaging.md) and the [Python example](../../examples/operators/python/README.md).
+Operators can share a dependency environment and a code bundle. JVM operators can use thin JARs with `dacp/operator-jvm:1.1`; Python source and wheels are also supported in shared runtime containers. Runtime and code artifacts are stored and cached by SHA-256, so each distinct artifact is downloaded once per node. See [operator packaging](../operator-packaging.md) and the [Python example](../../examples/operators/python/README.md).
 
 
 `run` and `submit` print `Execution time: 1.234 s` after completion, failure or cancellation. This is elapsed time measured by the shell from submission through closing the result stream, including connection, runtime preparation, execution, transfer, display and client cleanup. It excludes heredoc entry time and is not server task CPU time. Multi-task jobs print one total for the whole job.

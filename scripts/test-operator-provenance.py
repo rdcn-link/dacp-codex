@@ -37,12 +37,6 @@ with tempfile.TemporaryDirectory(prefix='dacp-repository-example-check-') as tem
     with Job.run(node,yaml.safe_dump(job,sort_keys=False),timeout=60,**creds) as stream: events=list(stream)
     assert events[-1]['type']=='complete'
     return events
-   events=run('identity@1.3')
-   assert b''.join(e['data'] for e in events if e['type']=='data')==payload
-   import pyarrow as pa, pyarrow.parquet as pq
-   events=run('format_convert@1.3','table',params={'from':'csv','to':'parquet'})
-   table=pq.read_table(pa.BufferReader(b''.join(e['data'] for e in events if e['type']=='data')))
-   assert table.num_rows==2 and table.column_names==['id','amount']
    events=run('identity_python@1.1')
    assert b''.join(e['data'] for e in events if e['type']=='data')==payload
    events=run('identity_python@1.1','table','records')
@@ -64,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='dacp-repository-example-check-') as tem
     with urllib.request.urlopen(f'http://localhost:8820/operators/{name}/1.1') as r:
      html=r.read().decode()
      assert 'Source archive' in html and 'License not declared' in html
-   print('PASS: JVM identity (>1 MiB), JVM Parquet conversion, Python bytes/records, native uppercase (>1 MiB), evidence checksums and pages, no automatic evidence downloads.')
+   print('PASS: Python bytes/records, native uppercase (>1 MiB), evidence checksums and pages, no automatic evidence downloads.')
   except BaseException:
    log.flush();log.seek(0);print(log.read());raise
   finally:

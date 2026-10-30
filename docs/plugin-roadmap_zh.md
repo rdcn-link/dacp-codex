@@ -39,7 +39,6 @@
 
 [Item.views](../xstream-data/xstream-data-core/src/main/scala/xstream/data/Models.scala)、流端口和 Flight 读取目前明确支持 records/bytes。数组、图像、多维变量和 selection 需要先定义跨客户端的描述、schema、能力与选择语义，再让插件实现；不能仅让插件注册任意字符串，也不能将科学结构静默拉平成 records。
 
-[OperatorMain](../dacp-operator-runtime/src/main/scala/dacp/OperatorMain.scala) 根据算子名选择 identity/format_convert，这些是具体示例算子行为。可以将其拆成普通算子 JAR，保持共享运行时通用；现有薄 JAR、Python 与独立入口已经支持用户自定义算子，因此不需要为了每个算子再发明服务器插件接口。FormatConvert 对 CSV/NDJSON/Parquet 的业务限制也不能直接认定为核心协议限制。
 
 Flight、URI/票据解析、命名空间安全验证、基本流协议、取消、背压和资源上限继续属于核心职责。优先抽取具体用户场景需要替换的策略与实现，不为所有分支建立扩展点。
 

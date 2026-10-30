@@ -16,7 +16,7 @@
 | `xstream-data-mounted` | `DatasetProvider`：`mounted`；通用命名空间组合 | 无额外依赖 |
 | `dacp-plugin-execution-file` | `ExecutionStoreProvider`、`MaterializationStoreProvider`：`file`；原子执行元数据、带配额/过期/完整性校验的输出物化 | 无额外依赖 |
 
-文件、JDBC 与 mixed 在同一 Dataset 插件中共享别名和目录实现；格式读取器独立打包，Dataset 插件不依赖 POI、Parquet 或归档实现类。JSON 默认提供原始 bytes；NDJSON 提供 records。算子程序与共享运行时仍位于 `operators/`、`examples/operators/` 和 `dacp-operator-runtime/`，它们在容器中执行，不是加载进服务器的插件。
+文件、JDBC 与 mixed 在同一 Dataset 插件中共享别名和目录实现；格式读取器独立打包，Dataset 插件不依赖 POI、Parquet 或归档实现类。JSON 默认提供原始 bytes；NDJSON 提供 records。算子程序与共享运行时仍位于 `operators/`、`examples/operators/`，它们在容器中执行，不是加载进服务器的插件。
 
 ## 构建和运行
 

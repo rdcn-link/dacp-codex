@@ -49,7 +49,10 @@ class ScanSpec extends AnyFunSuite {
     Files.writeString(dir.resolve("private.csv"),"id,name\n1,a\n2,b\n3,c\n4,d\n5,e\n")
     val allocator = new RootAllocator()
     val parquetSchema = new Schema(Seq(Records.field("id","int64"),Records.field("name","string")).asJava)
-    val writer = ParquetOutput.writer(dir.resolve("private.parquet"),parquetSchema,"none",1024)
+    val writer = org.apache.parquet.avro.AvroParquetWriter.builder[org.apache.avro.generic.GenericRecord](new org.apache.parquet.io.LocalOutputFile(dir.resolve("private.parquet")))
+      .withConf(new org.apache.parquet.conf.PlainParquetConfiguration()).withSchema(Parquet.avro(parquetSchema))
+      .withCompressionCodec(org.apache.parquet.hadoop.metadata.CompressionCodecName.UNCOMPRESSED)
+      .withRowGroupSize(1024L).withExtraMetaData(Map("dacp.arrow.schema" -> parquetSchema.toJson).asJava).build()
     try {
       (1 to 6).foreach { n =>
         val record = new org.apache.avro.generic.GenericData.Record(Parquet.avro(parquetSchema))

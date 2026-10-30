@@ -10,13 +10,12 @@ CSV requires a unique header and consistent row widths. Quotes, escaped quotes, 
 
 ## Build and publish individually
 
-Requires JDK 17, sbt, Python 3 and PyArrow. Publish local dependencies from the project root first, sequentially rather than running concurrent builds sharing targets. The pinned runtime digest and archive are read and verified from the existing `identity@1.3` catalog manifest; no image export is needed for each operator.
+Requires JDK 17, sbt, Python 3 and PyArrow. Publish local dependencies from the project root first, sequentially rather than running concurrent builds sharing targets. Pass `--runtime-descriptor runtime.json`, containing a registered JVM runtime descriptor (the `runtime` object of an approved JVM operator), and `--runtime-catalog` for its blob store; the archive digest is verified.
 
 ```bash
 (cd dacp-plugin-api && sbt publishLocal)
 (cd dacp-operator-sdk && sbt publishLocal)
-.venv/bin/python examples/operators/common-scala/build.py
-.venv/bin/python examples/operators/common-scala/build.py
+.venv/bin/python examples/operators/common-scala/build.py --runtime-descriptor runtime.json
 ```
 
 The builder generates independent entrypoints, compiles the thin JAR and verifies 100 input/output examples. Output is `examples/operators/common-scala/target/catalog`. Publication shares code, runtime and source blobs, submitting each operator through the token-authenticated HTTP API; every successful entry is immediately browsable. Versions cannot be overwritten; use a new version when changing code. Repeated publication accepts only identical manifests. Use HTTPS remotely. Downloadable sources contain implementation, build files, entrypoints, test samples and bilingual instructions. They depend on this project's SDK and build helpers; build from the project root using the commands above.

@@ -1,6 +1,1 @@
-INPUT_URI: dacp://localhost:8815/data1/reports/orders
-INPUT_FORMAT: csv
-OUTPUT_FORMAT: parquet
-SCHEMA:
-  id: int64
-  amount: float64
+INPUT_URI: context:/data1/reports/orders

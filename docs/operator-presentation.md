@@ -23,4 +23,4 @@ Approval requires 1–16 unique labels, each 1–80 characters without surroundi
 
 `icon` contains only `path` and `color`. `path` uses SVG's 24×24 coordinate system, starts with M/m, contains at most 2048 characters and accepts only path commands and numeric characters. Multiple subpaths are allowed. `color` is `#RRGGBB`. Rendering uses rounded strokes without fill. Full SVG, scripts, HTML, external URLs and image files are not accepted. Validation checks syntax restrictions, not visual quality.
 
-Public cards and detail pages also show the administrator-assessed 0–5 trust score. The original scan score and findings stay in the private review record. See [source-only submission and review](operator-submission.md). Shared validation lives in `dacp.operator.OperatorPresentation` in `dacp-operator-contract`.
+Public cards and detail pages also show the administrator-assessed 0–5 trust score. The original scan score and findings stay in the private review record. See [source-only submission and review](operator-submission.md). Shared validation lives in `dacp.operator.OperatorPresentation` in `dacp-operator-sdk/contract`.

@@ -1,24 +1,15 @@
 name: collaborative_demo
 tasks:
-- id: read_convert_at_data_source
+- id: read
   operator: read_item@1.0
   inputs: {}
   params:
     uri: dacp://localhost:8816/csv_data/orders
-    view: bytes
-- id: convert_at_data
-  inputs:
-    source: read_convert_at_data_source
-  operator: format_convert@1.1
-  params:
-    from: auto
-    to: parquet
-    schema: infer
-    compression: zstd
-- id: relay_to_a
-  inputs:
-    source: convert_at_data
+    view: records
+- id: export
+  operator: piflow_csv_save@1.0
   node: dacp://localhost:8815
-  operator: identity@1.1
+  inputs:
+    source: read
 outputs:
-  result: relay_to_a
+  result: export

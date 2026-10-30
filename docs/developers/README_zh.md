@@ -17,7 +17,6 @@
 | `dacp-plugin-api` | Provider、格式、扫描及执行器公开契约 |
 | `dacp-server` | Flight 服务、命名空间、协调与资源生命周期 |
 | `dacp-client`、`dacp-client-scala` | 客户端 API 与 shell |
-| `dacp-operator-runtime` | JVM 算子运行时及内置实现 |
 | `plugins/dacp-plugin-operator-executors` | 容器启动器与原生命令桥接器 |
 | `dacp-operator-repository` | 不可变发布、公开搜索与下载 |
 | `proto/dacp.proto` | 共享线协议消息 |

@@ -39,8 +39,7 @@ Job definitions, node subjobs, execution policies and variable files use YAML. E
 | [dacp-union-server](dacp-union-server/README.md) | Manages one Union, connects configured nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
 | [Union web dashboard](dacp-union-server/README.md#execution-and-interfaces) | Management view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
 | [dacp-operator-repository](dacp-operator-repository/README.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; administrators publish through the CLI |
-| `dacp-operator-runtime` / `plugins/dacp-plugin-operator-executors` | Shared operator environments, JVM / Python / container launchers, and native-command stream bridging |
-| `dacp-operator-contract` | Shared static parameter types, defaults and constraint validation |
+| [dacp-operator-sdk](dacp-operator-sdk/README.md) | Lightweight metadata contracts (`contract`), JVM templates (`jvm`) and Python templates (`python`) |
 | `dacp-plugin-api` / `dacp-union-protocol` | Public plugin contracts and shared Union transport utilities |
 | [plugins](plugins/README.md) | Bundled Dataset, file-format, archive, catalog, and operator launch plugins |
 

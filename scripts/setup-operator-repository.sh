@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and publish the starter operators, then start the repository.
+# Build and start the repository; submit operators through its authenticated source API.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 project_root="$PWD"
@@ -17,9 +17,6 @@ while [[ $# -gt 0 ]]; do
     shift
   fi
 done
-scripts/build-operator-image.sh
-python3 scripts/package-operator-sources.py
 (cd dacp-operator-repository && sbt -batch stage)
 repository_bin="$project_root/dacp-operator-repository/target/universal/stage/bin/dacp-operator-repository"
-"$repository_bin" seed --operators "$project_root/operators" --root "$catalog"
 exec "$repository_bin" serve --root "$catalog" "${serve_args[@]}"

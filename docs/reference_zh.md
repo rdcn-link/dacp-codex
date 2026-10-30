@@ -147,21 +147,6 @@ Dataset provider、容器 reader、格式 handler 分别负责构建数据集、
 
 运行时镜像与算子代码分别作为按内容摘要寻址的制品。内置启动插件支持完整容器、Java/Scala JAR、Python 源码和 wheel，均在隔离的运行时容器中执行。定义、共享缓存、执行器注册与当前限制参见 [算子打包](operator-packaging_zh.md)。
 
-### format_convert 参数
-
-| 参数 | 默认 / 支持值 |
-|---|---|
-| `from` | `auto`；`csv` / `ndjson` |
-| `to` | `parquet` |
-| `schema` | `infer` 或有序列声明，例如 `{id: int64, amount: float64}` |
-| `infer_sample` | 4；每块为 1024 条解析记录，采样后 schema 固定 |
-| `on_conflict` | 仅 `fail` |
-| `compression` | `zstd` / `snappy` / `none`，默认 zstd |
-| `row_group_size` | `128MB`，也接受 B / KB / GB 或字节数 |
-
-显式 schema 支持 `int64`、`float64`、`bool`、`utf8`（或 `string`），列名及顺序必须匹配。CSV 空字段、JSON null 为 null；JSON 使用 NDJSON，一行一个平坦对象。采样发现不同类型直接 `SCHEMA_CONFLICT`，后续批次也校验固定类型；显式 float64 允许合法整数表示，显式 utf8 保留文本。没有自动类型拓宽。内存由采样块、当前 Arrow batch、解析器缓冲和 Parquet row group 决定，不随完整文件大小增长；超大单条记录仍需要容纳该记录。
-
-转换器用 Arrow Java 解码 IPC/构建向量，Apache Parquet Java 原生写入器通过 Avro 行桥接生成 Parquet（Arrow Java 没有原生 Parquet writer）。输出 Arrow schema 同时写入 Parquet footer 的 `dacp.arrow.schema` ，不发布结果数据集或元数据旁文件。
 
 ## 协议与配置
 

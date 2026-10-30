@@ -1,21 +1,14 @@
-name: demo
+name: CSV stream export
 tasks:
 - id: read_convert_source
   operator: read_item@1.0
   inputs: {}
   params:
     uri: dacp://localhost:8815/data1/reports/orders
-    view: bytes
+    view: records
 - id: convert
   inputs:
     source: read_convert_source
-  operator: format_convert@1.1
-  params:
-    from: csv
-    to: parquet
-    schema:
-      id: int64
-      amount: float64
-    on_conflict: fail
+  operator: piflow_csv_save@1.0
 outputs:
   result: convert

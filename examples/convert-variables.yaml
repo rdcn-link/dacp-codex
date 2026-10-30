@@ -1,19 +1,14 @@
-name: parameterized-conversion
+name: Parameterized CSV stream export
 tasks:
 - id: read
   operator: read_item@1.0
   inputs: {}
   params:
     uri: $INPUT_URI
-    view: bytes
+    view: records
 - id: convert
-  operator: format_convert@1.1
+  operator: piflow_csv_save@1.0
   inputs:
     source: read
-  params:
-    from: $INPUT_FORMAT
-    to: $OUTPUT_FORMAT
-    schema: $SCHEMA
-    on_conflict: fail
 outputs:
   result: convert

@@ -2,6 +2,14 @@
 
 SDK 封装输入发现、参数读取、Arrow IPC、输出帧、结束事件和资源清理。单输入模板使用 `source` / `result`；多端口使用 `OperatorContext`。
 
+## 目录与构建
+
+- `contract/`：轻量的元数据、参数与源码分析契约；运行时仅依赖 Jackson。
+- `jvm/`：Java/Scala 流处理 SDK 与模板；发布名称为 `dacp-operator-sdk`。
+- `python/`：Python SDK 与模板。
+
+在本目录执行 `sbt test` 或 `sbt publishLocal`，统一构建两个 JVM 子项目。仅需元数据的程序依赖 `contract/`，算子执行器依赖 `jvm/`。聚合根项目不发布制品。算子通过普通开发与发布流程提供；推导 worker 和算子仓库仍是独立模块。
+
 ## Python
 
 在仓库根目录安装：

@@ -23,4 +23,4 @@ parameters:
 
 `icon` 仅包含 `path`、`color`。`path` 使用 SVG 24×24 坐标，以 M/m 开始，最长 2048 字符，仅允许路径命令和数字字符，可包含多个子路径。`color` 为 `#RRGGBB`，采用圆角描边、不填充。不接受完整 SVG、脚本、HTML、外部 URL 或图像文件。校验约束语法，不判断图标美观程度。
 
-公开卡片与详情也显示管理员评定的 0–5 分可信度。原始扫描得分和发现保存在私有审核记录中。参见[仅源码提交与审核](operator-submission_zh.md)。共享校验位于 `dacp-operator-contract` 的 `dacp.operator.OperatorPresentation`。
+公开卡片与详情也显示管理员评定的 0–5 分可信度。原始扫描得分和发现保存在私有审核记录中。参见[仅源码提交与审核](operator-submission_zh.md)。共享校验位于 `dacp-operator-sdk/contract` 的 `dacp.operator.OperatorPresentation`。

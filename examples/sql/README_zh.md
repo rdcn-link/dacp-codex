@@ -99,7 +99,7 @@ SQL 数据项在正常列举和打开时，`record_count` 保持未知。显式�
 
 保留空值和 JDBC 列的可空性，时间精度低于微秒的部分会截断。目前明确拒绝数组、LOB、任意厂商特有类型、无约束 decimal 和带时区 time，不会静默转换类型。其他 JDBC 引擎需要先在 `build.sbt` 中添加驱动，并验证 schema 元数据、类型映射和游标行为。
 
-`as_records()` 直接流式返回表记录。表没有原始文件表示，因此 `as_bytes()` 在标准单二进制列 Flight 视图中流式返回 **Arrow IPC 序列化**字节。可以使用 `pyarrow.ipc.open_stream(ds.open("/reports/orders").as_bytes())` 消费；它不是 CSV、SQL 文本或数据库备份。`format_convert@1.0` 仍只接受 CSV/NDJSON；SQL 表转换不在此次适配器变更范围内。
+`as_records()` 直接流式返回表记录。表没有原始文件表示，因此 `as_bytes()` 在标准单二进制列 Flight 视图中流式返回 **Arrow IPC 序列化**字节。可以使用 `pyarrow.ipc.open_stream(ds.open("/reports/orders").as_bytes())` 消费；它不是 CSV、SQL 文本或数据库备份。表转换应使用支持 records 的算子。
 
 每个请求独占 JDBC 连接、语句和结果集。读取请求使用只读事务和只向前游标。PostgreSQL 使用 autocommit=false 和正数 fetch size，避免缓冲整个结果（见[驱动文档](https://jdbc.postgresql.org/documentation/query/)）。Arrow 分配受批次大小约束，JDBC 缓冲行为取决于驱动，单个大值仍会占用内存。SQL 结果没有隐含行顺序。列表/FlightInfo 与 DoGet 使用不同连接，因此元数据和数据不共享同一快照。重新打开的流从头读取，不支持重试、检查点或去重。在获取数据或批次之间检查取消；正在执行的数据库操作可能持续到驱动或查询超时。
 

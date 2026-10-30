@@ -13,6 +13,7 @@ import time
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from .source import Source
+from .view_preview import block_preview, compact
 from .jobs import Job
 from .errors import user_message
 from .sql import parse_query
@@ -100,7 +101,7 @@ class Browser(cmd.Cmd):
             self.write("Examples (replace paths with items in your Dataset):")
             self.write("  datasets\n  use data1\n  ls /\n  cat /reports/orders records")
             self.write('  SELECT id, amount FROM "/reports/orders" WHERE amount > 10 LIMIT 5')
-            self.write("  run identity@1.1 --input source=/reports/orders")
+            self.write("  run piflow_csv_parser@1.0 --input source=/reports/orders")
             self.write("  submit examples/convert.yaml")
             self.write("Use help COMMAND for more examples, e.g. help run or help submit.")
 
@@ -207,7 +208,7 @@ class Browser(cmd.Cmd):
         if len(args) > 1:
             raise ValueError("usage: ls [absolute-logical-path]")
         self.items = self.dataset.list(args[0]) if args else self.dataset.list()
-        headers = ('#', 'Path', 'Format', 'Bytes', 'Records', 'Modified (UTC)')
+        headers = ('#', 'Path', 'Format', 'Views', 'Bytes', 'Records', 'Modified (UTC)')
         rows = []
         for number, item in enumerate(self.items, start=1):
             size = item.total_size_bytes if item.total_size_bytes is not None else '-'
@@ -215,8 +216,8 @@ class Browser(cmd.Cmd):
             modified = (item.last_modified_time.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
                         if item.last_modified_time is not None else '-')
             rows.append(tuple(safe(value).replace('\n', r'\n') for value in
-                              (number, item.path, item.format or '-', size, records, modified)))
-        self.table(headers, rows, numeric=(0, 3, 4), path_column=1,
+                              (number, item.path, item.format or '-', ', '.join(item.views) or '-', size, records, modified)))
+        self.table(headers, rows, numeric=(0, 4, 5), path_column=1,
                    folders={index for index, item in enumerate(self.items) if item.kind == 'folder'})
         self.write(f'{len(self.items)} items')
 
@@ -247,35 +248,45 @@ class Browser(cmd.Cmd):
         return value
 
     def do_cat(self, arg):
-        """Preview an Item as records, text, or hexadecimal bytes.
+        """Preview an Item using an advertised view or a byte display mode.
 
-        Usage: cat ITEM [auto|records|text|hex]
+        Usage: cat ITEM [VIEW|auto|text|hex]
 
-        auto uses the advertised records view when available, otherwise hex.
+        auto prefers records, then bytes (hex), then the first advertised view.
         records prints at most --rows rows; text/hex reads at most --bytes bytes.
+        Scientific views show structure and bounded block samples, not a rendered image.
 
         Examples:
           cat /reports/orders records
           cat 1
           cat "/file name" text
           cat /image hex
+          cat 2 array
+          cat /sky.fits/hdu0 image
+          cat /genome.fa/sequences sequence
         A number refers to the latest ls result. Ordinary folders use ls instead.
         """
         args = shlex.split(arg)
         if len(args) not in (1, 2):
-            raise ValueError('usage: cat ITEM [auto|records|text|hex]')
+            raise ValueError('usage: cat ITEM [VIEW|auto|text|hex]')
         path = self.item(args[0])
         listed = next((i for i in self.items if i.path == path), None)
         if listed is not None and listed.kind == "folder" and not listed.views:
             raise ValueError("folder has no content; use ls " + path)
         mode = args[1] if len(args) == 2 else 'auto'
-        if mode not in ('auto', 'records', 'text', 'hex'):
-            raise ValueError('view must be auto, records, text, or hex')
         with self.dataset.open(path) as stream:
             if mode == 'auto':
-                mode = 'records' if 'records' in stream.views else 'hex'
+                mode = ('records' if 'records' in stream.views else
+                        'hex' if 'bytes' in stream.views else next(iter(stream.views), None))
+            required = 'bytes' if mode in ('text', 'hex') else mode
+            if required not in stream.views:
+                raise ValueError(f'item does not support {required} view; available: {", ".join(stream.views)}')
+            if mode == 'bytes':
+                mode = 'hex'
             if mode == 'records':
                 self.show_records(stream, self.rows)
+            elif mode not in ('text', 'hex'):
+                self.show_view(stream, mode)
             else:
                 with stream.as_bytes() as reader:
                     data = reader.read(self.byte_limit)
@@ -287,6 +298,27 @@ class Browser(cmd.Cmd):
                         text = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
                         self.write(f'{offset:08x}  {chunk.hex(" "):<47}  {text}')
                 self.write(f'{len(data)} bytes shown (limit {self.byte_limit})')
+
+    def show_view(self, stream, view):
+        # Descriptor and block metadata remain bounded even for third-party codecs.
+        with stream.as_view(view) as reader:
+            self.write(f'View: {view}')
+            self.write('Structure: ' + compact(reader.descriptor, self.byte_limit))
+            rows, elements, used = [], 0, 0
+            for chunk in reader:
+                preview, count, size = block_preview(view, reader.descriptor, chunk,
+                                                      self.rows - elements, self.byte_limit - used)
+                if count == 0:
+                    break
+                rows.append((str(len(rows) + 1), compact(chunk.metadata, self.byte_limit),
+                             safe(preview).replace('\n', r'\n')[:self.byte_limit]))
+                elements += count
+                used += size
+                if elements >= self.rows or used >= self.byte_limit:
+                    break
+            self.table(('Block', 'Location / identity', 'Sample'), rows, numeric=(0,))
+            self.write(f'{len(rows)} blocks shown, {elements} sample elements, {used} payload bytes '
+                       f'(limits {self.rows} elements / {self.byte_limit} bytes; preview may be partial)')
 
     def show_records(self, stream, limit, headers=None):
         records = stream.as_records()
@@ -384,9 +416,9 @@ class Browser(cmd.Cmd):
 
         Examples:
           run live_ticks@1.0 --params '{"max_records":3}'
-          run identity@1.1 --input source=/reports/orders
-          run identity@1.1 --input source=1 --view records --preview-rows 5
-          run format_convert@1.1 --input source=/reports/orders --params '{"from":"csv","to":"parquet"}'
+          run piflow_csv_parser@1.0 --input source=/reports/orders
+          run piflow_csv_save@1.0 --input source=1 --view records --preview-rows 5
+          run piflow_filter@1.0 --input source=/reports/orders --view records --params '{"condition":"amount >= 20"}'
           run native_uppercase@1.0 --input source=/reports/orders --preview-bytes 128
 
         DEBUG source example (requires a configured python@1.0 runtime):

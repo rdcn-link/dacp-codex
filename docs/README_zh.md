@@ -28,7 +28,6 @@
 | DACP Server | [管理员指南](administrators/README_zh.md)、[配置和协议参考](reference_zh.md) |
 | Union Server 与 Web 看板 | [Union 手册](../dacp-union-server/README_zh.md)、[协作协议](union_zh.md)、[双节点示例](../examples/union/README_zh.md) |
 | 算子仓库 CLI 与网站 | [仓库手册](../dacp-operator-repository/README_zh.md) |
-| 算子运行时与执行器 | [运行时](../dacp-operator-runtime/README_zh.md)、[执行器](../plugins/dacp-plugin-operator-executors/README_zh.md) |
 | 插件 API 与 Union 传输工具 | [插件 API](../dacp-plugin-api/README_zh.md)、[Union 协议模块](../dacp-union-protocol/README_zh.md) |
 
 ## 专题参考

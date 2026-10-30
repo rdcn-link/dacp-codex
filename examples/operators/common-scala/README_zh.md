@@ -10,13 +10,12 @@ CSV 要求唯一表头及一致的行宽，支持引号、转义引号、单元�
 
 ## 构建与逐个发布
 
-需要 JDK 17、sbt、Python 3 和 PyArrow。先在项目根目录发布本地依赖（按顺序执行，不要并行运行共享构建）。运行环境的固定摘要及归档从现有仓库的 `identity@1.3` 清单读取并校验，不会为每个算子导出镜像。
+需要 JDK 17、sbt、Python 3 和 PyArrow。先在项目根目录发布本地依赖（按顺序执行，不要并行运行共享构建）。通过 `--runtime-descriptor runtime.json` 提供已注册 JVM 运行环境的描述（已审批 JVM 算子的 `runtime` 对象），并通过 `--runtime-catalog` 指定其 blob 存储；归档摘要会被校验。
 
 ```bash
 (cd dacp-plugin-api && sbt publishLocal)
 (cd dacp-operator-sdk && sbt publishLocal)
-.venv/bin/python examples/operators/common-scala/build.py
-.venv/bin/python examples/operators/common-scala/build.py
+.venv/bin/python examples/operators/common-scala/build.py --runtime-descriptor runtime.json
 ```
 
 构建脚本生成独立入口，编译薄 JAR，并执行 100 个输入输出示例校验；结果在 `examples/operators/common-scala/target/catalog`。发布复用代码、运行环境和源码 blob，通过带令牌的 HTTP API 逐个发布，一条成功即可在网站看到。版本不可覆盖，变更代码应使用新版本。重复发布只接受完全相同的清单。远程发布应使用 HTTPS。下载的源码归档提供实现、构建文件、入口、测试样例与中英文说明；它依赖项目中的 SDK 及构建辅助程序，按本文命令从项目根目录构建。

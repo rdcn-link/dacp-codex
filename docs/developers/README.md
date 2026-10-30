@@ -17,7 +17,6 @@ Core owns contracts, discovery and lifecycle, transport, authorization, namespac
 | `dacp-plugin-api` | Public provider, format, scan and executor contracts |
 | `dacp-server` | Flight service, namespace, coordination and resource lifecycle |
 | `dacp-client`, `dacp-client-scala` | Public client APIs and shell |
-| `dacp-operator-runtime` | JVM operator runtime and built-in implementations |
 | `plugins/dacp-plugin-operator-executors` | Container launchers and native-command bridge |
 | `dacp-operator-repository` | Immutable publication, public search and downloads |
 | `proto/dacp.proto` | Shared wire messages |
