@@ -16,7 +16,7 @@ Contributed plugins compile against `io.github.rdcn-link:dacp-plugin-api_2.13:0.
 - `DataCatalog`, `DataCatalogProvider`, `CatalogContext`, and `DatasetInfo`: discover Datasets dynamically and acquire independent access leases; see [dynamic catalogs](../docs/dataset-catalogs.md).
 - `DatasetProvider`, `DatasetDefinition`, `DatasetContext`, `PublishedDataset`, and `DatasetAccess`: construct and access native namespaces.
 - `ItemDatasetAccess` and `ItemAccess`: open objects or cursors per Item with scoped cleanup; see [access contracts](../docs/dataset-access.md).
-- `DataView[K,S]`, `DataStream[K]`, `DataConsumer[K]`, `ByteChunk`, and `RecordBatch`: typed, synchronous block streaming with explicit descriptors, selections and borrowed-buffer lifetimes; see [data streams](../docs/data-streams.md).
+- `DataView[K,S]`, `DataStream[K]`, `DataConsumer[K]`, `ByteChunk`, and `RecordBatch`: typed, synchronous block streaming with explicit descriptors, selections and borrowed-buffer lifetimes; see [data streams](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams.md).
 - `ScientificViews`: local array, image and sequence contracts preserving scientific structures. NetCDF/FITS/FASTA parsers and scientific wire codecs are not bundled.
 - `FormatHandler`, `FileOptions`, and `Records`: interpret files and stream Arrow batches.
 - `StructuredFileHandler`: expose file-internal logical objects directly as a namespace.

@@ -4,3 +4,5 @@ lazy val app = (project in file(".")).dependsOn(server % "compile->compile;runti
 Compile / mainClass := Some("example.EmbeddedServerExample")
 fork := true
 javaOptions ++= Seq("--add-opens=java.base/java.nio=ALL-UNNAMED", "-Dio.netty.tryReflectionSetAccessible=true")
+
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-core" % "0.1.0-SNAPSHOT"

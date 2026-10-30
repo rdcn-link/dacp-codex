@@ -1,6 +1,6 @@
 # Dataset 提供者
 
-Dataset 是逻辑命名空间。提供者决定如何构建它；客户端始终使用公开路径以及 `list`、`open`、`count`。内置后端实现位于 [DatasetPublication.scala](../xstream-data/xstream-data-files/src/main/scala/dacp/DatasetPublication.scala)。
+Dataset 是逻辑命名空间。提供者决定如何构建它；客户端始终使用公开路径以及 `list`、`open`、`count`。内置后端实现位于 [DatasetPublication.scala](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-files/src/main/scala/dacp/DatasetPublication.scala)。
 
 ## 内置提供者
 
@@ -73,7 +73,7 @@ META-INF/services/xstream.data.DatasetProvider
 
 1. `create(definition, context)` 校验私有设置，为服务器配置构建 `PublishedDataset`，可初始化发现或发布元数据。日志和公共错误中不能出现凭据或物理标识；`DatasetDefinition.toString` 隐去设置。
 2. `PublishedDataset.open(check)` 创建请求级 `DatasetAccess`，取消请求时通过回调中止发现。
-3. `DatasetAccess` 实现递归列表、直接子项列表、元数据、精确计数和流式交付。`view(path, kind)` 返回可选的类型化 `DataView`，通过 `open(selection, StreamContext)` 获得单次消费的 `DataStream`。读写前检查取消，在成功、失败和取消时关闭资源，见[类型化数据流](data-streams_zh.md)。
+3. `DatasetAccess` 实现递归列表、直接子项列表、元数据、精确计数和流式交付。`view(path, kind)` 返回可选的类型化 `DataView`，通过 `open(selection, StreamContext)` 获得单次消费的 `DataStream`。读写前检查取消，在成功、失败和取消时关闭资源，见[类型化数据流](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams_zh.md)。
 
 用 `Item.views = Some(Seq("records", "bytes"))` 显式声明原生能力，无需依赖文件格式处理器。records 开始前必须有匹配的 Arrow schema。进程内 bytes 输出 `ByteChunk`，网络适配器使用单 binary 列的 Arrow 信封。普通 folder 没有视图，其大小、时间和记录数保持未知。不存在的资源抛 `FileNotFoundException`；格式失败使用固定消息的 `FormatFailure`，不能包含私有信息。核心实施 URI 授权并清理错误，不应抛出包含后端诊断的传输异常。
 
@@ -81,7 +81,7 @@ META-INF/services/xstream.data.DatasetProvider
 
 Dataset 提供者、[归档读取器](format-handlers_zh.md#归档读取器)和[格式处理器](format-handlers_zh.md)分别负责构建命名空间、浏览容器和解释内容。mixed/sqldb 复用 `NamespaceAdapter`；directory 按发现的文件系统路径构建请求级命名空间。任务输出是临时 Item 流，不进入 Dataset 命名空间。
 
-`DatasetContext` 提供批次设置、通用 `sources`、当前 `PluginEnvironment` 和 `createDataset`，无需暴露服务器实现。后端插件自行校验源设置。核心关闭请求句柄；`PublishedDataset.close` 释放提供者级资源。贡献者测试可使用 [PluginChecks](../xstream-data/xstream-data-core/src/main/scala/xstream/data/PluginChecks.scala)，另见[独立示例](../examples/plugins/README_zh.md)。
+`DatasetContext` 提供批次设置、通用 `sources`、当前 `PluginEnvironment` 和 `createDataset`，无需暴露服务器实现。后端插件自行校验源设置。核心关闭请求句柄；`PublishedDataset.close` 释放提供者级资源。贡献者测试可使用 [PluginChecks](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/PluginChecks.scala)，另见[独立示例](../examples/plugins/README_zh.md)。
 
 ## 记录扫描
 

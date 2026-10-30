@@ -41,4 +41,4 @@
 
 `DataView[K,S]` 根据类型化选择条件打开 `DataStream[K]`，通过 `DataConsumer[K]` 同步传递描述信息与借用的数据块。bytes 使用 `ByteChunk`，records 使用 `RecordBatch`；插件无需实现网络监听器。Dataset 提供者通过 records 视图接收 `Scan`，可选的 `BatchDatasetAccess` 工具重写 `readScan`，文件处理器仍重写 `scan` 实现源端优化。
 
-`ScientificViews` 定义保留科学结构的进程内数组、图像和序列契约，尚未内置 NetCDF、FITS、FASTA 解析器及科学数据网络编码。详见[类型化数据流](../docs/data-streams_zh.md)。
+`ScientificViews` 定义保留科学结构的进程内数组、图像和序列契约，尚未内置 NetCDF、FITS、FASTA 解析器及科学数据网络编码。详见[类型化数据流](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams_zh.md)。

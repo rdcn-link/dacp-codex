@@ -73,7 +73,7 @@ Union provides standard DACP discovery, Items, Jobs and S3. For public short nam
 
 Project presentation material: [English meeting poster and A4 PDF](../assets/posters/README.md).
 
-[Online Job Designer](../xstream-designer/README.md): design local and cross-node jobs in the browser and export YAML for Shell / SDK submission.
+[Online Job Designer](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README.md): design local and cross-node jobs in the browser and export YAML for Shell / SDK submission.
 
 - [Operator parameter types and designer forms](operator-parameters.md)
 

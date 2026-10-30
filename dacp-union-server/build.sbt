@@ -2,6 +2,7 @@ name := "dacp-union-server"
 scalaVersion := "2.13.16"
 lazy val worker = RootProject(file("../dacp-server"))
 dependsOn(worker % "compile->compile;runtime->runtime;test->runtime")
+
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
 Compile / mainClass := Some("dacp.unionserver.Main")
 fork := true
@@ -23,8 +24,9 @@ lazy val collaborationClient=RootProject(file("../dacp-collaboration-client-scal
 dependsOn(collaborationClient)
 
 // Bundle codec/parser dependencies explicitly in the Union distribution and embedded-node tests.
-lazy val scientificCodecs=RootProject(file("../xstream-data/xstream-data-scientific-codecs"))
-lazy val scientificNetcdf=RootProject(file("../xstream-data/xstream-data-netcdf"))
-lazy val scientificFits=RootProject(file("../xstream-data/xstream-data-fits"))
-lazy val scientificFasta=RootProject(file("../xstream-data/xstream-data-fasta"))
-dependsOn(scientificCodecs % "runtime->compile;test->compile",scientificNetcdf % "runtime->compile;test->compile",scientificFits % "runtime->compile;test->compile",scientificFasta % "runtime->compile;test->compile")
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-fasta" % "0.1.0-SNAPSHOT" % "runtime,test"
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-fits" % "0.1.0-SNAPSHOT" % "runtime,test"
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-netcdf" % "0.1.0-SNAPSHOT" % "runtime,test"
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-scientific-codecs" % "0.1.0-SNAPSHOT" % "runtime,test"
+
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-core" % "0.1.0-SNAPSHOT"

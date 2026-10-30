@@ -33,21 +33,18 @@ lazy val unionProtocol = RootProject(file("../dacp-union-protocol"))
 dependsOn(unionProtocol)
 
 // Standard distribution bundles plugins at runtime. Core compilation sees only the public API.
-lazy val pluginDatasets = RootProject(file("../xstream-data/xstream-data-files"))
-dependsOn(pluginDatasets % "runtime->compile;test->compile")
-lazy val pluginFormatsBasic = RootProject(file("../xstream-data/xstream-data-formats-basic"))
-dependsOn(pluginFormatsBasic % "runtime->compile;test->compile")
-lazy val pluginParquet = RootProject(file("../xstream-data/xstream-data-parquet"))
-dependsOn(pluginParquet % "runtime->compile;test->compile")
-lazy val pluginExcel = RootProject(file("../xstream-data/xstream-data-excel"))
-dependsOn(pluginExcel % "runtime->compile;test->compile")
-lazy val pluginArchives = RootProject(file("../xstream-data/xstream-data-archives"))
-dependsOn(pluginArchives % "runtime->compile;test->compile")
-lazy val pluginCatalogStatic = RootProject(file("../xstream-data/xstream-data-catalog-static"))
-dependsOn(pluginCatalogStatic % "runtime->compile;test->compile")
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-files" % "0.1.0-SNAPSHOT" % "runtime,test"
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-formats-basic" % "0.1.0-SNAPSHOT" % "runtime,test"
 
-lazy val pluginMounted = RootProject(file("../xstream-data/xstream-data-mounted"))
-dependsOn(pluginMounted % "runtime->compile;test->compile")
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-parquet" % "0.1.0-SNAPSHOT" % "runtime,test"
+
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-excel" % "0.1.0-SNAPSHOT" % "runtime,test"
+
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-archives" % "0.1.0-SNAPSHOT" % "runtime,test"
+
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-catalog-static" % "0.1.0-SNAPSHOT" % "runtime,test"
+
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-mounted" % "0.1.0-SNAPSHOT" % "runtime,test"
 
 lazy val pluginExecutionFile = RootProject(file("../plugins/dacp-plugin-execution-file"))
 dependsOn(pluginExecutionFile % "runtime->compile;test->compile")
@@ -75,17 +72,15 @@ dependsOn(operatorContract)
 lazy val operatorInference = RootProject(file("../dacp-operator-inference"))
 dependsOn(operatorInference)
 
-lazy val xstreamEngine = RootProject(file("../xstream-engine"))
-dependsOn(xstreamEngine)
+libraryDependencies += "io.github.rdcn-link" %% "xstream-engine" % "0.1.0-SNAPSHOT"
 
-lazy val dataScientificcodecs = RootProject(file("../xstream-data/xstream-data-scientific-codecs"))
-dependsOn(dataScientificcodecs % "runtime->compile;test->compile")
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-scientific-codecs" % "0.1.0-SNAPSHOT" % "runtime,test"
 
-lazy val dataNetcdf = RootProject(file("../xstream-data/xstream-data-netcdf"))
-dependsOn(dataNetcdf % "runtime->compile;test->compile")
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-netcdf" % "0.1.0-SNAPSHOT" % "runtime,test"
 
-lazy val dataFits = RootProject(file("../xstream-data/xstream-data-fits"))
-dependsOn(dataFits % "runtime->compile;test->compile")
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-fits" % "0.1.0-SNAPSHOT" % "runtime,test"
 
-lazy val dataFasta = RootProject(file("../xstream-data/xstream-data-fasta"))
-dependsOn(dataFasta % "runtime->compile;test->compile")
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-fasta" % "0.1.0-SNAPSHOT" % "runtime,test"
+
+
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-core" % "0.1.0-SNAPSHOT"

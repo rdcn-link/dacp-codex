@@ -23,8 +23,8 @@ File, JDBC, and mixed providers share alias and directory implementation in one 
 From the repository root:
 
 ```bash
-(cd xstream-data/xstream-data-files && sbt package)
-(cd xstream-data/xstream-data-excel && sbt package)
+(cd /path/to/xstream-codex/xstream-data/xstream-data-files && sbt package)
+(cd /path/to/xstream-codex/xstream-data/xstream-data-excel && sbt package)
 (cd plugins/dacp-plugin-operator-executors && sbt test)
 (cd dacp-server && sbt test 'Universal / stage')
 ```

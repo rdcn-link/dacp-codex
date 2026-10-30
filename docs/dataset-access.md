@@ -14,7 +14,7 @@ The catalog determines which Datasets exist; the provider determines how to acce
 
 ## Implementing a backend per Item
 
-A plugin may extend `ItemDatasetAccess`, implementing `list()`, `list(path)`, `describe(path)`, and `openItem(path)`. The returned `ItemAccess` implements `count()` and `view(kind)`. Return `None` for unsupported capabilities; a supported `DataView` opens a `DataStream` with a typed selection. Records use `Scan`, bytes use `AllBytes`. `BatchItemAccess` is an optional Arrow callback helper: implement `read` and override `readScan` for source pushdown, or use its bounded fallback. See [typed streams and scientific representations](data-streams.md).
+A plugin may extend `ItemDatasetAccess`, implementing `list()`, `list(path)`, `describe(path)`, and `openItem(path)`. The returned `ItemAccess` implements `count()` and `view(kind)`. Return `None` for unsupported capabilities; a supported `DataView` opens a `DataStream` with a typed selection. Records use `Scan`, bytes use `AllBytes`. `BatchItemAccess` is an optional Arrow callback helper: implement `read` and override `readScan` for source pushdown, or use its bounded fallback. See [typed streams and scientific representations](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams.md).
 
 `describe` must explicitly advertise the plugin's native `Item.views`, such as `Some(Seq("records"))` or `Some(Seq("bytes"))`. The type name does not need file-format registration. Return `None` for unknown counts; ordinary folders have no content views. Structure roots supporting original bytes may explicitly advertise `bytes`.
 

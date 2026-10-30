@@ -35,7 +35,8 @@ class PluginDiscoverySpec extends AnyFunSuite {
     bundled.foreach { implementation =>
       val origin = implementation.getClass.getProtectionDomain.getCodeSource.getLocation.toString
       assert(!origin.contains("/dacp-server/"),s"bundled plugin leaked into server artifact: $origin")
-      assert(origin.contains("/plugins/"),s"plugin is outside the plugin modules: $origin")
+      val contractOrigin = classOf[DatasetProvider].getProtectionDomain.getCodeSource.getLocation.toString
+      assert(origin != contractOrigin,s"plugin implementation leaked into data contracts: $origin")
     }
   }
 }

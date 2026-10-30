@@ -20,7 +20,7 @@
 | 优先级 | 现有耦合与位置 | 建议与实际收益 |
 |---|---|---|
 | 中 | 核心验证 Token 主体、Union 服务凭据、任务所有权和精确节点间流计划 | 可扩展可发现的机构授权策略。插件必须保留核心认证、凭据撤销和执行计划边界 |
-| 中 | [TaskExecutor](../xstream-engine/src/main/scala/dacp/TaskExecutor.scala) 直接创建 Docker 客户端和容器；[OperatorLibrary.resolve](../dacp-operator-inference/src/main/scala/dacp/OperatorLibrary.scala) 也接受 DockerClient | 将制品解析与运行环境分开，再定义完整 `ExecutionBackend` 生命周期。现有 `OperatorExecutor` 继续生成语言/入口启动命令；Docker、未来 Podman/Kubernetes 后端负责运行、取消、资源和清理。拆分不表示允许直接在宿主机执行不受约束的代码 |
+| 中 | [TaskExecutor](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-engine/src/main/scala/dacp/TaskExecutor.scala) 直接创建 Docker 客户端和容器；[OperatorLibrary.resolve](../dacp-operator-inference/src/main/scala/dacp/OperatorLibrary.scala) 也接受 DockerClient | 将制品解析与运行环境分开，再定义完整 `ExecutionBackend` 生命周期。现有 `OperatorExecutor` 继续生成语言/入口启动命令；Docker、未来 Podman/Kubernetes 后端负责运行、取消、资源和清理。拆分不表示允许直接在宿主机执行不受约束的代码 |
 
 当前原生 Dataset Provider 已可直接提供 MongoDB/S3 风格的 Item 和流；格式字节源、通用挂载解决的是**复用格式插件和跨后端组合**，不是接入单一后端的前置条件。`mixed` 目前明确仍是文件/JDBC 的组合。
 
@@ -37,7 +37,7 @@
 
 [Producer.fail](../dacp-server/src/main/scala/dacp/Server.scala) 仍识别 `java.sql.SQLException`，并依赖部分异常消息字符串。应改成统一的类型化失败契约，由插件把内部错误转换成安全的公共错误类别，核心统一映射 Flight 状态；不要允许任意插件错误消息直接成为客户端响应。
 
-[Item.views](../xstream-data/xstream-data-core/src/main/scala/xstream/data/Models.scala)、流端口和 Flight 读取目前明确支持 records/bytes。数组、图像、多维变量和 selection 需要先定义跨客户端的描述、schema、能力与选择语义，再让插件实现；不能仅让插件注册任意字符串，也不能将科学结构静默拉平成 records。
+[Item.views](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/Models.scala)、流端口和 Flight 读取目前明确支持 records/bytes。数组、图像、多维变量和 selection 需要先定义跨客户端的描述、schema、能力与选择语义，再让插件实现；不能仅让插件注册任意字符串，也不能将科学结构静默拉平成 records。
 
 
 Flight、URI/票据解析、命名空间安全验证、基本流协议、取消、背压和资源上限继续属于核心职责。优先抽取具体用户场景需要替换的策略与实现，不为所有分支建立扩展点。

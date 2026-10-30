@@ -164,4 +164,4 @@ remote_item_credentials:
   "dacp://remote.example:18861": /etc/dacp/remote-reader.token
 ```
 
-[Scientific view selections and samples](designer-scientific.md).
+[Scientific view selections and samples](https://github.com/rdcn-link/xstream-codex/blob/main/docs/designer-scientific.md).

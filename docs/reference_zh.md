@@ -97,7 +97,7 @@ Excel 使用 Apache POI 5.5.1 的 XLS/XLSX 事件读取接口。空表头生成 
 
 列举不解析 CSV、NDJSON 或 Excel 记录；除发布时已填充的记录数外，其记录数保持未知。打开记录视图时通过有限采样推断 schema；除可选的启动计数外，只有显式 `count` 扫描文件，Parquet 可直接读取 footer 中的数量。Excel 解析队列最多保留 16 行，关闭或取消时停止解析；schema、当前 batch、单个单元格及 POI 共享字符串表还会占用内存，大型共享字符串表仍可能需要较多内存。不会在内存中构建完整工作表。
 
-服务端扩展接口为 [`FormatHandler`](../xstream-data/xstream-data-core/src/main/scala/xstream/data/FormatHandler.scala)。提供者实现检测、可选的低成本元数据、schema、记录读取、显式计数及资源释放；文件 bytes 使用公共读取器。将提供者 JAR 加入类路径，在 `META-INF/services/xstream.data.FormatHandler` 注册公开的无参类并重启。格式 ID 和扩展名注册必须唯一，`sql` 保留给 SQL adapter。新增格式不需要修改核心服务端或 SDK。参见[处理器开发说明](format-handlers_zh.md)。
+服务端扩展接口为 [`FormatHandler`](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/FormatHandler.scala)。提供者实现检测、可选的低成本元数据、schema、记录读取、显式计数及资源释放；文件 bytes 使用公共读取器。将提供者 JAR 加入类路径，在 `META-INF/services/xstream.data.FormatHandler` 注册公开的无参类并重启。格式 ID 和扩展名注册必须唯一，`sql` 保留给 SQL adapter。新增格式不需要修改核心服务端或 SDK。参见[处理器开发说明](format-handlers_zh.md)。
 
 ## Item 属性
 

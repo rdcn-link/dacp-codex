@@ -1,6 +1,6 @@
 # Dataset providers
 
-A Dataset is a logical namespace. Providers decide how to construct it; clients continue to use public paths, `list`, `open`, and `count`. The implementation is in [DatasetPublication.scala](../xstream-data/xstream-data-files/src/main/scala/dacp/DatasetPublication.scala).
+A Dataset is a logical namespace. Providers decide how to construct it; clients continue to use public paths, `list`, `open`, and `count`. The implementation is in [DatasetPublication.scala](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-files/src/main/scala/dacp/DatasetPublication.scala).
 
 ## Built-in providers
 
@@ -73,7 +73,7 @@ The lifecycle is:
 
 1. `create(definition, context)` validates private settings and constructs a `PublishedDataset` once per server configuration. It may initialize discovery or publication metadata. Keep credentials and physical identifiers out of logs and public errors; `DatasetDefinition.toString` redacts its settings.
 2. `PublishedDataset.open(check)` creates a request-scoped `DatasetAccess`. The supplied callback aborts discovery when the request is cancelled.
-3. `DatasetAccess` implements recursive listing, immediate-child listing, metadata, exact counting, and stream delivery. Its `view(path, kind)` returns an optional typed `DataView`; `open(selection, StreamContext)` creates a single-use `DataStream`. Check cancellation before reads/emissions and close resources on success, failure, and cancellation. See [typed data streams](data-streams.md).
+3. `DatasetAccess` implements recursive listing, immediate-child listing, metadata, exact counting, and stream delivery. Its `view(path, kind)` returns an optional typed `DataView`; `open(selection, StreamContext)` creates a single-use `DataStream`. Check cancellation before reads/emissions and close resources on success, failure, and cancellation. See [typed data streams](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams.md).
 
 Use `Item.views = Some(Seq("records", "bytes"))` to advertise native capabilities independently of file format handlers. Record metadata must include a compatible Arrow schema before the stream starts. The local bytes view emits `ByteChunk`; the network adapter uses a single-binary-column Arrow envelope. Ordinary folders have no views, and folder size, time, and record count remain unknown. Missing resources should throw `FileNotFoundException`; public format failures use a fixed `FormatFailure` message without private details. The server applies URI authorization and sanitizes failures; do not throw transport exceptions containing backend diagnostics.
 
@@ -81,7 +81,7 @@ Native providers can implement streams directly, so MongoDB need not be modeled 
 
 Dataset providers, [container readers](format-handlers.md#container-readers), and [format handlers](format-handlers.md) have separate responsibilities: constructing a namespace, browsing embedded containers, and interpreting data content. `mixed` and `sqldb` reuse `NamespaceAdapter`; the directory provider constructs scoped namespaces as filesystem paths are discovered. Task outputs are transient item streams and do not enter the dataset namespace.
 
-`DatasetContext` supplies batch settings, generic source settings and the current PluginEnvironment, and `createDataset` for composing installed providers, without exposing server implementation classes. Native backends can implement access directly. The server closes each request access handle; implement `PublishedDataset.close` to release provider-level resources at shutdown. Use [PluginChecks](../xstream-data/xstream-data-core/src/main/scala/xstream/data/PluginChecks.scala) in contributor tests, and see the [standalone example](../examples/plugins/README.md).
+`DatasetContext` supplies batch settings, generic source settings and the current PluginEnvironment, and `createDataset` for composing installed providers, without exposing server implementation classes. Native backends can implement access directly. The server closes each request access handle; implement `PublishedDataset.close` to release provider-level resources at shutdown. Use [PluginChecks](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/PluginChecks.scala) in contributor tests, and see the [standalone example](../examples/plugins/README.md).
 
 ## Records scans
 
