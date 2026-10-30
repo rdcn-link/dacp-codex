@@ -43,7 +43,7 @@ S3 supports SigV4 header authentication and presigned GET URLs for temporary obj
 
 Dashboards are internal, read-only services. Deployment networking controls their exposure. This design does not provide public internet login protection.
 
-Approved operator browsing and downloads are public. Developers submit source through per-submitter Token APIs; private source and pending artifacts are not public. Administrators sign in separately, manage Tokens and environments, inspect automatic scan/build results, assign multiple categories and a final public trust score, and approve publication. Versions cannot be overwritten. Detailed scan reports remain private; scores are review assessments, not safety guarantees. See [source submission and review](operator-submission.md).
+Approved operator browsing and downloads are public. Developers submit source through per-submitter Token APIs; private source and pending artifacts are not public. Administrators sign in separately, manage Tokens and environments, inspect automatic scan/build results, assign multiple categories and a final public trust score, and approve publication. Versions cannot be overwritten. Detailed scan reports remain private; scores are review assessments, not safety guarantees. See [source submission and review](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission.md).
 
 ## Audit and credential storage
 
@@ -55,7 +55,7 @@ Credential files should be accessible only to the service account. Ordinary toke
 
 Implemented features include local credential management and hot reload, ordinary Flight token authentication, certificate-bound Union service credentials, job ownership isolation, exact peer plan authorization, separate collaboration SDKs, S3 SigV4 and presigned GET. Automated tests cover admitted streams continuing after ordinary token revocation while subsequent calls fail, active collaboration stopping after service credential revocation, ownership surviving token rotation, and audit records for rejected requests. Live integration verifies authentication on three member nodes, Union collaboration calls, and boto3 signed listing, metadata, content, Range and presigned GET requests.
 
-Related documentation: [access logs](access-logs.md), [data access](dataset-access.md), [operator repository](../dacp-operator-repository/README.md). Ordinary client examples require a token file; Union member configuration requires a node-issued service credential file.
+Related documentation: [access logs](access-logs.md), [data access](dataset-access.md), [operator repository](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README.md). Ordinary client examples require a token file; Union member configuration requires a node-issued service credential file.
 
 ## Local credential operations
 

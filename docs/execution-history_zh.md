@@ -40,7 +40,7 @@ Union HTTP 看板的“执行历史”可分页查看 U 的持久化作业、任
 
 `TaskService` 覆盖普通 Flight Job 与直接 worker 请求；`UnionWorker` 记录节点执行和每项 task；`Coordinator` 记录全局作业。记录标识独立于用户提供的任务名称，因此重复运行同一任务不会覆盖旧记录。终态不会被迟到的运行状态覆盖。当前采用目录扫描、按创建时间排序的分页，适合初期部署；尚无数据库索引、自动归档或远端汇总节点历史的功能。U 持久化的是其观察到的节点状态；每个节点的本地记录保留本地任务状态转换。
 
-验证：`cd dacp-server && sbt test`，`cd dacp-union-server && sbt test`。构建两个模块的 `sbt stage` 并准备示例证书和 `dacp/operator-python:1.0` 镜像后，在根目录运行 `python3 scripts/test-execution-history.py` 和 `python3 scripts/test-union.py`，验证真实 Docker 执行及历史记录。两个脚本使用临时端口和目录，并自动关闭启动的服务。
+验证：`cd dacp-server && sbt test`，`cd dacp-union-server && sbt test`。构建两个模块的 `sbt stage` 并准备示例证书和 `xstream/operator-python:1.0` 镜像后，在根目录运行 `python3 scripts/test-execution-history.py` 和 `python3 scripts/test-union.py`，验证真实 Docker 执行及历史记录。两个脚本使用临时端口和目录，并自动关闭启动的服务。
 
 Union 看板展示提交的 Job YAML 和数据集、任务、端口依赖及最终输出组成的 DAG 图。看板和只读查询接口公开展示这些信息，历史文件由服务器管理员管理。节点健康信息包含 JVM 进程启动时间 `started_at_ms` 和单调计时的已运行时间 `uptime_ms`；节点不可达时保留上次观测值。未保存脚本的旧记录明确提示脚本不可用。
 

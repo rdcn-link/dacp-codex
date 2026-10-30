@@ -1,5 +1,0 @@
-materialization:
-  allowed: false
-  default: stream
-max_retries: 0
-timeout_seconds: 300

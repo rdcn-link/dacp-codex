@@ -38,8 +38,8 @@ Job definitions, node subjobs, execution policies and variable files use YAML. E
 | `dacp-client` / `dacp-client-scala` | Python / Scala applications access data, execute Jobs, and submit Union jobs |
 | [dacp-union-server](dacp-union-server/README.md) | Manages one Union, connects configured nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
 | [Union web dashboard](dacp-union-server/README.md#execution-and-interfaces) | Management view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
-| [dacp-operator-repository](dacp-operator-repository/README.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; administrators publish through the CLI |
-| [dacp-operator-sdk](dacp-operator-sdk/README.md) | Lightweight metadata contracts (`contract`), JVM templates (`jvm`) and Python templates (`python`) |
+| [xstream-operator-repository](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; administrators publish through the CLI |
+| [xstream-operator-sdk](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-sdk/README.md) | Lightweight metadata contracts (`contract`), JVM templates (`jvm`) and Python templates (`python`) |
 | `dacp-plugin-api` / `dacp-union-protocol` | Public plugin contracts and shared Union transport utilities |
 | [plugins](plugins/README.md) | Bundled Dataset, file-format, archive, catalog, and operator launch plugins |
 
@@ -50,13 +50,13 @@ Servers use JDK 17 and Scala 2.13; the Python SDK requires Python 3.10+. Browsin
 - Existing server: start with [connecting and browsing](docs/users/README.md#browsing-and-reading).
 - Local demonstration: follow [single-node deployment](docs/administrators/README.md#single-node-deployment).
 - Distributed demonstration: run the [two-node Union example](examples/union/README.md).
-- Custom computation: read [writing and publishing operators](docs/operator-authoring.md).
+- Custom computation: read [writing and publishing operators](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md).
 
-Ordinary data access and execution use TLS and tokens; Union collaboration uses mutual TLS and node-issued service credentials. S3 uses independent SigV4 authentication. Repository downloads are public, publication requires a token, and internal dashboards are publicly read-only. See [authentication and access control](docs/security.md). Operators use isolated runtime environments; eligible node subjobs share one process. See [in-process operator fusion](docs/operator-fusion.md). Outputs are not registered as Datasets. Servers persist execution metadata, while result contents are delivered through single-consumption streams.
+Ordinary data access and execution use TLS and tokens; Union collaboration uses mutual TLS and node-issued service credentials. S3 uses independent SigV4 authentication. Repository downloads are public, publication requires a token, and internal dashboards are publicly read-only. See [authentication and access control](docs/security.md). Operators use isolated runtime environments; eligible node subjobs share one process. See [in-process operator fusion](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion.md). Outputs are not registered as Datasets. Servers persist execution metadata, while result contents are delivered through single-consumption streams.
 
 [Online Job Designer](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README.md): drag-and-drop composition, Union node selection, live operator repositories, schema previews, variables, chat proposals and YAML import / export.
 
-Source-only operator publication: [submission, isolated builds, review and trust scores](docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
+Source-only operator publication: [submission, isolated builds, review and trust scores](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
 
 The independent [XStream engine](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-engine/README.md) provides the `xstream-runner` local launcher and is embedded by DACP Server. [XStream Designer](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README.md) browses local and configured remote catalogs lazily.
 

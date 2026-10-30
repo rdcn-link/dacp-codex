@@ -1,5 +1,0 @@
-lazy val contract = RootProject(file("contract"))
-lazy val jvm = RootProject(file("jvm"))
-lazy val root = (project in file("."))
-  .aggregate(contract, jvm)
-  .settings(name := "dacp-operator-sdk-build", publish / skip := true)

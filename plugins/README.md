@@ -12,7 +12,7 @@ All bundled extension implementations live here. Plugins depend on `dacp-plugin-
 | `xstream-data-excel` | `FormatHandler`: `excel` | Apache POI |
 | `xstream-data-archives` | `ContainerReader`: `zip`, `gzip`, `tar`, `tar-gzip` | Apache Commons Compress |
 | `xstream-data-catalog-static` | `DataCatalogProvider`: `static` | No additional dependencies |
-| `dacp-plugin-operator-executors` | `OperatorExecutor`: `container`, `jvm`, `python`, `command` | No additional dependencies |
+| `xstream-plugin-operator-executors` | `OperatorExecutor`: `container`, `jvm`, `python`, `command` | No additional dependencies |
 | `xstream-data-mounted` | `DatasetProvider`: `mounted`; generic namespace composition | No additional dependencies |
 | `dacp-plugin-execution-file` | `ExecutionStoreProvider`, `MaterializationStoreProvider`: `file`; atomic execution metadata and output materialization with quotas, expiry, and integrity validation | No additional dependencies |
 
@@ -25,7 +25,7 @@ From the repository root:
 ```bash
 (cd /path/to/xstream-codex/xstream-data/xstream-data-files && sbt package)
 (cd /path/to/xstream-codex/xstream-data/xstream-data-excel && sbt package)
-(cd plugins/dacp-plugin-operator-executors && sbt test)
+(cd /path/to/xstream-codex/plugins/xstream-plugin-operator-executors && sbt test)
 (cd dacp-server && sbt test 'Universal / stage')
 ```
 
@@ -47,6 +47,6 @@ datasets:
 
 `dacp-plugin-api` supplies contracts, generic Arrow scans and record utilities, discovery, and resource utilities. `dacp-server` retains Flight, authorization, and request/task lifecycles. Core `sources` entries contain only provider/settings; the Dataset plugin validates JDBC settings and implements connections, queries and type mapping. Production MongoDB, S3, NetCDF, and FITS implementations are not provided.
 
-Adding a plugin for an existing extension point requires only registration, installation, and configuration, without core or client changes. See [the plugin guide](../docs/plugins.md), [Dataset/Item access](../docs/dataset-access.md), [independent contributor examples](../examples/plugins/README.md), and [executor documentation](dacp-plugin-operator-executors/README.md).
+Adding a plugin for an existing extension point requires only registration, installation, and configuration, without core or client changes. See [the plugin guide](../docs/plugins.md), [Dataset/Item access](../docs/dataset-access.md), [independent contributor examples](../examples/plugins/README.md), and [executor documentation](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-operator-executors/README.md).
 
 [Output materialization configuration and plugin contracts](../docs/materialization.md).

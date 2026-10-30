@@ -8,7 +8,7 @@ Protocol overview: [DACP (Data Access and Collaboration Protocol)](protocol.md).
 
 Dynamic catalogs and application embedding: [DataCatalog](dataset-catalogs.md), [embedded server](embedded-server.md).
 
-The [collaboration operator catalog](operator-catalog.md) documents the six published operators, ports, parameters, input/output and Shell / Job examples.
+The [collaboration operator catalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog.md) documents the six published operators, ports, parameters, input/output and Shell / Job examples.
 
 ## Read by role
 
@@ -27,17 +27,17 @@ The [collaboration operator catalog](operator-catalog.md) documents the six publ
 | Scala SDK | [Scala client](../dacp-client-scala/README.md) |
 | DACP Server | [Administrator guide](administrators/README.md), [configuration and protocol reference](reference.md) |
 | Union Server and web dashboard | [Union manual](../dacp-union-server/README.md), [collaboration protocol](union.md), [two-node example](../examples/union/README.md) |
-| Operator repository CLI and website | [Repository manual](../dacp-operator-repository/README.md) |
+| Operator repository CLI and website | [Repository manual](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README.md) |
 | Plugin API and Union transport utilities | [Plugin API](../dacp-plugin-api/README.md), [Union protocol module](../dacp-union-protocol/README.md) |
 
 ## Topic references
 
 | Topic | Documentation |
 |---|---|
-| Writing, publishing, and example code | [Scala / Java / Python operators](operator-authoring.md), [native commands](native-commands.md) |
-| DEBUG source submission | [Source runtimes and heredocs](operator-source.md) |
-| Runtimes, artifacts, caches, and frame protocol | [Operator packaging](operator-packaging.md), [stream contract](operator-streams.md) |
-| Source, licenses, build instructions, and SBOM | [Operator review material](operator-provenance.md) |
+| Writing, publishing, and example code | [Scala / Java / Python operators](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md), [native commands](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands.md) |
+| DEBUG source submission | [Source runtimes and heredocs](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md) |
+| Runtimes, artifacts, caches, and frame protocol | [Operator packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md), [stream contract](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams.md) |
+| Source, licenses, build instructions, and SBOM | [Operator review material](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance.md) |
 | Execution records, history queries, and restart semantics | [Execution history](execution-history.md) |
 | Plugin discovery and contribution requirements | [Plugin architecture](plugins.md) |
 | Dataset backends, file formats, and structured browsing | [Dataset providers](dataset-providers.md), [format handlers](format-handlers.md) |
@@ -47,7 +47,7 @@ The [collaboration operator catalog](operator-catalog.md) documents the six publ
 ## Runnable examples
 
 - [Jobs between ordinary nodes](../examples/multi-node/README.md) and [Union analysis across centers](../examples/union/README.md).
-- [Scala operators](../examples/operators/scala/README.md), [Python operators](../examples/operators/python/README.md), [native executable operators](../examples/operators/native/README.md).
+- [Scala operators](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/scala/README.md), [Python operators](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/python/README.md), [native executable operators](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/native/README.md).
 - [Plugin project](../examples/plugins/README.md) and [SQL publication](../examples/sql/README.md).
 
 Commands run from the project root unless a document specifies otherwise. Relative paths in service configurations resolve against the service process working directory. Example certificates, hosts, ports, and paths are for local demonstrations; configure deployment values for your environment. Documentation defaults to English in `README.md` and unsuffixed topic files; complete Chinese translations use `README_zh.md` and `*_zh.md`.
@@ -55,7 +55,7 @@ Commands run from the project root unless a document specifies otherwise. Relati
 [User access logs](access-logs.md): JSON Lines files, size rotation, fields and collection.
 
 [Dataset directories](dataset-directory.md): public node descriptions, per-member browsing on the Union website and shell `datasets`.
-[Shared-process measurements](operator-fusion-benchmark.md): strategy comparisons with one million and four million rows.
+[Shared-process measurements](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion-benchmark.md): strategy comparisons with one million and four million rows.
 
 [Node web dashboard](node-web.md): default HTTP service, configuration, and G6 execution DAGs.
 
@@ -65,7 +65,7 @@ Official website builds, deployment and software download publication: [dacp-web
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](union-proxy.md).
 
-[Authentication and access control](security.md): Flight tokens, Union service credentials, S3 SigV4, revocation and audit. [Structure inference](structure-inference.md): mandatory operator output inference and workflow validation.
+[Authentication and access control](security.md): Flight tokens, Union service credentials, S3 SigV4, revocation and audit. [Structure inference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference.md): mandatory operator output inference and workflow validation.
 
 [Streaming versus per-step materialization benchmark](materialization-benchmark.md): 500,000 weather observations, three measured runs and actual persisted bytes.
 
@@ -75,6 +75,6 @@ Project presentation material: [English meeting poster and A4 PDF](../assets/pos
 
 [Online Job Designer](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README.md): design local and cross-node jobs in the browser and export YAML for Shell / SDK submission.
 
-- [Operator parameter types and designer forms](operator-parameters.md)
+- [Operator parameter types and designer forms](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-parameters.md)
 
-Source-only operator publication: [submission, isolated builds, review and trust scores](operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
+Source-only operator publication: [submission, isolated builds, review and trust scores](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.

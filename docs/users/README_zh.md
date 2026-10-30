@@ -266,7 +266,7 @@ Item 可携带修改时间、字节大小和精确记录数。未知值与 `0` �
 
 ## 数据协作与任务
 
-DACP 通过 YAML DAG 组织任务。协调节点解析依赖，默认将任务放在第一个输入所在节点，也可显式指定执行节点；各节点通过双向 TLS 保护的服务连接协作。符合[合并执行条件](../operator-fusion_zh.md)的节点子作业共享一个容器和进程，其余任务独立执行；命名端口消费数据项流，输出直接流向客户端或下游任务，不保存输出数据集。
+DACP 通过 YAML DAG 组织任务。协调节点解析依赖，默认将任务放在第一个输入所在节点，也可显式指定执行节点；各节点通过双向 TLS 保护的服务连接协作。符合[合并执行条件](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion_zh.md)的节点子作业共享一个容器和进程，其余任务独立执行；命名端口消费数据项流，输出直接流向客户端或下游任务，不保存输出数据集。
 
 运行任务还需要 Linux、`mkfifo` 和可访问的 Docker Engine。从项目根目录配置提供已审批算子的仓库，再启动服务；若快速开始的服务仍在运行，先将其停止：
 
@@ -275,18 +275,18 @@ cd dacp-server
 sbt 'run ../examples/server.yaml'
 ```
 
-连接 shell 后运行 [当前算子库](../operator-catalog_zh.md)中的完整气象工作流，或在选择气象数据集后运行 `run piflow_csv_parser@1.0 --input source=/observations --view bytes`。shell 等待并逐块显示结果；Ctrl-C 取消任务。
+连接 shell 后运行 [当前算子库](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog_zh.md)中的完整气象工作流，或在选择气象数据集后运行 `run piflow_csv_parser@1.0 --input source=/observations --view bytes`。shell 等待并逐块显示结果；Ctrl-C 取消任务。
 
 更多说明：
 
 - [双节点示例](../../examples/multi-node/README_zh.md)：任务放置、远端输入及输出消费。
-- [Scala 算子仓库与网站](../../dacp-operator-repository/README_zh.md)：公共搜索、版本详情、下载与不可变算子发布。
-- [自定义算子编写与上传](../operator-authoring_zh.md)：Scala/Python 完整源码、构建、发布、远程上传和任务执行。
+- [Scala 算子仓库与网站](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README_zh.md)：公共搜索、版本详情、下载与不可变算子发布。
+- [自定义算子编写与上传](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)：Scala/Python 完整源码、构建、发布、远程上传和任务执行。
 - [任务与算子参考](../reference_zh.md#任务执行与算子)：DAG、容器输入输出契约和转换参数。
 
 使用 `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820` 启动空仓库，通过源码提交与审批发布算子后，打开 `http://localhost:8820/`，无需登录即可搜索、查看和下载算子。HTTPS 部署参见仓库指南。
 
-算子可共享依赖环境和代码包。JVM 算子可以通过薄 JAR 使用 `dacp/operator-jvm:1.1`；也支持在共享运行时容器中执行 Python 源码和 wheel。运行时与代码按 SHA-256 存储和缓存，每个节点只下载一次相同制品。详见 [算子打包设计](../operator-packaging_zh.md) 和 [Python 示例](../../examples/operators/python/README_zh.md)。
+算子可共享依赖环境和代码包。JVM 算子可以通过薄 JAR 使用 `xstream/operator-jvm:1.1`；也支持在共享运行时容器中执行 Python 源码和 wheel。运行时与代码按 SHA-256 存储和缓存，每个节点只下载一次相同制品。详见 [算子打包设计](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging_zh.md) 和 [Python 示例](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/python/README_zh.md)。
 
 
 `run` 和 `submit` 在完成、失败或取消后打印 `Execution time: 1.234 s`。这是 shell 从提交开始到结果流关闭的总耗时，包括连接、运行时准备、执行、传输、结果显示及客户端清理；不包含输入 heredoc 的时间，也不是单个服务器任务的 CPU 时间。多任务作业显示整个作业的一次总耗时。
@@ -297,9 +297,9 @@ sbt 'run ../examples/server.yaml'
 
 未发布的物理文件和数据库表不会自动公开。读取失败后从头重开，不支持流内重试、checkpoint 或恢复。任务输出仅为实时流，客户端须消费或取消；不提供保存的结果 URI，重启不恢复任务。完整配置和协议说明见 [技术参考](../reference_zh.md#协议与配置)。
 
-DEBUG 模式下可通过 `run --runtime python@1.0 --input source=/orders <<END` 输入 heredoc 源码；不支持 `--source` 或 `--code`。服务端默认为 NORMAL，并在协调与执行节点拒绝源码任务。配置、Python/Scala 示例与插件契约见[源码算子](../operator-source_zh.md)。
+DEBUG 模式下可通过 `run --runtime python@1.0 --input source=/orders <<END` 输入 heredoc 源码；不支持 `--source` 或 `--code`。服务端默认为 NORMAL，并在协调与执行节点拒绝源码任务。配置、Python/Scala 示例与插件契约见[源码算子](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source_zh.md)。
 
-原生可执行程序可通过 `command` 执行器使用 stdin/stdout，无需在程序内实现 DACP 协议。支持单 bytes 输入和输出，仍在容器内隔离执行。见[配置及发布指南](../native-commands_zh.md)和 [C 示例](../../examples/operators/native/README_zh.md)。
+原生可执行程序可通过 `command` 执行器使用 stdin/stdout，无需在程序内实现 DACP 协议。支持单 bytes 输入和输出，仍在容器内隔离执行。见[配置及发布指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands_zh.md)和 [C 示例](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/native/README_zh.md)。
 
 ## 启动 DEBUG 日志
 
@@ -324,7 +324,7 @@ docker image ls
 
 ## 算子审查材料
 
-支持发布可选的源码包、仓库修订版本、许可证声明与文本、构建说明和 SBOM。公开页面提供下载并标注缺失信息。参见[源码与审查信息](../operator-provenance_zh.md)。
+支持发布可选的源码包、仓库修订版本、许可证声明与文本、构建说明和 SBOM。公开页面提供下载并标注缺失信息。参见[源码与审查信息](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance_zh.md)。
 
 ## Union 协作作业
 

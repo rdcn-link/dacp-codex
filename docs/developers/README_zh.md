@@ -17,17 +17,17 @@
 | `dacp-plugin-api` | Provider、格式、扫描及执行器公开契约 |
 | `dacp-server` | Flight 服务、命名空间、协调与资源生命周期 |
 | `dacp-client`、`dacp-client-scala` | 客户端 API 与 shell |
-| `plugins/dacp-plugin-operator-executors` | 容器启动器与原生命令桥接器 |
-| `dacp-operator-repository` | 不可变发布、公开搜索与下载 |
+| `plugins/xstream-plugin-operator-executors` | 容器启动器与原生命令桥接器 |
+| `xstream-operator-repository` | 不可变发布、公开搜索与下载 |
 | `proto/dacp.proto` | 共享线协议消息 |
 
 ## 编写与发布算子
 
-- [算子编写指南](../operator-authoring_zh.md)：Scala/Python 完整源码、构建及上传。
-- [原生命令](../native-commands_zh.md)：stdin/stdout 适配、可执行制品与插件配置。
-- [打包与执行器](../operator-packaging_zh.md)：共享依赖、不可变制品、仓库 schema 与注册。
-- [流契约](../operator-streams_zh.md)：命名端口、帧、背压、取消和调度边界。
-- [DEBUG 源码](../operator-source_zh.md)：Python/Scala 编译启动契约；不支持 Java 原始源码。
+- [算子编写指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)：Scala/Python 完整源码、构建及上传。
+- [原生命令](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands_zh.md)：stdin/stdout 适配、可执行制品与插件配置。
+- [打包与执行器](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging_zh.md)：共享依赖、不可变制品、仓库 schema 与注册。
+- [流契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams_zh.md)：命名端口、帧、背压、取消和调度边界。
+- [DEBUG 源码](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source_zh.md)：Python/Scala 编译启动契约；不支持 Java 原始源码。
 
 算子输出为临时流，不注册结果 Dataset，不提供保存结果模式或输出 TTL。科学数据须保留结构：已实现 bytes 和 records；新增数组或图像表示须先定义共享契约。通用流水线调度与 fan-out 尚未实现。
 
@@ -126,8 +126,8 @@ DACP 优先采用插件机制扩展。新的数据集后端、文件格式和处
 ## 补充契约与联调验证
 
 ```bash
-(cd plugins/dacp-plugin-operator-executors && sbt test)
-(cd dacp-operator-repository && sbt test)
+(cd /path/to/xstream-codex/plugins/xstream-plugin-operator-executors && sbt test)
+(cd /path/to/xstream-codex/xstream-operator-repository && sbt test)
 ```
 
 stage 服务端、构建所需运行时并准备示例证书后，使用 Docker 权限运行 `.venv/bin/python scripts/test-native-execution.py`，验证原生流、部分失败和取消。`scripts/test-source-submission.py` 需要启动 `examples/source-debug.yaml` 中的 DEBUG 服务，验证 Python/Scala heredoc。前置条件与测试端口见脚本及对应指南。
@@ -136,7 +136,7 @@ stage 服务端、构建所需运行时并准备示例证书后，使用 Docker 
 
 ## 算子审查材料
 
-支持发布可选的源码包、仓库修订版本、许可证声明与文本、构建说明和 SBOM。公开页面提供下载并标注缺失信息。参见[源码与审查信息](../operator-provenance_zh.md)。
+支持发布可选的源码包、仓库修订版本、许可证声明与文本、构建说明和 SBOM。公开页面提供下载并标注缺失信息。参见[源码与审查信息](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance_zh.md)。
 
 ## Union 开发
 
@@ -150,4 +150,8 @@ stage 服务端、构建所需运行时并准备示例证书后，使用 Docker 
 
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy_zh.md)。
 
-算子仅源码发布：[提交、隔离构建、审核和可信度](../operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
+算子仅源码发布：[提交、隔离构建、审核和可信度](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
+
+## XStream 集成测试
+
+算子模块、运行环境工具和源码审核测试位于 [xstream-codex](https://github.com/rdcn-link/xstream-codex)。DACP 构建依赖已发布的 XStream 制品。需要算子示例源码的开发集成测试通过显式 `XSTREAM_SOURCE_ROOT=/path/to/xstream-codex` 选择测试素材；该路径不是生产构建依赖。气象算子示例需要在测试 Python 环境安装 `xstream-operator-sdk/python`。

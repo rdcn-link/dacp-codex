@@ -30,3 +30,5 @@ libraryDependencies += "io.github.rdcn-link" %% "xstream-data-netcdf" % "0.1.0-S
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-scientific-codecs" % "0.1.0-SNAPSHOT" % "runtime,test"
 
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-core" % "0.1.0-SNAPSHOT"
+
+libraryDependencies += "io.github.rdcn-link" %% "xstream-operator-inference" % "0.1.0-SNAPSHOT"

@@ -16,4 +16,4 @@ The node configuration examples illustrate publication and transport settings; s
 bash scripts/test-collaboration.sh
 ```
 
-A successful completion follows all output streams. Closing the client stream cancels the job. Consult [security](../../docs/security.md), [job execution](../../docs/jobs.md), and [operator publication](../../docs/operator-submission.md) for deployment details. Operators are ordinary approved repository packages; the server contains no identity or format-conversion implementation.
+A successful completion follows all output streams. Closing the client stream cancels the job. Consult [security](../../docs/security.md), [job execution](../../docs/jobs.md), and [operator publication](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission.md) for deployment details. Operators are ordinary approved repository packages; the server contains no identity or format-conversion implementation.

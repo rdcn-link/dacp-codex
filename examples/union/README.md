@@ -6,7 +6,7 @@ Node A publishes synthetic observations; node B publishes station climate baseli
 
 ## Prepare
 
-Build/stage `dacp-server` and `dacp-union-server` with `sbt test stage` in each module. Build the Python operator runtime as described in [Python operators](../operators/python/README.md). From the repository root:
+Build/stage `dacp-server` and `dacp-union-server` with `sbt test stage` in each module. Build the Python operator runtime as described in [Python operators](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/python/README.md). From the repository root:
 
 ```bash
 bash scripts/certs.sh

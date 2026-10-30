@@ -16,8 +16,8 @@ DACP 通过独立贡献的插件扩展。添加已有扩展点的数据集后端
 | Dataset 提供者 | 实现 `DatasetProvider`，通过 Java `ServiceLoader` 注册 | [Dataset 提供者](dataset-providers_zh.md) |
 | 文件格式处理器 | 实现 `FormatHandler` 或 `StructuredFileHandler`，通过 Java `ServiceLoader` 注册 | [格式处理器](format-handlers_zh.md) |
 | 归档读取器 | 实现 `ContainerReader`，通过 Java `ServiceLoader` 注册 | [归档读取器](format-handlers_zh.md#归档读取器) |
-| 数据处理算子 | 发布完整容器、精简 JAR、Python 源码或 wheel，复用运行环境 | [算子打包](operator-packaging_zh.md) |
-| 算子启动执行器 | 实现 `OperatorExecutor`，通过 Java `ServiceLoader` 注册 | [执行器插件](operator-packaging_zh.md#执行器插件) |
+| 数据处理算子 | 发布完整容器、精简 JAR、Python 源码或 wheel，复用运行环境 | [算子打包](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging_zh.md) |
+| 算子启动执行器 | 实现 `OperatorExecutor`，通过 Java `ServiceLoader` 注册 | [执行器插件](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging_zh.md#执行器插件) |
 | 输出物化存储 | 实现 `MaterializationStoreProvider`，通过 Java `ServiceLoader` 注册；核心管理授权与流协议 | [物化与重放](materialization_zh.md) |
 
 Dataset 提供者和格式处理器运行在服务器 JVM 内。管理员将插件及私有依赖 JAR 安装到 `plugin_directory`，重启后加载。它们不在沙箱中执行，也不由客户端上传。算子在独立容器中执行。
@@ -60,11 +60,11 @@ Dataset 提供者和格式处理器可通过 `Scan` 优化过滤、投影和限�
 
 ## 编写和发布算子
 
-[算子编写指南](operator-authoring_zh.md) 提供完整 Scala/Python 实现、精简 JAR 和 wheel 构建、管理员发布、远程传输及任务提交。公共仓库支持浏览下载；认证发布通过 API 和管理员 CLI 提供。
+[算子编写指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md) 提供完整 Scala/Python 实现、精简 JAR 和 wheel 构建、管理员发布、远程传输及任务提交。公共仓库支持浏览下载；认证发布通过 API 和管理员 CLI 提供。
 
-算子启动插件可实现 `OperatorExecutor.sourceCommand`，用于仅 DEBUG 模式允许的内联源码。默认拒绝源码执行。管理员在 `source_runtimes` 中将运行环境映射到已安装镜像和执行器 ID；协调端和工作端都要求 `mode: DEBUG`。编译在隔离容器中执行。注册、配置和示例见 [源码算子](operator-source_zh.md)。
+算子启动插件可实现 `OperatorExecutor.sourceCommand`，用于仅 DEBUG 模式允许的内联源码。默认拒绝源码执行。管理员在 `source_runtimes` 中将运行环境映射到已安装镜像和执行器 ID；协调端和工作端都要求 `mode: DEBUG`。编译在隔离容器中执行。注册、配置和示例见 [源码算子](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source_zh.md)。
 
-`command` 执行器将原生 stdin/stdout 程序适配到一对 bytes 输入输出。配置来自本地 `executor_config` 或仓库 `execution.config`，通过 `OperatorProgram.configuration` 传入；程序同时暴露声明的端口表示供插件校验。见 [原生命令注册、配置和契约测试](native-commands_zh.md)。
+`command` 执行器将原生 stdin/stdout 程序适配到一对 bytes 输入输出。配置来自本地 `executor_config` 或仓库 `execution.config`，通过 `OperatorProgram.configuration` 传入；程序同时暴露声明的端口表示供插件校验。见 [原生命令注册、配置和契约测试](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands_zh.md)。
 
 ## 后续自定义能力审查
 
@@ -76,21 +76,21 @@ Dataset 提供者和格式处理器可通过 `Scan` 优化过滤、投影和限�
 
 ## 同进程算子合并
 
-`OperatorExecutor.groupCommand` 是已实现的可选扩展点；JVM SDK 算子和显式提供 `process(ctx)` 的 Python 算子可在同节点、同环境下合并运行。资格、注册契约、示例和限制见 [同进程合并执行](operator-fusion_zh.md)。
+`OperatorExecutor.groupCommand` 是已实现的可选扩展点；JVM SDK 算子和显式提供 `process(ctx)` 的 Python 算子可在同节点、同环境下合并运行。资格、注册契约、示例和限制见 [同进程合并执行](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion_zh.md)。
 
 S3 兼容读取是复用 DatasetAccess 的核心传输层，不是新的存储插件。Dataset 插件无需独立注册 S3 实现；原生 bytes 直接传递，仅声明 records 的 Item 则通过通用适配层以 UTF-8 JSONL 提供 bytes（不落盘），同样适用于 Flight 和任务输入。见 [S3 服务](s3-service_zh.md)。
 
-显式结构推导通过 `OperatorExecutor.inferenceWorkerCommand` / `sourceInferenceWorkerCommand` 启动隔离 worker，支持按需启动和空闲回收；核心管理生命周期、主体隔离、并发容量、超时和有界元数据通道，执行器负责语言启动与 SDK 适配。外部插件的注册和管道协议见[结构推导](structure-inference_zh.md#执行器插件的-worker-协议)。
+显式结构推导通过 `OperatorExecutor.inferenceWorkerCommand` / `sourceInferenceWorkerCommand` 启动隔离 worker，支持按需启动和空闲回收；核心管理生命周期、主体隔离、并发容量、超时和有界元数据通道，执行器负责语言启动与 SDK 适配。外部插件的注册和管道协议见[结构推导](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference_zh.md#执行器插件的-worker-协议)。
 
 ## 设计器聊天编排插件
 
 `xstream-designer` 独立提供 `xstream.designer.ChatPlanner` 扩展契约，通过 `META-INF/services/xstream.designer.ChatPlanner` 发现实现。内置命令助手、HTTP 模型适配器和兼容聊天补全服务均使用这一契约；第三方 JAR 无需修改注册表或重建设计器。配置、类路径和 JSON 草案契约见[设计器手册](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README_zh.md#聊天编排)。插件只产生候选草案，设计器统一校验连接、算子来源及逻辑节点，不能通过该接口执行作业。
 
-第三方算子定义必须包含语言无关的 `parameters` 契约，由 `dacp-operator-sdk/contract` 验证。仓库和设计器读取这些定义时不加载算子代码。注册、发布示例和校验规则见[参数契约](operator-parameters_zh.md)。
+第三方算子定义必须包含语言无关的 `parameters` 契约，由 `xstream-operator-sdk/contract` 验证。仓库和设计器读取这些定义时不加载算子代码。注册、发布示例和校验规则见[参数契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-parameters_zh.md)。
 
-算子还必须提供 `icon`；公开 `categories` 由管理员指定，规则和发布示例见[分类与图标](operator-presentation_zh.md)。
+算子还必须提供 `icon`；公开 `categories` 由管理员指定，规则和发布示例见[分类与图标](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-presentation_zh.md)。
 
-[仓库源码分析/构建扩展](../plugins/dacp-plugin-source-analysis/README_zh.md)：`SourceAnalyzer`、`SourceArchive`、`SourceBuildRecipe` 为 `dacp-operator-sdk/contract` 中已实现的 ServiceLoader 契约。
+[仓库源码分析/构建扩展](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-source-analysis/README_zh.md)：`SourceAnalyzer`、`SourceArchive`、`SourceBuildRecipe` 为 `xstream-operator-sdk/contract` 中已实现的 ServiceLoader 契约。
 
 ## 类型化数据视图
 

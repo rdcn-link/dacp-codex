@@ -12,7 +12,7 @@
 | `xstream-data-excel` | `FormatHandler`：`excel` | Apache POI |
 | `xstream-data-archives` | `ContainerReader`：`zip`、`gzip`、`tar`、`tar-gzip` | Apache Commons Compress |
 | `xstream-data-catalog-static` | `DataCatalogProvider`：`static` | 无额外依赖 |
-| `dacp-plugin-operator-executors` | `OperatorExecutor`：`container`、`jvm`、`python`、`command` | 无额外依赖 |
+| `xstream-plugin-operator-executors` | `OperatorExecutor`：`container`、`jvm`、`python`、`command` | 无额外依赖 |
 | `xstream-data-mounted` | `DatasetProvider`：`mounted`；通用命名空间组合 | 无额外依赖 |
 | `dacp-plugin-execution-file` | `ExecutionStoreProvider`、`MaterializationStoreProvider`：`file`；原子执行元数据、带配额/过期/完整性校验的输出物化 | 无额外依赖 |
 
@@ -25,7 +25,7 @@
 ```bash
 (cd /path/to/xstream-codex/xstream-data/xstream-data-files && sbt package)
 (cd /path/to/xstream-codex/xstream-data/xstream-data-excel && sbt package)
-(cd plugins/dacp-plugin-operator-executors && sbt test)
+(cd /path/to/xstream-codex/plugins/xstream-plugin-operator-executors && sbt test)
 (cd dacp-server && sbt test 'Universal / stage')
 ```
 
@@ -47,6 +47,6 @@ datasets:
 
 `dacp-plugin-api` 提供契约、通用 Arrow 扫描与记录工具、发现和资源工具；`dacp-server` 保留 Flight、授权、请求与任务生命周期。核心 `sources` 只保存 provider/settings；Dataset 插件校验 JDBC 设置并实现连接、查询和类型映射。没有为 MongoDB、S3、NetCDF 或 FITS 提供生产实现。
 
-新增现有扩展点的插件只需注册、安装和配置，无需修改核心或客户端。接口和示例见[插件指南](../docs/plugins_zh.md)、[Dataset/Item 访问](../docs/dataset-access_zh.md)、[独立贡献示例](../examples/plugins/README_zh.md)和[执行器说明](dacp-plugin-operator-executors/README_zh.md)。
+新增现有扩展点的插件只需注册、安装和配置，无需修改核心或客户端。接口和示例见[插件指南](../docs/plugins_zh.md)、[Dataset/Item 访问](../docs/dataset-access_zh.md)、[独立贡献示例](../examples/plugins/README_zh.md)和[执行器说明](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-operator-executors/README_zh.md)。
 
 [输出物化配置与插件契约](../docs/materialization_zh.md)。

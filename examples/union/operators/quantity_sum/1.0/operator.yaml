@@ -1,7 +1,7 @@
 name: quantity_sum
 version: "1.0"
 description: Union collaboration analysis example.
-image: dacp/operator-python:1.0
+image: xstream/operator-python:1.0
 executor: python
 entrypoint: quantity_sum
 artifact: quantity_sum.py

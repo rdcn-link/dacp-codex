@@ -1,7 +1,7 @@
 name: station_temperature_anomaly
 version: "1.0"
 description: Join station-day statistics with local climate references and stream temperature anomalies.
-image: dacp/operator-python:1.0
+image: xstream/operator-python:1.0
 executor: python
 entrypoint: station_temperature_anomaly
 artifact: station_temperature_anomaly.py

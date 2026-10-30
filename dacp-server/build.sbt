@@ -26,8 +26,7 @@ dependsOn(pluginApi)
 // Compile the standalone contributor example against the same API during contract tests.
 Test / unmanagedSourceDirectories += baseDirectory.value / ".." / "examples" / "plugins" / "src" / "main" / "scala"
 
-lazy val operatorExecutors = RootProject(file("../plugins/dacp-plugin-operator-executors"))
-dependsOn(operatorExecutors % "runtime->compile;test->compile")
+libraryDependencies += "io.github.rdcn-link" %% "xstream-plugin-operator-executors" % "0.1.0-SNAPSHOT" % "runtime,test"
 
 lazy val unionProtocol = RootProject(file("../dacp-union-protocol"))
 dependsOn(unionProtocol)
@@ -66,11 +65,9 @@ Compile / resourceGenerators += Def.task {
 lazy val collaborationClient=RootProject(file("../dacp-collaboration-client-scala"))
 dependsOn(collaborationClient)
 
-lazy val operatorContract = RootProject(file("../dacp-operator-sdk/contract"))
-dependsOn(operatorContract)
+libraryDependencies += "io.github.rdcn-link" %% "xstream-operator-contract" % "0.1.0-SNAPSHOT"
 
-lazy val operatorInference = RootProject(file("../dacp-operator-inference"))
-dependsOn(operatorInference)
+libraryDependencies += "io.github.rdcn-link" %% "xstream-operator-inference" % "0.1.0-SNAPSHOT"
 
 libraryDependencies += "io.github.rdcn-link" %% "xstream-engine" % "0.1.0-SNAPSHOT"
 

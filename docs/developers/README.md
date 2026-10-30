@@ -17,17 +17,17 @@ Core owns contracts, discovery and lifecycle, transport, authorization, namespac
 | `dacp-plugin-api` | Public provider, format, scan and executor contracts |
 | `dacp-server` | Flight service, namespace, coordination and resource lifecycle |
 | `dacp-client`, `dacp-client-scala` | Public client APIs and shell |
-| `plugins/dacp-plugin-operator-executors` | Container launchers and native-command bridge |
-| `dacp-operator-repository` | Immutable publication, public search and downloads |
+| `plugins/xstream-plugin-operator-executors` | Container launchers and native-command bridge |
+| `xstream-operator-repository` | Immutable publication, public search and downloads |
 | `proto/dacp.proto` | Shared wire messages |
 
 ## Write and publish operators
 
-- [Authoring guide](../operator-authoring.md): complete Scala/Python examples, builds and uploads.
-- [Native commands](../native-commands.md): stdin/stdout adapter, executable artifacts and plugin configuration.
-- [Packaging and executors](../operator-packaging.md): shared dependencies, immutable artifacts, repository schema and registration.
-- [Stream contract](../operator-streams.md): named ports, frames, backpressure, cancellation and current scheduling limits.
-- [DEBUG source](../operator-source.md): Python/Scala compilation and launch contracts; raw Java source is unsupported.
+- [Authoring guide](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md): complete Scala/Python examples, builds and uploads.
+- [Native commands](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands.md): stdin/stdout adapter, executable artifacts and plugin configuration.
+- [Packaging and executors](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md): shared dependencies, immutable artifacts, repository schema and registration.
+- [Stream contract](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams.md): named ports, frames, backpressure, cancellation and current scheduling limits.
+- [DEBUG source](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md): Python/Scala compilation and launch contracts; raw Java source is unsupported.
 
 Operator outputs are transient streams. There is no result-dataset registration, saved-result mode or output TTL. Preserve scientific structures; bytes and records are implemented, while new array/image representations need a shared contract first. General pipeline scheduling and fan-out are not implemented.
 
@@ -126,8 +126,8 @@ The protocol is defined in [proto/dacp.proto](../../proto/dacp.proto). Source co
 ## Additional contract and integration checks
 
 ```bash
-(cd plugins/dacp-plugin-operator-executors && sbt test)
-(cd dacp-operator-repository && sbt test)
+(cd /path/to/xstream-codex/plugins/xstream-plugin-operator-executors && sbt test)
+(cd /path/to/xstream-codex/xstream-operator-repository && sbt test)
 ```
 
 After staging the server, building the referenced runtimes and preparing example certificates, run `.venv/bin/python scripts/test-native-execution.py` with Docker access for native streaming, partial-failure and cancellation checks. `scripts/test-source-submission.py` requires the DEBUG server from `examples/source-debug.yaml`; it checks Python/Scala heredocs. See each script and the linked guides for prerequisites and test ports.
@@ -136,7 +136,7 @@ The [technical reference](../reference.md) documents transport and configuration
 
 ## Operator review evidence
 
-Publish optional source archives, repository revisions, license declarations/text, build instructions and SBOMs. Public pages show downloads and missing information. See [source and review information](../operator-provenance.md).
+Publish optional source archives, repository revisions, license declarations/text, build instructions and SBOMs. Public pages show downloads and missing information. See [source and review information](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance.md).
 
 ## Union development
 
@@ -150,4 +150,8 @@ Run `python3 scripts/check-doc-translations.py` from the repository root. Publis
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy.md).
 
-Source-only operator publication: [submission, isolated builds, review and trust scores](../operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
+Source-only operator publication: [submission, isolated builds, review and trust scores](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
+
+## XStream integration tests
+
+Operator modules, runtime tools and source-review tests live in [xstream-codex](https://github.com/rdcn-link/xstream-codex). Build DACP against published XStream artifacts. Development integration fixtures requiring operator example sources accept an explicit `XSTREAM_SOURCE_ROOT=/path/to/xstream-codex`; this is a test-fixture path, not a production build dependency. Install `xstream-operator-sdk/python` into the test Python environment for climate operator examples.

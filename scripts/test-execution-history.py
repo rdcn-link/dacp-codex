@@ -27,7 +27,7 @@ def main():
             datasets={'data': {'provider':'mixed','items':{'/input': {'file': str(ROOT/'examples/union/data/east_observations.csv')}}}},
             tls_cert=str(ROOT/'examples/certs/node-a.crt'),
             tls_key=str(ROOT/'examples/certs/node-a.key'), tls_ca=str(ROOT/'examples/certs/ca.crt'),
-            mode='DEBUG',source_runtimes={'python@1.0': {'executor':'python','image':'dacp/operator-python:1.0'}},
+            mode='DEBUG',source_runtimes={'python@1.0': {'executor':'python','image':'xstream/operator-python:1.0'}},
             max_concurrent_tasks=4,execution_store=dict(provider='file',settings=dict(directory=str(state/'executions'))))
         CREDS['token'] = authorize(config, state)
         path=state/'server.yaml';path.write_text(json.dumps(config))

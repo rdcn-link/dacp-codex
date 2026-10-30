@@ -15,7 +15,7 @@ Build from the project root:
 ```bash
 (cd dacp-server && sbt stage)
 (cd dacp-union-server && sbt stage)
-(cd dacp-operator-repository && sbt stage)
+(cd /path/to/xstream-codex/xstream-operator-repository && sbt stage)
 ```
 
 Local demonstrations use the project's certificate script and example configuration. Production deployments need their own CA, hostnames, and certificate management. Relative configuration paths resolve against the process working directory.
@@ -30,7 +30,7 @@ sbt 'run ../examples/server.yaml'
 
 Declare Dataset providers and their parameters in node configuration. Built-in and external providers share the same plugin contracts. See the [technical reference](../reference.md), [Dataset providers](../dataset-providers.md), and [SQL example](../../examples/sql/README.md) for directory and SQL configuration. Restrict data directories and credentials to the service account.
 
-Nodes read local operators through `local_operator_library` and search remote repositories through `remote_operator_library_urls`. Remote configuration order affects lookup order. Publish shared runtimes separately from operator code. See [packaging](../operator-packaging.md) and the [executor manual](../../plugins/dacp-plugin-operator-executors/README.md) for execution environments and native commands. Source submission is available only in DEBUG mode; see [source runtimes](../operator-source.md).
+Nodes read local operators through `local_operator_library` and search remote repositories through `remote_operator_library_urls`. Remote configuration order affects lookup order. Publish shared runtimes separately from operator code. See [packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md) and the [executor manual](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-operator-executors/README.md) for execution environments and native commands. Source submission is available only in DEBUG mode; see [source runtimes](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md).
 
 ## Certificates and authorization
 
@@ -40,7 +40,7 @@ Ordinary DACP clients use TLS and tokens without requiring client certificates. 
 
 - [Union manual](../../dacp-union-server/README.md): configuration, service credentials, polling, job submission, and management dashboard.
 - [Two-node example](../../examples/union/README.md): complete certificate, node, Union, and client demonstration.
-- [Repository manual](../../dacp-operator-repository/README.md): initialization, publication, source materials, HTTP service, and downloads.
+- [Repository manual](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README.md): initialization, publication, source materials, HTTP service, and downloads.
 
 Union builds one Union from configuration, connects independent members using node-issued credentials and polls their status. Its public read-only HTTP dashboard exposes job scripts and execution metadata without login or tokens. Review task parameters for information unsuitable for public viewing. Computation remains protected by authorization on DACP interfaces.
 
@@ -56,4 +56,4 @@ Nodes also enable the [S3-compatible read service](../s3-service.md) by default,
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy.md).
 
-Source-only operator publication: [submission, isolated builds, review and trust scores](../operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
+Source-only operator publication: [submission, isolated builds, review and trust scores](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.

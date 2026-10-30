@@ -20,7 +20,7 @@
 | 优先级 | 现有耦合与位置 | 建议与实际收益 |
 |---|---|---|
 | 中 | 核心验证 Token 主体、Union 服务凭据、任务所有权和精确节点间流计划 | 可扩展可发现的机构授权策略。插件必须保留核心认证、凭据撤销和执行计划边界 |
-| 中 | [TaskExecutor](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-engine/src/main/scala/dacp/TaskExecutor.scala) 直接创建 Docker 客户端和容器；[OperatorLibrary.resolve](../dacp-operator-inference/src/main/scala/dacp/OperatorLibrary.scala) 也接受 DockerClient | 将制品解析与运行环境分开，再定义完整 `ExecutionBackend` 生命周期。现有 `OperatorExecutor` 继续生成语言/入口启动命令；Docker、未来 Podman/Kubernetes 后端负责运行、取消、资源和清理。拆分不表示允许直接在宿主机执行不受约束的代码 |
+| 中 | [TaskExecutor](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-engine/src/main/scala/dacp/TaskExecutor.scala) 直接创建 Docker 客户端和容器；[OperatorLibrary.resolve](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-inference/src/main/scala/xstream/operator/inference/OperatorLibrary.scala) 也接受 DockerClient | 将制品解析与运行环境分开，再定义完整 `ExecutionBackend` 生命周期。现有 `OperatorExecutor` 继续生成语言/入口启动命令；Docker、未来 Podman/Kubernetes 后端负责运行、取消、资源和清理。拆分不表示允许直接在宿主机执行不受约束的代码 |
 
 当前原生 Dataset Provider 已可直接提供 MongoDB/S3 风格的 Item 和流；格式字节源、通用挂载解决的是**复用格式插件和跨后端组合**，不是接入单一后端的前置条件。`mixed` 目前明确仍是文件/JDBC 的组合。
 
@@ -29,7 +29,7 @@
 ## 可以按需求继续扩展
 
 - **观测事件出口**：任务状态、耗时、流量已在执行和历史逻辑中产生，可抽取 `ExecutionObserver`/`MetricsSink`，接入 OpenTelemetry 或机构审计系统。可选观测器不能意外阻塞结果流；持久审计的可靠性不能依赖一个可丢失的回调。
-- **仓库存储**：[RepositoryServer](../dacp-operator-repository/src/main/scala/dacp/repository/RepositoryServer.scala) 和 [Publishing](../dacp-operator-repository/src/main/scala/dacp/repository/Publishing.scala) 直接使用本地目录，可为 manifests/blobs 定义存储接口，让 S3 等作为仓库后台。HTTP 发布与下载协议保持一致，摘要校验和版本不可变规则保持一致。
+- **仓库存储**：[RepositoryServer](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/src/main/scala/xstream/repository/RepositoryServer.scala) 和 [Publishing](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/src/main/scala/xstream/repository/Publishing.scala) 直接使用本地目录，可为 manifests/blobs 定义存储接口，让 S3 等作为仓库后台。HTTP 发布与下载协议保持一致，摘要校验和版本不可变规则保持一致。
 - **调度策略**：Coordinator 当前要求任务显式指定节点，并内置等待容量、准备和启动逻辑。需要自动选点、数据就近、配额或优先级时再抽取 `PlacementPolicy`/`SchedulingPolicy`；核心继续验证计划、授权和数据流连接。此项不意味着已实现一般 DAG 调度、重试或断点恢复。
 - **凭据获取**：当多个后端需要共同使用 Vault、STS 或可刷新的机构凭据时，再引入凭据解析接口。现在后端可以自行解释私有 source 配置，不必为每种认证机制增加核心配置分支。
 

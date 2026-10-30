@@ -43,7 +43,7 @@ S3 与 Flight 是独立服务，不要求统一用户或凭据体系。S3 不提
 
 看板按内网只读服务部署，网络暴露范围由部署环境限制。此设计不提供公网登录保护。
 
-已批准算子的浏览和下载公开。开发者使用个人提交 Token 通过接口提交源码，私有源码与待审产物不公开。管理员单独登录，管理 Token 和环境，查看扫描/构建结果，指定多个分类与公开的最终可信度，再批准发布。版本不可覆盖。详细扫描报告保持私有，分数是审核评价而非安全保证。参见[源码提交与审核](operator-submission_zh.md)。
+已批准算子的浏览和下载公开。开发者使用个人提交 Token 通过接口提交源码，私有源码与待审产物不公开。管理员单独登录，管理 Token 和环境，查看扫描/构建结果，指定多个分类与公开的最终可信度，再批准发布。版本不可覆盖。详细扫描报告保持私有，分数是审核评价而非安全保证。参见[源码提交与审核](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission_zh.md)。
 
 ## 审计与凭据保管
 
@@ -55,7 +55,7 @@ S3 与 Flight 是独立服务，不要求统一用户或凭据体系。S3 不提
 
 已实现本地凭据管理与热加载、普通 Flight Token 认证、Union 服务凭据与证书绑定、任务所有者隔离、节点间精确计划授权、独立协作 SDK、S3 SigV4 和预签名 GET。自动化测试覆盖普通 Token 撤销后已有流继续、后续调用拒绝，服务凭据撤销后运行中任务与流终止，Token 轮换后保留任务归属，以及拒绝请求的审计。真实服务联调验证了三个成员节点的认证、Union 协作调用和 boto3 的签名列表、元数据、内容、Range 及预签名 GET。
 
-相关说明：[访问日志](access-logs_zh.md)、[数据访问](dataset-access_zh.md)、[算子仓库](../dacp-operator-repository/README_zh.md)。普通客户端示例应提供 Token 文件；Union 成员配置应提供节点签发的服务凭据文件。
+相关说明：[访问日志](access-logs_zh.md)、[数据访问](dataset-access_zh.md)、[算子仓库](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README_zh.md)。普通客户端示例应提供 Token 文件；Union 成员配置应提供节点签发的服务凭据文件。
 
 ## 本地凭据操作
 

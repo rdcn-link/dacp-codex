@@ -5,6 +5,7 @@ Run from the root: sg docker -c '.venv/bin/python scripts/test-native-execution.
 import json
 import os
 from pathlib import Path
+XSTREAM_ROOT=Path(os.environ["XSTREAM_SOURCE_ROOT"]).resolve()
 import subprocess
 import tempfile
 import time
@@ -22,16 +23,18 @@ def main():
         base = Path(temp)
         executable = base/'uppercase'
         subprocess.run(['cc', '-O2', '-Wall', '-Wextra', '-Werror', '-s', '-o', str(executable),
-                        str(ROOT/'examples/operators/native/uppercase.c')], check=True)
+                        str(XSTREAM_ROOT/'examples/operators/native/uppercase.c')], check=True)
         # Deliberately remove executable permissions: publication preserves bytes, not mode bits.
         executable.chmod(0o400)
         library = base/'operators'
         for name, args in [('uppercase', []), ('failure', ['--fail']), ('slow', ['--slow']), ('installed', [])]:
-            definition = dict(name=name, version='1', image='dacp/operator-python:1.0', executor='command',
+            definition = dict(name=name, version='1', image='xstream/operator-python:1.0', executor='command',
                               entrypoint='/operator/uppercase', artifact=str(executable),
                               executor_config=dict(args=args, stdin='source', stdout=dict(
                                   port='result', representation='bytes', format='text')),
-                              inputs=dict(source=dict(representations=['bytes'], formats=[])))
+                              inputs=dict(source=dict(representations=['bytes'], formats=[])),
+                              icon=dict(path='M3 6h18v12H3z',color='#14866b'),
+                              parameters=dict(type='object',properties={},required=[],additionalProperties=False))
             if name == 'installed':
                 definition.pop('artifact')
                 definition['entrypoint'] = '/usr/local/bin/python'
@@ -41,15 +44,17 @@ def main():
             path.parent.mkdir(parents=True)
             path.write_text(json.dumps(definition))
         for name, code, inp, out in [
-            ('generate', "import os; os.write(1,b'generated\\n')", None,
+            ('generate', "import os; os.write(1,b'generated'+bytes([10]))", None,
              dict(port='result', representation='bytes', format='text')),
             ('sink', 'import sys; sys.stdin.buffer.read()', 'source', None),
             ('prepare', 'pass', None, None),
         ]:
             path = library/name/'1'/'operator.yaml'
             path.parent.mkdir(parents=True)
-            path.write_text(json.dumps(dict(name=name, version='1', image='dacp/operator-python:1.0',
+            path.write_text(json.dumps(dict(name=name, version='1', image='xstream/operator-python:1.0',
                 executor='command', entrypoint='/usr/local/bin/python',
+                icon=dict(path='M3 6h18v12H3z',color='#14866b'),
+                parameters=dict(type='object',properties={},required=[],additionalProperties=False),
                 executor_config=dict(args=['-u', '-c', code], stdin=inp, stdout=out),
                 inputs={} if inp is None else {inp: dict(representations=['bytes'], formats=[])})))
         payload = bytes(range(256)) + b'hello native streams\n' * 65536  # Larger than pipes and bounded bridge buffers.

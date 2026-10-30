@@ -266,7 +266,7 @@ Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Save
 
 ## Collaboration and tasks
 
-DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and places each task on the node hosting its first input unless an execution node is specified. Nodes collaborate through service connections protected by mutual TLS. Eligible node subjobs [share one container and process](../operator-fusion.md), while other tasks execute independently; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
+DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and places each task on the node hosting its first input unless an execution node is specified. Nodes collaborate through service connections protected by mutual TLS. Eligible node subjobs [share one container and process](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion.md), while other tasks execute independently; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
 
 Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, configure an operator repository containing approved operators and start the server. Stop the quick-start server first if it is still running:
 
@@ -275,18 +275,18 @@ cd dacp-server
 sbt 'run ../examples/server.yaml'
 ```
 
-In a connected shell started from the project root, run the complete weather workflow in the [current operator catalog](../operator-catalog.md), or select a weather dataset and run `run piflow_csv_parser@1.0 --input source=/observations --view bytes`. The shell waits and prints results incrementally; Ctrl-C cancels execution.
+In a connected shell started from the project root, run the complete weather workflow in the [current operator catalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog.md), or select a weather dataset and run `run piflow_csv_parser@1.0 --input source=/observations --view bytes`. The shell waits and prints results incrementally; Ctrl-C cancels execution.
 
 Further reading:
 
 - [Two-node example](../../examples/multi-node/README.md): task placement, remote inputs, and consuming outputs.
-- [Scala operator repository and website](../../dacp-operator-repository/README.md): public search, version details, downloads, and immutable operator publication.
-- [Write and upload custom operators](../operator-authoring.md): complete Scala/Python source, packaging, publication, remote transfer, and execution.
+- [Scala operator repository and website](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README.md): public search, version details, downloads, and immutable operator publication.
+- [Write and upload custom operators](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md): complete Scala/Python source, packaging, publication, remote transfer, and execution.
 - [Task and operator reference](../reference.md#task-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
 
 Start an empty repository using `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820`, publish operators through source submission and approval, then open `http://localhost:8820/` to search, view, and download operators without signing in. See the repository guide for HTTPS deployment.
 
-Operators can share a dependency environment and a code bundle. JVM operators can use thin JARs with `dacp/operator-jvm:1.1`; Python source and wheels are also supported in shared runtime containers. Runtime and code artifacts are stored and cached by SHA-256, so each distinct artifact is downloaded once per node. See [operator packaging](../operator-packaging.md) and the [Python example](../../examples/operators/python/README.md).
+Operators can share a dependency environment and a code bundle. JVM operators can use thin JARs with `xstream/operator-jvm:1.1`; Python source and wheels are also supported in shared runtime containers. Runtime and code artifacts are stored and cached by SHA-256, so each distinct artifact is downloaded once per node. See [operator packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md) and the [Python example](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/python/README.md).
 
 
 `run` and `submit` print `Execution time: 1.234 s` after completion, failure or cancellation. This is elapsed time measured by the shell from submission through closing the result stream, including connection, runtime preparation, execution, transfer, display and client cleanup. It excludes heredoc entry time and is not server task CPU time. Multi-task jobs print one total for the whole job.
@@ -297,9 +297,9 @@ Ordinary DACP access uses TLS and tokens; Union collaboration uses mutual TLS an
 
 Unpublished physical files and database tables are not automatically exposed. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and tasks are not restored after restart. See the [technical reference](../reference.md#protocol-and-configuration) for full configuration and protocol details.
 
-In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`; `--source` and `--code` are unsupported. Servers default to NORMAL and reject source tasks at both coordinator and execution nodes. See [source operators](../operator-source.md) for configuration, Python/Scala examples, and the plugin contract.
+In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`; `--source` and `--code` are unsupported. Servers default to NORMAL and reject source tasks at both coordinator and execution nodes. See [source operators](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md) for configuration, Python/Scala examples, and the plugin contract.
 
-Native executables can use stdin/stdout through the `command` executor without implementing the DACP protocol in the program. It supports one bytes input and output, with execution isolated inside a container. See [configuration and publication](../native-commands.md) and the [C example](../../examples/operators/native/README.md).
+Native executables can use stdin/stdout through the `command` executor without implementing the DACP protocol in the program. It supports one bytes input and output, with execution isolated inside a container. See [configuration and publication](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands.md) and the [C example](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/native/README.md).
 
 ## Startup DEBUG logs
 
@@ -324,7 +324,7 @@ IDs accepted by `run --runtime` come from `source_runtimes` in the server config
 
 ## Operator review evidence
 
-Publish optional source archives, repository revisions, license declarations/text, build instructions and SBOMs. Public pages show downloads and missing information. See [source and review information](../operator-provenance.md).
+Publish optional source archives, repository revisions, license declarations/text, build instructions and SBOMs. Public pages show downloads and missing information. See [source and review information](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance.md).
 
 ## Union collaboration jobs
 

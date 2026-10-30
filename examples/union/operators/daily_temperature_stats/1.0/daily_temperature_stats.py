@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import json
 import math
-from dacp_operator import OperatorContext
+from xstream_operator import OperatorContext
 
 
 def process(ctx):
@@ -39,15 +39,15 @@ def process(ctx):
 
 
 def infer_outputs(inputs, params):
-    from dacp_operator import descriptor, result
+    from xstream_operator import descriptor, result
     return result({'result': descriptor(['bytes'], ['ndjson'], None, certainty='known')})
 
 
 def preview_outputs(inputs, params, limits):
-    from dacp_operator import preview_process
+    from xstream_operator import preview_process
     return preview_process(process, inputs, params, limits)
 
 
 if __name__ == '__main__':
-    from dacp_operator import run_operator
+    from xstream_operator import run_operator
     run_operator(process, infer_outputs, preview_outputs=preview_outputs)

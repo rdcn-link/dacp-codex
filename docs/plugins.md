@@ -16,8 +16,8 @@ All built-in implementations are maintained in [plugins/](../plugins/README.md) 
 | Dataset provider | Implement `DatasetProvider`; register through Java `ServiceLoader` | [Dataset providers](dataset-providers.md) |
 | File format handler | Implement `FormatHandler` or `StructuredFileHandler`; register through Java `ServiceLoader` | [Format handlers](format-handlers.md) |
 | Archive reader | Implement `ContainerReader`; register through Java `ServiceLoader` | [Container readers](format-handlers.md#container-readers) |
-| Processing operator | Publish a container, thin JAR, Python source file, or wheel with a shared runtime | [Operator packaging](operator-packaging.md) |
-| Operator launch executor | Implement `OperatorExecutor`; register through Java `ServiceLoader` | [Executor registration](operator-packaging.md#executor-plugins) |
+| Processing operator | Publish a container, thin JAR, Python source file, or wheel with a shared runtime | [Operator packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md) |
+| Operator launch executor | Implement `OperatorExecutor`; register through Java `ServiceLoader` | [Executor registration](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md#executor-plugins) |
 | Output materialization storage | Implement `MaterializationStoreProvider` and register with Java `ServiceLoader`; core owns authorization and stream protocol | [Materialization and replay](materialization.md) |
 
 Dataset providers and format handlers currently run inside the JVM server. They must be installed by the server administrator in `plugin_directory` with their private dependency JARs, and loaded on restart. They are not sandboxed or uploaded by clients. Operators execute separately in containers.
@@ -60,11 +60,11 @@ Dataset providers and file handlers can optimize filter, projection, and limit t
 
 ## Write and publish an operator
 
-See [the operator authoring guide](operator-authoring.md) for complete Scala and Python implementations, thin-JAR and wheel builds, administrator publication, remote file transfer, and task submission. The public repository supports browsing and downloads; authenticated publication is available through its API and administrator CLI.
+See [the operator authoring guide](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md) for complete Scala and Python implementations, thin-JAR and wheel builds, administrator publication, remote file transfer, and task submission. The public repository supports browsing and downloads; authenticated publication is available through its API and administrator CLI.
 
-Operator launch plugins can additionally implement `OperatorExecutor.sourceCommand` for DEBUG-only inline source. The default rejects source execution. Administrators map runtime references to installed images and executor IDs in `source_runtimes`; both coordinator and worker require `mode: DEBUG`. Compilation runs inside the isolated execution container. See [source operators](operator-source.md) for registration, configuration, and examples.
+Operator launch plugins can additionally implement `OperatorExecutor.sourceCommand` for DEBUG-only inline source. The default rejects source execution. Administrators map runtime references to installed images and executor IDs in `source_runtimes`; both coordinator and worker require `mode: DEBUG`. Compilation runs inside the isolated execution container. See [source operators](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md) for registration, configuration, and examples.
 
-The implemented `command` executor adapts ordinary native stdin/stdout programs to one bytes input/output pair. Executor settings use local `executor_config` and repository `execution.config`, passed as `OperatorProgram.configuration`. The program also exposes declared port representations for plugin validation. See [native command registration, configuration and contract tests](native-commands.md).
+The implemented `command` executor adapts ordinary native stdin/stdout programs to one bytes input/output pair. Executor settings use local `executor_config` and repository `execution.config`, passed as `OperatorProgram.configuration`. The program also exposes declared port representations for plugin validation. See [native command registration, configuration and contract tests](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands.md).
 
 ## Further customization review
 
@@ -76,21 +76,21 @@ See [the extension-boundary review](plugin-roadmap.md) ([中文](plugin-roadmap_
 
 ## In-process operator fusion
 
-`OperatorExecutor.groupCommand` is an implemented optional extension point. JVM SDK operators and Python operators explicitly exposing `process(ctx)` can share a process on the same node and environment. See [operator fusion](operator-fusion.md) for eligibility, registration contracts, examples and limits.
+`OperatorExecutor.groupCommand` is an implemented optional extension point. JVM SDK operators and Python operators explicitly exposing `process(ctx)` can share a process on the same node and environment. See [operator fusion](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion.md) for eligibility, registration contracts, examples and limits.
 
 S3-compatible reading is a core transport using DatasetAccess, not another storage plugin. Dataset plugins need no separate S3 registration. Native bytes pass through; records-only Items receive a UTF-8 JSONL bytes view from the common adapter without staging, also available through Flight and task inputs. See the [S3 service](s3-service.md).
 
-Explicit inference uses `OperatorExecutor.inferenceWorkerCommand` / `sourceInferenceWorkerCommand` to start isolated workers on demand and reclaim them when idle. Core owns lifecycle, caller isolation, concurrency limits, timeouts, and bounded metadata channels; executors own language launching and SDK adaptation. See [structure inference](structure-inference.md#worker-protocol-for-executor-plugins) for registration and the pipe protocol.
+Explicit inference uses `OperatorExecutor.inferenceWorkerCommand` / `sourceInferenceWorkerCommand` to start isolated workers on demand and reclaim them when idle. Core owns lifecycle, caller isolation, concurrency limits, timeouts, and bounded metadata channels; executors own language launching and SDK adaptation. See [structure inference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference.md#worker-protocol-for-executor-plugins) for registration and the pipe protocol.
 
 ## Designer chat-planning plugins
 
 `xstream-designer` independently supplies the `xstream.designer.ChatPlanner` extension contract and discovers implementations through `META-INF/services/xstream.designer.ChatPlanner`. The built-in command assistant, HTTP model adapter and compatible chat-completion adapter share this contract. Third-party JARs require no registry changes or designer rebuild. See the [designer guide](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README.md#chat-composition) for configuration, classpath and JSON proposal contracts. Plugins generate proposals only; the designer checks connections, operator provenance and logical nodes, and this interface cannot execute jobs.
 
-All contributed operator definitions include a language-neutral `parameters` contract, validated by `dacp-operator-sdk/contract`. The repository and designer read it without loading operator code. See [parameter contracts](operator-parameters.md) for registration, publication examples and validation rules.
+All contributed operator definitions include a language-neutral `parameters` contract, validated by `xstream-operator-sdk/contract`. The repository and designer read it without loading operator code. See [parameter contracts](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-parameters.md) for registration, publication examples and validation rules.
 
-Operators must also provide `icon`; administrators assign public `categories`; see [categories and icons](operator-presentation.md) for the contract and publication examples.
+Operators must also provide `icon`; administrators assign public `categories`; see [categories and icons](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-presentation.md) for the contract and publication examples.
 
-[Repository source analysis/build extension](../plugins/dacp-plugin-source-analysis/README.md): `SourceAnalyzer`, `SourceArchive`, `SourceBuildRecipe` are implemented ServiceLoader contracts in `dacp-operator-sdk/contract`.
+[Repository source analysis/build extension](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-source-analysis/README.md): `SourceAnalyzer`, `SourceArchive`, `SourceBuildRecipe` are implemented ServiceLoader contracts in `xstream-operator-sdk/contract`.
 
 ## Typed data views
 

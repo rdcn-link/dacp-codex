@@ -38,8 +38,8 @@ Dataset 列表可由 [DataCatalog 插件](docs/dataset-catalogs_zh.md)动态提�
 | `dacp-client` / `dacp-client-scala` | Python / Scala 应用访问数据、执行 Job 和提交 Union 作业 |
 | [dacp-union-server](dacp-union-server/README_zh.md) | 管理一个 Union，按配置连接节点、轮询健康与容量、调度跨节点 DAG、转发最终结果流 |
 | [Union Web 看板](dacp-union-server/README_zh.md#执行与接口) | 管理界面展示节点、任务脚本、可缩放 DAG、流量与执行历史 |
-| [dacp-operator-repository](dacp-operator-repository/README_zh.md) | HTTP/HTTPS 算子仓库；公开搜索、版本浏览和下载，管理员通过 CLI 发布 |
-| [dacp-operator-sdk](dacp-operator-sdk/README_zh.md) | 轻量元数据契约（`contract`）、JVM 模板（`jvm`）与 Python 模板（`python`） |
+| [xstream-operator-repository](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README_zh.md) | HTTP/HTTPS 算子仓库；公开搜索、版本浏览和下载，管理员通过 CLI 发布 |
+| [xstream-operator-sdk](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-sdk/README_zh.md) | 轻量元数据契约（`contract`）、JVM 模板（`jvm`）与 Python 模板（`python`） |
 | `dacp-plugin-api` / `dacp-union-protocol` | 插件公开契约和 Union 共享传输工具 |
 | [plugins](plugins/README_zh.md) | 内置 Dataset、文件格式、归档、Catalog 和算子启动插件 |
 
@@ -50,13 +50,13 @@ Dataset 列表可由 [DataCatalog 插件](docs/dataset-catalogs_zh.md)动态提�
 - 已有服务器：从[连接与浏览](docs/users/README_zh.md#浏览与读取)开始。
 - 本机体验：按[单节点部署](docs/administrators/README_zh.md#单节点部署)启动服务。
 - 跨节点演示：运行[双节点 Union 示例](examples/union/README_zh.md)。
-- 自定义计算：阅读[算子编写与发布](docs/operator-authoring_zh.md)。
+- 自定义计算：阅读[算子编写与发布](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)。
 
-普通数据访问与任务执行使用 TLS 与 Token；Union 协作使用双向 TLS 和节点签发的服务凭据。S3 使用独立 SigV4 认证，算子仓库下载公开、发布要求 Token，内网看板公开只读。见[认证与访问控制](docs/security_zh.md)。算子使用隔离的运行环境；符合条件的节点子作业会合并到同一进程执行，见[算子合并执行](docs/operator-fusion_zh.md)。输出不注册为 Dataset；服务器持久化执行元数据，结果内容只通过一次性流交付。
+普通数据访问与任务执行使用 TLS 与 Token；Union 协作使用双向 TLS 和节点签发的服务凭据。S3 使用独立 SigV4 认证，算子仓库下载公开、发布要求 Token，内网看板公开只读。见[认证与访问控制](docs/security_zh.md)。算子使用隔离的运行环境；符合条件的节点子作业会合并到同一进程执行，见[算子合并执行](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion_zh.md)。输出不注册为 Dataset；服务器持久化执行元数据，结果内容只通过一次性流交付。
 
 [在线 Job 设计器](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README_zh.md)：拖拽编排、本地及远程目录浏览、实时算子仓库、结构预览、变量、聊天草案和 YAML 导入导出。
 
-算子仅源码发布：[提交、隔离构建、审核和可信度](docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
+算子仅源码发布：[提交、隔离构建、审核和可信度](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
 
 独立的 [XStream 引擎](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-engine/README_zh.md)提供本地 `xstream-runner` 程序，并由 DACP Server 内嵌使用。[XStream Designer](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README_zh.md)按需浏览本地及配置的远程目录。
 

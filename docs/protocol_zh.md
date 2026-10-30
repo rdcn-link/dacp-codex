@@ -23,7 +23,7 @@ DACP（Data Access and Collaboration Protocol，数据访问与协作协议）�
 | 算子仓库搜索、版本与制品下载 | HTTP/HTTPS |
 | Union 管理只读看板 | HTTP；查询运行状态及历史，不能据此提交计算任务 |
 
-Union 的共享传输模块对 JSON 消息实施 1 MiB 上限。具体动作、ticket 和字段以 [Union 协议](union_zh.md)、[技术参考](reference_zh.md)、`proto/dacp.proto` 和 `dacp-union-protocol` 实现为准。算子进程的端口帧协议属于执行器接口，见[算子流契约](operator-streams_zh.md)，不等同于客户端 Flight 接口。
+Union 的共享传输模块对 JSON 消息实施 1 MiB 上限。具体动作、ticket 和字段以 [Union 协议](union_zh.md)、[技术参考](reference_zh.md)、`proto/dacp.proto` 和 `dacp-union-protocol` 实现为准。算子进程的端口帧协议属于执行器接口，见[算子流契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams_zh.md)，不等同于客户端 Flight 接口。
 
 ## 身份、信任和授权
 

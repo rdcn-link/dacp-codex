@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / 'dacp-client'))
 from dacp.inference import infer
 from security_test_support import authorize
 PYTHON = '''import os,time,uuid
-from dacp_operator import descriptor,result,run_operator
+from xstream_operator import descriptor,result,run_operator
 instance=uuid.uuid4().hex
 calls=0
 def process(ctx):
@@ -34,7 +34,7 @@ public class InferenceProbe {
   static final String instance=java.util.UUID.randomUUID().toString();
   static int calls=0;
   public static void main(String[] args) {
-    dacp.operator.OperatorRunner.infer(args,System.out,new scala.runtime.AbstractFunction3<scala.collection.immutable.Map<String,dacp.StreamDescriptor>,JsonNode,dacp.PreviewLimits,scala.collection.immutable.Map<String,dacp.OutputSample>>() {
+    xstream.operator.OperatorRunner.infer(args,System.out,new scala.runtime.AbstractFunction3<scala.collection.immutable.Map<String,dacp.StreamDescriptor>,JsonNode,dacp.PreviewLimits,scala.collection.immutable.Map<String,dacp.OutputSample>>() {
       public scala.collection.immutable.Map<String,dacp.OutputSample> apply(scala.collection.immutable.Map<String,dacp.StreamDescriptor> inputs,JsonNode params,dacp.PreviewLimits limits) {
         return scala.collection.immutable.Map$.MODULE$.empty();
       }
@@ -79,10 +79,10 @@ def main():
             manifest=dict(icon=dict(path='M3 5h18v14H3z',color='#14866b'),parameters=dict(type='object',properties={},required=[],additionalProperties=False),name=name,version='1',image=image,executor=executor,entrypoint=entry,inputs={},**extra)
             if artifact:manifest['artifact']=str(artifact)
             (folder/'operator.yaml').write_text(json.dumps(manifest))
-        publish('python','python','dacp/operator-python:1.0','probe',d/'probe.py')
-        publish('wheel','python','dacp/operator-python:1.0','probe',wheel)
-        publish('java','jvm','dacp/operator-jvm:1.1','InferenceProbe',jar)
-        publish('native','command','dacp/operator-python:1.0','/usr/bin/does-not-exist',executor_config={'args':[],'stdin':None,'stdout':{'port':'result','representation':'bytes','format':'text'}})
+        publish('python','python','xstream/operator-python:1.0','probe',d/'probe.py')
+        publish('wheel','python','xstream/operator-python:1.0','probe',wheel)
+        publish('java','jvm','xstream/operator-jvm:1.1','InferenceProbe',jar)
+        publish('native','command','xstream/operator-python:1.0','/usr/bin/does-not-exist',executor_config={'args':[],'stdin':None,'stdout':{'port':'result','representation':'bytes','format':'text'}})
         with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
         origin=f'dacp://localhost:{port}'
         config=dict(host='127.0.0.1',public_host='localhost',port=port,datasets={},tls_cert=str(cert/'node-a.crt'),tls_key=str(cert/'node-a.key'),tls_ca=str(cert/'ca.crt'),local_operator_library=str(d/'operators'),operator_cache=str(d/'cache'),access_log={'directory':str(d/'access')},web={'enabled':False},s3={'enabled':False},inference_workers={'max_workers':2,'idle_seconds':8 if args.lifecycle_only else 3,'timeout_seconds':90})

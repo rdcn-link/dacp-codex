@@ -53,7 +53,7 @@ target/universal/stage/bin/dacp-union-server credentials ../.union-demo/x/creden
 
 ## 执行与接口
 
-Job 通过 `inputs` 连接步骤，不支持控制依赖，允许无输出算子。每个算子必须实现[结构推导](../docs/structure-inference_zh.md)。[执行策略](../docs/materialization_zh.md)控制物化、重放、重试次数与总超时。自动重试要求客户端丢弃失败尝试的部分结果，不强制最终结果物化。流使用有界队列与背压；重启中断的任务不会自动恢复，但已提交的物化结果可重放。
+Job 通过 `inputs` 连接步骤，不支持控制依赖，允许无输出算子。每个算子必须实现[结构推导](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference_zh.md)。[执行策略](../docs/materialization_zh.md)控制物化、重放、重试次数与总超时。自动重试要求客户端丢弃失败尝试的部分结果，不强制最终结果物化。流使用有界队列与背压；重启中断的任务不会自动恢复，但已提交的物化结果可重放。
 
 前缀 `dacp.union.` 的 Flight Actions 包括 `submit`、`replay_job`、`job_status` 和 `cancel_job`。结果与事件 Ticket 携带 `job_id`，事件还携带 `after`。普通目录使用 `dacp.catalog`，逻辑节点使用 `dacp.nodes`。请求大小上限为 1 MiB。HTTP 看板是内网只读接口，不管理凭据。S3 使用独立 SigV4 认证，见 [S3](../docs/s3-service_zh.md)。
 

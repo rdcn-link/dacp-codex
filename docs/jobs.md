@@ -35,12 +35,12 @@ For a Union target, use its public dataset paths. Union resolves the owning memb
 
 ## Structure inference and sinks
 
-Every operator must implement [structure inference](structure-inference.md). Output descriptors come from this method, not manifest output declarations. A sink may infer an empty output map and finish successfully without emitting frames. A Job may set `outputs: {}`; the client then waits for completion without receiving result data. Unselected branches still execute. Submission and execution do not invoke inference automatically; explicitly call `infer` during authoring when needed.
+Every operator must implement [structure inference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference.md). Output descriptors come from this method, not manifest output declarations. A sink may infer an empty output map and finish successfully without emitting frames. A Job may set `outputs: {}`; the client then waits for completion without receiving result data. Unselected branches still execute. Submission and execution do not invoke inference automatically; explicitly call `infer` during authoring when needed.
 
 Upstream and downstream steps run concurrently with bounded buffering. Failure, cancellation and timeout cancel the attempt and release resources. Retries and materialization are configured in a separate [execution policy YAML](materialization.md). Retries can repeat external side effects; operators must provide appropriate idempotency.
 
 
-See the [operator catalog](operator-catalog.md) for currently published collaboration operators, parameters and complete input/output examples.
+See the [operator catalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog.md) for currently published collaboration operators, parameters and complete input/output examples.
 
 ## Shell
 
@@ -51,7 +51,7 @@ run piflow_filter@1.0 --input source=/observations --view records --params '{"co
 run piflow_csv_parser@1.0 --input source=/observations --view bytes
 ```
 
-The shell converts Item inputs into `read_item` steps and prints results incrementally. It connects to either a node or Union using [TLS and a token](security.md). Repeat `--output PORT` to select multiple ports, or use `--no-output` for a sink. Inline heredoc source is DEBUG-only; see [source submission](operator-source.md).
+The shell converts Item inputs into `read_item` steps and prints results incrementally. It connects to either a node or Union using [TLS and a token](security.md). Repeat `--output PORT` to select multiple ports, or use `--no-output` for a sink. Inline heredoc source is DEBUG-only; see [source submission](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md).
 
 ## Workflow variables
 

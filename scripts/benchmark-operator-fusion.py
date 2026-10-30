@@ -7,6 +7,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import os
+XSTREAM_ROOT=Path(os.environ["XSTREAM_SOURCE_ROOT"]).resolve()
 import platform
 import shlex
 import socket
@@ -21,17 +23,17 @@ sys.path.insert(0, str(ROOT / 'dacp-client'))
 from dacp.jobs import Job
 from security_test_support import authorize
 
-PYTHON = '''from dacp_operator import OperatorContext
+PYTHON = '''from xstream_operator import OperatorContext
 def process(ctx):
     out = ctx.bytes_output('result', 'text')
     upper = ctx.params['upper']
     for chunk in ctx.input('source').bytes():
         out.write(chunk.upper() if upper else chunk.lower())
 def infer_outputs(inputs, params):
-    from dacp_operator import descriptor, result
+    from xstream_operator import descriptor, result
     return result({'result': descriptor(['bytes'], ['text'], certainty='known')})
 if __name__ == '__main__':
-    from dacp_operator import run_operator
+    from xstream_operator import run_operator
     run_operator(process, infer_outputs, preview_outputs=lambda inputs,params,limits: {})
 '''
 
@@ -39,8 +41,8 @@ if __name__ == '__main__':
 def wheel(path):
     with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as z:
         z.writestr('bench.py', PYTHON)
-        for source in (ROOT / 'dacp-operator-sdk/python/dacp_operator').glob('*.py'):
-            z.write(source, 'dacp_operator/' + source.name)
+        for source in (XSTREAM_ROOT / 'xstream-operator-sdk/python/xstream_operator').glob('*.py'):
+            z.write(source, 'xstream_operator/' + source.name)
         z.writestr('dacp_bench-1.0.dist-info/METADATA', 'Metadata-Version: 2.1\nName: dacp-bench\nVersion: 1.0\n')
         z.writestr('dacp_bench-1.0.dist-info/WHEEL', 'Wheel-Version: 1.0\nGenerator: dacp-benchmark\nRoot-Is-Purelib: true\nTag: py3-none-any\n')
         z.writestr('dacp_bench-1.0.dist-info/RECORD', '')
@@ -69,7 +71,7 @@ def main():
     d.mkdir(parents=True, exist_ok=False)
     docker_prefix = shlex.split(args.docker_prefix)
     cert = ROOT / 'examples/certs'
-    jar = ROOT / 'examples/operators/stream-benchmark/target/scala-2.13/dacp-stream-benchmark_2.13-0.1.0-SNAPSHOT.jar'
+    jar = XSTREAM_ROOT / 'examples/operators/stream-benchmark/target/scala-2.13/dacp-stream-benchmark_2.13-0.1.0-SNAPSHOT.jar'
     if 'jvm' in args.languages and not jar.exists():
         raise RuntimeError('Run sbt package inside examples/operators/stream-benchmark first')
     bundle = d / 'dacp_bench-1.0-py3-none-any.whl'
@@ -78,12 +80,12 @@ def main():
     for rows in args.rows:
         datasets[str(rows)] = dataset(d / f'{rows}.txt', rows)
     print('datasets:', json.dumps(datasets), flush=True)
-    for language, image, entry, artifact in [('jvm', 'dacp/operator-jvm:1.1', 'bench.Transform', jar), ('python', 'dacp/operator-python:1.0', 'bench', bundle)]:
+    for language, image, entry, artifact in [('jvm', 'xstream/operator-jvm:1.1', 'bench.Transform', jar), ('python', 'xstream/operator-python:1.0', 'bench', bundle)]:
         target = d / 'operators' / language / '1'
         target.mkdir(parents=True)
         (target / 'operator.yaml').write_text(json.dumps(dict(name=language, version='1', image=image, executor=language, entrypoint=entry, artifact=str(artifact), inputs={'source':dict(representations=['bytes'], formats=[])})))
     result = dict(started_at=datetime.now(timezone.utc).isoformat(), host=platform.platform(), cpu_count=os.cpu_count(), datasets=datasets, steps=3, repetitions=args.repeats, samples=[], warmups=[], methodology='Same code, image, params, data and client; server operator_fusion_enabled only differs. Alternating order; one warmup per language/mode; wall time includes Flight submission through complete result drain and client SHA-256/row validation. Each row is 64 bytes; CSV text is transported as a byte stream, not Arrow records.')
-    result['images'] = json.loads(subprocess.check_output(docker_prefix + ['docker', 'image', 'inspect', 'dacp/operator-jvm:1.1', 'dacp/operator-python:1.0'], text=True))
+    result['images'] = json.loads(subprocess.check_output(docker_prefix + ['docker', 'image', 'inspect', 'xstream/operator-jvm:1.1', 'xstream/operator-python:1.0'], text=True))
     # Retain only reproducibility metadata, not the entire image configuration.
     result['images'] = [dict(id=i['Id'], tags=i['RepoTags']) for i in result['images']]
     result['git_head'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()

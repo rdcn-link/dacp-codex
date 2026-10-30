@@ -16,4 +16,4 @@ PYTHONPATH=dacp-client .venv/bin/python examples/multi-node/check.py
 bash scripts/test-collaboration.sh
 ```
 
-所有输出流结束后才报告执行成功，关闭客户端结果流会取消任务。部署详情见[安全说明](../../docs/security_zh.md)、[任务执行](../../docs/jobs_zh.md)和[算子发布](../../docs/operator-submission_zh.md)。算子均为普通的已审批仓库包，服务器不包含 identity 或格式转换实现。
+所有输出流结束后才报告执行成功，关闭客户端结果流会取消任务。部署详情见[安全说明](../../docs/security_zh.md)、[任务执行](../../docs/jobs_zh.md)和[算子发布](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission_zh.md)。算子均为普通的已审批仓库包，服务器不包含 identity 或格式转换实现。

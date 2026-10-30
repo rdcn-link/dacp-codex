@@ -35,12 +35,12 @@ outputs:
 
 ## 结构推导与无输出步骤
 
-所有算子必须实现[结构推导](structure-inference_zh.md)，输出描述由该方法给出，不在清单中声明。无输出算子可以推导出空输出映射，并成功结束而不发送数据帧。Job 可设 `outputs: {}`，客户端等待整体完成而不接收数据。未选入最终结果的分支仍会执行。 提交和执行不自动调用推导方法；仅在编制时按需显式调用 `infer`。
+所有算子必须实现[结构推导](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference_zh.md)，输出描述由该方法给出，不在清单中声明。无输出算子可以推导出空输出映射，并成功结束而不发送数据帧。Job 可设 `outputs: {}`，客户端等待整体完成而不接收数据。未选入最终结果的分支仍会执行。 提交和执行不自动调用推导方法；仅在编制时按需显式调用 `infer`。
 
 上下游以有界缓冲并发运行。故障、取消、超时会终止本次尝试并释放资源。重试与物化通过独立的[执行策略 YAML](materialization_zh.md) 配置。重试可能重复外部副作用，业务算子需要提供适当的幂等机制。
 
 
-当前协作示例已发布的算子、参数和完整输入输出示例见[算子库清单](operator-catalog_zh.md)。
+当前协作示例已发布的算子、参数和完整输入输出示例见[算子库清单](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog_zh.md)。
 
 ## Shell
 
@@ -51,7 +51,7 @@ run piflow_filter@1.0 --input source=/observations --view records --params '{"co
 run piflow_csv_parser@1.0 --input source=/observations --view bytes
 ```
 
-Shell 将 Item 输入转换为 `read_item` 步骤，逐块打印结果。连接节点或 Union 使用 [TLS 与 Token](security_zh.md)。多输出可重复指定 `--output PORT`，无输出步骤使用 `--no-output`。源码 heredoc 仅允许 DEBUG 模式，见[源码提交](operator-source_zh.md)。
+Shell 将 Item 输入转换为 `read_item` 步骤，逐块打印结果。连接节点或 Union 使用 [TLS 与 Token](security_zh.md)。多输出可重复指定 `--output PORT`，无输出步骤使用 `--no-output`。源码 heredoc 仅允许 DEBUG 模式，见[源码提交](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source_zh.md)。
 
 ## 工作流变量
 

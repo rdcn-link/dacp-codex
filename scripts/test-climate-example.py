@@ -16,8 +16,7 @@ import tempfile
 import pyarrow as pa
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'dacp-operator-sdk/python'))
-from dacp_operator import OperatorContext
+from xstream_operator import OperatorContext
 
 
 def module(name):

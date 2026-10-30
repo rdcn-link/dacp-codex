@@ -1,7 +1,7 @@
 name: revenue_join
 version: "1.0"
 description: Union collaboration analysis example.
-image: dacp/operator-python:1.0
+image: xstream/operator-python:1.0
 executor: python
 entrypoint: revenue_join
 artifact: revenue_join.py

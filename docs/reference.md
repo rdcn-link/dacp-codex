@@ -141,11 +141,11 @@ Task inputs reference only upstream outputs as `task[:port]`, defaulting to `res
 
 Operator launch arguments are `operator /input /input/params.json`. Inputs are Arrow IPC FIFOs described by `/input/manifest.json`. Stdout carries framed start/data/end events; diagnostics go to stderr. No output directory, output registration, TTL, or result-dataset URI is used. Parquet conversion uses private ephemeral scratch to complete the footer, then streams bytes.
 
-See the [authoring contract](operator-authoring.md), [stream contracts](operator-streams.md), and [DEBUG-only heredoc source](operator-source.md) for source examples, ports, framing, runtime allowlists, cancellation, and limits.
+See the [authoring contract](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md), [stream contracts](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams.md), and [DEBUG-only heredoc source](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md) for source examples, ports, framing, runtime allowlists, cancellation, and limits.
 
 Operators resolve from the local directory and installed image first, then completed cached downloads, then remote URLs in configured order. A manifest HTTP 404 tries the next library; other download or validation failures stop execution. Configure `remote_operator_library_urls: [http://library-a:8820, https://library-b:8820]`; an empty list uses only local operators.
 
-Runtime images and operator code are separate content-addressed artifacts. Built-in launch plugins support complete containers, Java/Scala JARs, Python source, and wheels, all within isolated runtime containers. See [operator packaging](operator-packaging.md) for definitions, shared caching, executor registration, and current limitations.
+Runtime images and operator code are separate content-addressed artifacts. Built-in launch plugins support complete containers, Java/Scala JARs, Python source, and wheels, all within isolated runtime containers. See [operator packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md) for definitions, shared caching, executor registration, and current limitations.
 
 
 ## Protocol and configuration

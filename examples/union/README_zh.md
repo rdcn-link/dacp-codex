@@ -6,7 +6,7 @@
 
 ## 准备
 
-分别在 `dacp-server` 和 `dacp-union-server` 执行 `sbt test stage`，按 [Python 算子](../operators/python/README_zh.md)说明构建运行环境。在仓库根目录执行：
+分别在 `dacp-server` 和 `dacp-union-server` 执行 `sbt test stage`，按 [Python 算子](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/python/README_zh.md)说明构建运行环境。在仓库根目录执行：
 
 ```bash
 bash scripts/certs.sh

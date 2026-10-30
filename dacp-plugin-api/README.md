@@ -20,7 +20,7 @@ Contributed plugins compile against `io.github.rdcn-link:dacp-plugin-api_2.13:0.
 - `ScientificViews`: local array, image and sequence contracts preserving scientific structures. NetCDF/FITS/FASTA parsers and scientific wire codecs are not bundled.
 - `FormatHandler`, `FileOptions`, and `Records`: interpret files and stream Arrow batches.
 - `StructuredFileHandler`: expose file-internal logical objects directly as a namespace.
-- `OperatorExecutor`, `OperatorProgram`, and `OperatorCommand`: validate operator artifacts and select container launch commands; see [operator packaging](../docs/operator-packaging.md).
+- `OperatorExecutor`, `OperatorProgram`, and `OperatorCommand`: validate operator artifacts and select container launch commands; see [operator packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md).
 - `ContainerReader`: enumerate archive entries and stage individual files for existing format readers.
 - `Item`, `LogicalPath`, `PluginSchemas`, and `FormatFailure`: common public/private contracts.
 - `PluginChecks.listing`: reusable metadata checks for contributor tests, without reading or counting content.
@@ -31,7 +31,7 @@ See the [plugin guide](../docs/plugins.md) and the [standalone example](../examp
 
 Records query contracts include `Scan`, typed `Literal`/`Predicate` trees, schema-bound validation, and `ScanStreams` for bounded filtering/projection with early termination. Dataset providers expose a records `DataView` accepting `Scan`; the optional `BatchDatasetAccess` helper overrides `readScan`, while file handlers override `scan`, for source optimizations while preserving the common semantics. See [records queries](../docs/records-scans.md).
 
-Operator `OperatorProgram.configuration` carries plugin-owned `executor_config`; `inputs` and `outputs` expose the supported representations per port. Plugins validate settings; core does not interpret executor-specific parameters. See [native commands](../docs/native-commands.md).
+Operator `OperatorProgram.configuration` carries plugin-owned `executor_config`; `inputs` and `outputs` expose the supported representations per port. Plugins validate settings; core does not interpret executor-specific parameters. See [native commands](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands.md).
 
 `OperatorCommand.executableScratch` requests a bounded 512 MiB executable tmpfs at `/operator-work` for private native artifact copies; ordinary `/tmp` remains non-executable. The server manages its resource lifecycle.
 

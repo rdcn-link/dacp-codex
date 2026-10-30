@@ -17,4 +17,4 @@
 
 八次运行均为 500,000 行且最终载荷 SHA-256 完全一致。stream 的 0 指结果物化文件，不包括输入原文件、日志和任务历史。
 
-原始耗时、任务 ID、工作流、策略、结果哈希和已提交步骤见[测试数据](benchmarks/materialization-20261026.json)。输入为 UTF-8 CSV，表头为 `station_id,timestamp,temperature,humidity,quality`；第 i 条记录（从 0 起）为 `S{i%1000:04d},2026-10-26T{i%24:02d}:00:00Z,{10+i%300/10:.1f},{40+i%60},0`，行尾为 LF。复现实验时将记录中的公开 URI 与节点名称替换为自己的部署，先发布所需的[协作算子](operator-catalog_zh.md)。
+原始耗时、任务 ID、工作流、策略、结果哈希和已提交步骤见[测试数据](benchmarks/materialization-20261026.json)。输入为 UTF-8 CSV，表头为 `station_id,timestamp,temperature,humidity,quality`；第 i 条记录（从 0 起）为 `S{i%1000:04d},2026-10-26T{i%24:02d}:00:00Z,{10+i%300/10:.1f},{40+i%60},0`，行尾为 LF。复现实验时将记录中的公开 URI 与节点名称替换为自己的部署，先发布所需的[协作算子](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog_zh.md)。

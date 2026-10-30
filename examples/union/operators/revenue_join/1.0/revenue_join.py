@@ -50,7 +50,7 @@ def main():
 
 
 def infer_outputs(inputs, params):
-    from dacp_operator import descriptor, result
+    from xstream_operator import descriptor, result
     return result({'result': descriptor(['bytes'], ['json'], certainty='known')})
 
 
@@ -59,7 +59,7 @@ def preview_outputs(inputs, params, limits):
 
 
 if __name__ == '__main__':
-    from dacp_operator import run_inference
+    from xstream_operator import run_inference
     if len(sys.argv) > 1 and sys.argv[1] == 'infer':
         run_inference(infer_outputs, preview=preview_outputs)
     else:

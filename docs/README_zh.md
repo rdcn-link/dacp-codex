@@ -8,7 +8,7 @@
 
 动态数据集目录与程序内启动：[DataCatalog](dataset-catalogs_zh.md)、[嵌入式服务器](embedded-server_zh.md)。
 
-当前协作部署的[算子库清单](operator-catalog_zh.md)：6 个已发布算子的端口、参数、输入输出和 Shell / Job 示例。
+当前协作部署的[算子库清单](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog_zh.md)：6 个已发布算子的端口、参数、输入输出和 Shell / Job 示例。
 
 ## 按角色阅读
 
@@ -27,17 +27,17 @@
 | Scala SDK | [Scala 客户端](../dacp-client-scala/README_zh.md) |
 | DACP Server | [管理员指南](administrators/README_zh.md)、[配置和协议参考](reference_zh.md) |
 | Union Server 与 Web 看板 | [Union 手册](../dacp-union-server/README_zh.md)、[协作协议](union_zh.md)、[双节点示例](../examples/union/README_zh.md) |
-| 算子仓库 CLI 与网站 | [仓库手册](../dacp-operator-repository/README_zh.md) |
+| 算子仓库 CLI 与网站 | [仓库手册](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README_zh.md) |
 | 插件 API 与 Union 传输工具 | [插件 API](../dacp-plugin-api/README_zh.md)、[Union 协议模块](../dacp-union-protocol/README_zh.md) |
 
 ## 专题参考
 
 | 主题 | 文档 |
 |---|---|
-| 算子编写、发布、代码示例 | [Scala / Java / Python 算子](operator-authoring_zh.md)、[原生命令](native-commands_zh.md) |
-| DEBUG 源码提交 | [源码运行时与 heredoc](operator-source_zh.md) |
-| 运行时、制品、缓存和帧协议 | [算子打包](operator-packaging_zh.md)、[流契约](operator-streams_zh.md)（英文） |
-| 源码、许可证、构建说明和 SBOM | [算子审查材料](operator-provenance_zh.md) |
+| 算子编写、发布、代码示例 | [Scala / Java / Python 算子](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)、[原生命令](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands_zh.md) |
+| DEBUG 源码提交 | [源码运行时与 heredoc](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source_zh.md) |
+| 运行时、制品、缓存和帧协议 | [算子打包](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging_zh.md)、[流契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams_zh.md)（英文） |
+| 源码、许可证、构建说明和 SBOM | [算子审查材料](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance_zh.md) |
 | 执行记录、历史查询和重启语义 | [执行记录](execution-history_zh.md) |
 | 插件发现与贡献要求 | [插件体系](plugins_zh.md)（英文） |
 | Dataset 后端、文件格式和结构化浏览 | [Dataset provider](dataset-providers_zh.md)、[格式处理器](format-handlers_zh.md)（英文） |
@@ -47,7 +47,7 @@
 ## 可运行示例
 
 - [普通节点间 Job](../examples/multi-node/README_zh.md)和 [Union 跨中心分析](../examples/union/README_zh.md)。
-- [Scala 算子](../examples/operators/scala/README_zh.md)、[Python 算子](../examples/operators/python/README_zh.md)、[原生可执行算子](../examples/operators/native/README_zh.md)。
+- [Scala 算子](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/scala/README_zh.md)、[Python 算子](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/python/README_zh.md)、[原生可执行算子](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/native/README_zh.md)。
 - [插件工程](../examples/plugins/README_zh.md)和 [SQL 数据发布](../examples/sql/README_zh.md)。
 
 除非文档另行指定，命令从项目根目录执行。服务配置中的相对路径以服务进程工作目录为基准。示例证书、主机名、端口及文件路径用于本地演示，部署时按实际环境配置。文档默认英文：`README.md` 及不带语言后缀的主题文件为英文；完整中文翻译使用 `README_zh.md` 及 `*_zh.md`。
@@ -55,7 +55,7 @@
 [用户访问日志](access-logs_zh.md)：JSON Lines 文件、大小轮转、字段及采集。
 
 [数据集目录](dataset-directory_zh.md)：节点公开描述、Union Web 按节点查看目录和 Shell `datasets`。
-[同进程执行实测](operator-fusion-benchmark_zh.md)：100 万与 400 万行的策略对比。
+[同进程执行实测](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion-benchmark_zh.md)：100 万与 400 万行的策略对比。
 
 [节点 Web 看板](node-web_zh.md)：默认 HTTP 服务、配置开关及 G6 任务 DAG。
 
@@ -65,7 +65,7 @@
 
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](union-proxy_zh.md)。
 
-[认证与访问控制](security_zh.md)：Flight Token、Union 服务凭据、S3 SigV4、撤销与审计。[结构推导](structure-inference_zh.md)：算子必选输出推导与工作流校验。
+[认证与访问控制](security_zh.md)：Flight Token、Union 服务凭据、S3 SigV4、撤销与审计。[结构推导](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference_zh.md)：算子必选输出推导与工作流校验。
 
 [流传递与逐步物化实测](materialization-benchmark_zh.md)：50 万条气象记录、三轮耗时和实际落盘量。
 
@@ -75,6 +75,6 @@ Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名�
 
 [在线 Job 设计器](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README_zh.md)：从浏览器设计单机与跨节点作业，导出 YAML 供 Shell / SDK 提交。
 
-- [算子参数类型及设计器表单](operator-parameters_zh.md)
+- [算子参数类型及设计器表单](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-parameters_zh.md)
 
-算子仅源码发布：[提交、隔离构建、审核和可信度](operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
+算子仅源码发布：[提交、隔离构建、审核和可信度](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。

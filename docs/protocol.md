@@ -23,7 +23,7 @@ A job contains tasks. A task's `id` identifies dependency references; its `title
 | Operator repository search, versions, and artifact downloads | HTTP/HTTPS |
 | Read-only Union management dashboard | HTTP for status and history; it does not authorize computation submission |
 
-The shared Union transport module limits JSON messages to 1 MiB. For exact actions, tickets, and fields, see the [Union protocol](union.md), [technical reference](reference.md), `proto/dacp.proto`, and `dacp-union-protocol`. The operator process port framing protocol is an executor interface, described in the [operator stream contract](operator-streams.md), rather than the client Flight interface.
+The shared Union transport module limits JSON messages to 1 MiB. For exact actions, tickets, and fields, see the [Union protocol](union.md), [technical reference](reference.md), `proto/dacp.proto`, and `dacp-union-protocol`. The operator process port framing protocol is an executor interface, described in the [operator stream contract](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams.md), rather than the client Flight interface.
 
 ## Identity, trust, and authorization
 

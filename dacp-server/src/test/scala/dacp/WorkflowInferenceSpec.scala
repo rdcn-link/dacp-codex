@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.operator.inference._
+
 import _root_.xstream.data._
 
 

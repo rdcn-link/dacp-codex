@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.operator.inference._
+
 import _root_.xstream.data._
 
 import java.nio.file.{Files, Path}
@@ -45,7 +47,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
     accessLogger
   }
   private var inferencePool:InferenceWorkerPool=null
-  private[dacp] def inferenceWorkerPool:InferenceWorkerPool=synchronized {
+  def inferenceWorkerPool:InferenceWorkerPool=synchronized {
     require(!closed.get(),"configuration is closed")
     if(inferencePool==null)inferencePool=new InferenceWorkerPool(inferenceWorkers)
     inferencePool

@@ -6,6 +6,8 @@ from datetime import datetime,timezone
 import json
 import os
 from pathlib import Path
+import os
+XSTREAM_ROOT=Path(os.environ["XSTREAM_SOURCE_ROOT"]).resolve()
 import shlex
 import socket
 import subprocess
@@ -16,14 +18,14 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'dacp-client'))
 from dacp.jobs import Job
 from security_test_support import authorize
-PYTHON='''from dacp_operator import OperatorContext
+PYTHON='''from xstream_operator import OperatorContext
 def process(ctx):
     out=ctx.bytes_output('result','text')
     for b in ctx.input('source').bytes():out.write(b.upper() if ctx.params.get('upper') else b)
 def infer_outputs(inputs, params):
     raise AssertionError("execution must not invoke structure inference")
 if __name__=='__main__':
-    from dacp_operator.inference import run_operator
+    from xstream_operator.inference import run_operator
     run_operator(process, infer_outputs, preview_outputs=lambda inputs,params,limits: {})
 '''
 def main():
@@ -31,9 +33,9 @@ def main():
     with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
     with tempfile.TemporaryDirectory(prefix='dacp-group-flight-') as tmp:
         d=Path(tmp);origin=f'dacp://localhost:{port}';(d/'message.txt').write_text('hello dacp\n');(d/'ops.py').write_text(PYTHON)
-        jar=ROOT/'examples/operators/common-scala/target/scala-2.13/dacp-common-scala_2.13-1.0.jar'
+        jar=XSTREAM_ROOT/'examples/operators/common-scala/target/scala-2.13/dacp-common-scala_2.13-1.0.jar'
         if not jar.exists():raise RuntimeError('build the common Scala example JAR first')
-        for name,executor,image,entry,artifact in [('upper','jvm','dacp/operator-jvm:1.1','dacp.common.Op_text_uppercase',jar),('strip','jvm','dacp/operator-jvm:1.1','dacp.common.Op_text_strip',jar),('python','python','dacp/operator-python:1.0','ops',d/'ops.py'),('legacy','python','dacp/operator-python:1.0','identity',ROOT/'examples/operators/python/identity_python/1.1/identity.py')]:
+        for name,executor,image,entry,artifact in [('upper','jvm','xstream/operator-jvm:1.1','dacp.common.Op_text_uppercase',jar),('strip','jvm','xstream/operator-jvm:1.1','dacp.common.Op_text_strip',jar),('python','python','xstream/operator-python:1.0','ops',d/'ops.py'),('legacy','python','xstream/operator-python:1.0','identity',XSTREAM_ROOT/'examples/operators/python/identity_python/1.1/identity.py')]:
             target=d/'operators'/name/'1';target.mkdir(parents=True)
             (target/'operator.yaml').write_text(json.dumps(dict(name=name,version='1',image=image,executor=executor,entrypoint=entry,artifact=str(artifact),inputs={'source':dict(representations=['bytes'],formats=[])})))
         cert=ROOT/'examples/certs'

@@ -141,11 +141,11 @@ Dataset provider、容器 reader、格式 handler 分别负责构建数据集、
 
 算子启动参数为 `operator /input /input/params.json`。输入为 Arrow IPC FIFO，由 `/input/manifest.json` 描述。stdout 写 start/data/end 协议帧，stderr 写诊断。无输出目录、输出注册、TTL 或结果数据集 URI。Parquet 转换使用私有临时空间完成 footer 后流式发送字节。
 
-源码示例、端口、帧格式、运行时白名单、取消与限制见[编写契约](operator-authoring_zh.md)、[流契约](operator-streams_zh.md)与 [DEBUG heredoc 源码](operator-source_zh.md)。
+源码示例、端口、帧格式、运行时白名单、取消与限制见[编写契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)、[流契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams_zh.md)与 [DEBUG heredoc 源码](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source_zh.md)。
 
 算子首先从本地目录及已安装镜像解析，然后检查已完成的下载缓存，最后按配置顺序查询远程 URL。清单返回 HTTP 404 时继续查询下一个库；其他下载或验证错误会终止执行。配置示例：`remote_operator_library_urls: [http://library-a:8820, https://library-b:8820]`；空列表仅使用本地算子。
 
-运行时镜像与算子代码分别作为按内容摘要寻址的制品。内置启动插件支持完整容器、Java/Scala JAR、Python 源码和 wheel，均在隔离的运行时容器中执行。定义、共享缓存、执行器注册与当前限制参见 [算子打包](operator-packaging_zh.md)。
+运行时镜像与算子代码分别作为按内容摘要寻址的制品。内置启动插件支持完整容器、Java/Scala JAR、Python 源码和 wheel，均在隔离的运行时容器中执行。定义、共享缓存、执行器注册与当前限制参见 [算子打包](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging_zh.md)。
 
 
 ## 协议与配置

@@ -3,6 +3,8 @@
 import io
 import json
 from pathlib import Path
+import os
+XSTREAM_ROOT=Path(os.environ["XSTREAM_SOURCE_ROOT"]).resolve()
 import time
 import pyarrow as pa
 from dacp import Job
@@ -37,7 +39,7 @@ def main():
     result = events(job("def process(inputs, params):\n    yield from inputs['source']\n", view='records'))
     batches = [e['batch'] for e in result if e['type']=='data']
     assert pa.Table.from_batches(batches).num_rows == 2
-    scala = (ROOT/'examples/operators/inline/Uppercase.scala').read_text()
+    scala = (XSTREAM_ROOT/'examples/operators/inline/Uppercase.scala').read_text()
     result = events(job(scala, runtime='scala@1.0', entrypoint='Uppercase'))
     assert b''.join(e['data'] for e in result if e['type']=='data') == expected
     try:

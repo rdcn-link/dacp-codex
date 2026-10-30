@@ -53,7 +53,7 @@ Store the returned token in a protected file and use `dacp-shell dacp://localhos
 
 ## Execution and interfaces
 
-Jobs connect steps through `inputs`; control dependencies are unsupported and output-free operators are allowed. Every operator implements [structure inference](../docs/structure-inference.md). [Execution policy](../docs/materialization.md) controls materialization, replay, retry count and total timeout. Automatic retries require clients to discard a failed attempt's partial output; final materialization is optional. Streaming uses bounded queues and backpressure. Jobs interrupted by restart are not automatically resumed; committed materializations can be replayed.
+Jobs connect steps through `inputs`; control dependencies are unsupported and output-free operators are allowed. Every operator implements [structure inference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference.md). [Execution policy](../docs/materialization.md) controls materialization, replay, retry count and total timeout. Automatic retries require clients to discard a failed attempt's partial output; final materialization is optional. Streaming uses bounded queues and backpressure. Jobs interrupted by restart are not automatically resumed; committed materializations can be replayed.
 
 Flight Actions with prefix `dacp.union.` include `submit`, `replay_job`, `job_status` and `cancel_job`. Result and event tickets carry `job_id`; events also carry `after`. Ordinary discovery uses `dacp.catalog`, and logical nodes use `dacp.nodes`. Requests are limited to 1 MiB. The HTTP dashboard is an internal read-only interface, not a credential administration service. S3 is independently authenticated with SigV4; see [S3](../docs/s3-service.md).
 
