@@ -1,5 +1,7 @@
 package dacp.client
 
+import _root_.xstream.data._
+
 import java.io.ByteArrayOutputStream
 import org.apache.arrow.flight._
 import org.apache.arrow.memory.RootAllocator

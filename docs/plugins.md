@@ -48,9 +48,9 @@ Structured files implement `StructuredFileHandler.openStructure` to return logic
 
 ## Scientific data and future extensions
 
-NetCDF and FITS parsers are not implemented yet. Contributors can use the structured-file contract for groups, variables, tables, and HDUs, with handler-owned selection parameters. Reuse `folder` for browsable structures and preserve original-file bytes at the file root. Child naming and byte encodings must be documented and deterministic.
+Scientific parsers, views and network codecs are provided by [xstream-data](../xstream-data/README.md).
 
-Current public views remain `records` and `bytes`. New array/image views still require explicit shared schemas, metadata, and selection semantics. Do not silently flatten scientific arrays or invent record counts. Extending the plugin foundation does not imply those representations already exist.
+Scientific parsers, views and network codecs are provided by [xstream-data](../xstream-data/README.md).
 
 New extension points should follow the same principle: define a focused shared contract, discover implementations through registration, and keep implementation-specific branches out of core dispatch. Do not introduce an extension abstraction without a concrete contribution or use case. During unreleased development, improve contracts directly and update their users together rather than accumulating compatibility layers.
 
@@ -91,3 +91,7 @@ All contributed operator definitions include a language-neutral `parameters` con
 Operators must also provide `icon`; administrators assign public `categories`; see [categories and icons](operator-presentation.md) for the contract and publication examples.
 
 [Repository source analysis/build extension](../plugins/dacp-plugin-source-analysis/README.md): `SourceAnalyzer`, `SourceArchive`, `SourceBuildRecipe` are implemented ServiceLoader contracts in `dacp-operator-contract`.
+
+## Typed data views
+
+Scientific parsers, views and network codecs are provided by [xstream-data](../xstream-data/README.md).

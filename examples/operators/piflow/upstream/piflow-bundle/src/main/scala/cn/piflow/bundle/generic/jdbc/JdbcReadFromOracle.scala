@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.jdbc
 
+
 import java.io._
 import java.sql.{Blob, Clob, Connection, Date, DriverManager, NClob, PreparedStatement, ResultSet, SQLXML}
 

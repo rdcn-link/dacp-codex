@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.util.concurrent.{ArrayBlockingQueue,TimeUnit,CancellationException}
 import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters._
@@ -22,8 +24,9 @@ object StreamProtocol {
   def header(f: OperatorFrame): JsonNode = Data.mapper.readTree(f.metadata)
   def frame(kind: String, port: String = "", data: Array[Byte] = Array.emptyByteArray): OperatorFrame =
     OperatorFrame(Data.mapper.createObjectNode().put("type",kind).put("port",port).toString.getBytes(java.nio.charset.StandardCharsets.UTF_8),data)
-  def start(port: String,repr: String,format: String,s: Option[Schema]=None): OperatorFrame = {
+  def start(port: String,repr: String,format: String,s: Option[Schema]=None,structure:Option[JsonNode]=None): OperatorFrame = {
     val h=Data.mapper.createObjectNode().put("type","start").put("port",port).put("representation",repr).put("format",format)
+    structure.foreach(x=>h.set[JsonNode]("structure",x))
     s.foreach(x=>h.put("schema",java.util.Base64.getEncoder.encodeToString(x.serializeAsMessage())))
     OperatorFrame(Data.mapper.writeValueAsBytes(h))
   }

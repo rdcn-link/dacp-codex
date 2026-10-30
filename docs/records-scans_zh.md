@@ -115,11 +115,11 @@ SQLGlot 在本地把语句解析为类型化扫描表达式，服务器不接收
 
 独立 `dacp-plugin-api` 提供 `Literal`、`Predicate`、`Scan`、`BoundScan`、`ScanStreams`。
 
-- `DatasetAccess.scan(path, request, allocator, listener, ready)` 默认用 `ScanStreams` 变换 `stream(path, "records", ...)`。
-- `FormatHandler.scan(source, options, request, allocator, batch, sample, listener, demand)` 默认包装 records 读取器，适用于 directory、mixed 和暂存归档条目。
-- 结构化子对象使用 `DatasetAccess.scan`，科学格式插件可查询原生 records，无需暴露物理文件或展开数组。
+- `access.requireView(path, DataViews.Records).open(request, context)` 使用类型化 `Scan`；`BatchDatasetAccess.readScan` 默认使用 `ScanStreams` 对 Arrow 批次作有界变换。
+- `FormatHandler.scan(source, options, request, allocator, batch, sample, receiver, demand)` 默认包装 records 读取器，适用于 directory、mixed 和暂存归档条目。
+- 结构化子对象使用 `DataViews.Records`，科学格式插件可查询原生 records，无需暴露物理文件或展开数组。
 - 优化后端时先用 `request.bind(schema)` 对完整公开 schema 校验完整请求，再翻译；过滤完成前保留谓词列。需要时使用正确引用的标识和绑定值。
-- 覆盖实现负责完整语义。部分下推时通过 `ScanStreams.stream(request, allocator, listener) { filtered => ... }` 传递源批次，用源 root 启动 `filtered` 并通过它输出，使其负责剩余过滤、投影和全局限制。保留原谓词做最终检查。
+- 覆盖实现负责完整语义。部分下推时通过 `ScanStreams.stream(request, allocator, receiver) { filtered => ... }` 传递源批次，用源 root 启动 `filtered` 并通过它输出，使其负责剩余过滤、投影和全局限制。保留原谓词做最终检查。
 - 保持同步异常传播、背压/取消及 `finally` 清理。到达限制后在当前批次结束时展开并关闭读取器，不吞掉 `start`、`putNext` 或 demand 的异常。
 
 传输、语义、下推和资源测试见 [ScanSpec](../dacp-server/src/test/scala/dacp/ScanSpec.scala)、[SqlSpec](../dacp-server/src/test/scala/dacp/SqlSpec.scala)。

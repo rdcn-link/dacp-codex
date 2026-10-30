@@ -1,5 +1,7 @@
 package xstream.designer
 
+import _root_.xstream.data._
+
 import org.scalatest.funsuite.AnyFunSuite
 import dacp.union.{Json,YamlDocument}
 import com.sun.net.httpserver.HttpServer
@@ -146,7 +148,7 @@ class DesignerSpec extends AnyFunSuite {
       assert(output.path("certainty").asText=="known",inferred.body())
       assert(output.path("schema_json").path("fields").size()==1)
       assert(output.path("sample").path("rows").size()==1,inferred.body())
-    }finally {site.close();dacp.Data.deleteTree(dir)}
+    }finally {site.close();xstream.data.Data.deleteTree(dir)}
   }
 
 }

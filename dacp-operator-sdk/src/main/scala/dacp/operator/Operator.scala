@@ -1,5 +1,7 @@
 package dacp.operator
 
+import _root_.xstream.data._
+
 import java.io.{InputStream,OutputStream,ByteArrayOutputStream,BufferedOutputStream,IOException}
 import java.nio.file.{Files,Path}
 import com.fasterxml.jackson.databind.{JsonNode,ObjectMapper}
@@ -7,7 +9,8 @@ import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.{VectorSchemaRoot,VarBinaryVector}
 import org.apache.arrow.vector.ipc.{ArrowStreamReader,ArrowStreamWriter}
 import org.apache.arrow.vector.types.pojo.Schema
-import dacp.{OperatorFrame,OperatorFrames,PluginSchemas,StreamDescriptor,InferenceRequest,InferenceResult,StructureInference,PreviewLimits,OutputSample,OutputSamples}
+import dacp.{OperatorFrame,OperatorFrames,StreamDescriptor,InferenceRequest,InferenceResult,StructureInference,PreviewLimits,OutputSample,OutputSamples}
+import _root_.xstream.data.{PluginSchemas}
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 

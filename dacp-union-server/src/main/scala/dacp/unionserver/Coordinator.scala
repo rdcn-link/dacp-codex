@@ -1,5 +1,7 @@
 package dacp.unionserver
 
+import _root_.xstream.data._
+
 import org.apache.arrow.flight.FlightStatusCode._
 
 import dacp._
@@ -28,7 +30,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   private val allocator=new RootAllocator()
   private[unionserver] val routes=new DatasetRoutes(settings.state.resolve("dataset-routes"))
   private val uploads=new StreamInputs()
-  private val proxyCatalog=new ProxyCatalog(members,settings,routes,uploads)
+  private val proxyCatalog=new ProxyCatalog(members,settings,routes,uploads,plugins)
   private[unionserver] def websiteDirectorySources:JsonNode={
     val n=Json.obj();val sources=n.putArray("sources")
     members.all.foreach(m=>sources.addObject().put("identity",m.path("identity").asText).put("url",m.path("url").asText))

@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.script
 
+
 import cn.piflow.bundle.util.DockerStreamUtil
 import cn.piflow.conf._
 import cn.piflow.conf.bean.PropertyDescriptor

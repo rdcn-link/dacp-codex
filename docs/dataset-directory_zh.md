@@ -36,7 +36,7 @@ datasets:
 目录插件通过 `DatasetInfo.description` 返回相同的 JSON 字符串：
 
 ```scala
-import dacp.DatasetInfo
+import xstream.data.DatasetInfo
 
 override def list(): Seq[DatasetInfo] = Seq(
   DatasetInfo("orders", description =

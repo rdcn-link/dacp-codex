@@ -166,8 +166,10 @@ class UnionExecution:
                     yield event
                     return
                 if kind == 'start':
-                    if not port or port in ports or event.get('representation') not in ('bytes', 'records'):
+                    if not port or port in ports or not isinstance(event.get('representation'), str) or not event.get('representation'):
                         raise ValueError('invalid output start')
+                    if event['representation'] not in ('bytes', 'records') and (not isinstance(event.get('structure'), dict) or event['structure'].get('view') != event['representation']):
+                        raise ValueError('missing scientific structure')
                     schema = None
                     if event['representation'] == 'records':
                         schema = pa.ipc.read_schema(pa.BufferReader(base64.b64decode(event['schema'], validate=True)))

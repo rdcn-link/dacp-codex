@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict');
+const ui=require('../xstream-designer/src/main/resources/web/scientific-views.js');
+assert.equal(ui.preferred(['array']),'array');
+assert.equal(ui.preferred(['image','bytes']),'bytes');
+assert.equal(ui.preferred(['records','bytes']),'records');
+assert.deepEqual(ui.structureRows({view:'array',data_type:'float32',dimensions:[{name:'time',length:4,unit:'h'},{name:'lat',length:180}]}),[['type','float32'],['time','4 h'],['lat','180']]);
+assert.deepEqual(ui.structureRows({view:'image',width:3,height:2,channels:1,data_type:'uint8'}),[['type','uint8'],['width',3],['height',2],['channels',1]]);
+assert.deepEqual(ui.structureRows({view:'sequence',alphabet:'dna'})[0],['alphabet','dna']);
+assert.deepEqual(ui.sampleColumns([{id:'x',offset:0},{id:'y',symbols:'AC'}]),['id','offset','symbols']);
+assert.equal(ui.structureRows({view:'custom',rank:3}).length,2);
+console.log('Scientific view presentation checks passed');

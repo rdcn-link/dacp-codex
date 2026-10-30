@@ -6,14 +6,14 @@ All bundled extension implementations live here. Plugins depend on `dacp-plugin-
 
 | Module | Implementations and registration IDs | Implementation-specific dependencies |
 |---|---|---|
-| `dacp-plugin-datasets` | `DatasetProvider`: `directory`, `sqldb`, `mixed`; file/JDBC reading and mixed namespaces | H2 and PostgreSQL JDBC drivers |
-| `dacp-plugin-formats-basic` | `FormatHandler`: `csv`, `ndjson`, `json`, `bin` | Apache Commons CSV |
-| `dacp-plugin-parquet` | `FormatHandler`: `parquet`, including scan pushdown | Parquet and Hadoop |
-| `dacp-plugin-excel` | `FormatHandler`: `excel` | Apache POI |
-| `dacp-plugin-archives` | `ContainerReader`: `zip`, `gzip`, `tar`, `tar-gzip` | Apache Commons Compress |
-| `dacp-plugin-catalog-static` | `DataCatalogProvider`: `static` | No additional dependencies |
+| `xstream-data-files` | `DatasetProvider`: `directory`, `sqldb`, `mixed`; file/JDBC reading and mixed namespaces | H2 and PostgreSQL JDBC drivers |
+| `xstream-data-formats-basic` | `FormatHandler`: `csv`, `ndjson`, `json`, `bin` | Apache Commons CSV |
+| `xstream-data-parquet` | `FormatHandler`: `parquet`, including scan pushdown | Parquet and Hadoop |
+| `xstream-data-excel` | `FormatHandler`: `excel` | Apache POI |
+| `xstream-data-archives` | `ContainerReader`: `zip`, `gzip`, `tar`, `tar-gzip` | Apache Commons Compress |
+| `xstream-data-catalog-static` | `DataCatalogProvider`: `static` | No additional dependencies |
 | `dacp-plugin-operator-executors` | `OperatorExecutor`: `container`, `jvm`, `python`, `command` | No additional dependencies |
-| `dacp-plugin-mounted` | `DatasetProvider`: `mounted`; generic namespace composition | No additional dependencies |
+| `xstream-data-mounted` | `DatasetProvider`: `mounted`; generic namespace composition | No additional dependencies |
 | `dacp-plugin-execution-file` | `ExecutionStoreProvider`, `MaterializationStoreProvider`: `file`; atomic execution metadata and output materialization with quotas, expiry, and integrity validation | No additional dependencies |
 
 File, JDBC, and mixed providers share alias and directory implementation in one Dataset plugin. Format readers are packaged independently; the Dataset plugin does not depend on POI, Parquet, or archive implementation classes. JSON provides original bytes by default; NDJSON provides records. Operator programs and shared runtimes remain in `operators/`, `examples/operators/`, and `dacp-operator-runtime/`; they execute in containers rather than loading into the server as plugins.
@@ -23,8 +23,8 @@ File, JDBC, and mixed providers share alias and directory implementation in one 
 From the repository root:
 
 ```bash
-(cd plugins/dacp-plugin-datasets && sbt package)
-(cd plugins/dacp-plugin-excel && sbt package)
+(cd xstream-data/xstream-data-files && sbt package)
+(cd xstream-data/xstream-data-excel && sbt package)
 (cd plugins/dacp-plugin-operator-executors && sbt test)
 (cd dacp-server && sbt test 'Universal / stage')
 ```
@@ -41,7 +41,7 @@ datasets:
     source: {root: /srv/data}
 ```
 
-`plugins/` is a version-controlled source directory; `.dacp-plugins/` is the Git-ignored local installation directory. The server does not recursively scan the source tree. Do not install duplicate copies of plugin IDs already bundled with the distribution. Catalogs, backends, formats, archives, and launchers register in `dacp.DataCatalogProvider`, `dacp.DatasetProvider`, `dacp.FormatHandler`, `dacp.ContainerReader`, and `dacp.OperatorExecutor` respectively.
+`plugins/` is a version-controlled source directory; `.dacp-plugins/` is the Git-ignored local installation directory. The server does not recursively scan the source tree. Do not install duplicate copies of plugin IDs already bundled with the distribution. Catalogs, backends, formats, archives, and launchers register in `xstream.data.DataCatalogProvider`, `xstream.data.DatasetProvider`, `xstream.data.FormatHandler`, `xstream.data.ContainerReader`, and `dacp.OperatorExecutor` respectively.
 
 ## Architecture and extensions
 

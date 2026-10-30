@@ -1,5 +1,6 @@
 package cn.piflow.bundle.flux.util
 
+
 import org.apache.spark.mllib.stat.Statistics
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions.{col, max, min}

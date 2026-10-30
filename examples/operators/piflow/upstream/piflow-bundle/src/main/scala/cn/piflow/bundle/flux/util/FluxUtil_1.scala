@@ -1,5 +1,6 @@
 package cn.piflow.bundle.flux.util
 
+
 import cn.piflow.bundle.flux.util.CommonUtil.SunriseAndSunsetTime
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions.row_number

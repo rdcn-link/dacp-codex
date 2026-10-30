@@ -1,0 +1,14 @@
+name: Climate array preview
+tasks:
+  - id: read
+    operator: read_item@1.0
+    inputs: {}
+    params:
+      uri: context:/local_files/scientific/climate.nc/temperature
+      view: array
+      selection:
+        origin: [0, 0]
+        shape: [2, 3]
+        stride: [1, 1]
+outputs:
+  result: read

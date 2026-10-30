@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.data._
+
+
 import org.apache.arrow.flight.{FlightProducer,FlightServerMiddleware}
 private[dacp] object TestCalls {
   val context:FlightProducer.CallContext=new FlightProducer.CallContext {

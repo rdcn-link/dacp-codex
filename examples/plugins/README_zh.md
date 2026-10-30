@@ -50,10 +50,10 @@ with Source.open("dacp://localhost:8815/files") as ds:
             print(reader.read().decode("utf-8"))
 ```
 
-注册文件位于 `src/main/resources/META-INF/services/`。文件及结构化文件处理器使用 `dacp.FormatHandler`，Dataset provider 使用 `dacp.DatasetProvider`。归档插件使用 `dacp.ContainerReader`，并自动获得格式条目。插件 JAR 和其私有依赖 JAR 应直接放在 `plugin_directory` 中，不扫描子目录。不要重复打包 DACP API 或服务器已提供的库。
+注册文件位于 `src/main/resources/META-INF/services/`。文件及结构化文件处理器使用 `xstream.data.FormatHandler`，Dataset provider 使用 `xstream.data.DatasetProvider`。归档插件使用 `xstream.data.ContainerReader`，并自动获得格式条目。插件 JAR 和其私有依赖 JAR 应直接放在 `plugin_directory` 中，不扫描子目录。不要重复打包 DACP API 或服务器已提供的库。
 
 服务器的 [PluginSpec](../../dacp-server/src/test/scala/dacp/PluginSpec.scala) 将这些源码编译进测试，并通过 Flight 验证，同时覆盖已注册的归档插件与生命周期检查。自己的测试可以运行 `PluginChecks.listing(access)`，检查递归列表、直接子项、路径与元数据。还应添加格式特定的流式处理、有界内存、错误、取消和资源释放测试。
 
-动态目录示例 `example.JdbcCatalogProvider` 通过 `META-INF/services/dacp.DataCatalogProvider` 注册，查询数据库登记表并按需构建 Dataset。构建本工程后将 JAR 与 JDBC 驱动放到插件目录；配置及表结构见 [DataCatalog 指南](../../docs/dataset-catalogs_zh.md)。
+动态目录示例 `example.JdbcCatalogProvider` 通过 `META-INF/services/xstream.data.DataCatalogProvider` 注册，查询数据库登记表并按需构建 Dataset。构建本工程后将 JAR 与 JDBC 驱动放到插件目录；配置及表结构见 [DataCatalog 指南](../../docs/dataset-catalogs_zh.md)。
 
 节点发布后，`/summary` 还自动提供 JSONL `bytes` 视图。例如配置 `message: hello` 时，其字节内容为 `{"characters":5}` 加一个换行符；插件仍只实现 records。参见[通用视图规则](../../docs/dataset-access_zh.md#通用-jsonl-bytes-视图)。

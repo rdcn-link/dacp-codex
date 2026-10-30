@@ -1,4 +1,6 @@
 package dacp
+
+import _root_.xstream.data._
 import java.nio.file.{Files,Path}
 import java.util.zip.{ZipEntry,ZipOutputStream}
 import scala.jdk.CollectionConverters._

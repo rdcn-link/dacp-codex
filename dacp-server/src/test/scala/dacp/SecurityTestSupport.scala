@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.data._
+
+
 import java.nio.file.{Files,Path}
 import java.net.URI
 import java.net.http.{HttpClient,HttpRequest}

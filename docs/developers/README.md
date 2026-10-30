@@ -68,7 +68,7 @@ class CsvFileProvider extends DatasetProvider {
 Compile the code into a JAR against the standalone `dacp-plugin-api`, using the matching API and Scala versions and a `Provided` dependency. Include this service registration file inside the JAR:
 
 ```text
-META-INF/services/dacp.DatasetProvider
+META-INF/services/xstream.data.DatasetProvider
 ```
 
 Its contents are the implementation class name:
@@ -94,9 +94,9 @@ Directory providers use `reader_overrides`, SQLDB uses `tables`, and mixed uses 
 
 ### File and structured-content plugins
 
-File plugins implement `FormatHandler` and register in `META-INF/services/dacp.FormatHandler`. Each handler validates its private `options` parameters; for example, Excel uses `options: {sheet: Orders, header_row: 2}`. Common `format` and `schema` remain at the top level of reader settings.
+File plugins implement `FormatHandler` and register in `META-INF/services/xstream.data.FormatHandler`. Each handler validates its private `options` parameters; for example, Excel uses `options: {sheet: Orders, header_row: 2}`. Common `format` and `schema` remain at the top level of reader settings.
 
-To browse logical objects inside a file, implement `StructuredFileHandler` and register through the same format service file. Its `openStructure` returns `DatasetAccess` and can stream internal objects directly without extracting temporary files. The file root is a folder with original bytes; children explicitly advertise `records` or `bytes`. Archive readers can implement `ContainerReader` and register in `META-INF/services/dacp.ContainerReader`, without modifying core format registries.
+To browse logical objects inside a file, implement `StructuredFileHandler` and register through the same format service file. Its `openStructure` returns `DatasetAccess` and can stream internal objects directly without extracting temporary files. The file root is a folder with original bytes; children explicitly advertise `records` or `bytes`. Archive readers can implement `ContainerReader` and register in `META-INF/services/xstream.data.ContainerReader`, without modifying core format registries.
 
 The standalone API lives in [dacp-plugin-api](../../dacp-plugin-api). Runnable contributions and build/install instructions are in [examples/plugins](../../examples/plugins/README.md). `PluginChecks.listing` provides reusable metadata contract checks. The server closes request-scoped access handles and releases provider resources on shutdown. Concrete NetCDF/FITS parsers and new array/image views are not implemented yet; contributors can represent internal file objects through the current interfaces, without silently flattening arrays into records.
 

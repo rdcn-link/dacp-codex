@@ -1,6 +1,8 @@
 package dacp.operators
 
-import dacp.{OperatorExecutor, OperatorProgram, OperatorCommand}
+
+import dacp.{OperatorExecutor,OperatorProgram,OperatorCommand}
+
 
 final class ContainerExecutor extends OperatorExecutor {
   val id = "container"

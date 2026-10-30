@@ -1,4 +1,6 @@
 package dacp
+
+import _root_.xstream.data._
 import java.nio.file.{Files, Path}
 import java.io.{InputStream, BufferedReader, InputStreamReader}
 import java.nio.charset.StandardCharsets.UTF_8

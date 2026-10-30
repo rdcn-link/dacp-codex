@@ -37,7 +37,7 @@ The instance-scoped plugin environment defines ownership rules for construction,
 
 [Producer.fail](../dacp-server/src/main/scala/dacp/Server.scala) still recognizes `java.sql.SQLException` and matches some exception messages. Replace this with typed failures: plugins translate internal errors into safe public categories, and core consistently maps them to Flight status. Do not expose arbitrary plugin exception text to clients.
 
-[Item.views](../dacp-plugin-api/src/main/scala/dacp/Models.scala), stream ports, and Flight reads explicitly support records/bytes. Arrays, images, multidimensional variables, and selections require cross-client descriptions, schemas, capabilities, and selection semantics before plugins implement them. Registering arbitrary strings or silently flattening scientific structures into records is insufficient.
+[Item.views](../xstream-data/xstream-data-core/src/main/scala/xstream/data/Models.scala), stream ports, and Flight reads explicitly support records/bytes. Arrays, images, multidimensional variables, and selections require cross-client descriptions, schemas, capabilities, and selection semantics before plugins implement them. Registering arbitrary strings or silently flattening scientific structures into records is insufficient.
 
 [OperatorMain](../dacp-operator-runtime/src/main/scala/dacp/OperatorMain.scala) dispatches identity/format_convert by operator name. These are concrete example behaviors that can become ordinary operator JARs, leaving the shared runtime generic. Thin JARs, Python, and independent entrypoints already support user-defined operators, so each operator does not need a new server plugin interface. FormatConvert's CSV/NDJSON/Parquet business constraints are not core protocol limits.
 

@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.io.ByteArrayOutputStream
 import org.apache.arrow.flight.FlightProducer.ServerStreamListener
 import org.apache.arrow.memory.{ArrowBuf,RootAllocator}
@@ -12,26 +14,24 @@ import org.scalatest.funsuite.AnyFunSuite
 import scala.jdk.CollectionConverters._
 
 class RecordJsonlSpec extends AnyFunSuite {
-  private class Output extends ServerStreamListener {
-    val data=new ByteArrayOutputStream();var root:VectorSchemaRoot=null;var completedCount=0;var chunks=0
+  private class Output extends DataConsumer[ByteChunk] {
+    val data=new ByteArrayOutputStream();var completedCount=0;var chunks=0
     var cancelled=false
     var onChunk:()=>Unit=()=>()
     def text:String=data.toString("UTF-8")
-    def isReady:Boolean=true
-    def isCancelled:Boolean=cancelled
-    def setOnCancelHandler(r:Runnable):Unit=()
-    def start(r:VectorSchemaRoot,d:DictionaryProvider,o:IpcOption):Unit={assert(r.getSchema==PluginSchemas.bytes && d==null);root=r}
-    def putNext():Unit={val bytes=root.getVector(0).asInstanceOf[VarBinaryVector].get(0);assert(bytes.length<=7);data.write(bytes);chunks+=1;onChunk()}
-    def putNext(b:ArrowBuf):Unit=putNext()
-    def putMetadata(b:ArrowBuf):Unit=()
-    def error(t:Throwable):Unit=throw t
-    def completed():Unit={completedCount+=1}
+    def start(d:DataDescriptor[ByteChunk]):Unit=()
+    def accept(b:ByteChunk):Unit={assert(b.length<=7);data.write(b.bytes,b.offset,b.length);chunks+=1;onChunk()}
+  }
+  private def encode(a:org.apache.arrow.memory.BufferAllocator,out:Output,check:()=>Unit,chunk:Int)(read:BatchReceiver=>Unit):Unit={
+    def active():Unit={check();if(out.cancelled)throw new java.util.concurrent.CancellationException()}
+    RecordJsonl.encode(out,()=>active(),chunk)(c=>read(BatchStreams.records(c,()=>active())))
+    out.completedCount+=1
   }
   test("UTF-8 JSONL preserves columns, escapes, numeric types and nulls across bounded chunks and batches") {
     val a=new RootAllocator();val out=new Output()
     val root=VectorSchemaRoot.create(new Schema(Seq(Records.field("name","utf8"),Records.field("value","int64"),Records.field("flag","bool")).asJava),a)
     try {
-      RecordJsonl.stream(a,out,()=>(),7) { l=>
+      encode(a,out,()=>(),7) { l=>
         l.start(root)
         Records.fill(root,Seq(Seq("北京\n\"\\",9007199254740993L,true)));l.putNext()
         assert(out.chunks>0 && out.completedCount==0)
@@ -56,7 +56,7 @@ class RecordJsonlSpec extends AnyFunSuite {
       val struct=root.getVector("station").asInstanceOf[StructVector];struct.setIndexDefined(0);struct.getChild("name").asInstanceOf[VarCharVector].setSafe(0,"A".getBytes("UTF-8"))
       root.getVector("raw").asInstanceOf[VarBinaryVector].setSafe(0,Array[Byte](0,1,-1))
       root.getVector("decimal").asInstanceOf[DecimalVector].setSafe(0,new java.math.BigDecimal("12.30"));root.setRowCount(1)
-      RecordJsonl.stream(a,out,()=>(),7)(l=>{l.start(root);l.putNext();l.completed()})
+      encode(a,out,()=>(),7)(l=>{l.start(root);l.putNext();l.completed()})
       val json=Data.mapper.readTree(out.text)
       assert(json.path("samples").toString=="[2,3]" && json.path("station").path("name").asText=="A")
       assert(json.path("raw").asText=="AAH/" && json.path("decimal").decimalValue.compareTo(new java.math.BigDecimal("12.30"))==0)
@@ -70,36 +70,36 @@ class RecordJsonlSpec extends AnyFunSuite {
     val dict=new DictionaryProvider.MapDictionaryProvider(new Dictionary(values,encoding))
     try {
       root.allocateNew();root.getVector(0).asInstanceOf[IntVector].setSafe(0,0);root.setRowCount(1)
-      RecordJsonl.stream(a,out,()=>(),7)(l=>{l.start(root,dict,IpcOption.DEFAULT);l.putNext();l.completed()})
+      encode(a,out,()=>(),7)(l=>{l.start(root,dict,IpcOption.DEFAULT);l.putNext();l.completed()})
       assert(out.text=="{\"label\":\"站点\"}\n")
     }finally {root.close();dict.close();assert(a.getAllocatedMemory==0);a.close()}
   }
   test("empty records produce empty bytes and errors never complete a partial result") {
     val a=new RootAllocator();val root=VectorSchemaRoot.create(new Schema(Seq(Records.field("text","utf8")).asJava),a)
     try {
-      val empty=new Output();RecordJsonl.stream(a,empty,()=>(),7)(l=>{l.start(root);l.completed()})
+      val empty=new Output();encode(a,empty,()=>(),7)(l=>{l.start(root);l.completed()})
       assert(empty.text.isEmpty && empty.completedCount==1)
       val failed=new Output()
       intercept[java.io.IOException] {
-        RecordJsonl.stream(a,failed,()=>(),7)(l=>{l.start(root);Records.fill(root,Seq(Seq("partial")));l.putNext();throw new java.io.IOException("backend failed")})
+        encode(a,failed,()=>(),7)(l=>{l.start(root);Records.fill(root,Seq(Seq("partial")));l.putNext();throw new java.io.IOException("backend failed")})
       }
       assert(failed.completedCount==0)
       val cancelled=new Output();cancelled.onChunk=()=>cancelled.cancelled=true
       intercept[java.util.concurrent.CancellationException] {
-        RecordJsonl.stream(a,cancelled,()=>(),7)(l=>{l.start(root);Records.fill(root,Seq(Seq("a long row to cancel")));l.putNext();l.completed()})
+        encode(a,cancelled,()=>(),7)(l=>{l.start(root);Records.fill(root,Seq(Seq("a long row to cancel")));l.putNext();l.completed()})
       }
       assert(cancelled.completedCount==0)
     }finally {root.close();assert(a.getAllocatedMemory==0);a.close()}
   }
   test("the common dataset adapter preserves native bytes and only synthesizes missing bytes") {
     val a=new RootAllocator();val out=new Output();var nativeCalls=0;var recordCalls=0;var closes=0
-    val source=new DatasetAccess {
+    val source=new BatchDatasetAccess {
       def describe(path:String):Item=Item(path,"custom",None,totalSizeBytes=Some(123),views=Some(if(path=="/records")Seq("records")else Seq("records","bytes")))
       def list():Seq[Item]=Seq(describe("/records"),describe("/native"))
       def list(path:String):Seq[Item]=list()
       def count(path:String):Option[Long]=Some(0)
-      def stream(path:String,view:String,allocator:org.apache.arrow.memory.BufferAllocator,l:ServerStreamListener,ready:()=>Unit):Unit={
-        if(path=="/native"){assert(view=="bytes");nativeCalls+=1}
+      def read(path:String,view:String,allocator:org.apache.arrow.memory.BufferAllocator,l: BatchReceiver,ready:()=>Unit):Unit={
+        if(path=="/native"){assert(view=="bytes");nativeCalls+=1;val r=VectorSchemaRoot.create(PluginSchemas.bytes,allocator);try l.start(r)finally r.close()}
         else {assert(view=="records");recordCalls+=1;val r=VectorSchemaRoot.create(new Schema(Seq.empty[Field].asJava),allocator);try {l.start(r);l.completed()}finally r.close()}
       }
       override def close():Unit={closes+=1}
@@ -108,8 +108,8 @@ class RecordJsonlSpec extends AnyFunSuite {
     try {
       assert(wrapped.describe("/records").views.contains(Seq("records","bytes")))
       assert(wrapped.list().head.totalSizeBytes.isEmpty && wrapped.list("/").last.totalSizeBytes.contains(123L))
-      wrapped.stream("/records","bytes",a,out,()=>());wrapped.stream("/native","bytes",a,out,()=>())
-      assert(nativeCalls==1 && recordCalls==1 && out.completedCount==1)
+      for(path<-Seq("/records","/native")){val stream=wrapped.requireView(path,DataViews.Bytes).open(AllBytes,StreamContext(a));try stream.consume(out)finally stream.close()}
+      assert(nativeCalls==1 && recordCalls==1 && out.completedCount==0)
     }finally {wrapped.close();assert(closes==1);a.close()}
   }
 }

@@ -1,5 +1,7 @@
 package dacp.repository
 
+
+
 import java.nio.file.{Files, Path}
 import java.net.URI
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
@@ -25,6 +27,11 @@ class RepositorySpec extends AnyFunSuite {
       assert(id == image)
       Files.writeString(destination, "image archive")
     }
+  }
+  test("representation contracts accept plugin-defined scientific views and reject invalid names") {
+    val declared=Repository.mapper.readTree("""{"inputs":{"source":{"representations":["array","image","sequence","custom-view"],"formats":[]}}}""")
+    Repository.validatePorts(declared)
+    intercept[IllegalArgumentException](Repository.validatePorts(Repository.mapper.readTree("""{"inputs":{"source":{"representations":["invalid view"],"formats":[]}}}""")))
   }
   test("executor-owned configuration survives publication and seeding without plugin dependencies") { withRoot { root =>
     val settings=Repository.mapper.readTree("""{"args":["a-z","A-Z"],"stdin":"source","stdout":{"port":"result","representation":"bytes","format":"text"}}""")
@@ -266,7 +273,7 @@ class RepositorySpec extends AnyFunSuite {
     }
     intercept[IllegalArgumentException](Repository.publish(root,"bad@1","image",Repository.mapper.createObjectNode(),rejecting))
     val invalid=ports.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
-    invalid.path("inputs").path("source").asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].putArray("representations").add("unknown")
+    invalid.path("inputs").path("source").asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].putArray("representations").add("invalid view")
     intercept[IllegalArgumentException](Repository.publish(root,"bad@1","image",invalid,rejecting))
   }}
 

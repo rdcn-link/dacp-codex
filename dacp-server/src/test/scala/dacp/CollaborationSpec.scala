@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.data._
+
+
 import java.nio.file.Path
 import org.scalatest.funsuite.AnyFunSuite
 import org.apache.arrow.memory.RootAllocator
@@ -66,7 +69,8 @@ class CollaborationSpec extends AnyFunSuite {
       |""".stripMargin
     assert(Jobs.readBinding(Jobs.parse(text).tasks.head).get.view=="records")
     assert(Jobs.readBinding(Jobs.parse(text.replace(", view: records","")).tasks.head).get.view=="auto")
-    Seq(text.replace("/data/item","/data"),text.replace("view: records","view: image"),text.replace("view: records","view: auto"),text.replace("inputs: {}","inputs: {source: read}"))
+    assert(Jobs.readBinding(Jobs.parse(text.replace("view: records","view: image")).tasks.head).get.view=="image")
+    Seq(text.replace("/data/item","/data"),text.replace("view: records","view: bad view"),text.replace("view: records","view: auto"),text.replace("inputs: {}","inputs: {source: read}"))
       .foreach(s=>intercept[IllegalArgumentException](Jobs.parse(s)))
   }
   test("URI policy rejects traversal and prefix lookalikes") {

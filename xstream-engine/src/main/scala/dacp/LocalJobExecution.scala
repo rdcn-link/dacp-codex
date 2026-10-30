@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import com.fasterxml.jackson.databind.JsonNode
 import dacp.union.Json
 import scala.jdk.CollectionConverters._

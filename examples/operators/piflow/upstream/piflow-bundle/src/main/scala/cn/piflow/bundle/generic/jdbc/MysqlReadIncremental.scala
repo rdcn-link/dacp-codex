@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.jdbc
 
+
 import cn.piflow.{JobContext, JobInputStream, JobOutputStream, ProcessContext}
 import cn.piflow.conf.{ConfigurableIncrementalStop, Language, Port, StopGroup}
 import cn.piflow.conf.bean.PropertyDescriptor

@@ -1,6 +1,6 @@
 # Dataset, Item, and stream access
 
-The DACP access chain is `DataCatalog → PublishedDataset → DatasetAccess → ItemAccess → stream`. `ItemAccess` is an optional per-Item implementation style; plugins that manage several Items together may implement `DatasetAccess` directly.
+The DACP access chain is `DataCatalog → PublishedDataset → DatasetAccess → ItemAccess → DataView[K,S] → DataStream[K]`. `ItemAccess` is an optional per-Item implementation style; plugins that manage several Items together may implement `DatasetAccess` directly.
 
 The catalog determines which Datasets exist; the provider determines how to access them. An Item is public metadata, without local files, SQL connections, MongoDB collections, or S3 object credentials. Clients always use Dataset names, logical Item paths, and views.
 
@@ -10,21 +10,21 @@ The catalog determines which Datasets exist; the provider determines how to acce
 | `PublishedDataset` | Owns Dataset resources; `open(check)` creates request-scoped access |
 | `DatasetAccess` | Recursive and immediate-child listing, metadata, counting, scanning, and reading; closed at request end |
 | `ItemAccess` | Content handle for a plugin-private object or cursor; closed after each count, scan, or read |
-| Arrow stream | `records` uses the advertised Arrow schema; `bytes` uses chunked `PluginSchemas.bytes` envelopes |
+| Typed view / stream | `records` emits `RecordBatch`; `bytes` emits `ByteChunk`. Arrow envelopes belong to the transport boundary |
 
 ## Implementing a backend per Item
 
-A plugin may extend `ItemDatasetAccess`, implementing `list()`, `list(path)`, `describe(path)`, and `openItem(path)`. The returned `ItemAccess` implements `count()` and `stream(view, allocator, listener, ready)`. Override `scan` for query pushdown, or use the shared streaming filter, projection, and limit implementation.
+A plugin may extend `ItemDatasetAccess`, implementing `list()`, `list(path)`, `describe(path)`, and `openItem(path)`. The returned `ItemAccess` implements `count()` and `view(kind)`. Return `None` for unsupported capabilities; a supported `DataView` opens a `DataStream` with a typed selection. Records use `Scan`, bytes use `AllBytes`. `BatchItemAccess` is an optional Arrow callback helper: implement `read` and override `readScan` for source pushdown, or use its bounded fallback. See [typed streams and scientific representations](data-streams.md).
 
 `describe` must explicitly advertise the plugin's native `Item.views`, such as `Some(Seq("records"))` or `Some(Seq("bytes"))`. The type name does not need file-format registration. Return `None` for unknown counts; ordinary folders have no content views. Structure roots supporting original bytes may explicitly advertise `bytes`.
 
-`ItemDatasetAccess` validates logical paths and views, checks read cancellation before `openItem`, and closes returned handles on success, exceptions, and cancellation during reading. If `openItem` fails before returning, it must release resources already acquired. `ItemAccess.stream` runs synchronously: call `listener.start(root)`, emit batches with `putNext()`, and call `completed()` on success. Call `ready()` before reading and emitting; close Arrow roots, input streams, or cursors in `finally`. Do not load entire remote objects into memory or close the supplied allocator. Closing an Item must not close application-owned shared connection pools.
+`ItemDatasetAccess` validates logical paths and declared views, opens the Item handle during consumption, and closes it on success, exceptions, and cancellation. `openItem` must release partially acquired resources if it fails before returning. `DataStream.consume` runs synchronously: call `consumer.start(descriptor)` once, even for an empty stream, and `consumer.accept(chunk)` for each borrowed block. Successful return means completion. Call `context.check()` before reading and emitting; close Arrow roots, input streams and cursors in `finally`. Consumers must copy blocks they retain after the callback. Do not close the supplied allocator or application-owned connection pools.
 
 See [MessagePlugins.scala](../examples/plugins/src/main/scala/example/MessagePlugins.scala) for a complete compilable example: one native Dataset serves `/message` as bytes and `/summary` as records, without local files or JDBC. This is a small-payload demonstration; production objects require bounded chunks.
 
 ## Registration and configuration
 
-Implement `DatasetProvider`, register it in `META-INF/services/dacp.DatasetProvider`, install the plugin and private dependency JARs in `plugin_directory`, and restart. For the example plugin:
+Implement `DatasetProvider`, register it in `META-INF/services/xstream.data.DatasetProvider`, install the plugin and private dependency JARs in `plugin_directory`, and restart. For the example plugin:
 
 ```yaml
 plugin_directory: /opt/dacp/plugins
@@ -41,7 +41,7 @@ A dynamic catalog can return a plugin-created `PublishedDataset` directly or cre
 
 A MongoDB provider can publish collections as logical Items, create cursors in `openItem`, and emit records. It must define field, nested-document, and type mappings without silently losing structures. An S3 provider can map prefixes/keys to folders and Items, open object response bodies through handles, and emit chunked bytes. Supporting records additionally requires explicit parsers, schemas, and scan semantics. Plugins own authentication, pagination, timeouts, cancellation, and dependencies. Clients, tasks, and Union still read through the same `DatasetAccess` and Flight protocol.
 
-These extension contracts and independent plugin examples are implemented; **production MongoDB and S3 connectors are not implemented yet**. File format detection, archives, and structured browsing belong to the file provider; SQL query optimization belongs to JDBC access. `DatasetStreams` dispatches only through the public access contract and does not recognize storage types.
+These extension contracts and independent plugin examples are implemented; **production MongoDB and S3 connectors are not implemented yet**. File format detection, archives, and structured browsing belong to the file provider; SQL query optimization belongs to JDBC access. `DataView` discovery and consumption do not recognize storage types. Local execution and S3 consume typed blocks; network encoding belongs to `FlightDataStreams`.
 
 Contract tests cover independent plugin Flight listing and records/bytes, native records scans and counts, and Item handle cleanup on success, failure, and cancellation. See [the plugin guide](plugins.md), [provider configuration](dataset-providers.md), and [dynamic catalogs](dataset-catalogs.md).
 

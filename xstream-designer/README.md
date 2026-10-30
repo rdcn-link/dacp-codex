@@ -219,3 +219,5 @@ The designer binds one JVM-wide DataCatalog through the same plugin contracts as
 The Catalogs tree distinguishes host roots, datasets, folders and data Items with separate icons. Roots load at startup and children load on expansion; there is no catalog refresh button.
 
 Item rows show available views as small symbols beside the Item icon: a grid for records and binary digits for bytes. Both appear when both views are available. The path has no view-name suffix; hover or keyboard focus exposes the complete view description through the tooltip or accessible label.
+
+[Scientific view selection, structure and samples](../docs/designer-scientific.md): plugin-defined array, image and sequence forms with compact previews.

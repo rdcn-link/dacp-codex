@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.csv
 
+
 import cn.piflow._
 import cn.piflow.conf._
 import cn.piflow.conf.bean.PropertyDescriptor

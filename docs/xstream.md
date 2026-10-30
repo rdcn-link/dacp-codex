@@ -75,7 +75,7 @@ try {
 
 ## Catalog and runtime plugins
 
-Implement `DataCatalogProvider` and register its fully qualified class in `META-INF/services/dacp.DataCatalogProvider`. Configure it with:
+Implement `DataCatalogProvider` and register its fully qualified class in `META-INF/services/xstream.data.DataCatalogProvider`. Configure it with:
 
 ```yaml
 data_catalog:

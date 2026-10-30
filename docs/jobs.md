@@ -29,7 +29,7 @@ outputs:
 
 `name` is the required readable workflow name, separate from the generated execution ID. It must contain 1–256 characters, cannot be blank, and cannot contain control characters. Each task has a unique `id`, optional descriptive `title`, versioned `operator`, named `inputs`, and optional `params`. Input values and Job outputs use `task` or `task:port`; omitted ports mean `result`. Object bindings and connection-level `view` are not supported. Each output has at most one consumer. Use explicit duplication operators or separate ports for fan-out.
 
-`read_item@1.0` is a built-in, zero-input transport source with output port `result`, requiring no operator container. Set `uri` to `context:/dataset/item` for the receiving JVM’s DataCatalog, or to a complete `dacp://host:port/dataset/item` URI for an explicitly addressed service. There is no `path` parameter. Optional `view` selects `bytes` or `records`; omission prefers records when available, otherwise bytes. Optional `sql` queries the records view, selects records by default and rejects explicit bytes.
+`read_item@1.0` is a built-in, zero-input transport source with output port `result`, requiring no operator container. Set `uri` to `context:/dataset/item` for the receiving JVM’s DataCatalog, or to a complete `dacp://host:port/dataset/item` URI for an explicitly addressed service. There is no `path` parameter. Optional `view` selects an advertised representation, including `bytes`, `records`, `array`, `image` or `sequence`; omission prefers records, then bytes, then the first available scientific view. Optional `selection` is a view-specific mapping for scientific reads. Optional `sql` queries the records view, selects records by default and rejects explicit bytes.
 
 For a Union target, use its public dataset paths. Union resolves the owning members, places steps and dispatches node sub-jobs; authors describe only the logical stream graph.
 
@@ -132,7 +132,7 @@ submit workflow.yaml --policy policy.yaml --vars variables.yaml
 
 Union subjobs retain the global job’s `name`. Node and Union dashboards share Name, Job ID, Source, Type, Status, Started at and Duration columns. Names lead the list, while details retain the full ID. Subjob definitions and execution policies display as YAML. YAML documents are limited to 1 MiB and reject duplicate keys, unsafe object tags and collection aliases. Quote textual numbers, dates and boolean labels.
 
-When `read_item.view` is omitted, Item metadata selects records when available, otherwise bytes. An explicit choice is preserved and fails if unsupported.
+When `read_item.view` is omitted, Item metadata selects records, then bytes, then the first available scientific view. An explicit choice is preserved and fails if unsupported.
 
 ## Item paths, remote services and SQL
 
@@ -163,3 +163,5 @@ Configure remote credentials on nodes that actually execute reads and separately
 remote_item_credentials:
   "dacp://remote.example:18861": /etc/dacp/remote-reader.token
 ```
+
+[Scientific view selections and samples](designer-scientific.md).

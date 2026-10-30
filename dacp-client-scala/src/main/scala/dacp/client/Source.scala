@@ -1,5 +1,7 @@
 package dacp.client
 
+import _root_.xstream.data._
+
 import java.io.{InputStream, IOException}
 import java.net.URI
 import java.time.Instant
@@ -126,7 +128,7 @@ object Source {
 
 /** Dataset, item handles, and readers are intended for single-threaded use. */
 final class Dataset private[client] (
-    private[client] val client: FlightClient, allocator: RootAllocator,
+    private[client] val client: FlightClient, private[client] val allocator: RootAllocator,
     val name: String, timeoutSeconds: Long) extends AutoCloseable {
   private var closed = false
   private val items = mutable.Set.empty[ItemStream]
@@ -169,7 +171,7 @@ final class Dataset private[client] (
     val metadata = Metadata.Item.parseFrom(info.getAppMetadata)
     if (metadata.hasRecordCount) Some(metadata.getRecordCount) else None
   }
-  def open(path: String, predicate: Option[Predicate] = None, columns: Option[Seq[String]] = None,
+  def open(path: String, predicate: Option[dacp.client.Predicate] = None, columns: Option[Seq[String]] = None,
            limit: Option[Long] = None): ItemStream = {
     require(limit.forall(_ >= 0), "limit must be nonnegative")
     require(columns.forall(c => c.nonEmpty && c.forall(n => n != null && n.nonEmpty) && c.distinct.size == c.size),
@@ -204,14 +206,34 @@ final class ItemStream private[client] (dataset: Dataset, ticket: Ticket, val vi
   private var closed = false
   private val readers = mutable.Set.empty[AutoCloseable]
   private[client] var ownsDataset = false
-  private def flight(view: String): FlightStream = {
+  private def flight(view: String, selection:Option[com.fasterxml.jackson.databind.JsonNode]=None): FlightStream = {
     dataset.check()
     require(!closed, "item stream is closed")
     require(views.contains(view), "item does not support requested view")
-    val t = Metadata.Ticket.parseFrom(ticket.getBytes).toBuilder.setView(view).build()
+    val builder=Metadata.Ticket.parseFrom(ticket.getBytes).toBuilder.setView(view)
+    selection.foreach(n=>builder.setSelectionJson(com.google.protobuf.ByteString.copyFrom(Data.mapper.writeValueAsBytes(n))))
+    val t=builder.build()
     require(!t.hasScan || view == "records", "scan options require records view")
     DacpErrors.protect(dataset.client.getStream(new Ticket(t.toByteArray), dataset.option))
   }
+  private var codecEnvironment:Option[PluginEnvironment]=None
+  /** Typed scientific stream; descriptor and chunks are decoded by a discovered codec. */
+  def asView[K,S](kind:DataViewType[K,S],selection:S):DataStream[K]={
+    val environment=codecEnvironment.getOrElse {val e=new PluginEnvironment();codecEnvironment=Some(e);e}
+    val codec=DataViewCodecs.forType(environment,kind).getOrElse(throw new IllegalArgumentException("view codec unavailable: "+kind.name))
+    val view=codec.remoteView(kind)((request,out,context)=>{
+      val reader=flight(kind.name,Some(request))
+      readers+=reader
+      try dacp.union.ScientificWire.consume(reader,kind.name,out,context.check) finally {reader.cancel("view closed",null);reader.close();readers-=reader}
+    }).get
+    // No allocator is used for decoded scientific blocks; the transport owns its allocator.
+    val stream=view.open(selection,StreamContext(dataset.allocator))
+    readers+=stream
+    stream
+  }
+  def asArray(selection:ArraySelection=ArraySelection()):DataStream[ArrayChunk]=asView(ScientificViews.Arrays,selection)
+  def asImage(selection:ImageSelection=ImageSelection()):DataStream[ImageTile]=asView(ScientificViews.Images,selection)
+  def asSequences(selection:SequenceSelection=SequenceSelection()):DataStream[SequenceChunk]=asView(ScientificViews.Sequences,selection)
   def asRecords(): RecordStream = {
     val reader = new RecordStream(flight("records"), r => readers -= r)
     readers += reader
@@ -224,7 +246,7 @@ final class ItemStream private[client] (dataset: Dataset, ticket: Ticket, val vi
   }
   override def close(): Unit = if (!closed) {
     closed = true
-    try Resources.closeAll(readers.toVector)
+    try Resources.closeAll(readers.toVector ++ codecEnvironment.toVector)
     finally {
       dataset.remove(this)
       if (ownsDataset) dataset.close()

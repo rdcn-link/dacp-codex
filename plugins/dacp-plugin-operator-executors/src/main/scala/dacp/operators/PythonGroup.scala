@@ -1,4 +1,6 @@
 package dacp.operators
+
+import _root_.xstream.data._
 import dacp._
 import java.nio.file.Files
 import java.nio.charset.StandardCharsets.UTF_8
@@ -12,7 +14,7 @@ private[operators] object PythonGroup {
       val zip=new ZipFile(path.toFile)
       try return Option(zip.getEntry(".dacp-build.json")).filter(e=>e.getSize>=0 && e.getSize<=65536).exists{e=>
         val in=zip.getInputStream(e)
-        try {val n=dacp.Data.mapper.readTree(in.readNBytes(65537));import scala.jdk.CollectionConverters._;n.path("python_process_modules").elements.asScala.exists(_.asText==s.program.entrypoint)}finally in.close()
+        try {val n=xstream.data.Data.mapper.readTree(in.readNBytes(65537));import scala.jdk.CollectionConverters._;n.path("python_process_modules").elements.asScala.exists(_.asText==s.program.entrypoint)}finally in.close()
       }finally zip.close()
     }
     val source=if(s.artifactPath.get.endsWith(".py")){if(Files.size(path)>4*1024*1024)return false;new String(Files.readAllBytes(path),UTF_8)}

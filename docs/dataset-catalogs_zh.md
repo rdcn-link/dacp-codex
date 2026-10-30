@@ -60,7 +60,7 @@ trait DataCatalogProvider {
 实现类提供公开无参构造函数，并在 JAR 中加入：
 
 ```text
-META-INF/services/dacp.DataCatalogProvider
+META-INF/services/xstream.data.DataCatalogProvider
 ```
 
 文件内容为完整类名，例如：

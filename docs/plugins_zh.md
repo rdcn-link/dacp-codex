@@ -48,7 +48,7 @@ Dataset 提供者构建逻辑命名空间，实现列表、元数据、计数和
 
 ## 科学数据和未来扩展
 
-尚未实现 NetCDF 和 FITS 解析器。贡献者可用结构化文件契约表示组、变量、表和 HDU，并由处理器定义选择参数。可浏览结构使用 `folder`，文件根保留原文件字节。子对象名称和字节编码必须有文档且确定一致。
+科学格式解析插件、科学视图及网络编码见 [xstream-data](../xstream-data/README_zh.md)。
 
 当前公共视图是 `records` 和 `bytes`。数组和图像视图仍需明确共享 schema、元数据和选择语义。不得静默把科学数组展开为记录，也不得虚构记录数。插件基础设施的存在不表示这些表示已经实现。
 
@@ -91,3 +91,7 @@ S3 兼容读取是复用 DatasetAccess 的核心传输层，不是新的存储�
 算子还必须提供 `icon`；公开 `categories` 由管理员指定，规则和发布示例见[分类与图标](operator-presentation_zh.md)。
 
 [仓库源码分析/构建扩展](../plugins/dacp-plugin-source-analysis/README_zh.md)：`SourceAnalyzer`、`SourceArchive`、`SourceBuildRecipe` 为 `dacp-operator-contract` 中已实现的 ServiceLoader 契约。
+
+## 类型化数据视图
+
+科学格式解析插件、科学视图及网络编码见 [xstream-data](../xstream-data/README_zh.md)。

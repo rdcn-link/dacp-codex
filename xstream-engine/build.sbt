@@ -9,9 +9,9 @@ libraryDependencies ++= Seq("com.github.docker-java" % "docker-java-core" % "3.4
 Test / fork := true
 Test / javaOptions ++= Seq("--add-opens=java.base/java.nio=ALL-UNNAMED", "-Dio.netty.tryReflectionSetAccessible=true")
 libraryDependencies ++= Seq("org.apache.arrow" % "arrow-memory-netty" % "18.3.0")
-lazy val testDatasets = RootProject(file("../plugins/dacp-plugin-datasets"))
-lazy val testStatic = RootProject(file("../plugins/dacp-plugin-catalog-static"))
-lazy val testFormats = RootProject(file("../plugins/dacp-plugin-formats-basic"))
+lazy val testDatasets = RootProject(file("../xstream-data/xstream-data-files"))
+lazy val testStatic = RootProject(file("../xstream-data/xstream-data-catalog-static"))
+lazy val testFormats = RootProject(file("../xstream-data/xstream-data-formats-basic"))
 lazy val testHistory = RootProject(file("../plugins/dacp-plugin-execution-file"))
 dependsOn(testDatasets % "test->compile", testStatic % "test->compile", testFormats % "test->compile", testHistory % "test->compile")
 
@@ -21,9 +21,21 @@ executableScriptName := "xstream-runner"
 Universal / javaOptions ++= Seq("-J--add-opens=java.base/java.nio=ALL-UNNAMED", "-J-Dio.netty.tryReflectionSetAccessible=true")
 lazy val client = RootProject(file("../dacp-client-scala"))
 dependsOn(client)
-lazy val bundledDatasets = RootProject(file("../plugins/dacp-plugin-datasets"))
-lazy val bundledCatalog = RootProject(file("../plugins/dacp-plugin-catalog-static"))
-lazy val bundledFormats = RootProject(file("../plugins/dacp-plugin-formats-basic"))
+lazy val bundledDatasets = RootProject(file("../xstream-data/xstream-data-files"))
+lazy val bundledCatalog = RootProject(file("../xstream-data/xstream-data-catalog-static"))
+lazy val bundledFormats = RootProject(file("../xstream-data/xstream-data-formats-basic"))
 lazy val bundledHistory = RootProject(file("../plugins/dacp-plugin-execution-file"))
 lazy val bundledExecutors = RootProject(file("../plugins/dacp-plugin-operator-executors"))
 dependsOn(bundledDatasets % "runtime->compile",bundledCatalog % "runtime->compile",bundledFormats % "runtime->compile",bundledHistory % "runtime->compile",bundledExecutors % "runtime->compile")
+
+lazy val dataScientificcodecs = RootProject(file("../xstream-data/xstream-data-scientific-codecs"))
+dependsOn(dataScientificcodecs % "runtime->compile;test->compile")
+
+lazy val dataNetcdf = RootProject(file("../xstream-data/xstream-data-netcdf"))
+dependsOn(dataNetcdf % "runtime->compile;test->compile")
+
+lazy val dataFits = RootProject(file("../xstream-data/xstream-data-fits"))
+dependsOn(dataFits % "runtime->compile;test->compile")
+
+lazy val dataFasta = RootProject(file("../xstream-data/xstream-data-fasta"))
+dependsOn(dataFasta % "runtime->compile;test->compile")

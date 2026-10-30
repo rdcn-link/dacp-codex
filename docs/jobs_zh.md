@@ -29,7 +29,7 @@ outputs:
 
 `name` 是必填的可读工作流名称，与自动生成的执行 ID 分开；最多 256 个字符，不允许空白名称或控制字符。每个 task 包含唯一 `id`、可选说明 `title`、带版本的 `operator`、命名输入 `inputs`，以及可选的参数 `params`。输入值和 Job 输出使用 `task` 或 `task:port`，省略端口时使用 `result`。不支持对象形式连接或连接级 `view`。每个输出最多有一个消费者；分发数据需要显式复制算子或不同输出端口。
 
-`read_item@1.0` 是无需算子容器的内置传输源，无输入，输出端口为 `result`。只提供 `uri` 参数：`context:/dataset/item` 指向接收 Job 的 JVM 的 DataCatalog，`dacp://host:port/dataset/item` 显式指定服务。可选 `view` 为 `bytes` 或 `records`；未指定时优先 records，否则 bytes。可选 `sql` 查询 records 视图，提供后默认选择 records，显式选择 bytes 则报错。
+`read_item@1.0` 是无需算子容器的内置传输源，无输入，输出端口为 `result`。只提供 `uri` 参数：`context:/dataset/item` 指向接收 Job 的 JVM 的 DataCatalog，`dacp://host:port/dataset/item` 显式指定服务。可选 `view` 选择已声明的表示，包括 `bytes`、`records`、`array`、`image`、`sequence`；未指定时按 records、bytes、首个可用科学视图的顺序选择。科学读取可通过 `selection` 映射指定范围。可选 `sql` 查询 records 视图，提供后默认选择 records，显式选择 bytes 则报错。
 
 向 Union 提交时，使用其公开数据项路径。Union 负责解析数据所在成员、分配步骤并下发节点子 Job；用户仅描述逻辑数据流。
 
@@ -132,7 +132,7 @@ submit workflow.yaml --policy policy.yaml --vars variables.yaml
 
 Union 下发的子作业保留全局作业的 `name`。节点与 Union 看板统一展示 Name、Job ID、Source、Type、Status、Started at、Duration；列表优先显示名称，详情保留完整 ID。子作业定义和执行策略均显示为 YAML。YAML 文档限制为 1 MiB，拒绝重复键、不安全对象标签及集合别名；字符串形式的编号、日期和布尔文本应加引号。
 
-`read_item` 的 `view` 可省略：优先使用 Item 提供的 records 视图，否则使用 bytes。显式指定时不会自动改选；不支持所选视图则报错。
+`read_item` 的 `view` 可省略：按 records、bytes、首个可用科学视图的顺序选择。显式指定时不会自动改选；不支持所选视图则报错。
 
 ## 读取路径、远程服务与 SQL
 
@@ -163,3 +163,5 @@ SQL 支持 `SELECT *` 或字段列表、固定的 `FROM source`、可选 `WHERE`
 remote_item_credentials:
   "dacp://remote.example:18861": /etc/dacp/remote-reader.token
 ```
+
+[科学视图选择与样例](designer-scientific_zh.md)。

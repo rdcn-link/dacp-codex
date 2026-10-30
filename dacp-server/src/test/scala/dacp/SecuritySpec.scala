@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import dacp.union._
 import java.nio.file.Files
 import org.apache.arrow.flight._
@@ -14,12 +16,12 @@ class SecuritySpec extends AnyFunSuite {
     val catalog=new DataCatalog {
       def list():Seq[DatasetInfo]=Seq(DatasetInfo("live"))
       def open(name:String):PublishedDataset=new PublishedDataset {
-        def open(check:()=>Unit):DatasetAccess=new DatasetAccess {
+        def open(check:()=>Unit):DatasetAccess=new BatchDatasetAccess {
           def list():Seq[Item]=Seq(describe("/ticks"))
           def list(p:String):Seq[Item]=list()
           def describe(p:String):Item=Item(p,"binary",None,views=Some(Seq("bytes")))
           def count(p:String):Option[Long]=None
-          def stream(p:String,v:String,a:org.apache.arrow.memory.BufferAllocator,l:FlightProducer.ServerStreamListener,ready:()=>Unit):Unit={
+          def read(p:String,v:String,a:org.apache.arrow.memory.BufferAllocator,l: BatchReceiver,ready:()=>Unit):Unit={
             val root=VectorSchemaRoot.create(PluginSchemas.bytes,a)
             try {root.allocateNew();l.start(root);var n=0
               while(true){check();ready();root.getVector(0).asInstanceOf[VarBinaryVector].setSafe(0,n.toString.getBytes("UTF-8"));root.setRowCount(1);l.putNext();n+=1;Thread.sleep(20)}

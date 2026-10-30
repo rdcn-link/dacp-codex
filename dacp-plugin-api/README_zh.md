@@ -27,7 +27,7 @@
 
 配置、注册、生命周期和测试见[插件指南](../docs/plugins_zh.md)及[独立示例](../examples/plugins/README_zh.md)。请使用与服务器相同的 Scala 版本编译。第三方库应保留在插件中；将所需依赖与插件一起打包，但不要复制服务器已提供的 API。
 
-记录查询契约包括 `Scan`、带类型的 `Literal`/`Predicate` 树、基于 schema 的验证，以及使用有界内存进行过滤、投影和提前终止的 `ScanStreams`。Provider 和文件处理器可以覆盖 `scan` 来优化数据源访问，同时保持公共语义。参见[记录查询](../docs/records-scans_zh.md)。
+记录查询契约包括 `Scan`、带类型的 `Literal`/`Predicate` 树、基于 schema 的验证，以及使用有界内存进行过滤、投影和提前终止的 `ScanStreams`。Dataset Provider 的 records 视图接收 `Scan`；可选的 `BatchDatasetAccess` 工具覆盖 `readScan`，文件处理器覆盖 `scan` 来优化数据源访问，同时保持公共语义。参见[记录查询](../docs/records-scans_zh.md)。
 
 算子 `OperatorProgram.configuration` 接收插件自有的 `executor_config`，`inputs`、`outputs` 提供各端口支持的表示集合。插件验证配置，核心不解析具体执行器参数。参见[原生命令](../docs/native-commands_zh.md)。
 
@@ -36,3 +36,9 @@
 `PluginEnvironment` 按应用/服务器管理发现、注入实现和生命周期。`ByteSource` 解耦格式读取与本地路径。`ExecutionStore`/`ExecutionStoreProvider` 定义执行元数据持久化。注册和配置见[插件指南](../docs/plugins_zh.md)。
 
 - `MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask`、`MaterializedChunks`：任务输出原子提交、租约、不透明帧块及重放完整性，见[物化契约](../docs/materialization_zh.md)。
+
+## 类型化数据流
+
+`DataView[K,S]` 根据类型化选择条件打开 `DataStream[K]`，通过 `DataConsumer[K]` 同步传递描述信息与借用的数据块。bytes 使用 `ByteChunk`，records 使用 `RecordBatch`；插件无需实现网络监听器。Dataset 提供者通过 records 视图接收 `Scan`，可选的 `BatchDatasetAccess` 工具重写 `readScan`，文件处理器仍重写 `scan` 实现源端优化。
+
+`ScientificViews` 定义保留科学结构的进程内数组、图像和序列契约，尚未内置 NetCDF、FITS、FASTA 解析器及科学数据网络编码。详见[类型化数据流](../docs/data-streams_zh.md)。

@@ -14,8 +14,8 @@ paths = subprocess.check_output([
 errors = []
 for relative in paths:
     path = root / relative
-    if path.name == 'README_en.md' and path.read_text() != path.with_name('README.md').read_text():
-        errors.append(f'{relative}: English README copy is out of sync')
+    if path.stem.endswith('_en'):
+        errors.append(f'{relative}: English aliases are not allowed; use the unsuffixed file')
 pairs = 0
 for relative in sorted(paths):
     path = root / relative

@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import com.fasterxml.jackson.databind.JsonNode
 import java.io.{DataInputStream,DataOutputStream,BufferedInputStream,BufferedOutputStream,EOFException}
 import java.nio.file.{Files,Path,StandardCopyOption,StandardOpenOption}

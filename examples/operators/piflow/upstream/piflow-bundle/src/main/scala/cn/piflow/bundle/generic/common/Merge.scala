@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.common
 
+
 import cn.piflow.conf._
 import cn.piflow.conf.bean.PropertyDescriptor
 import cn.piflow.conf.util.{ImageUtil, MapUtil}

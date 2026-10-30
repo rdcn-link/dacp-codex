@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import dacp.union.Json
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode

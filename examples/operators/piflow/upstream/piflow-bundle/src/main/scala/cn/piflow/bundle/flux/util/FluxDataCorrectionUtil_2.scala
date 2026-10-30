@@ -1,5 +1,6 @@
 package cn.piflow.bundle.flux.util
 
+
 import cn.piflow.bundle.FluxJavaUtil.Theleastsquaremethod
 import org.apache.spark.sql.functions.monotonically_increasing_id
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}

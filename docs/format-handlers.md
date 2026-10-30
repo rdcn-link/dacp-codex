@@ -2,7 +2,7 @@
 
 The server resolves file mappings through each plugin environment’s `Formats`. `SqlAdapter` handles SQL separately. Detection precedence is an explicit configuration override, compound container suffixes, provider signature matches (at most eight bytes), provider extension matches, then binary fallback. Extensions are lowercase and case-insensitive on filenames. IDs match `[a-z][a-z0-9-]*`; `sql` is reserved. Duplicate IDs or extensions fail registry initialization.
 
-Implement `dacp.FormatHandler` in a JAR compiled against the standalone `dacp-plugin-api` with a `Provided` dependency. Scala providers use its trait directly; Java implementations can implement the generated JVM interface. Scala trait defaults are easiest to reuse from Scala. A complete independently built plugin project is in [examples/plugins](../examples/plugins/README.md). Providers must have a public no-argument constructor.
+Implement `xstream.data.FormatHandler` in a JAR compiled against the standalone `dacp-plugin-api` with a `Provided` dependency. Scala providers use its trait directly; Java implementations can implement the generated JVM interface. Scala trait defaults are easiest to reuse from Scala. A complete independently built plugin project is in [examples/plugins](../examples/plugins/README.md). Providers must have a public no-argument constructor.
 
 ```scala
 package example
@@ -25,7 +25,7 @@ class LineProvider extends FormatHandler {
 }
 ```
 
-Add `META-INF/services/dacp.FormatHandler` to the provider JAR:
+Add `META-INF/services/xstream.data.FormatHandler` to the provider JAR:
 
 ```text
 example.LineProvider
@@ -45,7 +45,7 @@ Excel uses HSSF events for XLS and SAX/XSSF events for XLSX, a 16-row queue, and
 
 ## Container readers
 
-`ContainerReader` is the separate interface for enumerating children and staging an entry as a seekable file. Register a reader in `META-INF/services/dacp.ContainerReader`. Declare its `id`, `extensions`, and optional compound filename matcher; DACP automatically creates the matching format entry. Do not also register a format with the same ID. Built-in and external readers share the same interface. Duplicate IDs/extensions and ambiguous filename matches are rejected.
+`ContainerReader` is the separate interface for enumerating children and staging an entry as a seekable file. Register a reader in `META-INF/services/xstream.data.ContainerReader`. Declare its `id`, `extensions`, and optional compound filename matcher; DACP automatically creates the matching format entry. Do not also register a format with the same ID. Built-in and external readers share the same interface. Duplicate IDs/extensions and ambiguous filename matches are rejected.
 
 `NamespaceAdapter` publishes mapped containers as folders with a bytes view returning the original file, infers parent folders, and passes staged children to existing format readers. All folder properties stay unknown. Nested containers remain binary data. GZIP's one child is named from the public alias, ignoring private filenames. Compound `.tar.gz` and `.tgz` suffixes resolve before ordinary extension detection.
 
@@ -55,7 +55,7 @@ Limits are 10,000 entries, 512 MiB per decompressed entry, and 2 GiB total decla
 
 ## Native structured files
 
-Implement `StructuredFileHandler` (a `FormatHandler`) and register it in the format service file. `openStructure(source, options, context, check)` returns a request-scoped `DatasetAccess` rooted at `/`. It can expose logical objects without extracting files. List public absolute paths relative to that root; the server prefixes the published file alias. Implement both recursive `list()` and immediate-child `list(path)`, plus `describe`, `count`, and synchronous `stream`. Child Items must explicitly advertise their views when using native formats that do not have a file handler. Schema must match the selected stream; choose the schema of the first advertised view in Item metadata. The server closes access handles on success and failure. Honor `check` during discovery and `ready` before reading and emitting batches, and use `close` to release file handles even after cancellation.
+Implement `StructuredFileHandler` (a `FormatHandler`) and register it in the format service file. `openStructure(source, options, context, check)` returns a request-scoped `DatasetAccess` rooted at `/`. It can expose logical objects without extracting files. List public absolute paths relative to that root; the server prefixes the published file alias. Implement both recursive `list()` and immediate-child `list(path)`, plus `describe`, `count`, and typed `view`. A view opens a synchronous `DataStream`, with its descriptor announced even when empty. Child Items must explicitly advertise their views when using native formats that do not have a file handler. Record schema must match the selected records view. Non-record scientific views carry their own typed descriptors rather than an artificial Arrow table schema. The server closes access handles on success and failure. Honor `check` during discovery and `StreamContext.check` before reading and emitting blocks, and use `close` to release file handles even after cancellation.
 
 The file root is a folder with original-file bytes and unknown properties. Folder metadata does not open its structure or compute descendants. Nested logical folders also have unknown properties. Native child bytes have handler-defined semantics that must be documented; the root bytes always preserve the physical file. Ordinary listing must not compute expensive counts. Startup counting skips structured roots.
 
@@ -63,4 +63,4 @@ Use `PluginChecks.listing(access)` for metadata contract tests. Streaming, cance
 
 ## Records scans
 
-`FormatHandler.scan` supplies bounded batch filtering, projection, and early limit termination for every records handler. Override it to optimize the source reader; directory-backed and mixed datasets invoke the same contract, including for archive children. Native structured children use `DatasetAccess.scan`. See [records scan contracts](records-scans.md#plugin-implementation-contract).
+`FormatHandler.scan` supplies bounded batch filtering, projection, and early limit termination for every records handler. Override it to optimize the source reader; directory-backed and mixed datasets invoke the same contract, including for archive children. Native structured children use `DataViews.Records`. See [records scan contracts](records-scans.md#plugin-implementation-contract).

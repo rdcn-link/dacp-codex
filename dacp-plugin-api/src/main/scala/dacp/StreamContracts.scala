@@ -1,5 +1,6 @@
 package dacp
 
+
 import java.util.concurrent.{TimeUnit,CancellationException}
 import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters._
@@ -14,7 +15,7 @@ case class PortContract(representations: Set[String], formats: Set[String], sche
     if(repr=="records") {
       val actual=org.apache.arrow.vector.types.pojo.Schema.deserializeMessage(java.nio.ByteBuffer.wrap(java.util.Base64.getDecoder.decode(h.path("schema").asText)))
       schema.foreach(s=>require(s==actual,"operator port schema mismatch"))
-    } else require(repr=="bytes","unsupported representation; scientific representations need explicit contracts")
+    } else if(repr!="bytes")require(h.path("structure").isObject && h.path("structure").path("view").asText==repr,"scientific stream needs a structure descriptor")
   }
 }
 object OperatorPorts {
@@ -26,7 +27,7 @@ object OperatorPorts {
       require(v.isObject && v.fieldNames.asScala.toSet.subsetOf(Set("representations","formats","schema")),"invalid port settings")
       require(v.path("representations").isArray && v.path("formats").isArray,"port representations/formats must be lists")
       val repr=v.path("representations").elements.asScala.map(_.asText).toSet
-      require(repr.nonEmpty && repr.subsetOf(Set("bytes","records")),"unsupported representation")
+      require(repr.nonEmpty && repr.forall(_.matches("[a-z][a-z0-9_-]*")),"unsupported representation")
       e.getKey -> PortContract(repr,v.path("formats").elements.asScala.map(_.asText).toSet,
         Option(v.get("schema")).map(s=>Schema.fromJSON(s.toString)))
     }.toMap

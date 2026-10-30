@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.Path
 
 /** Host-owned configuration. Executors are discovered through the same plugin environment. */

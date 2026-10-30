@@ -1,5 +1,7 @@
 package dacp.unionserver
 
+import _root_.xstream.data._
+
 import dacp._
 import dacp.union._
 import com.fasterxml.jackson.databind.JsonNode
@@ -25,9 +27,14 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
   }
   override def afterAll():Unit={val files=Files.walk(root);try files.iterator.asScala.toVector.reverse.foreach(Files.deleteIfExists)finally files.close()}
   private def tls(name:String)=new Tls(root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"))
-  private def port():Int={val s=new java.net.ServerSocket(0);try s.getLocalPort finally s.close()}
+  private val assignedPorts=scala.collection.mutable.Set.empty[Int]
+  private def port():Int=synchronized {
+    var chosen=0
+    while(chosen==0 || assignedPorts(chosen)){val s=new java.net.ServerSocket(0);try chosen=s.getLocalPort finally s.close()}
+    assignedPorts+=chosen;chosen
+  }
   private def eventually(check: => Boolean,clue: => String="condition"):Unit={val end=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(15);while(!check && System.nanoTime()<end)Thread.sleep(50);assert(check,clue)}
-  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=60,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false,materialize:Boolean=false,withRecords:Boolean=false) {
+  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=60,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false,materialize:Boolean=false,withRecords:Boolean=false,scientific:Boolean=false) {
     @volatile var catalogVisible=true
     @volatile var catalogFailure=false
     val allocator=new RootAllocator()
@@ -35,6 +42,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val inputA=Array.fill[Byte](300000)(65.toByte);val inputB="local-B".getBytes
     Files.write(dir.resolve("a.bin"),inputA);Files.write(dir.resolve("b.bin"),inputB)
     Files.writeString(dir.resolve("observations.csv"),"station,temperature\nA,18\nB,21\nC,24\n")
+    if(scientific)Files.writeString(dir.resolve("genome.fa"),">chr1\nACGTACGT\n")
     def store(name:String)=if(materialize)Some(MaterializationStoreDefinition("file",Map("directory"->dir.resolve(name+"-outputs").toString)))else None
     val as=NodeUnionSettings(dir.resolve("a-state"),30,30,store("a"))
     val bs=NodeUnionSettings(dir.resolve("b-state"),30,30,store("b"))
@@ -43,7 +51,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     @volatile var controlFinished=false
     def count(task:String):Int=Option(invocations.get(task)).map(_.get).getOrElse(0)
     def config(name:String):Config={
-      val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin"))))++(if(withRecords)Seq(PublishedItem("/observations",file=Some(dir.resolve("observations.csv"))))else Seq.empty)).copy(description="""{"summary":"公开数据说明","html":"<script>alert(1)</script>"}""")
+      val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin"))))++(if(withRecords)Seq(PublishedItem("/observations",file=Some(dir.resolve("observations.csv"))))else Seq.empty)++(if(scientific)Seq(PublishedItem("/genome",file=Some(dir.resolve("genome.fa"))))else Seq.empty)).copy(description="""{"summary":"公开数据说明","html":"<script>alert(1)</script>"}""")
       val c=Config("localhost",port(),"localhost",if(dynamicCatalog)Map.empty else Map("data"->definition),root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,accessLogDirectory=Some(dir.resolve(name+"-access")),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve(s"$name-executions")).toString))))
       if(dynamicCatalog)c.installCatalog(new DataCatalog {
         def list():Seq[DatasetInfo]={if(catalogFailure)throw new IllegalStateException("catalog unavailable");if(catalogVisible)Seq(DatasetInfo("data",definition.description))else Seq.empty}
@@ -160,6 +168,29 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     def close():Unit={x.close();a.close();b.close();af.close();bf.close();client.close();stranger.close();Thread.sleep(100);ca.close();cb.close();allocator.close()}
   }
   private def policy(all:Boolean=false):JsonNode=if(all)Json.parse("""{"materialization":{"default":"materialize"}}""")else Json.parse("""{"materialization":{"tasks":{"ta":{"outputs":{"result":"materialize"}}}}}""")
+  test("scientific selections survive public Union proxy reads and member Job dispatch") {
+    val f=new Fixture(scientific=true);val client=publicClient(f)
+    try {
+      f.approved()
+      val entry=catalog(client).getDatasetsList.asScala.find(e=>f.x.routes.resolve(e.getName).get.path("member").asText==new Tls(f.ca.cert,f.ca.key,f.ca.ca).identity).get
+      val info=client.getInfo(FlightDescriptor.path("datasets",entry.getName,"/genome/sequences"))
+      val request=dacp.protocol.Metadata.Ticket.parseFrom(info.getEndpoints.get(0).getTicket.getBytes).toBuilder.setView("sequence")
+        .setSelectionJson(com.google.protobuf.ByteString.copyFromUtf8("{\"offset\":2,\"length\":4}")).build()
+      val reader=client.getStream(new Ticket(request.toByteArray))
+      val codec=new _root_.xstream.data.scientific.SequenceCodec()
+      var descriptor:DataDescriptor[SequenceChunk]=null
+      val parts=scala.collection.mutable.ArrayBuffer.empty[SequenceChunk]
+      try ScientificWire.consume(reader,"sequence",new EncodedDataConsumer {
+        def start(d:JsonNode):Unit={descriptor=codec.descriptor(d)}
+        def accept(b:EncodedDataBlock):Unit=parts+=codec.decode(b,descriptor)
+      },()=>())finally reader.close()
+      assert(parts.map(_.symbols.toString).mkString=="GTAC" && parts.head.offset==2)
+      val yaml=s"name: Union scientific selection\ntasks:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: '${f.ca.uri("data","/genome/sequences")}', view: sequence, selection: {offset: 1, length: 3}}\noutputs: {result: read}\n"
+      val id=f.submit(yaml)
+      assert(new String(f.bytes(id),java.nio.charset.StandardCharsets.UTF_8)=="CGT")
+      eventually(f.status(id).path("state").asText=="succeeded")
+    }finally {client.close();f.close()}
+  }
   test("subjobs separate output routes from stream types and reject superseded route payloads") {
     val f=new Fixture()
     try {

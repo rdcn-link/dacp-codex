@@ -1,5 +1,8 @@
 package dacp.unionserver
 
+import _root_.xstream.data._
+
+
 import dacp.union.Json
 import org.scalatest.funsuite.AnyFunSuite
 

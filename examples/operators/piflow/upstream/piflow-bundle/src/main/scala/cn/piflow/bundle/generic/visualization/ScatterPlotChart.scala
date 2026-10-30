@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.visualization
 
+
 import cn.piflow.{JobContext, JobInputStream, JobOutputStream, ProcessContext}
 import cn.piflow.conf.{ConfigurableVisualizationStop, Port, StopGroup, VisualizationType}
 import cn.piflow.conf.bean.PropertyDescriptor

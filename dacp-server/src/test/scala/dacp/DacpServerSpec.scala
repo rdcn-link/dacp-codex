@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.{Files,Path}
 import java.net.ServerSocket
 import java.util.concurrent.atomic.AtomicInteger
@@ -26,6 +28,45 @@ class DacpServerSpec extends AnyFunSuite {
     def open(name:String):PublishedDataset=throw new java.io.FileNotFoundException("no items")
     override def close():Unit={counter.incrementAndGet();()}
   }
+  test("scientific sequence view travels through the authenticated server with its descriptor") {fixture{(dir,cert,key)=>
+    val c=config(dir,cert,key)
+    val path=dir.resolve("sample.fa");Files.writeString(path,">chr1\nACGTACGT\n")
+    val cat=new DataCatalog {
+      def list():Seq[DatasetInfo]=Seq(DatasetInfo("science"))
+      def open(name:String):PublishedDataset=new PublishedDataset {
+        def open(check:()=>Unit):DatasetAccess=new _root_.xstream.data.fasta.FastaFormat().openStructure(ByteSource.local(path),FileOptions(),c,check)
+      }
+    }
+    val server=DacpServer.builder().config(c).catalog(cat).build().start()
+    val allocator=new RootAllocator()
+    val token=c.credentials.create("scientific-reader")._2
+    val client=dacp.union.ClientTransport.open(allocator,c.uri(""),Some(cert),None,None,()=>Some(token))
+    try {
+      val request=dacp.protocol.Metadata.Ticket.newBuilder().setDataset("science").setItem("/sequences").setView("sequence")
+        .setSelectionJson(com.google.protobuf.ByteString.copyFromUtf8("{\"offset\":2,\"length\":4}")).build()
+      val reader=client.getStream(new Ticket(request.toByteArray))
+      val chunks=scala.collection.mutable.ArrayBuffer.empty[SequenceChunk]
+      val codec=new _root_.xstream.data.scientific.SequenceCodec()
+      try dacp.union.ScientificWire.consume(reader,"sequence",new EncodedDataConsumer {
+        var descriptor:DataDescriptor[SequenceChunk]=null
+        def start(d:com.fasterxml.jackson.databind.JsonNode):Unit={descriptor=codec.descriptor(d)}
+        def accept(b:EncodedDataBlock):Unit=chunks+=codec.decode(b,descriptor)
+      },()=>())finally reader.close()
+      assert(chunks.map(_.symbols.toString).mkString=="GTAC" && chunks.head.offset==2 && chunks.last.last)
+      val yaml="name: Scientific Job\ntasks:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: 'context:/science/sequences', view: sequence, selection: {offset: 1, length: 3}}\noutputs: {result: read}\n"
+      val tls=dacp.client.TlsConfig(ca=Some(cert),token=Some(token))
+      val inference=dacp.client.Job.infer(c.uri(""),yaml,tls)
+      assert(inference.path("outputs").path("result").path("structure").path("view").asText=="sequence")
+      val job=dacp.client.Job.run(c.uri(""),yaml,tls)
+      try {
+        val events=job.toVector
+        val parts=events.filter(_.kind=="data").map(_.scientific(codec))
+        assert(parts.map(_.symbols.toString).mkString=="CGT" && parts.head.offset==1)
+        assert(events.exists(_.kind=="complete"))
+      }finally job.close()
+
+    }finally {client.close();allocator.close();server.close()}
+  }}
   test("embedded mTLS server starts without blocking; discovery works and closing releases catalog and port") {fixture{(dir,cert,key)=>
     val count=new AtomicInteger();val c=config(dir,cert,key)
     val server=DacpServer.builder().config(c).catalog(catalog(count)).build()

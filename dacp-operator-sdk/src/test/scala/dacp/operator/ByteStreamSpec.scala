@@ -1,5 +1,7 @@
 package dacp.operator
 
+import _root_.xstream.data._
+
 import java.io.{ByteArrayInputStream,ByteArrayOutputStream,InputStream,OutputStream,IOException}
 import java.nio.file.{Files,Path}
 import java.util.zip.{GZIPInputStream,GZIPOutputStream}
@@ -8,7 +10,8 @@ import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.{VarBinaryVector,VectorSchemaRoot}
 import org.apache.arrow.vector.ipc.ArrowStreamWriter
 import org.scalatest.funsuite.AnyFunSuite
-import dacp.{OperatorFrame,OperatorFrames,PluginSchemas}
+import dacp.{OperatorFrame,OperatorFrames}
+import _root_.xstream.data.{PluginSchemas}
 
 class ByteStreamSpec extends AnyFunSuite {
   private def fixture(chunks:Seq[Array[Byte]])(run:(Array[String],ByteArrayOutputStream)=>Unit):Unit={

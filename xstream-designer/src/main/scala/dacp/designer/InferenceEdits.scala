@@ -1,7 +1,9 @@
 package xstream.designer
 
+
 import com.fasterxml.jackson.databind.JsonNode
 import dacp.{InferenceResult,StructureInference}
+
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 import java.nio.charset.StandardCharsets.UTF_8

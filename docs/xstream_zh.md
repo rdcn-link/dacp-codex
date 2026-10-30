@@ -75,7 +75,7 @@ try {
 
 ## 目录与运行插件
 
-实现 `DataCatalogProvider`，在 `META-INF/services/dacp.DataCatalogProvider` 中注册完整类名，配置为：
+实现 `DataCatalogProvider`，在 `META-INF/services/xstream.data.DataCatalogProvider` 中注册完整类名，配置为：
 
 ```yaml
 data_catalog:

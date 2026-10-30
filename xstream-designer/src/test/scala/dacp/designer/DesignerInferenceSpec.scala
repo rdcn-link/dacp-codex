@@ -1,5 +1,6 @@
 package xstream.designer
 
+
 import dacp._
 import dacp.client.WorkflowVariables
 import dacp.union.Json

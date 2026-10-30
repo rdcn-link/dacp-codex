@@ -60,3 +60,5 @@ Dataset 列表可由 [DataCatalog 插件](docs/dataset-catalogs_zh.md)动态提�
 算子仅源码发布：[提交、隔离构建、审核和可信度](docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
 
 独立的 [XStream 引擎](xstream-engine/README_zh.md)提供本地 `xstream-runner` 程序，并由 DACP Server 内嵌使用。[XStream Designer](xstream-designer/README_zh.md)按需浏览本地及配置的远程目录。
+
+[xstream-data：类型化数据流与科学格式插件](xstream-data/README_zh.md)。

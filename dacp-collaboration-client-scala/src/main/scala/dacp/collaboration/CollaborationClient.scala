@@ -1,5 +1,6 @@
 package dacp.collaboration
 
+
 import dacp.union._
 import com.fasterxml.jackson.databind.JsonNode
 import org.apache.arrow.flight.FlightClient

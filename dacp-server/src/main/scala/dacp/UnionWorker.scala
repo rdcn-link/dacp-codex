@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import org.apache.arrow.flight.FlightStatusCode._
 
 import dacp.union.{Rpc,Json,Remote,Tls,UnionFailure}
@@ -253,10 +255,14 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       val view=ItemViews.select(requestedView,meta.getViewsList.asScala)
       require(!b.has("sql") || view=="records","sql requires records view")
       val ticketBuilder=dacp.protocol.Metadata.Ticket.newBuilder().setDataset(parts(0)).setItem("/"+parts(1)).setView(view)
+      Option(b.get("selection")).foreach(n=>ticketBuilder.setSelectionJson(com.google.protobuf.ByteString.copyFrom(Data.mapper.writeValueAsBytes(n))))
       if(b.has("sql"))ticketBuilder.setScan(ScanProtocol.encode(ItemSql.parse(b.path("sql").asText)))
       val ticket=ticketBuilder.build()
       val reader=client.getStream(new Ticket(ticket.toByteArray),CallOptions.timeout(settings.executionTimeoutSeconds,TimeUnit.SECONDS))
       cancel.add(new AutoCloseable{def close():Unit={reader.cancel("dataset input cancelled",null);reader.close()}})
+      if(!Set("records","bytes")(view))return ItemFrameStreams.remote(meta.getFormat,cancel){out=>
+        try dacp.union.ScientificWire.consume(reader,view,out,()=>cancel.active())finally reader.close()
+      }
       new FrameSource {
         private var started=false;private var ended=false;private var pending=Iterator.empty[Array[Byte]]
         def next():Option[OperatorFrame]={
@@ -276,29 +282,17 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     private def localInput(b:JsonNode):FrameSource={
       if(b.has("origin"))return datasetInput(b)
       val u=DacpUri.parse(Json.text(b,"uri"));val split=u.getPath.drop(1).split("/",2);val path="/"+split(1);val requestedView=Json.text(b,"view")
-      if(DacpUri.origin(b.path("uri").asText)!=DacpUri.origin(config.uri("")))return ItemSource.open(config,allocator,InputBinding(uri=Some(b.path("uri").asText),view=requestedView,scan=Option(b.get("sql")).map(x=>ItemSql.parse(x.asText))),cancel)
+      if(DacpUri.origin(b.path("uri").asText)!=DacpUri.origin(config.uri("")))return ItemSource.open(config,allocator,InputBinding(uri=Some(b.path("uri").asText),view=requestedView,scan=Option(b.get("sql")).map(x=>ItemSql.parse(x.asText)),selection=Option(b.get("selection"))),cancel)
       val access=cancel.add(config.openDataset(split(0),()=>cancel.active()))
       val meta=access.describe(path)
-      require(meta.kind=="data","local input must be a data item")
       val view=ItemViews.select(requestedView,config.plugins.views(meta))
       val queue=new FrameQueue(cancel)
       StreamProtocol.thread(cancel){
-        var root:VectorSchemaRoot=null
-        val listener=new ServerStreamListener {
-          def isReady:Boolean=true
-          def isCancelled:Boolean=try {cancel.active();false}catch{case _:Throwable=>true}
-          def setOnCancelHandler(r:Runnable):Unit=()
-          def start(r:VectorSchemaRoot,d:DictionaryProvider,o:IpcOption):Unit={require(d==null,"dictionary input unsupported");root=r;queue.put(StreamProtocol.start("",view,meta.format,if(view=="records")Some(r.getSchema)else None))}
-          def putNext():Unit=if(view=="records")queue.put(StreamProtocol.frame("data",data=StreamProtocol.batch(root)))else {
-            require(root.getSchema==PluginSchemas.bytes,"invalid bytes view")
-            (0 until root.getRowCount).foreach(i=>root.getVector(0).asInstanceOf[VarBinaryVector].get(i).grouped(65536).foreach(b=>queue.put(StreamProtocol.frame("data",data=b))))
-          }
-          def putNext(b:ArrowBuf):Unit={require(b==null);putNext()}
-          def putMetadata(b:ArrowBuf):Unit=require(b==null)
-          def error(t:Throwable):Unit=throw t
-          def completed():Unit=()
-        }
-        try {if(b.has("sql")){require(view=="records","sql requires records view");access.scan(path,ItemSql.parse(b.path("sql").asText),allocator,listener,()=>cancel.active())}else access.stream(path,view,allocator,listener,()=>cancel.active());queue.put(StreamProtocol.frame("end"));queue.end()}finally access.close()
+        try {
+          val scan=Option(b.get("sql")).map(x=>ItemSql.parse(x.asText))
+          ItemFrameStreams.consume(access,path,view,meta.format,scan,StreamContext(allocator,()=>cancel.active()),if(Set("records","bytes")(view))None else Some(DataViewCodecs.named(config.plugins,view)),Option(b.get("selection")))(queue.put)
+          queue.put(StreamProtocol.frame("end"));queue.end()
+        } finally access.close()
       }
       queue
     }
@@ -328,6 +322,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           val b=readers.get(original.path("task").asText).map { r=>
             require(original.path("port").asText=="result","read_item has only result output")
             val b=Json.obj().put("uri",r.path("params").path("uri").asText).put("view",r.path("params").path("view").asText(if(r.path("params").has("sql"))"records"else"auto")).put("source_task",r.path("id").asText)
+            if(r.path("params").has("selection"))b.set[JsonNode]("selection",r.path("params").path("selection"))
             if(r.path("params").has("sql"))b.put("sql",r.path("params").path("sql").asText)
             if(r.has("read_source"))b.put("origin",r.path("read_source").path("origin").asText).put("producer_identity",r.path("read_source").path("producer_identity").asText)
             b
@@ -452,6 +447,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
             Jobs.readBinding(task) match {
               case Some(binding)=>
                 val descriptor=Json.obj().put("uri",binding.uri.get).put("view",binding.view)
+                binding.selection.foreach(n=>descriptor.set[JsonNode]("selection",n))
                 if(task.params.containsKey("sql"))descriptor.put("sql",task.params.get("sql").toString)
                 val source=if(t.has("read_source")){
                   descriptor.put("origin",t.path("read_source").path("origin").asText).put("producer_identity",t.path("read_source").path("producer_identity").asText)

@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.util.ServiceLoader
 import scala.jdk.CollectionConverters._
 import org.scalatest.funsuite.AnyFunSuite

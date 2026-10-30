@@ -1,5 +1,8 @@
 package dacp.operators
 
+import _root_.xstream.data._
+
+
 import dacp.OperatorProgram
 import java.nio.file.Path
 import scala.jdk.CollectionConverters._

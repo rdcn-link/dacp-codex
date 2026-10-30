@@ -1,5 +1,7 @@
 package dacp.operators
 
+import _root_.xstream.data._
+
 import dacp._
 import dacp.operator.{Operator,OperatorRunner}
 import com.fasterxml.jackson.databind.{JsonNode,ObjectMapper}

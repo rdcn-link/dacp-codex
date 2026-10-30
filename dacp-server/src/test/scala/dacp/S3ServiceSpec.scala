@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.net.URI
 import java.net.http.{HttpClient,HttpRequest,HttpResponse}
 import java.nio.file.{Files,Path}
@@ -19,7 +21,7 @@ class S3ServiceSpec extends AnyFunSuite {
       def open(name:String):PublishedDataset={
         if(!exists || name!="science")throw new java.io.FileNotFoundException()
         new PublishedDataset {
-          def open(check:()=>Unit):DatasetAccess=new DatasetAccess {
+          def open(check:()=>Unit):DatasetAccess=new BatchDatasetAccess {
             def list():Seq[Item]=objects.map(describe) :+ describe("/records")
             def list(path:String):Seq[Item]=list().filter(i=>LogicalPath.parent(i.path)==path)
             def describe(path:String):Item={
@@ -28,7 +30,7 @@ class S3ServiceSpec extends AnyFunSuite {
               Item(path,"custom",None,totalSizeBytes=if(path=="/z.bin")None else Some(10L),views=Some(Seq("bytes")))
             }
             def count(path:String):Option[Long]=None
-            def stream(path:String,view:String,a:org.apache.arrow.memory.BufferAllocator,l:org.apache.arrow.flight.FlightProducer.ServerStreamListener,ready:()=>Unit):Unit={
+            def read(path:String,view:String,a:org.apache.arrow.memory.BufferAllocator,l: BatchReceiver,ready:()=>Unit):Unit={
               if(path=="/records") {
                 assert(view=="records")
                 val root=VectorSchemaRoot.create(describe(path).schema.get,a)
@@ -146,12 +148,12 @@ class S3ServiceSpec extends AnyFunSuite {
     val cat=new DataCatalog {
       def list():Seq[DatasetInfo]=Seq(DatasetInfo("large"))
       def open(name:String):PublishedDataset=new PublishedDataset {
-        def open(check:()=>Unit):DatasetAccess=new DatasetAccess {
+        def open(check:()=>Unit):DatasetAccess=new BatchDatasetAccess {
           def list():Seq[Item]=Seq(describe("/stream"))
           def list(path:String):Seq[Item]=list()
           def describe(path:String):Item=Item(path,"custom",None,views=Some(Seq("bytes")))
           def count(path:String):Option[Long]=None
-          def stream(path:String,view:String,a:org.apache.arrow.memory.BufferAllocator,l:org.apache.arrow.flight.FlightProducer.ServerStreamListener,ready:()=>Unit):Unit={
+          def read(path:String,view:String,a:org.apache.arrow.memory.BufferAllocator,l: BatchReceiver,ready:()=>Unit):Unit={
             val root=VectorSchemaRoot.create(PluginSchemas.bytes,a)
             try {
               val v=root.getVector(0).asInstanceOf[VarBinaryVector];v.allocateNew();v.setSafe(0,new Array[Byte](65536));root.setRowCount(1)

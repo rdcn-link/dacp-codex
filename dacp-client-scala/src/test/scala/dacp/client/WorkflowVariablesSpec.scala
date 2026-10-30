@@ -1,5 +1,8 @@
 package dacp.client
 
+import _root_.xstream.data._
+
+
 import org.scalatest.funsuite.AnyFunSuite
 import dacp.union.Json
 

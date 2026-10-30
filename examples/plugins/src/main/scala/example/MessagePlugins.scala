@@ -1,10 +1,12 @@
 package example
 
+import _root_.xstream.data._
+
 import dacp._
 import java.nio.file.Path
 import java.nio.charset.StandardCharsets.UTF_8
 import org.apache.arrow.memory.BufferAllocator
-import org.apache.arrow.flight.FlightProducer.ServerStreamListener
+import _root_.xstream.data.BatchReceiver
 import org.apache.arrow.vector.{VectorSchemaRoot,VarBinaryVector}
 
 /** A native dataset, with no dependency on the server implementation or a physical file. */
@@ -56,23 +58,29 @@ class MessageAccess(message: () => String, check: () => Unit) extends ItemDatase
     require(selected.kind == "data", "folder has no content stream")
     new ItemAccess {
       def count(): Option[Long] = if (path == summary.path) Some(1L) else None
-      def stream(view: String, allocator: BufferAllocator, listener: ServerStreamListener, ready: () => Unit): Unit =
-        emit(path,view,allocator,listener,ready)
+      def view[K,S](kind:DataViewType[K,S]):Option[DataView[K,S]] = {
+        if(path==item.path) DataViews.when(kind,DataViews.Bytes)(
+          DataViews[ByteChunk,AllBytes.type]((_,context,out)=>{
+            context.check();val bytes=content().getBytes(UTF_8)
+            out.start(BytesDescriptor("text/plain; charset=utf-8"));context.check()
+            out.accept(ByteChunk(bytes,0,bytes.length))
+          }))
+        else DataViews.when(kind,DataViews.Records)(
+          DataViews[RecordBatch,Scan]((scan,context,out)=>{
+            context.check();val text=content()
+            ScanStreams.stream(scan,context.allocator,BatchStreams.records(out,context.check)){ receiver=>
+              val root=VectorSchemaRoot.create(summarySchema,context.allocator)
+              try {
+                receiver.start(root);context.check()
+                Records.fill(root,Seq(Seq(text.codePointCount(0,text.length).toLong)))
+                receiver.putNext()
+              } finally root.close()
+            }
+          }))
+      }
     }
   }
-  private def emit(path: String, view: String, allocator: BufferAllocator, listener: ServerStreamListener, ready: () => Unit): Unit = {
-    val selected = describe(path)
-    require(selected.views.exists(_.contains(view)),"unsupported stream view")
-    ready()
-    val text = try message() catch {
-      case scala.util.control.NonFatal(_) => throw new FormatFailure("Cannot read message content.")
-    }
-    val root = VectorSchemaRoot.create(selected.schema.get,allocator)
-    try {
-      if (view == "bytes") {
-        root.allocateNew(); root.getVector(0).asInstanceOf[VarBinaryVector].setSafe(0,text.getBytes(UTF_8)); root.setRowCount(1)
-      } else Records.fill(root,Seq(Seq(text.codePointCount(0,text.length).toLong)))
-      listener.start(root); ready(); listener.putNext(); listener.completed()
-    } finally root.close()
+  private def content():String=try message() catch {
+    case scala.util.control.NonFatal(_) => throw new FormatFailure("Cannot read message content.")
   }
 }

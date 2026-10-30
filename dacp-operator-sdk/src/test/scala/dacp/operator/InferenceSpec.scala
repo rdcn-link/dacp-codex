@@ -1,5 +1,7 @@
 package dacp.operator
 
+import _root_.xstream.data._
+
 import dacp._
 import java.nio.file.Files
 import org.scalatest.funsuite.AnyFunSuite

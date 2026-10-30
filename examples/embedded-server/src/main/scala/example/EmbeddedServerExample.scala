@@ -1,5 +1,7 @@
 package example
 
+import _root_.xstream.data._
+
 import dacp._
 import java.nio.file.Path
 import java.io.FileNotFoundException

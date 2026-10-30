@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.Files
 import org.scalatest.funsuite.AnyFunSuite
 import org.apache.arrow.memory.RootAllocator
@@ -106,7 +108,7 @@ class PluginSpec extends AnyFunSuite {
       val allocator = new RootAllocator()
       try {
         intercept[java.util.concurrent.CancellationException] {
-          access.stream("/message","bytes",allocator,null,() => throw new java.util.concurrent.CancellationException())
+          BatchStreams.read(access,"/message","bytes",allocator,null,() => throw new java.util.concurrent.CancellationException())
         }
       } finally { access.close(); allocator.close() }
       cancel = true

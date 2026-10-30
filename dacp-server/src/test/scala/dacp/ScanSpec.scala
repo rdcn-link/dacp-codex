@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import org.scalatest.funsuite.AnyFunSuite
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector._
@@ -110,7 +112,7 @@ class ScanSpec extends AnyFunSuite {
           }
         }).asInstanceOf[FlightProducer.ServerStreamListener]
       try {
-        ScanStreams.stream(Scan(limit=Some(limit)),allocator,listener) { filtered =>
+        ScanStreams.stream(Scan(limit=Some(limit)),allocator,FlightDataStreams.receiver(listener)) { filtered =>
           val root = VectorSchemaRoot.create(schema,allocator)
           try {
             filtered.start(root)

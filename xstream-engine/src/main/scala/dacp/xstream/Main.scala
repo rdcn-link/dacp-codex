@@ -1,5 +1,7 @@
 package dacp.xstream
 
+import _root_.xstream.data._
+
 import dacp._
 import dacp.client.{Source,TlsConfig,WorkflowVariables}
 import dacp.union.{Json,YamlDocument}
@@ -77,6 +79,16 @@ object RemoteItems {
     val dataset=cancel.add(Source.open(origin+"/"+parts(0),tls));val path="/"+parts(1)
     val metadata=dataset.describe(path);val view=ItemViews.select(binding.view,metadata.views)
     val item=cancel.add(dataset.open(path,predicate=binding.scan.flatMap(_.predicate).map(clientPredicate),columns=binding.scan.flatMap(_.columns),limit=binding.scan.flatMap(_.limit)));val bytes=if(view=="bytes")Some(cancel.add(item.asBytes()))else None
+    if(!Set("records","bytes")(view)){
+      val plugins=new PluginEnvironment()
+      val codec=DataViewCodecs.named(plugins,view)
+      return ItemFrameStreams.remote(metadata.format,cancel){out=>
+        try {
+          val stream=item.asView(codec.kind,codec.selection(binding.selection.getOrElse(Data.mapper.createObjectNode())))
+          try stream.consume(new DataConsumer[codec.Block]{def start(d:DataDescriptor[codec.Block]):Unit=out.start(codec.descriptor(d));def accept(b:codec.Block):Unit={cancel.active();out.accept(codec.encode(b))}})finally stream.close()
+        }finally {item.close();dataset.close();plugins.close()}
+      }
+    }
     val records=if(view=="records")Some(cancel.add(item.asRecords()))else None
     new FrameSource {
       private var began=false;private var ended=false

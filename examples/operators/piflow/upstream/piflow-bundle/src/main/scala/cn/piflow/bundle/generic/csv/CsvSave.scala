@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.csv
 
+
 import cn.piflow.conf.bean.PropertyDescriptor
 import cn.piflow.conf.util.{ImageUtil, MapUtil}
 import cn.piflow.{JobContext, JobInputStream, JobOutputStream, ProcessContext}

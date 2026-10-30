@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters._
 import org.apache.poi.ss.usermodel.Workbook

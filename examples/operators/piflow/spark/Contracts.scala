@@ -1,6 +1,7 @@
 // Private, minimal embedding contracts for the vendored EcoFlow algorithms.
 // This does not embed PiFlow's scheduler, server, checkpointing or configuration system.
 package cn.piflow {
+
   import org.apache.spark.sql.{DataFrame,SparkSession}
   trait ProcessContext
   trait JobContext { def get[T]()(implicit m:Manifest[T]):T }

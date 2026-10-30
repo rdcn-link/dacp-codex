@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.{Files,Path}
 
 /** External archive reader: the registry also supplies its format handler automatically. */

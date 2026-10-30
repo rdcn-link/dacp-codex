@@ -60,7 +60,7 @@ trait DataCatalogProvider {
 Provide a public no-argument implementation constructor and include this file in the JAR:
 
 ```text
-META-INF/services/dacp.DataCatalogProvider
+META-INF/services/xstream.data.DataCatalogProvider
 ```
 
 Its contents are fully qualified implementation names, for example:

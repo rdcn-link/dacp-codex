@@ -52,10 +52,17 @@ function persist(){try{localStorage.setItem('xstream-designer',JSON.stringify(sn
 function changed(){invalidate();render();persist();clearTimeout(yamlTimer);yamlTimer=setTimeout(()=>guard(syncYaml)(),200);}
 async function syncYaml(){const version=++docSequence;const response=await api('document',payload());if(version===docSequence&&!yamlEdited){jobYamlEditor.setText(response.job_yaml);}return response;}
 function restore(s){cancelConnection();job=clone(s.job);automaticReadViews=new Set(s.automaticReadViews||[]);positions=clone(s.positions);outletPosition=s.outletPosition?clone(s.outletPosition):null;outletSelected=false;variablesEditor.setText(s.variables);selected=null;selectedSteps.clear();selectedEdge=null;yamlEdited=false;changed();restoreViewport(s.viewport);}
+let viewDefinitions={};
 const readParameters={type:"object",properties:{uri:{type:"string",description:"context:/dataset/item for the current DataCatalog, or dacp://host:port/dataset/item for an explicit service.",minLength:1},sql:{type:"string",description:"Optional SELECT columns FROM source WHERE predicate LIMIT n; requires records view.",minLength:1},view:{type:"string",description:"Defaults to records when available; SQL always uses records.",enum:["bytes","records"]}},required:["uri"],additionalProperties:false};
 const readIcon={path:'M5 6h14v5H5zM12 11v9m-4-4 4 4 4-4',color:'#2378cb'};
 function operatorIcon(icon){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',icon.path);svg.style.color=icon.color;svg.append(path);return svg;}
-function parameterSchema(t){return t.operator==='read_item@1.0'?readParameters:manifest(t)?.parameters;}
+function parameterSchema(t){
+ if(t.operator!=='read_item@1.0')return manifest(t)?.parameters;
+ const schema=clone(readParameters);schema.properties.view.enum=['bytes','records',...Object.keys(viewDefinitions)];
+ const selection=viewDefinitions[t.params?.view]?.selection;
+ if(selection)schema.properties.selection={...clone(selection),description:'Optional subset in the original coordinates. Omit to read the entire object.'};
+ return schema;
+}
 function manifest(task){const [name,version]=task.operator.split('@');return operators.find(o=>o.name===name&&o.version===version);}
 const binding=v=>{const [task,port='result']=String(v).split(':');return{task,port};};
 function outputPorts(t){if(report?.tasks?.[t.id]&&!report.tasks[t.id].diagnostics?.some(d=>d.severity==='error'))return Object.keys(report.tasks[t.id].outputs||{});const names=new Set(['result']);for(const x of job.tasks)for(const v of Object.values(x.inputs||{})){const b=binding(v);if(b.task===t.id)names.add(b.port);}for(const v of Object.values(job.outputs)){const b=binding(v);if(b.task===t.id)names.add(b.port);}return [...names];}
@@ -68,12 +75,16 @@ const libraryExpanded=new Map();
 let operatorTipTimer;
 function hideOperatorTip(){clearTimeout(operatorTipTimer);document.querySelectorAll('[aria-describedby=operator-tooltip]').forEach(e=>e.removeAttribute('aria-describedby'));$('operator-tooltip')?.remove();}
 function showOperatorTip(card,o,group){hideOperatorTip();const tip=el('div',undefined,'operator-tooltip');tip.id='operator-tooltip';tip.setAttribute('role','tooltip');tip.append(el('strong',o.name),el('small','Version '+o.version+' · '+group.category),el('p',o.description||'No description supplied.'));const ports=Object.entries(o.inputs||{}).map(([name,p])=>name+' ('+(p.representations||[]).join(' / ')+')');tip.append(el('div','Inputs: '+(ports.join(', ')||'None — source operator'),'tooltip-detail'));const params=Object.entries(o.parameters?.properties||{}).map(([name,p])=>name+': '+(Array.isArray(p.type)?p.type.join(' / '):p.type||'any')+((o.parameters?.required||[]).includes(name)?' *':''));tip.append(el('div','Parameters: '+(params.join(', ')||'None'),'tooltip-detail'),el('div','Executor: '+(o.execution?.executor||'Built-in'),'tooltip-detail'),el('small','Drag onto canvas or double-click to add.'));document.body.append(tip);card.setAttribute('aria-describedby',tip.id);const r=card.getBoundingClientRect(),height=tip.getBoundingClientRect().height;tip.style.left=Math.min(r.right+12,Math.max(8,innerWidth-tip.offsetWidth-8))+'px';tip.style.top=Math.max(8,Math.min(r.top,innerHeight-height-8))+'px';}
-function renderLibrary(){hideOperatorTip();const query=$('search').value.trim().toLowerCase(),host=$('operators');host.replaceChildren();const source={name:'read_item',version:'1.0',description:'Read an Item as a byte or record stream.',inputs:{},parameters:readParameters,categories:['Data sources'],icon:readIcon};const libraryGroups=[...new Set([source,...operators].flatMap(o=>o.categories||[]))].sort().map(category=>({category,id:category}));let count=0;
+function renderLibrary(){hideOperatorTip();const query=$('search').value.trim().toLowerCase(),host=$('operators');host.replaceChildren();const source={name:'read_item',version:'1.0',description:'Read an Item through its records, bytes or scientific view.',inputs:{},parameters:readParameters,categories:['Data sources'],icon:readIcon};const libraryGroups=[...new Set([source,...operators].flatMap(o=>o.categories||[]))].sort().map(category=>({category,id:category}));let count=0;
  for(const group of libraryGroups){const entries=[source,...operators].filter(o=>(o.categories||[]).includes(group.category)&&(o.name+' '+(o.description||'')+' '+group.category).toLowerCase().includes(query));if(!entries.length)continue;count+=entries.length;const section=el('details',undefined,'operator-category');section.dataset.category=group.id;section.open=query?true:libraryExpanded.get(group.id)!==false;const heading=el('summary');heading.append(el('span',group.category),el('small',String(entries.length)));section.append(heading);section.addEventListener('toggle',()=>{if(!query)libraryExpanded.set(group.id,section.open);hideOperatorTip();});const grid=el('div',undefined,'operator-grid');
  for(const o of entries){const card=el('button',undefined,'operator');card.type='button';card.draggable=true;card.dataset.operator=o.name+'@'+o.version;card.setAttribute('aria-label',o.name+' @ '+o.version);const svg=operatorIcon(o.icon);card.append(svg,el('span',o.name,'operator-name'),el('small','v'+o.version));card.addEventListener('mouseenter',()=>{operatorTipTimer=setTimeout(()=>showOperatorTip(card,o,group),250);});card.addEventListener('mouseleave',hideOperatorTip);card.addEventListener('focus',()=>showOperatorTip(card,o,group));card.addEventListener('blur',hideOperatorTip);card.addEventListener('dragstart',e=>{hideOperatorTip();e.dataTransfer.setData('application/dacp-operator',card.dataset.operator);});const add=()=>{hideOperatorTip();addOperator(o,job.tasks.length?Math.max(...job.tasks.map(t=>point(t).x))+310:65,85);};card.addEventListener('dblclick',add);card.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();add();}});grid.append(card);}section.append(grid);host.append(section);
  }if(!count)host.append(el('p','No matching operators.','muted'));}
 
 
+function structureTable(structure,compact=false){
+ const table=el('table',undefined,compact?'port-schema-table':'scientific-structure');table.setAttribute('aria-label','Scientific structure');
+ for(const [key,value]of ScientificViewsUI.structureRows(structure)){const row=el('tr');row.append(el('th',String(key)),el('td',String(value??'')));table.append(row);}return table;
+}
 function schemaStatus(box,kind,text){
  box.classList.add('schema-status','schema-'+kind);
  const icon=el('span',kind==='error'?'!':kind==='unknown'?'?':'…','schema-status-icon');icon.setAttribute('aria-hidden','true');
@@ -88,7 +99,7 @@ function renderOutputPorts(t,outs){
   if(!d){const errors=report?.tasks?.[t.id]?.diagnostics?.filter(x=>x.severity==='error')||[];if(errors.length||inferenceState.startsWith('Inference failed'))schemaStatus(box,'error','Inference error');else if(inferenceRunning||inferencePending)schemaStatus(box,'pending','Inferring…');else schemaStatus(box,'unknown','Schema unknown');}else{
    let schema=d.schema_json||d.schema;if(typeof schema==='string'){try{schema=JSON.parse(schema);}catch{schema=null;}}
    if(schema?.fields){if(schema.fields.length){const table=el('table',undefined,'port-schema-table');table.setAttribute('aria-label','Output fields and types');const body=el('tbody');for(const f of schema.fields){const row=el('tr'),name=el('th',f.name),type=el('td',SchemaTypes.fieldType(f));name.scope='row';name.title=f.name;type.title=SchemaTypes.fieldType(f);row.append(name,type);body.append(row);}table.append(body);box.append(table);}else box.append(el('span','Empty schema'));}
-   else if(d.structure){box.append(el('code',JSON.stringify(d.structure),'port-schema-structure'));}
+   else if(d.structure){box.append(structureTable(d.structure,true));}
    else if((d.representations||[]).includes('records')||d.certainty==='unknown')schemaStatus(box,'unknown','Schema unknown');
    else box.append(el('span',(d.formats||[]).join(' / ')||'Byte stream'));
 
@@ -98,7 +109,7 @@ function renderOutputPorts(t,outs){
 }
 function refreshPortSchemas(){if(graphInteraction||job.tasks.some(t=>![...$('cards').children].some(c=>c.dataset.task===t.id)))return;for(const t of job.tasks){const card=[...$('cards').children].find(c=>c.dataset.task===t.id);if(card)renderOutputPorts(t,card.querySelector('.ports .out'));}keepOutletClear();drawEdges();refreshStepOutputs();}
 function inferencePayload(){const n=payload(false),draft=JSON.parse(n.job_yaml);if(selected&&parameterEditor&&!$('inspector').hidden){const t=draft.tasks.find(t=>t.id===selected);if(t)t.params=parameterEditor.read();}for(const t of draft.tasks)if(automaticReadViews.has(t.id)&&t.operator==='read_item@1.0')delete t.params.view;n.job_yaml=JSON.stringify(draft);n.inference_session=inferenceSession;return n;}
-function applyReadViewDefaults(data){for(const t of job.tasks){if(!automaticReadViews.has(t.id)||t.operator!=='read_item@1.0')continue;const repr=data.tasks?.[t.id]?.outputs?.result?.representations?.[0];if(!['records','bytes'].includes(repr))continue;t.params.view=repr;if(selected===t.id&&parameterEditor&&!$('inspector').hidden)parameterEditor.setValue('view',repr);}}
+function applyReadViewDefaults(data){for(const t of job.tasks){if(!automaticReadViews.has(t.id)||t.operator!=='read_item@1.0')continue;const repr=data.tasks?.[t.id]?.outputs?.result?.representations?.[0];if(!repr)continue;const changedView=t.params.view!==repr;t.params.view=repr;if(changedView&&selected===t.id&&viewDefinitions[repr])queueMicrotask(inspect);if(selected===t.id&&parameterEditor&&!$('inspector').hidden)parameterEditor.setValue('view',repr);}}
 
 // Only operator contracts, parameters, input bindings and variable values affect inference.
 function inferenceKey(request){return InferenceChanges.stable(InferenceChanges.keys(request));}
@@ -251,10 +262,10 @@ function refreshStepOutputs(){
   box.append(el('p',[...(d.representations||[]),...(d.formats||[]),d.certainty].filter(Boolean).join(' · '),'muted'));
   const schema=readableSchema(d);
   if(schema?.fields){const table=el('table');for(const f of schema.fields){const row=el('tr');row.append(el('td',f.name),el('td',SchemaTypes.fieldType(f)));table.append(row);}box.append(table);const full=el('details');full.append(el('summary','Complete schema'),el('pre',JSON.stringify(schema,null,2)));box.append(full);}
-  else box.append(el('p',(d.representations||[]).includes('records')?'Schema unknown.':'Byte stream: no record schema.','muted'));
+  else if(d.structure)box.append(structureTable(d.structure));else box.append(el('p',(d.representations||[]).includes('records')?'Schema unknown.':'Byte stream: no record schema.','muted'));
   if(d.structure){const structure=el('details');structure.append(el('summary','Structured representation'),el('pre',JSON.stringify(d.structure,null,2)));box.append(structure);}
   box.append(el('h4','Output sample'));
-  if(d.sample){const sample=d.sample;box.append(el('p',sample.representation+' · '+sample.format+(sample.truncated?' · truncated':''),'muted'));if(sample.representation==='records'){
+  if(d.sample){const sample=d.sample;box.append(el('p',sample.representation+' · '+sample.format+(sample.truncated?' · truncated':''),'muted'));if(sample.representation!=='bytes'){
    const rows=sample.rows||[],columns=[...new Set([...(schema?.fields||[]).map(f=>f.name),...rows.flatMap(row=>Object.keys(row))])];
    if(rows.length&&columns.length){const scroll=el('div',undefined,'output-sample-scroll'),table=el('table',undefined,'output-sample-table'),head=el('thead'),header=el('tr'),body=el('tbody');table.setAttribute('aria-label','Output sample records');for(const name of columns){const th=el('th',name);th.scope='col';th.title=name;header.append(th);}head.append(header);
     for(const row of rows){const tr=el('tr');for(const name of columns){const value=row[name],text=value===null?'null':value===undefined?'':typeof value==='object'?JSON.stringify(value):String(value),td=el('td',text);td.title=text;if(value===null)td.classList.add('sample-null');tr.append(td);}body.append(tr);}table.append(head,body);scroll.append(table);box.append(scroll);
@@ -312,7 +323,10 @@ function itemIcon(kind,views){
  const capabilities=el('span',undefined,'item-capabilities');
  const icons={
   records:{path:'M3 4h18v16H3zM3 9h18M9 4v16M3 14h18',color:'#438f87'},
-  bytes:{path:'M3 6h6v12H3zM15 6h3v12M14 18h7',color:'#697fa9'}
+  bytes:{path:'M3 6h6v12H3zM15 6h3v12M14 18h7',color:'#697fa9'},
+  array:{path:'M3 7 12 2 21 7v10l-9 5-9-5zM3 7l9 5 9-5M12 12v10',color:'#8359bf'},
+  image:{path:'M3 4h18v16H3zM3 17l6-6 4 4 3-3 5 5M15 8h2',color:'#c58235'},
+  sequence:{path:'M6 2c0 8 12 12 12 20M18 2C18 10 6 14 6 22M7 5h10M8 10h8M8 15h8M7 20h10',color:'#258b8b'}
  };
  for(const view of views){
   const icon=operatorIcon(icons[view]||{path:'M12 3 21 12 12 21 3 12z',color:'#7588ac'});icon.classList.add('item-capability');icon.dataset.view=view;capabilities.append(icon);
@@ -351,8 +365,9 @@ async function browseItems(uri,path,host){
     const expanded=row.getAttribute('aria-expanded')==='true';row.setAttribute('aria-expanded',String(!expanded));nested.hidden=expanded;
     if(!expanded && !nested.childElementCount)await browseItems(uri,item.path,nested);return;
    }
+   if(!item.views.length){notice('This Item has no readable view.',true);return;}
    let task=job.tasks.find(t=>t.id===selected&&t.operator==='read_item@1.0');if(!task){addOperator({name:'read_item',version:'1.0'},60,85+job.tasks.length*35);task=job.tasks.find(t=>t.id===selected);}
-   remember();task.params={uri:uri.replace(/\/$/,'')+item.path.split('/').map(encodeURIComponent).join('/'),view:item.views.includes('records')?'records':'bytes'};changed();notice('Data source selected: '+task.params.uri);
+   remember();task.params={uri:uri.replace(/\/$/,'')+item.path.split('/').map(encodeURIComponent).join('/'),view:ScientificViewsUI.preferred(item.views)};changed();notice('Data source selected: '+task.params.uri);
   }));
   row.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();row.click();}});
   host.append(row,nested);
@@ -381,7 +396,8 @@ function saveStepEdits(){
   const params=parameterEditor.read(),title=$('step-title').value;
   if(JSON.stringify(params)===JSON.stringify(t.params||{})&&title===(t.title||'')){$('step-save-status').textContent='';return;}
   const now=Date.now();if(!lastStepEdit||lastStepEdit.id!==t.id||now-lastStepEdit.at>750||lastStepEdit.revision!==revision)remember();
-  t.title=title;t.params=params;invalidate();lastStepEdit={id:t.id,at:now,revision};persist();
+  const viewChanged=t.params?.view!==params.view;if(viewChanged)delete params.selection;
+  t.title=title;t.params=params;if(viewChanged)inspect();invalidate();lastStepEdit={id:t.id,at:now,revision};persist();
   const card=[...$('cards').children].find(c=>c.dataset.task===t.id);if(card)card.querySelector('.step-heading strong').textContent=t.title||t.id;
   $('undo').disabled=!undo.length;$('redo').disabled=!redo.length;
   $('step-save-status').textContent='';clearTimeout(yamlTimer);yamlTimer=setTimeout(()=>guard(syncYaml)(),250);
@@ -421,7 +437,7 @@ for(const b of document.querySelectorAll('[data-tab]'))b.addEventListener('click
 $('chat-form').addEventListener('submit',guard(async e=>{e.preventDefault();requireConnected();const message=$('chat-input').value.trim();if(!message)return;chatHistory.push({role:'user',content:message});$('messages').append(el('div',message,'chat-message user'));$('chat-input').value='';$('chat-send').disabled=true;const version=revision;const draft=proposal?{...payload(),job_yaml:proposal.job_yaml,variables_yaml:proposal.variables_yaml}:payload();try{const result=await api('chat',{...draft,message,messages:chatHistory.slice(-12)});if(version!==revision){notice('Chat proposal discarded because the draft changed.');return;}proposal=result;$('messages').append(el('div',proposal.reply||'Proposed workflow','chat-message'));const detail=el('details'),summary=el('summary','Proposed YAML');detail.append(summary,el('pre',proposal.job_yaml));$('messages').append(detail);chatHistory.push({role:'assistant',content:proposal.reply});$('apply-chat').disabled=false;$('discard-chat').disabled=false;}finally{$('chat-send').disabled=false;}}));
 $('apply-chat').addEventListener('click',guard(async()=>{if(proposal){await loadDocument(proposal.job_yaml,proposal.variables_yaml);proposal=null;$('apply-chat').disabled=true;$('discard-chat').disabled=true;notice('Chat proposal applied. Review connections and preview schemas.');}}));$('discard-chat').addEventListener('click',()=>{proposal=null;$('apply-chat').disabled=true;$('discard-chat').disabled=true;notice('Proposal discarded.');});
 $('canvas').addEventListener('keydown',e=>{if(e.key==='Escape'){cancelConnection();selectedEdge=null;render();}});
-guard(async()=>{config=await api('config');$('chat-mode').textContent=config.chat_provider==='builtin'?'Built-in command assistant (not an LLM). Try “create CSV filter job”, “add OPERATOR@VERSION”, “connect STEP to STEP:INPUT”, “set variable NAME = VALUE”.':'Chat planner: '+config.chat_provider+' · proposals require your review before applying.';try{const saved=JSON.parse(localStorage.getItem('xstream-designer'));if(saved){await api('document',{job_yaml:JSON.stringify(saved.job),variables_yaml:saved.variables||'{}'});job=saved.job;automaticReadViews=new Set(saved.automaticReadViews||[]);positions=saved.positions||{};outletPosition=saved.outletPosition||null;restoreViewport(saved.viewport);variablesEditor.setText(saved.variables||'{}');}}catch(e){notice('Saved draft could not be restored: '+e.message,true);}renderLibrary();render();await Promise.allSettled([guard(syncYaml)(),guard(connect)(),guard(loadOperators)()]);})();
+guard(async()=>{config=await api('config');viewDefinitions=await api('views',{});$('chat-mode').textContent=config.chat_provider==='builtin'?'Built-in command assistant (not an LLM). Try “create CSV filter job”, “add OPERATOR@VERSION”, “connect STEP to STEP:INPUT”, “set variable NAME = VALUE”.':'Chat planner: '+config.chat_provider+' · proposals require your review before applying.';try{const saved=JSON.parse(localStorage.getItem('xstream-designer'));if(saved){await api('document',{job_yaml:JSON.stringify(saved.job),variables_yaml:saved.variables||'{}'});job=saved.job;automaticReadViews=new Set(saved.automaticReadViews||[]);positions=saved.positions||{};outletPosition=saved.outletPosition||null;restoreViewport(saved.viewport);variablesEditor.setText(saved.variables||'{}');}}catch(e){notice('Saved draft could not be restored: '+e.message,true);}renderLibrary();render();await Promise.allSettled([guard(syncYaml)(),guard(connect)(),guard(loadOperators)()]);})();
 
 window.addEventListener('resize',hideOperatorTip);document.querySelector('.library').addEventListener('scroll',hideOperatorTip);
 

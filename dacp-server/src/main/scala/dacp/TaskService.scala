@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.util.concurrent.{Semaphore,TimeUnit}
 import scala.jdk.CollectionConverters._
 import org.apache.arrow.flight._

@@ -6,14 +6,14 @@
 
 | 模块 | 实现与注册 ID | 实现专有依赖 |
 |---|---|---|
-| `dacp-plugin-datasets` | `DatasetProvider`：`directory`、`sqldb`、`mixed`；文件/JDBC 读取与组合命名空间 | H2、PostgreSQL JDBC 驱动 |
-| `dacp-plugin-formats-basic` | `FormatHandler`：`csv`、`ndjson`、`json`、`bin` | Apache Commons CSV |
-| `dacp-plugin-parquet` | `FormatHandler`：`parquet`，含扫描下推 | Parquet、Hadoop |
-| `dacp-plugin-excel` | `FormatHandler`：`excel` | Apache POI |
-| `dacp-plugin-archives` | `ContainerReader`：`zip`、`gzip`、`tar`、`tar-gzip` | Apache Commons Compress |
-| `dacp-plugin-catalog-static` | `DataCatalogProvider`：`static` | 无额外依赖 |
+| `xstream-data-files` | `DatasetProvider`：`directory`、`sqldb`、`mixed`；文件/JDBC 读取与组合命名空间 | H2、PostgreSQL JDBC 驱动 |
+| `xstream-data-formats-basic` | `FormatHandler`：`csv`、`ndjson`、`json`、`bin` | Apache Commons CSV |
+| `xstream-data-parquet` | `FormatHandler`：`parquet`，含扫描下推 | Parquet、Hadoop |
+| `xstream-data-excel` | `FormatHandler`：`excel` | Apache POI |
+| `xstream-data-archives` | `ContainerReader`：`zip`、`gzip`、`tar`、`tar-gzip` | Apache Commons Compress |
+| `xstream-data-catalog-static` | `DataCatalogProvider`：`static` | 无额外依赖 |
 | `dacp-plugin-operator-executors` | `OperatorExecutor`：`container`、`jvm`、`python`、`command` | 无额外依赖 |
-| `dacp-plugin-mounted` | `DatasetProvider`：`mounted`；通用命名空间组合 | 无额外依赖 |
+| `xstream-data-mounted` | `DatasetProvider`：`mounted`；通用命名空间组合 | 无额外依赖 |
 | `dacp-plugin-execution-file` | `ExecutionStoreProvider`、`MaterializationStoreProvider`：`file`；原子执行元数据、带配额/过期/完整性校验的输出物化 | 无额外依赖 |
 
 文件、JDBC 与 mixed 在同一 Dataset 插件中共享别名和目录实现；格式读取器独立打包，Dataset 插件不依赖 POI、Parquet 或归档实现类。JSON 默认提供原始 bytes；NDJSON 提供 records。算子程序与共享运行时仍位于 `operators/`、`examples/operators/` 和 `dacp-operator-runtime/`，它们在容器中执行，不是加载进服务器的插件。
@@ -23,8 +23,8 @@
 从仓库根目录运行：
 
 ```bash
-(cd plugins/dacp-plugin-datasets && sbt package)
-(cd plugins/dacp-plugin-excel && sbt package)
+(cd xstream-data/xstream-data-files && sbt package)
+(cd xstream-data/xstream-data-excel && sbt package)
 (cd plugins/dacp-plugin-operator-executors && sbt test)
 (cd dacp-server && sbt test 'Universal / stage')
 ```
@@ -41,7 +41,7 @@ datasets:
     source: {root: /srv/data}
 ```
 
-`plugins/` 是受版本控制的源码目录；`.dacp-plugins/` 是 Git 忽略的本地安装目录。服务器不会递归扫描源码目录。不要重复安装标准包已附带的相同插件 ID。目录、后端、格式、归档和启动器的服务文件分别为 `dacp.DataCatalogProvider`、`dacp.DatasetProvider`、`dacp.FormatHandler`、`dacp.ContainerReader`、`dacp.OperatorExecutor`。
+`plugins/` 是受版本控制的源码目录；`.dacp-plugins/` 是 Git 忽略的本地安装目录。服务器不会递归扫描源码目录。不要重复安装标准包已附带的相同插件 ID。目录、后端、格式、归档和启动器的服务文件分别为 `xstream.data.DataCatalogProvider`、`xstream.data.DatasetProvider`、`xstream.data.FormatHandler`、`xstream.data.ContainerReader`、`dacp.OperatorExecutor`。
 
 ## 架构边界与扩展
 

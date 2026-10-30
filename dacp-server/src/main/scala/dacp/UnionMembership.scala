@@ -1,5 +1,6 @@
 package dacp
 
+
 import org.apache.arrow.flight.FlightStatusCode._
 
 import dacp.union.{Json,UnionFailure}

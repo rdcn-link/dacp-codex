@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.Path
 
 /** Trusted launch plugins select commands; the server retains container lifecycle and resource control.

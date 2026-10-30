@@ -1,5 +1,7 @@
 package dacp.unionserver
 
+import _root_.xstream.data._
+
 import dacp._
 import dacp.protocol.Metadata
 import dacp.union.{Json,Rpc,UnionFailure}
@@ -10,7 +12,7 @@ import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
 /** A request-time namespace. Only approved members are readable; no catalog snapshots are cached. */
-private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,routes:DatasetRoutes,uploads:StreamInputs) extends DataCatalog {
+private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,routes:DatasetRoutes,uploads:StreamInputs,plugins:PluginEnvironment) extends DataCatalog {
   private val directories=new MemberDatasets(members)
   private val monitor=Executors.newScheduledThreadPool(2)
   private val slots=new Semaphore(32)
@@ -73,7 +75,7 @@ private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,
     val path=hops
     val(member,local)=target(name,check)
     new PublishedDataset {
-      def open(active:()=>Unit):DatasetAccess=new DatasetAccess {
+      def open(active:()=>Unit):DatasetAccess=new BatchDatasetAccess {
         private val stopped=new java.util.concurrent.atomic.AtomicBoolean()
         private val readers=java.util.concurrent.ConcurrentHashMap.newKeySet[FlightStream]()
         @volatile private var validatedAt=0L
@@ -95,9 +97,24 @@ private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,
         def list(p:String):Seq[Item]={LogicalPath.validate(p);Metadata.DataSet.parseFrom(info("datasets",local,"list",p).getAppMetadata).getItemsList.asScala.map(item).toVector}
         def describe(p:String):Item={LogicalPath.validate(p);item(Metadata.Item.parseFrom(info("datasets",local,p).getAppMetadata))}
         def count(p:String):Option[Long]={LogicalPath.validate(p);val m=Metadata.Item.parseFrom(info("datasets",local,"count",p).getAppMetadata);if(m.hasRecordCount)Some(m.getRecordCount)else None}
-        def stream(p:String,view:String,a:BufferAllocator,out:FlightProducer.ServerStreamListener,demand:()=>Unit):Unit=read(p,view,None,out,demand)
-        override def scan(p:String,scan:Scan,a:BufferAllocator,out:FlightProducer.ServerStreamListener,demand:()=>Unit):Unit=read(p,"records",Some(scan),out,demand)
-        private def read(p:String,view:String,scan:Option[Scan],out:FlightProducer.ServerStreamListener,demand:()=>Unit):Unit={
+        override def view[K,S](p:String,kind:DataViewType[K,S]):Option[DataView[K,S]]=DataViewCodecs.forType(plugins,kind) match {
+          case None=>super.view(p,kind)
+          case Some(codec)=>codec.remoteView(kind)((selection,out,context)=>{
+            LogicalPath.validate(p);ready();context.check()
+            if(!slots.tryAcquire())throw CallStatus.RESOURCE_EXHAUSTED.withDescription("proxy download capacity reached").toRuntimeException
+            var reader:FlightStream=null;var guard:java.util.concurrent.ScheduledFuture[_]=null
+            try {
+              val ticket=Metadata.Ticket.newBuilder().setDataset(local).setItem(p).setView(kind.name).setSelectionJson(com.google.protobuf.ByteString.copyFrom(Data.mapper.writeValueAsBytes(selection))).build()
+              reader=client.getStream(new Ticket(ticket.toByteArray),CallOptions.timeout(settings.timeout,TimeUnit.SECONDS),Rpc.hopOptions(path));readers.add(reader)
+              val current=reader
+              guard=monitor.scheduleWithFixedDelay(new Runnable{def run():Unit=try {ready();context.check()}catch{case NonFatal(_)=>current.cancel("proxy cancelled",null)}},0,50,TimeUnit.MILLISECONDS)
+              dacp.union.ScientificWire.consume(reader,kind.name,out,()=>{ready();context.check()})
+            }catch{case NonFatal(t)=>generic(t)}finally {if(guard!=null)guard.cancel(false);if(reader!=null){reader.cancel("proxy read ended",null);try reader.close()finally readers.remove(reader)};slots.release()}
+          })
+        }
+        def read(p:String,view:String,a:BufferAllocator,out:BatchReceiver,demand:()=>Unit):Unit=read(p,view,None,out,demand)
+        override def readScan(p:String,scan:Scan,a:BufferAllocator,out:BatchReceiver,demand:()=>Unit):Unit=read(p,"records",Some(scan),out,demand)
+        private def read(p:String,view:String,scan:Option[Scan],out:BatchReceiver,demand:()=>Unit):Unit={
           LogicalPath.validate(p);ready()
           if(!slots.tryAcquire())throw CallStatus.RESOURCE_EXHAUSTED.withDescription("proxy download capacity reached").toRuntimeException
           var reader:FlightStream=null;var guard:java.util.concurrent.ScheduledFuture[_]=null
@@ -105,7 +122,7 @@ private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,
             val ticket=Metadata.Ticket.newBuilder().setDataset(local).setItem(p).setView(view);scan.foreach(s=>ticket.setScan(ScanProtocol.encode(s)))
             reader=client.getStream(new Ticket(ticket.build().toByteArray),CallOptions.timeout(settings.timeout,TimeUnit.SECONDS),Rpc.hopOptions(path));readers.add(reader)
             val current=reader
-            guard=monitor.scheduleWithFixedDelay(new Runnable {def run():Unit=try {ready();if(out.isCancelled)current.cancel("proxy consumer cancelled",null)}catch{case NonFatal(_)=>current.cancel("proxy cancelled",null)}},0,50,TimeUnit.MILLISECONDS)
+            guard=monitor.scheduleWithFixedDelay(new Runnable {def run():Unit=try {ready()}catch{case NonFatal(_)=>current.cancel("proxy cancelled",null)}},0,50,TimeUnit.MILLISECONDS)
             def start():Unit={val dictionaries=reader.getDictionaryProvider;out.start(reader.getRoot,if(dictionaries==null || dictionaries.getDictionaryIds.isEmpty)null else dictionaries,org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT)}
             var started=false
             while({ready();demand();reader.next()}) {

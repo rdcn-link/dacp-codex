@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.util.concurrent.{CountDownLatch,TimeUnit,TimeoutException}
 import java.util.concurrent.atomic.{AtomicInteger,AtomicReference}
 import org.scalatest.funsuite.AnyFunSuite

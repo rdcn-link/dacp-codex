@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.visualization
 
+
 import cn.piflow.conf.bean.PropertyDescriptor
 import cn.piflow.conf.util.{ImageUtil, MapUtil}
 import cn.piflow.conf.{ConfigurableVisualizationStop, Port, StopGroup}

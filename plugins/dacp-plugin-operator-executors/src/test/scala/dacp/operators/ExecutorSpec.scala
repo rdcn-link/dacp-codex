@@ -1,10 +1,14 @@
 package dacp.operators
 
+import _root_.xstream.data._
+
+
 import java.nio.file.Path
 import java.util.ServiceLoader
 import scala.jdk.CollectionConverters._
 import org.scalatest.funsuite.AnyFunSuite
 import dacp.{OperatorExecutor,OperatorProgram}
+
 
 class ExecutorSpec extends AnyFunSuite {
   test("all built-in executors use the external service registration contract") {

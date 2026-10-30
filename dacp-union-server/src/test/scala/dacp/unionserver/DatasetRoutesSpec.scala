@@ -1,4 +1,6 @@
 package dacp.unionserver
+
+import _root_.xstream.data._
 import java.nio.file.Files
 import org.scalatest.funsuite.AnyFunSuite
 class DatasetRoutesSpec extends AnyFunSuite {
@@ -20,6 +22,6 @@ class DatasetRoutesSpec extends AnyFunSuite {
       assert(routes.assign("member-a","data")!=a)
       routes.retainMembers(Set("member-a"));assert(routes.resolve(b).isEmpty)
       intercept[IllegalStateException](new DatasetRoutes(dir))
-    }finally {routes.close();dacp.Data.deleteTree(dir)}
+    }finally {routes.close();xstream.data.Data.deleteTree(dir)}
   }
 }

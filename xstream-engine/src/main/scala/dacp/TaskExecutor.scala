@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.{Files,Path,StandardOpenOption}
 import java.nio.channels.{FileChannel,Channels}
 import scala.jdk.CollectionConverters._

@@ -1,6 +1,6 @@
 # Dataset providers
 
-A Dataset is a logical namespace. Providers decide how to construct it; clients continue to use public paths, `list`, `open`, and `count`. The implementation is in [DatasetPublication.scala](../plugins/dacp-plugin-datasets/src/main/scala/dacp/DatasetPublication.scala).
+A Dataset is a logical namespace. Providers decide how to construct it; clients continue to use public paths, `list`, `open`, and `count`. The implementation is in [DatasetPublication.scala](../xstream-data/xstream-data-files/src/main/scala/dacp/DatasetPublication.scala).
 
 ## Built-in providers
 
@@ -59,10 +59,10 @@ Directory and SQLDB reject `items`; use their provider-specific keys.
 
 ## Extending construction
 
-Implement `dacp.DatasetProvider` with a unique lowercase `id` and a public no-argument constructor. Register it in a JAR through:
+Implement `xstream.data.DatasetProvider` with a unique lowercase `id` and a public no-argument constructor. Register it in a JAR through:
 
 ```text
-META-INF/services/dacp.DatasetProvider
+META-INF/services/xstream.data.DatasetProvider
 ```
 
 The file contains the provider's fully qualified class name, one per line. Put the JAR and its private dependencies in the configured `plugin_directory` and restart. Compile against `dacp-plugin-api` with a `Provided` dependency, not against the server implementation. Duplicate or unknown provider IDs fail configuration loading. New providers own their private `source` and provider-specific mapping settings; the server does not need a new hardcoded Dataset kind.
@@ -73,19 +73,19 @@ The lifecycle is:
 
 1. `create(definition, context)` validates private settings and constructs a `PublishedDataset` once per server configuration. It may initialize discovery or publication metadata. Keep credentials and physical identifiers out of logs and public errors; `DatasetDefinition.toString` redacts its settings.
 2. `PublishedDataset.open(check)` creates a request-scoped `DatasetAccess`. The supplied callback aborts discovery when the request is cancelled.
-3. `DatasetAccess` implements recursive listing, immediate-child listing, metadata, exact counting, and stream delivery. Its `stream` receives the allocator, listener, and readiness callback. Honor readiness/cancellation before reading or emitting batches and close resources on success, failure, and cancellation.
+3. `DatasetAccess` implements recursive listing, immediate-child listing, metadata, exact counting, and stream delivery. Its `view(path, kind)` returns an optional typed `DataView`; `open(selection, StreamContext)` creates a single-use `DataStream`. Check cancellation before reads/emissions and close resources on success, failure, and cancellation. See [typed data streams](data-streams.md).
 
-Use `Item.views = Some(Seq("records", "bytes"))` to advertise native capabilities independently of file format handlers. Record metadata must include a compatible Arrow schema before the stream starts. The bytes view uses the existing Arrow single-binary-column envelope. Ordinary folders have no views, and folder size, time, and record count remain unknown. Missing resources should throw `FileNotFoundException`; public format failures use a fixed `FormatFailure` message without private details. The server applies URI authorization and sanitizes failures; do not throw transport exceptions containing backend diagnostics.
+Use `Item.views = Some(Seq("records", "bytes"))` to advertise native capabilities independently of file format handlers. Record metadata must include a compatible Arrow schema before the stream starts. The local bytes view emits `ByteChunk`; the network adapter uses a single-binary-column Arrow envelope. Ordinary folders have no views, and folder size, time, and record count remain unknown. Missing resources should throw `FileNotFoundException`; public format failures use a fixed `FormatFailure` message without private details. The server applies URI authorization and sanitizes failures; do not throw transport exceptions containing backend diagnostics.
 
 Native providers can implement streams directly, so MongoDB need not be modeled as a file or JDBC connection. MongoDB is not implemented in this change. The test [TestDatasetProvider](../dacp-server/src/test/scala/dacp/TestDatasetProvider.scala) demonstrates ServiceLoader discovery and native streaming through the unchanged Flight protocol.
 
 Dataset providers, [container readers](format-handlers.md#container-readers), and [format handlers](format-handlers.md) have separate responsibilities: constructing a namespace, browsing embedded containers, and interpreting data content. `mixed` and `sqldb` reuse `NamespaceAdapter`; the directory provider constructs scoped namespaces as filesystem paths are discovered. Task outputs are transient item streams and do not enter the dataset namespace.
 
-`DatasetContext` supplies batch settings, generic source settings and the current PluginEnvironment, and `createDataset` for composing installed providers, without exposing server implementation classes. Native backends can implement access directly. The server closes each request access handle; implement `PublishedDataset.close` to release provider-level resources at shutdown. Use [PluginChecks](../dacp-plugin-api/src/main/scala/dacp/PluginChecks.scala) in contributor tests, and see the [standalone example](../examples/plugins/README.md).
+`DatasetContext` supplies batch settings, generic source settings and the current PluginEnvironment, and `createDataset` for composing installed providers, without exposing server implementation classes. Native backends can implement access directly. The server closes each request access handle; implement `PublishedDataset.close` to release provider-level resources at shutdown. Use [PluginChecks](../xstream-data/xstream-data-core/src/main/scala/xstream/data/PluginChecks.scala) in contributor tests, and see the [standalone example](../examples/plugins/README.md).
 
 ## Records scans
 
-`DatasetAccess.scan` accepts a shared `Scan` request for filtering, projection, and limits. Its default implementation streams records through the common evaluator. Providers may override it for source execution, retaining residual filtering where needed. See [records scan contracts](records-scans.md#plugin-implementation-contract).
+`DataViews.Records` accepts a shared `Scan` for filtering, projection and limits when opened. Providers can perform source execution while retaining necessary residual filtering. `BatchDatasetAccess.readScan` supplies a bounded default. See [records scan contracts](records-scans.md#plugin-implementation-contract).
 
 ## Dynamic Dataset identities
 

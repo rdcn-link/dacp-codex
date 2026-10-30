@@ -1,5 +1,7 @@
 package dacp.unionserver
 
+import _root_.xstream.data._
+
 import dacp._
 import dacp.protocol.Metadata
 import org.apache.arrow.flight._

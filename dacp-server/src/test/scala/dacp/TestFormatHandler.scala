@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.Path
 
 /** Test provider exercises the same classpath registration used by external Java/Scala JARs. */

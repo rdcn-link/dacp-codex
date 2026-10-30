@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.csv
 
+
 import cn.piflow.{JobContext, JobInputStream, JobOutputStream, ProcessContext}
 import cn.piflow.conf.{ConfigurableStop, Port, StopGroup}
 import cn.piflow.conf.bean.PropertyDescriptor

@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import org.scalatest.funsuite.AnyFunSuite
 import scala.collection.mutable.ArrayBuffer
 

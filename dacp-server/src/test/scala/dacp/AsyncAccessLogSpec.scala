@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.Files
 import java.util.concurrent.{CountDownLatch,TimeUnit}
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}

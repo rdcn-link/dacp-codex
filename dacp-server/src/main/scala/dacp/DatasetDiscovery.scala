@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import dacp.protocol.Metadata
 import org.apache.arrow.flight._
 import scala.jdk.CollectionConverters._

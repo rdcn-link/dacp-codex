@@ -34,20 +34,20 @@ lazy val unionProtocol = RootProject(file("../dacp-union-protocol"))
 dependsOn(unionProtocol)
 
 // Standard distribution bundles plugins at runtime. Core compilation sees only the public API.
-lazy val pluginDatasets = RootProject(file("../plugins/dacp-plugin-datasets"))
+lazy val pluginDatasets = RootProject(file("../xstream-data/xstream-data-files"))
 dependsOn(pluginDatasets % "runtime->compile;test->compile")
-lazy val pluginFormatsBasic = RootProject(file("../plugins/dacp-plugin-formats-basic"))
+lazy val pluginFormatsBasic = RootProject(file("../xstream-data/xstream-data-formats-basic"))
 dependsOn(pluginFormatsBasic % "runtime->compile;test->compile")
-lazy val pluginParquet = RootProject(file("../plugins/dacp-plugin-parquet"))
+lazy val pluginParquet = RootProject(file("../xstream-data/xstream-data-parquet"))
 dependsOn(pluginParquet % "runtime->compile;test->compile")
-lazy val pluginExcel = RootProject(file("../plugins/dacp-plugin-excel"))
+lazy val pluginExcel = RootProject(file("../xstream-data/xstream-data-excel"))
 dependsOn(pluginExcel % "runtime->compile;test->compile")
-lazy val pluginArchives = RootProject(file("../plugins/dacp-plugin-archives"))
+lazy val pluginArchives = RootProject(file("../xstream-data/xstream-data-archives"))
 dependsOn(pluginArchives % "runtime->compile;test->compile")
-lazy val pluginCatalogStatic = RootProject(file("../plugins/dacp-plugin-catalog-static"))
+lazy val pluginCatalogStatic = RootProject(file("../xstream-data/xstream-data-catalog-static"))
 dependsOn(pluginCatalogStatic % "runtime->compile;test->compile")
 
-lazy val pluginMounted = RootProject(file("../plugins/dacp-plugin-mounted"))
+lazy val pluginMounted = RootProject(file("../xstream-data/xstream-data-mounted"))
 dependsOn(pluginMounted % "runtime->compile;test->compile")
 
 lazy val pluginExecutionFile = RootProject(file("../plugins/dacp-plugin-execution-file"))
@@ -78,3 +78,15 @@ dependsOn(operatorInference)
 
 lazy val xstreamEngine = RootProject(file("../xstream-engine"))
 dependsOn(xstreamEngine)
+
+lazy val dataScientificcodecs = RootProject(file("../xstream-data/xstream-data-scientific-codecs"))
+dependsOn(dataScientificcodecs % "runtime->compile;test->compile")
+
+lazy val dataNetcdf = RootProject(file("../xstream-data/xstream-data-netcdf"))
+dependsOn(dataNetcdf % "runtime->compile;test->compile")
+
+lazy val dataFits = RootProject(file("../xstream-data/xstream-data-fits"))
+dependsOn(dataFits % "runtime->compile;test->compile")
+
+lazy val dataFasta = RootProject(file("../xstream-data/xstream-data-fasta"))
+dependsOn(dataFasta % "runtime->compile;test->compile")

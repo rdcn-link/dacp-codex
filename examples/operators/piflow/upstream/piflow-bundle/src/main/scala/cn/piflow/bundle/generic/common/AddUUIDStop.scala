@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.common
 
+
 import java.util.UUID
 
 import cn.piflow.conf.bean.PropertyDescriptor

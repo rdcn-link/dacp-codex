@@ -68,7 +68,7 @@ class CsvFileProvider extends DatasetProvider {
 将代码编译为 JAR，仅依赖独立的 `dacp-plugin-api`（使用与服务器匹配的版本和 Scala 版本，以 `Provided` 方式依赖）。在 JAR 内创建以下服务注册文件：
 
 ```text
-META-INF/services/dacp.DatasetProvider
+META-INF/services/xstream.data.DatasetProvider
 ```
 
 文件内容为实现类全名：
@@ -94,9 +94,9 @@ datasets:
 
 ### 文件与结构化内容插件
 
-文件插件实现 `FormatHandler`，在 `META-INF/services/dacp.FormatHandler` 注册。处理器自行校验私有 `options` 参数；例如 Excel 的设置为 `options: {sheet: Orders, header_row: 2}`。通用 `format` 和 `schema` 保持在读取配置顶层。
+文件插件实现 `FormatHandler`，在 `META-INF/services/xstream.data.FormatHandler` 注册。处理器自行校验私有 `options` 参数；例如 Excel 的设置为 `options: {sheet: Orders, header_row: 2}`。通用 `format` 和 `schema` 保持在读取配置顶层。
 
-需要浏览文件内部逻辑对象时，实现 `StructuredFileHandler`，通过同一个格式服务文件注册。其 `openStructure` 返回 `DatasetAccess`，可直接流式读取内部对象，不要求提取为临时文件。文件根表现为带原始 bytes 视图的 folder，子对象显式声明 `records` 或 `bytes`。归档读取器可实现 `ContainerReader` 并在 `META-INF/services/dacp.ContainerReader` 注册，无需再修改核心格式注册表。
+需要浏览文件内部逻辑对象时，实现 `StructuredFileHandler`，通过同一个格式服务文件注册。其 `openStructure` 返回 `DatasetAccess`，可直接流式读取内部对象，不要求提取为临时文件。文件根表现为带原始 bytes 视图的 folder，子对象显式声明 `records` 或 `bytes`。归档读取器可实现 `ContainerReader` 并在 `META-INF/services/xstream.data.ContainerReader` 注册，无需再修改核心格式注册表。
 
 独立插件 API 位于 [dacp-plugin-api](../../dacp-plugin-api)，可运行的贡献示例和构建、安装步骤位于 [examples/plugins](../../examples/plugins/README_zh.md)。`PluginChecks.listing` 提供可复用的元数据契约检查。服务端会关闭每次请求的访问句柄，并在关闭服务时释放 provider 资源。NetCDF、FITS 的具体解析插件及数组、图像新视图尚未实现；现有接口允许贡献者定义文件内部对象，不能静默把数组展开为记录。
 

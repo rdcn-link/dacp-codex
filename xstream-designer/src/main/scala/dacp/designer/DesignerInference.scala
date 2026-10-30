@@ -1,5 +1,7 @@
 package xstream.designer
 
+import _root_.xstream.data._
+
 import com.fasterxml.jackson.databind.JsonNode
 import dacp._
 import scala.jdk.CollectionConverters._
@@ -10,7 +12,8 @@ final class DesignerInference(
   item:(String,String,StreamCancel)=>StreamDescriptor,
   sampleItem:(String,String,PreviewLimits,StreamCancel)=>Option[OutputSample]=(_,_,_,_)=>None,
   queryItem:Option[(String,String,Scan,StreamCancel)=>StreamDescriptor]=None,
-  querySample:Option[(String,String,Scan,PreviewLimits,StreamCancel)=>Option[OutputSample]]=None,origin:Option[String]=None) {
+  querySample:Option[(String,String,Scan,PreviewLimits,StreamCancel)=>Option[OutputSample]]=None,origin:Option[String]=None,
+  sourceItem:Option[(String,String,Option[com.fasterxml.jackson.databind.JsonNode],Option[PreviewLimits],StreamCancel)=>StreamDescriptor]=None) {
   private val edits=new InferenceEdits
   def infer(job:JsonNode,cancel:StreamCancel,preview:Option[PreviewLimits]=None,onStep:(String,InferenceResult)=>Unit=(_,_)=>(),editSession:Option[String]=None):JsonNode={
     // Reserve half of the 256 KiB response budget for selected-output copies.
@@ -49,6 +52,10 @@ final class DesignerInference(
         val view=ReadItemParameters.view(parameters)
         val scan=ReadItemParameters.query(parameters)
         val descriptor=scan.map(q=>queryItem.getOrElse(throw new IllegalArgumentException("Item query inference unavailable"))(uri,view,q,cancel)).getOrElse(item(uri,view,cancel))
+        if(scan.isEmpty && sourceItem.nonEmpty && !descriptor.representations.exists(Set("records","bytes"))){
+          InferenceResult(Map("result"->sourceItem.get(uri,view,ReadItemParameters.selection(parameters),limits,cancel)))
+        }else {
+        require(ReadItemParameters.selection(parameters).isEmpty,"selection requires a scientific view")
         val base=InferenceResult(Map("result"->descriptor))
         limits.map{limit=>
           try OutputSamples.attach(base,scan.map(q=>querySample.getOrElse(throw new IllegalArgumentException("Item query preview unavailable"))(uri,descriptor.representations.head,q,limit,cancel)).getOrElse(sampleItem(uri,descriptor.representations.head,limit,cancel)).map("result"->_).toMap,limit)
@@ -58,6 +65,8 @@ final class DesignerInference(
             case scala.util.control.NonFatal(e)=>base.copy(diagnostics=Vector(InferenceDiagnostic("warning","sample_unavailable",Option(e.getMessage).getOrElse("Sample unavailable"))))
           }
         }.getOrElse(base)
+        }
+
       }else operator(reference,InferenceRequest(inputs,params,limits),cancel)
       cancel.active()
       inferred

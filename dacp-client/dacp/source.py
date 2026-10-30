@@ -1,5 +1,6 @@
 """Pull-only Flight SDK. A failed reader is terminal; reopen the source to retry."""
 import io
+import json
 from pathlib import Path
 import os
 from dataclasses import dataclass
@@ -167,19 +168,25 @@ class Stream:
     def __init__(self, client, ticket, views=("records", "bytes"), item_schema=None):
         self._client, self._ticket, self._owns_client = client, ticket, False
         self.views, self.item_schema = views, item_schema
+        self._scientific_readers = set()
     @public_errors
     def close(self):
+        for reader in tuple(self._scientific_readers): reader.close()
         if self._owns_client: self._client.close()
     def __enter__(self): return self
     def __exit__(self, *args): self.close()
     @public_errors
-    def _reader(self, view):
+    def _reader(self, view, selection=None):
         if view not in self.views:
             raise ValueError(f"item does not support {view} view")
         t = pb.Ticket.FromString(self._ticket.ticket)
         if t.HasField("scan") and view != "records":
             raise ValueError("scan options require records view")
         t.view = view
+        if selection is not None:
+            if not isinstance(selection, dict): raise ValueError("selection must be an object")
+            t.selection_json = json.dumps(selection, ensure_ascii=False, allow_nan=False).encode("utf-8")
+            if len(t.selection_json) > 1024 * 1024: raise ValueError("selection too large")
         return self._client.do_get(flight.Ticket(t.SerializeToString()))
     def as_records(self):
         reader = self._reader("records")
@@ -193,6 +200,78 @@ class Stream:
             except TRANSPORT_ERRORS: pass
     @public_errors
     def as_bytes(self): return io.BufferedReader(_Bytes(self._reader("bytes")))
+
+    def as_view(self, view, selection=None):
+        """Read a registered scientific view as a descriptor and bounded metadata/payload blocks."""
+        reader = ScientificReader(self._reader(view, {} if selection is None else selection), view,
+                                  lambda r: self._scientific_readers.discard(r))
+        self._scientific_readers.add(reader)
+        return reader
+    def as_array(self, selection=None): return self.as_view("array", selection)
+    def as_image(self, selection=None): return self.as_view("image", selection)
+    def as_sequences(self, selection=None): return self.as_view("sequence", selection)
+
+@dataclass(frozen=True)
+class ScientificChunk:
+    metadata: dict
+    data: bytes
+    @property
+    def text(self): return self.data.decode("utf-8")
+
+class ScientificReader:
+    """Single-pass scientific blocks. The descriptor is available even for an empty stream."""
+    @public_errors
+    def __init__(self, reader, view, released=lambda r: None):
+        self._reader, self._released, self._closed = reader, released, False
+        try:
+            schema = reader.schema
+            if (schema.names != ["metadata", "data"] or schema.types != [pa.string(), pa.binary()]
+                    or (schema.metadata or {}).get(b"xstream.view") != view.encode("utf-8")):
+                raise ValueError("invalid scientific envelope")
+            self.descriptor = self._json((schema.metadata or {}).get(b"xstream.descriptor", b""))
+            self.view = view
+            self._batches = iter(reader)
+            self._pending = iter(())
+        except Exception:
+            reader.cancel()
+            raise
+    @staticmethod
+    def _json(data):
+        if len(data) > 1024 * 1024: raise ValueError("scientific metadata too large")
+        value = json.loads(data)
+        if not isinstance(value, dict): raise ValueError("scientific metadata must be an object")
+        return value
+    def __iter__(self): return self
+    @public_errors
+    def __next__(self):
+        if self._closed: raise StopIteration
+        try:
+            while True:
+                pair = next(self._pending, None)
+                if pair is not None:
+                    metadata, data = pair
+                    if metadata is None or data is None or len(data) > 16 * 1024 * 1024:
+                        raise ValueError("invalid scientific block")
+                    return ScientificChunk(self._json(metadata.encode("utf-8")), data)
+                chunk = next(self._batches)
+                if chunk.data is None: continue
+                batch = chunk.data
+                if batch.num_rows > 1024: raise ValueError("too many scientific blocks")
+                self._pending = iter(zip(batch.column(0).to_pylist(), batch.column(1).to_pylist()))
+        except StopIteration:
+            self.close()
+            raise
+        except Exception:
+            self.close()
+            raise
+    @public_errors
+    def close(self):
+        if not self._closed:
+            self._closed = True
+            try: self._reader.cancel()
+            finally: self._released(self)
+    def __enter__(self): return self
+    def __exit__(self, *args): self.close()
 
 class _Bytes(io.RawIOBase):
     def __init__(self, reader):

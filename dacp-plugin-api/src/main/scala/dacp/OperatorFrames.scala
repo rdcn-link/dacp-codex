@@ -1,5 +1,6 @@
 package dacp
 
+
 import java.io.{DataInputStream, DataOutputStream, InputStream, OutputStream, EOFException}
 
 /** Language-neutral operator stdout / Flight envelope. Logs belong on stderr. */

@@ -1,10 +1,12 @@
 package dacp.unionserver
 
+import _root_.xstream.data._
+
 import dacp._
 import dacp.union.{Rpc,Json}
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import org.apache.arrow.flight.FlightProducer.ServerStreamListener
+import _root_.xstream.data.BatchReceiver
 import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.vector.{VectorSchemaRoot,VarBinaryVector}
 import org.apache.arrow.vector.ipc.ArrowStreamReader
@@ -26,7 +28,7 @@ private[unionserver] final class StreamInputs {
     val input=Option(inputs.get(id)).getOrElse(throw new java.io.FileNotFoundException())
     if(Rpc.identity!=input.owner)throw org.apache.arrow.flight.CallStatus.UNAUTHORIZED.withDescription("upload consumer denied").toRuntimeException
     new PublishedDataset {
-      def open(check:()=>Unit):DatasetAccess=new DatasetAccess {
+      def open(check:()=>Unit):DatasetAccess=new BatchDatasetAccess {
         def describe(path:String):Item={
           LogicalPath.validate(path);val h=input.headers.getOrElse(path.stripPrefix("/"),throw new java.io.FileNotFoundException())
           val view=h.path("representation").asText
@@ -36,7 +38,7 @@ private[unionserver] final class StreamInputs {
         def list():Seq[Item]=input.headers.keys.toSeq.sorted.map(p=>describe("/"+p))
         def list(path:String):Seq[Item]={require(path=="/");list()}
         def count(path:String):Option[Long]=None
-        def stream(path:String,view:String,a:BufferAllocator,out:ServerStreamListener,ready:()=>Unit):Unit={
+        def read(path:String,view:String,a:BufferAllocator,out:BatchReceiver,ready:()=>Unit):Unit={
           val item=describe(path);require(item.views.exists(_.contains(view)),"unsupported upload view")
           val port=path.stripPrefix("/");require(input.claimed.add(port),"upload already consumed")
           val root=VectorSchemaRoot.create(item.schema.get,a)

@@ -1,5 +1,6 @@
 package dacp.repository
 
+
 import java.nio.file.{Files, Path, StandardCopyOption, StandardOpenOption, LinkOption}
 import java.nio.channels.FileChannel
 import java.security.MessageDigest
@@ -63,7 +64,7 @@ object Repository {
         val v=e.getValue
         require(v.isObject && v.fieldNames.asScala.toSet.subsetOf(Set("representations","formats","schema")),"invalid port settings")
         require(v.path("representations").isArray && v.path("representations").size()>0 && v.path("formats").isArray,"invalid port representations/formats")
-        require(v.path("representations").elements.asScala.forall(x=>Set("bytes","records")(x.asText)),"unsupported representation")
+        require(v.path("representations").elements.asScala.forall(x=>x.isTextual && x.asText.matches("[a-z][a-z0-9_-]*")),"unsupported representation")
       }
     }
   }

@@ -1,8 +1,10 @@
 package example
 
+
 import com.fasterxml.jackson.databind.JsonNode
 import dacp.operator.BytesOperator
 import dacp.{StreamDescriptor,PreviewLimits,OutputSample}
+
 
 /** The SDK owns protocol, input discovery and stream cleanup. */
 object SimpleIdentity extends BytesOperator {

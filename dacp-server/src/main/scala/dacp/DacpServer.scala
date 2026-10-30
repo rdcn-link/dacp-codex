@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.Path
 import org.apache.arrow.flight.{FlightServer,Location}
 import org.apache.arrow.memory.RootAllocator

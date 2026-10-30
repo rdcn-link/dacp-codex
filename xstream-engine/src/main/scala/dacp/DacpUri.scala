@@ -1,4 +1,5 @@
 package dacp
+
 import java.net.URI
 object DacpUri {
   def parse(value: String, datasetRequired: Boolean = true): URI = {

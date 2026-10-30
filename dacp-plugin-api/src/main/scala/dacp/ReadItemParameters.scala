@@ -1,12 +1,14 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.net.URI
 import scala.jdk.CollectionConverters._
 
 /** Shared author-facing source contract. SQL is lowered to the plugin Scan contract. */
 object ReadItemParameters {
   def address(params:java.util.Map[String,Object],origin:Option[String]=None):String={
-    require(params.keySet.asScala.toSet.subsetOf(Set("uri","view","sql")),"unsupported read_item parameter")
+    require(params.keySet.asScala.toSet.subsetOf(Set("uri","view","sql","selection")),"unsupported read_item parameter")
     require(params.get("uri").isInstanceOf[String],"read_item requires uri")
     val value=params.get("uri").toString;val u=URI.create(value)
     require(u.getQuery==null && u.getFragment==null && u.getUserInfo==null,"Item address cannot contain credentials, query or fragment")
@@ -15,14 +17,23 @@ object ReadItemParameters {
     else require(u.getScheme=="dacp" && u.getHost!=null && (u.getPort == -1 || (u.getPort>0 && u.getPort<=65535)),"uri must be context:/dataset/item or a complete DACP Item URI")
     val parts=Option(u.getPath).getOrElse("").stripPrefix("/").split("/",-1)
     require(parts.length>=2 && parts.forall(p=>p.nonEmpty && p!="." && p!="..") && !value.exists(_.isControl) && !value.contains("\\"),"read_item requires a dataset and Item path")
-    view(params);query(params)
+    view(params);query(params);selection(params)
     if(context)origin.map(_.stripSuffix("/")+u.getRawPath).getOrElse(value)else value
   }
   def view(params:java.util.Map[String,Object]):String={
     require(!params.containsKey("view") || params.get("view").isInstanceOf[String],"view must be a string")
     val v=Option(params.get("view")).map(_.toString).getOrElse(if(params.containsKey("sql"))"records"else"auto")
-    require(Set("bytes","records","auto")(v) && (!params.containsKey("view") || v!="auto"),"unsupported read_item view")
+    require(v.matches("[a-z][a-z0-9_-]*") && (!params.containsKey("view") || v!="auto"),"unsupported read_item view")
     require(!params.containsKey("sql") || v=="records","sql requires records view");v
+  }
+  def selection(params:java.util.Map[String,Object]):Option[com.fasterxml.jackson.databind.JsonNode]={
+    require(!params.containsKey("selection") || params.get("selection")!=null,"selection must be a mapping")
+    Option(params.get("selection")).map { raw=>
+      val n=Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](raw)
+      require(n.isObject && Data.mapper.writeValueAsBytes(n).length<=DataViewCodecs.MaxMetadataBytes,"selection must be a bounded mapping")
+      require(!params.containsKey("sql") && !Set("records","bytes")(view(params)),"selection requires a scientific view and cannot use sql")
+      n
+    }
   }
   def query(params:java.util.Map[String,Object]):Option[Scan]={
     require(!params.containsKey("sql") || params.get("sql")!=null,"sql must be a string")

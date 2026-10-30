@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import com.fasterxml.jackson.databind.JsonNode
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
@@ -45,7 +47,18 @@ object WorkflowInference {
           require(meta.getKind=="data","input must be a data item")
           val view=ItemViews.select(binding.view,meta.getViewsList.asScala)
           val schema=if(view=="records" && !meta.getArrowSchema.isEmpty)Some(binding.scan.map(_.bind(info.getSchema).outputSchema).getOrElse(info.getSchema))else None
-          InferenceResult(Map("result"->StreamDescriptor(Set(view),Set(meta.getFormat),schema,if(view=="bytes" || schema.nonEmpty)"known"else "unknown")))
+          if(Set("bytes","records")(view))InferenceResult(Map("result"->StreamDescriptor(Set(view),Set(meta.getFormat),schema,if(view=="bytes" || schema.nonEmpty)"known"else "unknown")))
+          else {
+            val codec=DataViewCodecs.named(config.plugins,view)
+            val selection=codec.selection(binding.selection.getOrElse(Data.mapper.createObjectNode()))
+            val ticket=dacp.protocol.Metadata.Ticket.newBuilder().setDataset(parts(0)).setItem("/"+parts(1)).setView(view)
+              .setSelectionJson(com.google.protobuf.ByteString.copyFrom(Data.mapper.writeValueAsBytes(codec.selectionJson(selection)))).build()
+            val typed=codec.remoteView(codec.kind){(_,out,c)=>
+              val reader=client.getStream(new org.apache.arrow.flight.Ticket(ticket.toByteArray))
+              try dacp.union.ScientificWire.consume(reader,view,out,c.check)finally {reader.cancel("metadata read complete",null);reader.close()}
+            }.get.open(selection,StreamContext(allocator,()=>cancel.active()))
+            InferenceResult(Map("result"->DataViewInference.inspect(codec)(typed,selection,meta.getFormat,None,()=>cancel.active())))
+          }
         }finally client.close()
       case None=>OperatorInference.withDocker { docker=>
         val tmp=java.nio.file.Files.createTempDirectory("dacp-infer-source-")

@@ -1,10 +1,12 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.{Files,Path}
 import scala.jdk.CollectionConverters._
 import org.yaml.snakeyaml.Yaml
 
-case class InputBinding(uri: Option[String] = None, task: Option[String] = None, port: String = "result", view: String = "bytes", scan:Option[Scan]=None)
+case class InputBinding(uri: Option[String] = None, task: Option[String] = None, port: String = "result", view: String = "bytes", scan:Option[Scan]=None, selection:Option[com.fasterxml.jackson.databind.JsonNode]=None)
 case class Task(id: String, inputs: Map[String,InputBinding], operator: String, params: java.util.Map[String,Object], node: Option[String] = None, source: Option[SourceOperator] = None, title: Option[String] = None, outputPorts:Seq[String]=Seq.empty, proxyPath:Vector[String]=Vector.empty)
 case class PlacementDecision(step:String,node:String,reason:String,requestedSource:Option[String]=None,resolvedSource:Option[String]=None)
 case class JobPlan(tasks: Vector[Task], outputs: Map[String,(String,String)], name:String="Job",placements:Vector[PlacementDecision]=Vector.empty)
@@ -21,7 +23,7 @@ object Jobs {
   def readBinding(t:Task):Option[InputBinding]=if(t.operator!=ReadItem)None else {
     require(t.inputs.isEmpty && t.source.isEmpty,"read_item is a zero-input transport source")
     val address=ReadItemParameters.address(t.params)
-    val b=InputBinding(uri=Some(address),view=ReadItemParameters.view(t.params),scan=ReadItemParameters.query(t.params))
+    val b=InputBinding(uri=Some(address),view=ReadItemParameters.view(t.params),scan=ReadItemParameters.query(t.params),selection=ReadItemParameters.selection(t.params))
     Some(b)
   }
 

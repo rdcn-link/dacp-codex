@@ -1,5 +1,6 @@
 package xstream.designer
 
+
 import org.scalatest.funsuite.AnyFunSuite
 import dacp.union.Json
 import com.sun.net.httpserver.HttpServer

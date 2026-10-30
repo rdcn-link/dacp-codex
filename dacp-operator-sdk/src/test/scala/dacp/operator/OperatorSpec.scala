@@ -1,5 +1,7 @@
 package dacp.operator
 
+import _root_.xstream.data._
+
 import java.io.{ByteArrayInputStream,ByteArrayOutputStream}
 import java.nio.file.Files
 import org.scalatest.funsuite.AnyFunSuite
@@ -19,7 +21,7 @@ class OperatorSpec extends AnyFunSuite {
   test("bytes template reads Arrow input and applies parameters") {
     val dir=Files.createTempDirectory("operator-sdk-input-")
     val allocator=new org.apache.arrow.memory.RootAllocator()
-    val root=org.apache.arrow.vector.VectorSchemaRoot.create(dacp.PluginSchemas.bytes,allocator)
+    val root=org.apache.arrow.vector.VectorSchemaRoot.create(xstream.data.PluginSchemas.bytes,allocator)
     try {
       val vector=root.getVector(0).asInstanceOf[org.apache.arrow.vector.VarBinaryVector]
       vector.allocateNew();vector.setSafe(0,"hello".getBytes("UTF-8"));root.setRowCount(1)

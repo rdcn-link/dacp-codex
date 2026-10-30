@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.script
 
+
 import cn.piflow.bundle.util.RemoteShellExecutor
 import cn.piflow.conf.bean.PropertyDescriptor
 import cn.piflow.conf.util.{ImageUtil, MapUtil}

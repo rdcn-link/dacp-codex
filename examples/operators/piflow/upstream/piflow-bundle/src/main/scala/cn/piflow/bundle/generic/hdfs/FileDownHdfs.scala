@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.hdfs
 
+
 import java.io.InputStream
 import java.net.{HttpURLConnection, URL}
 

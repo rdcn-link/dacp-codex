@@ -1,5 +1,7 @@
 package dacp.client
 
+import _root_.xstream.data._
+
 import dacp.protocol.Metadata
 import scala.jdk.CollectionConverters._
 

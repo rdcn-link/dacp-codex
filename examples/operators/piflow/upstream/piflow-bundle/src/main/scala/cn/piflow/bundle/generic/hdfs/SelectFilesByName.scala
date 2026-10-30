@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.hdfs
 
+
 import java.util.regex.Pattern
 
 import cn.piflow.conf.bean.PropertyDescriptor

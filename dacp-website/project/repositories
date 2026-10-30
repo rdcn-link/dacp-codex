@@ -1,3 +1,5 @@
 [repositories]
 local
 maven-central: https://repo.maven.apache.org/maven2
+
+unidata: https://artifacts.unidata.ucar.edu/repository/unidata-all

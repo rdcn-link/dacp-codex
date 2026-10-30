@@ -1,9 +1,12 @@
 package xstream.designer
 
+import _root_.xstream.data._
+
 import com.fasterxml.jackson.databind.JsonNode
 import com.sun.net.httpserver.{HttpExchange,HttpServer}
 import dacp.client.{Source,Dataset,TlsConfig,WorkflowVariables}
-import dacp.{OperatorInferenceService,PluginEnvironment,InferenceWorkerSettings,StreamCancel,StreamDescriptor,ItemViews,Scan,ReadItemParameters,Predicate,Literal,PreviewLimits,OutputSample,OutputSamples,InferenceDiagnostic}
+import dacp.{OperatorInferenceService,InferenceWorkerSettings,StreamCancel,StreamDescriptor,ReadItemParameters,PreviewLimits,OutputSample,OutputSamples,InferenceDiagnostic}
+import _root_.xstream.data.{PluginEnvironment,ItemViews,Scan,Predicate,Literal}
 import dacp.union.{Json,YamlDocument}
 import java.net.{InetSocketAddress,URI}
 import java.net.http.{HttpClient,HttpRequest,HttpResponse}
@@ -46,13 +49,13 @@ final class Designer(config:JsonNode) extends AutoCloseable {
   private val inferenceCache=Path.of(config.path("operator_cache").asText(".designer-operator-cache")).toAbsolutePath
   private val inferencePlugins=new PluginEnvironment(Option(config.get("plugin_directory")).map(n=>Path.of(n.asText)))
   private val workerSettings=InferenceWorkerSettings.read(Option(config.get("inference_workers")).map(n=>Json.mapper.convertValue(n,classOf[java.util.LinkedHashMap[String,Object]]).asInstanceOf[Object]))
-  private val localCatalog=new dacp.ConfiguredDataCatalog(config.path("local_catalog"),inferencePlugins)
+  private val localCatalog=new xstream.data.ConfiguredDataCatalog(config.path("local_catalog"),inferencePlugins)
   private val nodeConnections=config.path("nodes").elements.asScala.toVector
   private val connections=(Vector(configuredTarget).filter(_.has("url"))++nodeConnections).groupBy(n=>Json.origin(n.path("url").asText)).values.map(_.head).toVector.sortBy(_.path("url").asText)
   private def connection(value:String):JsonNode=connections.find(n=>Json.origin(n.path("url").asText)==CatalogConnections.origin(value)).getOrElse(throw new IllegalArgumentException("Node is not configured"))
   private val inferenceRuntime=new OperatorInferenceService(inferenceCache.resolve("local"),Seq(configuredRepository.path("url").asText),
     inferenceCache,if(config.has("operator_max_bytes"))Json.number(config,"operator_max_bytes",1,8L*1024*1024*1024)else 8L*1024*1024*1024,inferencePlugins,workerSettings)
-  private val inference=new DesignerInference(inferenceRuntime.infer,describeItem,previewItem,Some(describeQueriedItem),Some(previewQueriedItem),None)
+  private val inference=new DesignerInference(inferenceRuntime.infer,describeItem,previewItem,Some(describeQueriedItem),Some(previewQueriedItem),None,Some(inferSource))
   private def withItem[A](value:String,cancel:StreamCancel)(f:(Dataset,String)=>A):A={
     val uri=URI.create(value)
     require(uri.getScheme=="dacp" && uri.getHost!=null && uri.getUserInfo==null && uri.getQuery==null && uri.getFragment==null,"expected public Item URI")
@@ -66,6 +69,37 @@ final class Designer(config:JsonNode) extends AutoCloseable {
     require(parts.length==2 && parts.forall(_.nonEmpty),"expected dataset and Item path")
     cancel.active()
     Using.resource(cancel.add(Source.open(origin+"/"+parts(0),credentials,15)))(dataset=>f(dataset,"/"+parts(1)))
+  }
+  private def inferSource(value:String,requested:String,selection:Option[JsonNode],limits:Option[PreviewLimits],cancel:StreamCancel):StreamDescriptor={
+    val base=if(value.startsWith("context:")){
+      val parts=URI.create(value).getPath.stripPrefix("/").split("/",2)
+      Using.resource(localCatalog.open(parts(0),()=>cancel.active())) {ds=>
+        val item=ds.describe("/"+parts(1));val view=ItemViews.select(requested,inferencePlugins.views(item))
+        if(Set("records","bytes")(view))describeItem(value,view,cancel)
+        else {
+          val codec=DataViewCodecs.named(inferencePlugins,view)
+          val selected=codec.selection(selection.getOrElse(Json.obj()))
+          Using.resource(new org.apache.arrow.memory.RootAllocator(Long.MaxValue)){a=>
+            val stream=ds.requireView("/"+parts(1),codec.kind).open(selected,StreamContext(a,()=>cancel.active()))
+            dacp.DataViewInference.inspect(codec)(stream,selected,item.format,limits,()=>cancel.active())
+          }
+        }
+      }
+    }else withItem(value,cancel){(dataset,path)=>
+      val metadata=dataset.describe(path);val view=ItemViews.select(requested,metadata.views)
+      if(Set("records","bytes")(view))describeItem(value,view,cancel)
+      else {
+        val codec=DataViewCodecs.named(inferencePlugins,view)
+        val selected=codec.selection(selection.getOrElse(Json.obj()))
+        Using.resource(dataset.open(path)){item=>
+          dacp.DataViewInference.inspect(codec)(item.asView(codec.kind,selected),selected,metadata.format,limits,()=>cancel.active())
+        }
+      }
+    }
+    if(base.representations.exists(Set("records","bytes"))){
+      require(selection.isEmpty,"selection requires a scientific view")
+      base.copy(sample=limits.flatMap(l=>previewItem(value,base.representations.head,l,cancel)))
+    }else base
   }
   private def describeItem(value:String,view:String,cancel:StreamCancel):StreamDescriptor={
     if(value.startsWith("context:")){
@@ -178,6 +212,10 @@ final class Designer(config:JsonNode) extends AutoCloseable {
   private def document(n:JsonNode,empty:Boolean=false):JsonNode={val j=Documents.job(n.path("job_yaml").asText,empty);Documents.variables(n.path("variables_yaml").asText);j}
   private def api(path:String,n:JsonNode):JsonNode=path match {
     case "/api/operators"=>fetchOperators()
+    case "/api/views"=>
+      val out=Json.obj()
+      DataViewCodecs.all(inferencePlugins).foreach { c=>val n=out.putObject(c.kind.name);n.set[JsonNode]("selection",c.selectionSchema) }
+      out
     case "/api/catalogs"=>
       val a=Json.mapper.createArrayNode();a.addObject().put("name","In-context catalog").put("uri","context:/")
       connections.foreach(c=>a.addObject().put("name",URI.create(c.path("url").asText).getAuthority).put("uri",c.path("url").asText.stripSuffix("/")+"/"));a
@@ -233,7 +271,7 @@ final class Designer(config:JsonNode) extends AutoCloseable {
       case scala.util.control.NonFatal(e)=>try event(Json.obj().put("event","error").put("message",Option(e.getMessage).getOrElse("Inference failed")))catch{case _:java.io.IOException=>()}
     }finally x.close()
   }
-  private val assets=Map("/inference-state.js"->("inference-state.js","application/javascript"),"/validation.js"->("validation.js","application/javascript"),"/schema-types.js"->("schema-types.js","application/javascript"),"/yaml-editor.js"->("yaml-editor.js","application/javascript"),"/editor-licenses.txt"->("editor-licenses.txt","text/plain; charset=utf-8"),"/parameters.js"->("parameters.js","application/javascript"),"/"->("index.html","text/html; charset=utf-8"),"/app.js"->("app.js","application/javascript"),"/style.css"->("style.css","text/css"),"/dacp-logo.png"->("dacp-logo.png","image/png"),"/favicon.ico"->("dacp-favicon.png","image/png"))
+  private val assets=Map("/scientific-views.js"->("scientific-views.js","application/javascript"),"/inference-state.js"->("inference-state.js","application/javascript"),"/validation.js"->("validation.js","application/javascript"),"/schema-types.js"->("schema-types.js","application/javascript"),"/yaml-editor.js"->("yaml-editor.js","application/javascript"),"/editor-licenses.txt"->("editor-licenses.txt","text/plain; charset=utf-8"),"/parameters.js"->("parameters.js","application/javascript"),"/"->("index.html","text/html; charset=utf-8"),"/app.js"->("app.js","application/javascript"),"/style.css"->("style.css","text/css"),"/dacp-logo.png"->("dacp-logo.png","image/png"),"/favicon.ico"->("dacp-favicon.png","image/png"))
   private def send(x:HttpExchange,status:Int,mime:String,data:Array[Byte]):Unit={
     x.getResponseHeaders.set("Content-Type",mime);x.getResponseHeaders.set("Cache-Control","no-store");x.getResponseHeaders.set("X-Content-Type-Options","nosniff")
     x.getResponseHeaders.set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")

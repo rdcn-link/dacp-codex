@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import org.apache.arrow.flight._
 import dacp.protocol.Metadata
 import org.apache.arrow.memory.BufferAllocator
@@ -23,8 +25,12 @@ object ItemSource {
     val view=ItemViews.select(binding.view,meta.getViewsList.asScala)
     val ticketBuilder=Metadata.Ticket.newBuilder().setDataset(split(0)).setItem("/"+split(1)).setView(view)
     binding.scan.foreach { scan=>require(view=="records","sql requires records view");scan.bind(info.getSchema);ticketBuilder.setScan(ScanProtocol.encode(scan)) }
+    binding.selection.foreach(n=>ticketBuilder.setSelectionJson(com.google.protobuf.ByteString.copyFrom(Data.mapper.writeValueAsBytes(n))))
     val ticket=ticketBuilder.build()
     val stream=c.add(client.getStream(new Ticket(ticket.toByteArray)))
+    if(!Set("records","bytes")(view))return ItemFrameStreams.remote(meta.getFormat,c){out=>
+      try dacp.union.ScientificWire.consume(stream,view,out,()=>c.active())finally {stream.close();client.close()}
+    }
     new FrameSource {
       private var began=false;private var ended=false;private var pending=Iterator.empty[Array[Byte]]
       def next():Option[OperatorFrame]={

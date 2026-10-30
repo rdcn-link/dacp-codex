@@ -1,4 +1,7 @@
 package dacp.website
+
+import _root_.xstream.data._
+
 import org.scalatest.funsuite.AnyFunSuite
 import java.net.URI
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}

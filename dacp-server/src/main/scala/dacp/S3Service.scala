@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import com.sun.net.httpserver.{HttpExchange,HttpsServer,HttpsConfigurator}
 import java.net.{InetSocketAddress,URLDecoder,URLEncoder}
 import java.nio.charset.StandardCharsets.UTF_8
@@ -172,30 +174,25 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
     length.foreach(n=>headers.set("Content-Length",n.toString))
     val status=if(range.nonEmpty)206 else 200
     if(e.getRequestMethod=="HEAD" || length.contains(0L)){e.sendResponseHeaders(status,-1);return}
-    var root:VectorSchemaRoot=null;var position=0L;var written=0L;var complete=false
-    val listener=new ServerStreamListener {
-      def isReady:Boolean=true
-      def isCancelled:Boolean=closed.get()
-      def setOnCancelHandler(r:Runnable):Unit=()
-      def start(r:VectorSchemaRoot,d:DictionaryProvider,o:IpcOption):Unit={require(r.getSchema==PluginSchemas.bytes && d==null,"invalid bytes stream");root=r;e.sendResponseHeaders(status,length.getOrElse(0L))}
-      def putNext():Unit={
-        check();require(root!=null,"stream not started")
-        val vector=root.getVector(0).asInstanceOf[VarBinaryVector]
-        (0 until root.getRowCount).foreach { i=>
-          check();require(!vector.isNull(i),"null bytes chunk")
-          val b=vector.get(i);val skip=math.min(b.length.toLong,math.max(0L,offset-position)).toInt
-          val take=math.min((b.length-skip).toLong,length.map(_-written).getOrElse(Long.MaxValue)).toInt
-          if(take>0){e.getResponseBody.write(b,skip,take);written+=take;audit.add(0,take)}
-          position+=b.length
-          if(range.nonEmpty && length.contains(written)){complete=true;throw RangeComplete}
-        }
-      }
-      def putNext(b:ArrowBuf):Unit={require(b==null,"unexpected metadata");putNext()}
-      def putMetadata(b:ArrowBuf):Unit=require(b==null,"unexpected metadata")
-      def error(t:Throwable):Unit=throw t
-      def completed():Unit={require(root!=null && length.forall(_==written) && (range.nonEmpty || size.forall(_==position)),"incomplete object stream");complete=true}
-    }
-    try ds.stream(item.path,"bytes",allocator,listener,()=>check())catch{case RangeComplete=>()}
+    var position=0L;var written=0L;var complete=false
+    val stream=ds.requireView(item.path,DataViews.Bytes).open(AllBytes,StreamContext(allocator,()=>check()))
+    try {
+      try {
+        stream.consume(new DataConsumer[ByteChunk] {
+          def start(d:DataDescriptor[ByteChunk]):Unit=e.sendResponseHeaders(status,length.getOrElse(0L))
+          def accept(b:ByteChunk):Unit={
+            check()
+            val skip=math.min(b.length.toLong,math.max(0L,offset-position)).toInt
+            val take=math.min((b.length-skip).toLong,length.map(_-written).getOrElse(Long.MaxValue)).toInt
+            if(take>0){e.getResponseBody.write(b.bytes,b.offset+skip,take);written+=take;audit.add(0,take)}
+            position+=b.length
+            if(range.nonEmpty && length.contains(written)){complete=true;throw RangeComplete}
+          }
+        })
+        require(length.forall(_==written) && (range.nonEmpty || size.forall(_==position)),"incomplete object stream")
+        complete=true
+      } catch {case RangeComplete=>()}
+    } finally stream.close()
     require(complete,"incomplete object stream")
   }
 }

@@ -34,7 +34,19 @@ Compile / resourceGenerators += Def.task {
 
 lazy val engine = RootProject(file("../xstream-engine"))
 dependsOn(engine)
-lazy val datasetPlugins = RootProject(file("../plugins/dacp-plugin-datasets"))
-lazy val staticCatalog = RootProject(file("../plugins/dacp-plugin-catalog-static"))
-lazy val formats = RootProject(file("../plugins/dacp-plugin-formats-basic"))
+lazy val datasetPlugins = RootProject(file("../xstream-data/xstream-data-files"))
+lazy val staticCatalog = RootProject(file("../xstream-data/xstream-data-catalog-static"))
+lazy val formats = RootProject(file("../xstream-data/xstream-data-formats-basic"))
 dependsOn(datasetPlugins % "runtime->compile;test->compile", staticCatalog % "runtime->compile;test->compile", formats % "runtime->compile;test->compile")
+
+lazy val dataScientificcodecs = RootProject(file("../xstream-data/xstream-data-scientific-codecs"))
+dependsOn(dataScientificcodecs % "runtime->compile;test->compile")
+
+lazy val dataNetcdf = RootProject(file("../xstream-data/xstream-data-netcdf"))
+dependsOn(dataNetcdf % "runtime->compile;test->compile")
+
+lazy val dataFits = RootProject(file("../xstream-data/xstream-data-fits"))
+dependsOn(dataFits % "runtime->compile;test->compile")
+
+lazy val dataFasta = RootProject(file("../xstream-data/xstream-data-fasta"))
+dependsOn(dataFasta % "runtime->compile;test->compile")

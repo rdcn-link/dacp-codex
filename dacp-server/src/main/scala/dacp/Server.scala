@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.nio.file.{Files, Path}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.net.URI
@@ -112,8 +114,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
       def list(path:String):Seq[Item]=access.list(path)
       def describe(path:String):Item=access.describe(path)
       def count(path:String):Option[Long]=access.count(path)
-      override def scan(path:String,request:Scan,allocator:BufferAllocator,listener:FlightProducer.ServerStreamListener,ready:()=>Unit):Unit=access.scan(path,request,allocator,listener,ready)
-      def stream(path:String,view:String,allocator:BufferAllocator,listener:FlightProducer.ServerStreamListener,ready:()=>Unit):Unit=access.stream(path,view,allocator,listener,ready)
+      def view[K,S](path:String,kind:DataViewType[K,S]):Option[DataView[K,S]]=access.view(path,kind)
       override def close():Unit=if(ended.compareAndSet(false,true))try access.close()finally lease.close()
     }
   }
@@ -260,7 +261,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     } else {
       val description = a.describe(item)
       require(config.plugins.views(description).nonEmpty, "folder has no content stream")
-      val schema = description.schema.getOrElse {require(config.plugins.views(description).head=="bytes","records view requires schema");PluginSchemas.bytes}
+      val schema = description.schema.getOrElse {val first=config.plugins.views(description).head;require(first!="records","records view requires schema");if(first=="bytes")PluginSchemas.bytes else {DataViewCodecs.named(config.plugins,first);dacp.union.ScientificWire.envelopeSchema(first)}}
       val ticket = Metadata.Ticket.newBuilder().setDataset(ds).setItem(item).setView(config.plugins.views(description).head).build()
       new FlightInfo(schema,desc,List(new FlightEndpoint(new Ticket(ticket.toByteArray))).asJava,-1,-1,false,
         org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,
@@ -329,7 +330,8 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     try {
       val t = Metadata.Ticket.parseFrom(ticket.getBytes)
       audit.resource(t.getDataset,t.getItem,t.getView)
-      require(Set("records","bytes").contains(t.getView), "invalid view")
+      require(t.getView.matches("[a-z][a-z0-9_.-]*"), "invalid view")
+      require(!(t.hasScan && !t.getSelectionJson.isEmpty),"scan and scientific selection cannot be combined")
       val namespace = adapter(t.getDataset,t.getItem,ctx)
       try {
       val lock = new Object
@@ -343,8 +345,15 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
       }
       if(t.hasScan) {
         require(t.getView == "records","scan options require records view")
-        namespace.scan(t.getItem,ScanProtocol.decode(t.getScan),allocator,listener,() => ready())
-      } else namespace.stream(t.getItem,t.getView,allocator,listener,() => ready())
+        FlightDataStreams.scan(namespace,t.getItem,ScanProtocol.decode(t.getScan),allocator,listener,() => ready())
+      } else if(Set("records","bytes")(t.getView)) {
+        require(t.getSelectionJson.isEmpty,"selection requires a scientific view")
+        FlightDataStreams.send(namespace,t.getItem,t.getView,allocator,listener,() => ready())
+      } else {
+        val codec=DataViewCodecs.named(config.plugins,t.getView)
+        val selection=if(t.getSelectionJson.isEmpty)Data.mapper.createObjectNode()else dacp.union.ScientificWire.json(t.getSelectionJson.toByteArray)
+        dacp.union.ScientificWire.send(codec,namespace,t.getItem,selection,allocator,listener,()=>ready())
+      }
       } finally namespace.close()
           audit.finish(if(ctx.isCancelled || listener.isCancelled)"cancelled" else "completed")
     } catch {

@@ -16,6 +16,8 @@ Contributed plugins compile against `io.github.rdcn-link:dacp-plugin-api_2.13:0.
 - `DataCatalog`, `DataCatalogProvider`, `CatalogContext`, and `DatasetInfo`: discover Datasets dynamically and acquire independent access leases; see [dynamic catalogs](../docs/dataset-catalogs.md).
 - `DatasetProvider`, `DatasetDefinition`, `DatasetContext`, `PublishedDataset`, and `DatasetAccess`: construct and access native namespaces.
 - `ItemDatasetAccess` and `ItemAccess`: open objects or cursors per Item with scoped cleanup; see [access contracts](../docs/dataset-access.md).
+- `DataView[K,S]`, `DataStream[K]`, `DataConsumer[K]`, `ByteChunk`, and `RecordBatch`: typed, synchronous block streaming with explicit descriptors, selections and borrowed-buffer lifetimes; see [data streams](../docs/data-streams.md).
+- `ScientificViews`: local array, image and sequence contracts preserving scientific structures. NetCDF/FITS/FASTA parsers and scientific wire codecs are not bundled.
 - `FormatHandler`, `FileOptions`, and `Records`: interpret files and stream Arrow batches.
 - `StructuredFileHandler`: expose file-internal logical objects directly as a namespace.
 - `OperatorExecutor`, `OperatorProgram`, and `OperatorCommand`: validate operator artifacts and select container launch commands; see [operator packaging](../docs/operator-packaging.md).
@@ -27,7 +29,7 @@ Bundled implementations live in [plugins/](../plugins/README.md). This module co
 
 See the [plugin guide](../docs/plugins.md) and the [standalone example](../examples/plugins/README.md) for configuration, registration, lifecycle, and tests. Compile with the same Scala version as the server. Keep third-party libraries out of the core; package required dependencies alongside the plugin without copying server-provided APIs.
 
-Records query contracts include `Scan`, typed `Literal`/`Predicate` trees, schema-bound validation, and `ScanStreams` for bounded filtering/projection with early termination. Providers and file handlers can override `scan` for source optimizations while preserving the common semantics. See [records queries](../docs/records-scans.md).
+Records query contracts include `Scan`, typed `Literal`/`Predicate` trees, schema-bound validation, and `ScanStreams` for bounded filtering/projection with early termination. Dataset providers expose a records `DataView` accepting `Scan`; the optional `BatchDatasetAccess` helper overrides `readScan`, while file handlers override `scan`, for source optimizations while preserving the common semantics. See [records queries](../docs/records-scans.md).
 
 Operator `OperatorProgram.configuration` carries plugin-owned `executor_config`; `inputs` and `outputs` expose the supported representations per port. Plugins validate settings; core does not interpret executor-specific parameters. See [native commands](../docs/native-commands.md).
 

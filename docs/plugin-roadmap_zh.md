@@ -37,7 +37,7 @@
 
 [Producer.fail](../dacp-server/src/main/scala/dacp/Server.scala) 仍识别 `java.sql.SQLException`，并依赖部分异常消息字符串。应改成统一的类型化失败契约，由插件把内部错误转换成安全的公共错误类别，核心统一映射 Flight 状态；不要允许任意插件错误消息直接成为客户端响应。
 
-[Item.views](../dacp-plugin-api/src/main/scala/dacp/Models.scala)、流端口和 Flight 读取目前明确支持 records/bytes。数组、图像、多维变量和 selection 需要先定义跨客户端的描述、schema、能力与选择语义，再让插件实现；不能仅让插件注册任意字符串，也不能将科学结构静默拉平成 records。
+[Item.views](../xstream-data/xstream-data-core/src/main/scala/xstream/data/Models.scala)、流端口和 Flight 读取目前明确支持 records/bytes。数组、图像、多维变量和 selection 需要先定义跨客户端的描述、schema、能力与选择语义，再让插件实现；不能仅让插件注册任意字符串，也不能将科学结构静默拉平成 records。
 
 [OperatorMain](../dacp-operator-runtime/src/main/scala/dacp/OperatorMain.scala) 根据算子名选择 identity/format_convert，这些是具体示例算子行为。可以将其拆成普通算子 JAR，保持共享运行时通用；现有薄 JAR、Python 与独立入口已经支持用户自定义算子，因此不需要为了每个算子再发明服务器插件接口。FormatConvert 对 CSV/NDJSON/Parquet 的业务限制也不能直接认定为核心协议限制。
 

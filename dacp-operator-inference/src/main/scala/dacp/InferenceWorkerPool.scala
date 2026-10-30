@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.util.concurrent.{FutureTask,TimeUnit,TimeoutException,ExecutionException,Executors}
 import scala.collection.mutable
 

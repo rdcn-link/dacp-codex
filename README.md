@@ -60,3 +60,5 @@ Ordinary data access and execution use TLS and tokens; Union collaboration uses 
 Source-only operator publication: [submission, isolated builds, review and trust scores](docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
 
 The independent [XStream engine](xstream-engine/README.md) provides the `xstream-runner` local launcher and is embedded by DACP Server. [XStream Designer](xstream-designer/README.md) browses local and configured remote catalogs lazily.
+
+[xstream-data: typed data streams and scientific format plugins](xstream-data/README.md).

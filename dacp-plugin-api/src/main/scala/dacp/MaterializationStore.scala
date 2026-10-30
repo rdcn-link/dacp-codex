@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import com.fasterxml.jackson.databind.JsonNode
 
 /** A task's selected output ports become visible together, only on commit.

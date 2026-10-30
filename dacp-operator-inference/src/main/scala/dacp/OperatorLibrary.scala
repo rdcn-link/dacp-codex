@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data._
+
 import java.net.URI
 import java.nio.file.{Files, Path, StandardCopyOption, StandardOpenOption}
 import java.security.MessageDigest

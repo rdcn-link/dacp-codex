@@ -21,3 +21,10 @@ Compile / resourceGenerators += Def.task {
 
 lazy val collaborationClient=RootProject(file("../dacp-collaboration-client-scala"))
 dependsOn(collaborationClient)
+
+// Bundle codec/parser dependencies explicitly in the Union distribution and embedded-node tests.
+lazy val scientificCodecs=RootProject(file("../xstream-data/xstream-data-scientific-codecs"))
+lazy val scientificNetcdf=RootProject(file("../xstream-data/xstream-data-netcdf"))
+lazy val scientificFits=RootProject(file("../xstream-data/xstream-data-fits"))
+lazy val scientificFasta=RootProject(file("../xstream-data/xstream-data-fasta"))
+dependsOn(scientificCodecs % "runtime->compile;test->compile",scientificNetcdf % "runtime->compile;test->compile",scientificFits % "runtime->compile;test->compile",scientificFasta % "runtime->compile;test->compile")

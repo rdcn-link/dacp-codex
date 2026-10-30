@@ -36,7 +36,7 @@ datasets:
 Catalog plugins return the same JSON string through `DatasetInfo.description`:
 
 ```scala
-import dacp.DatasetInfo
+import xstream.data.DatasetInfo
 
 override def list(): Seq[DatasetInfo] = Seq(
   DatasetInfo("orders", description =

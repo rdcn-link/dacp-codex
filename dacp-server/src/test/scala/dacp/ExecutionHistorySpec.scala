@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.data._
+
+
 import dacp.union.Json
 import java.nio.file.Files
 import org.scalatest.funsuite.AnyFunSuite

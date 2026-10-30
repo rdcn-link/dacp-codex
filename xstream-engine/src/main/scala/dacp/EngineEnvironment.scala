@@ -1,4 +1,5 @@
 package dacp
+
 import org.apache.arrow.memory.BufferAllocator
 /** Host boundary: the engine never starts a data server or owns host credentials. */
 trait EngineEnvironment extends OperatorEnvironment {

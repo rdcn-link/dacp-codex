@@ -1,4 +1,6 @@
 package dacp
+
+import _root_.xstream.data._
 import com.fasterxml.jackson.databind.JsonNode
 
 /** Atomic persistent metadata operations. Implementations return detached values. */

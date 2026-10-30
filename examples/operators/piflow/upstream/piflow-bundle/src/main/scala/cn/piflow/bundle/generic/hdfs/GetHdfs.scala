@@ -1,5 +1,6 @@
 package cn.piflow.bundle.generic.hdfs
 
+
 import cn.piflow._
 import cn.piflow.conf.bean.PropertyDescriptor
 import cn.piflow.conf.util.{ImageUtil, MapUtil}

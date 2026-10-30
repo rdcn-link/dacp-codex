@@ -1,6 +1,6 @@
 # Dataset 提供者
 
-Dataset 是逻辑命名空间。提供者决定如何构建它；客户端始终使用公开路径以及 `list`、`open`、`count`。内置后端实现位于 [DatasetPublication.scala](../plugins/dacp-plugin-datasets/src/main/scala/dacp/DatasetPublication.scala)。
+Dataset 是逻辑命名空间。提供者决定如何构建它；客户端始终使用公开路径以及 `list`、`open`、`count`。内置后端实现位于 [DatasetPublication.scala](../xstream-data/xstream-data-files/src/main/scala/dacp/DatasetPublication.scala)。
 
 ## 内置提供者
 
@@ -59,10 +59,10 @@ Directory 和 SQLDB 拒绝 `items`，应使用各自映射键。
 
 ## 扩展构建逻辑
 
-实现 `dacp.DatasetProvider`，使用唯一的小写 `id` 和公开无参构造器。在 JAR 中注册：
+实现 `xstream.data.DatasetProvider`，使用唯一的小写 `id` 和公开无参构造器。在 JAR 中注册：
 
 ```text
-META-INF/services/dacp.DatasetProvider
+META-INF/services/xstream.data.DatasetProvider
 ```
 
 文件每行填写一个提供者完整类名。将 JAR 和私有依赖放入 `plugin_directory` 并重启。针对 `dacp-plugin-api` 编译，依赖范围为 `Provided`，不依赖服务器实现。重复或未知 ID 导致配置加载失败。插件自行解释私有 `source` 和映射设置，核心不增加硬编码的 Dataset 类型。
@@ -73,19 +73,19 @@ META-INF/services/dacp.DatasetProvider
 
 1. `create(definition, context)` 校验私有设置，为服务器配置构建 `PublishedDataset`，可初始化发现或发布元数据。日志和公共错误中不能出现凭据或物理标识；`DatasetDefinition.toString` 隐去设置。
 2. `PublishedDataset.open(check)` 创建请求级 `DatasetAccess`，取消请求时通过回调中止发现。
-3. `DatasetAccess` 实现递归列表、直接子项列表、元数据、精确计数和流式交付。`stream` 接收 allocator、listener 和就绪回调。读写批次前遵守背压与取消，在成功、失败和取消时关闭资源。
+3. `DatasetAccess` 实现递归列表、直接子项列表、元数据、精确计数和流式交付。`view(path, kind)` 返回可选的类型化 `DataView`，通过 `open(selection, StreamContext)` 获得单次消费的 `DataStream`。读写前检查取消，在成功、失败和取消时关闭资源，见[类型化数据流](data-streams_zh.md)。
 
-用 `Item.views = Some(Seq("records", "bytes"))` 显式声明原生能力，无需依赖文件格式处理器。records 开始前必须有匹配的 Arrow schema。bytes 使用单 binary 列的 Arrow 信封。普通 folder 没有视图，其大小、时间和记录数保持未知。不存在的资源抛 `FileNotFoundException`；格式失败使用固定消息的 `FormatFailure`，不能包含私有信息。核心实施 URI 授权并清理错误，不应抛出包含后端诊断的传输异常。
+用 `Item.views = Some(Seq("records", "bytes"))` 显式声明原生能力，无需依赖文件格式处理器。records 开始前必须有匹配的 Arrow schema。进程内 bytes 输出 `ByteChunk`，网络适配器使用单 binary 列的 Arrow 信封。普通 folder 没有视图，其大小、时间和记录数保持未知。不存在的资源抛 `FileNotFoundException`；格式失败使用固定消息的 `FormatFailure`，不能包含私有信息。核心实施 URI 授权并清理错误，不应抛出包含后端诊断的传输异常。
 
 原生提供者可以直接输出流，MongoDB 不必伪装成文件或 JDBC 连接。目前没有内置 MongoDB 实现。[TestDatasetProvider](../dacp-server/src/test/scala/dacp/TestDatasetProvider.scala) 展示 ServiceLoader 发现及通过相同 Flight 协议输出原生流。
 
 Dataset 提供者、[归档读取器](format-handlers_zh.md#归档读取器)和[格式处理器](format-handlers_zh.md)分别负责构建命名空间、浏览容器和解释内容。mixed/sqldb 复用 `NamespaceAdapter`；directory 按发现的文件系统路径构建请求级命名空间。任务输出是临时 Item 流，不进入 Dataset 命名空间。
 
-`DatasetContext` 提供批次设置、通用 `sources`、当前 `PluginEnvironment` 和 `createDataset`，无需暴露服务器实现。后端插件自行校验源设置。核心关闭请求句柄；`PublishedDataset.close` 释放提供者级资源。贡献者测试可使用 [PluginChecks](../dacp-plugin-api/src/main/scala/dacp/PluginChecks.scala)，另见[独立示例](../examples/plugins/README_zh.md)。
+`DatasetContext` 提供批次设置、通用 `sources`、当前 `PluginEnvironment` 和 `createDataset`，无需暴露服务器实现。后端插件自行校验源设置。核心关闭请求句柄；`PublishedDataset.close` 释放提供者级资源。贡献者测试可使用 [PluginChecks](../xstream-data/xstream-data-core/src/main/scala/xstream/data/PluginChecks.scala)，另见[独立示例](../examples/plugins/README_zh.md)。
 
 ## 记录扫描
 
-`DatasetAccess.scan` 接收共享 `Scan`，支持过滤、投影和限制。默认通过公共求值器变换 records 流；提供者可下推执行，但必须保留必要的剩余过滤。见[记录扫描契约](records-scans_zh.md#插件实现契约)。
+打开 `DataViews.Records` 时传入共享 `Scan`，支持过滤、投影和限制。提供者可以下推，但必须保留必要的剩余过滤。`BatchDatasetAccess.readScan` 提供有界批次默认实现。见[记录扫描契约](records-scans_zh.md#插件实现契约)。
 
 ## 动态 Dataset 名称
 
