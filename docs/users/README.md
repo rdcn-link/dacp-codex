@@ -280,7 +280,7 @@ In a connected shell started from the project root, run the complete weather wor
 Further reading:
 
 - [Two-node example](../../examples/multi-node/README.md): task placement, remote inputs, and consuming outputs.
-- [Scala operator repository and website](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README.md): public search, version details, downloads, and immutable operator publication.
+- [Scala operator repository and website](https://github.com/bluejoe2008/xstream-operator-repository/blob/main/README.md): public search, version details, downloads, and immutable operator publication.
 - [Write and upload custom operators](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md): complete Scala/Python source, packaging, publication, remote transfer, and execution.
 - [Task and operator reference](../reference.md#task-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
 

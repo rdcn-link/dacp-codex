@@ -15,7 +15,7 @@
 ```bash
 (cd dacp-server && sbt stage)
 (cd dacp-union-server && sbt stage)
-(cd /path/to/xstream-codex/xstream-operator-repository && sbt stage)
+(cd /path/to/xstream-operator-repository && sbt stage)
 ```
 
 本地演示使用项目证书脚本与示例配置；生产环境使用自己的 CA、主机名和证书管理流程。配置中的相对路径以进程工作目录为基准。
@@ -40,7 +40,7 @@ sbt 'run ../examples/server.yaml'
 
 - [Union 手册](../../dacp-union-server/README_zh.md)：配置、服务凭据、状态轮询、作业提交和管理看板。
 - [双节点示例](../../examples/union/README_zh.md)：证书、节点、Union 和客户端的完整演示。
-- [算子仓库手册](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README_zh.md)：初始化、发布、源码材料、HTTP 服务和下载。
+- [算子仓库手册](https://github.com/bluejoe2008/xstream-operator-repository/blob/main/README_zh.md)：初始化、发布、源码材料、HTTP 服务和下载。
 
 Union 从配置构建唯一的 Union，使用节点签发的凭据连接独立节点并轮询状态。HTTP 管理看板展示任务脚本和执行元数据；公开只读，无需登录或 token。计算操作仍通过受授权保护的 DACP 接口进行。
 

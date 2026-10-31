@@ -27,7 +27,7 @@ The [collaboration operator catalog](https://github.com/rdcn-link/xstream-codex/
 | Scala SDK | [Scala client](../dacp-client-scala/README.md) |
 | DACP Server | [Administrator guide](administrators/README.md), [configuration and protocol reference](reference.md) |
 | Union Server and web dashboard | [Union manual](../dacp-union-server/README.md), [collaboration protocol](union.md), [two-node example](../examples/union/README.md) |
-| Operator repository CLI and website | [Repository manual](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README.md) |
+| Operator repository CLI and website | [Repository manual](https://github.com/bluejoe2008/xstream-operator-repository/blob/main/README.md) |
 | Plugin API and Union transport utilities | [Plugin API](../dacp-plugin-api/README.md), [Union protocol module](../dacp-union-protocol/README.md) |
 
 ## Topic references

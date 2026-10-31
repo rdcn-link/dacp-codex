@@ -127,7 +127,7 @@ The protocol is defined in [proto/dacp.proto](../../proto/dacp.proto). Source co
 
 ```bash
 (cd /path/to/xstream-codex/plugins/xstream-plugin-operator-executors && sbt test)
-(cd /path/to/xstream-codex/xstream-operator-repository && sbt test)
+(cd /path/to/xstream-operator-repository && sbt test)
 ```
 
 After staging the server, building the referenced runtimes and preparing example certificates, run `.venv/bin/python scripts/test-native-execution.py` with Docker access for native streaming, partial-failure and cancellation checks. `scripts/test-source-submission.py` requires the DEBUG server from `examples/source-debug.yaml`; it checks Python/Scala heredocs. See each script and the linked guides for prerequisites and test ports.

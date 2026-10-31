@@ -38,7 +38,7 @@ Job definitions, node subjobs, execution policies and variable files use YAML. E
 | `dacp-client` / `dacp-client-scala` | Python / Scala applications access data, execute Jobs, and submit Union jobs |
 | [dacp-union-server](dacp-union-server/README.md) | Manages one Union, connects configured nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
 | [Union web dashboard](dacp-union-server/README.md#execution-and-interfaces) | Management view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
-| [xstream-operator-repository](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; administrators publish through the CLI |
+| [xstream-operator-repository](https://github.com/bluejoe2008/xstream-operator-repository/blob/main/README.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; administrators publish through the CLI |
 | [xstream-operator-sdk](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-sdk/README.md) | Lightweight metadata contracts (`contract`), JVM templates (`jvm`) and Python templates (`python`) |
 | `dacp-plugin-api` / `dacp-union-protocol` | Public plugin contracts and shared Union transport utilities |
 | [plugins](plugins/README.md) | Bundled Dataset, file-format, archive, catalog, and operator launch plugins |

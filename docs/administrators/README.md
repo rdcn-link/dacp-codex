@@ -15,7 +15,7 @@ Build from the project root:
 ```bash
 (cd dacp-server && sbt stage)
 (cd dacp-union-server && sbt stage)
-(cd /path/to/xstream-codex/xstream-operator-repository && sbt stage)
+(cd /path/to/xstream-operator-repository && sbt stage)
 ```
 
 Local demonstrations use the project's certificate script and example configuration. Production deployments need their own CA, hostnames, and certificate management. Relative configuration paths resolve against the process working directory.
@@ -40,7 +40,7 @@ Ordinary DACP clients use TLS and tokens without requiring client certificates. 
 
 - [Union manual](../../dacp-union-server/README.md): configuration, service credentials, polling, job submission, and management dashboard.
 - [Two-node example](../../examples/union/README.md): complete certificate, node, Union, and client demonstration.
-- [Repository manual](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README.md): initialization, publication, source materials, HTTP service, and downloads.
+- [Repository manual](https://github.com/bluejoe2008/xstream-operator-repository/blob/main/README.md): initialization, publication, source materials, HTTP service, and downloads.
 
 Union builds one Union from configuration, connects independent members using node-issued credentials and polls their status. Its public read-only HTTP dashboard exposes job scripts and execution metadata without login or tokens. Review task parameters for information unsuitable for public viewing. Computation remains protected by authorization on DACP interfaces.
 

@@ -280,7 +280,7 @@ sbt 'run ../examples/server.yaml'
 更多说明：
 
 - [双节点示例](../../examples/multi-node/README_zh.md)：任务放置、远端输入及输出消费。
-- [Scala 算子仓库与网站](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README_zh.md)：公共搜索、版本详情、下载与不可变算子发布。
+- [Scala 算子仓库与网站](https://github.com/bluejoe2008/xstream-operator-repository/blob/main/README_zh.md)：公共搜索、版本详情、下载与不可变算子发布。
 - [自定义算子编写与上传](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)：Scala/Python 完整源码、构建、发布、远程上传和任务执行。
 - [任务与算子参考](../reference_zh.md#任务执行与算子)：DAG、容器输入输出契约和转换参数。
 

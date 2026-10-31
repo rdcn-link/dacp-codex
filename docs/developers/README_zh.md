@@ -127,7 +127,7 @@ DACP 优先采用插件机制扩展。新的数据集后端、文件格式和处
 
 ```bash
 (cd /path/to/xstream-codex/plugins/xstream-plugin-operator-executors && sbt test)
-(cd /path/to/xstream-codex/xstream-operator-repository && sbt test)
+(cd /path/to/xstream-operator-repository && sbt test)
 ```
 
 stage 服务端、构建所需运行时并准备示例证书后，使用 Docker 权限运行 `.venv/bin/python scripts/test-native-execution.py`，验证原生流、部分失败和取消。`scripts/test-source-submission.py` 需要启动 `examples/source-debug.yaml` 中的 DEBUG 服务，验证 Python/Scala heredoc。前置条件与测试端口见脚本及对应指南。

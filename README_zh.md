@@ -38,7 +38,7 @@ Dataset 列表可由 [DataCatalog 插件](docs/dataset-catalogs_zh.md)动态提�
 | `dacp-client` / `dacp-client-scala` | Python / Scala 应用访问数据、执行 Job 和提交 Union 作业 |
 | [dacp-union-server](dacp-union-server/README_zh.md) | 管理一个 Union，按配置连接节点、轮询健康与容量、调度跨节点 DAG、转发最终结果流 |
 | [Union Web 看板](dacp-union-server/README_zh.md#执行与接口) | 管理界面展示节点、任务脚本、可缩放 DAG、流量与执行历史 |
-| [xstream-operator-repository](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-repository/README_zh.md) | HTTP/HTTPS 算子仓库；公开搜索、版本浏览和下载，管理员通过 CLI 发布 |
+| [xstream-operator-repository](https://github.com/bluejoe2008/xstream-operator-repository/blob/main/README_zh.md) | HTTP/HTTPS 算子仓库；公开搜索、版本浏览和下载，管理员通过 CLI 发布 |
 | [xstream-operator-sdk](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-sdk/README_zh.md) | 轻量元数据契约（`contract`）、JVM 模板（`jvm`）与 Python 模板（`python`） |
 | `dacp-plugin-api` / `dacp-union-protocol` | 插件公开契约和 Union 共享传输工具 |
 | [plugins](plugins/README_zh.md) | 内置 Dataset、文件格式、归档、Catalog 和算子启动插件 |
