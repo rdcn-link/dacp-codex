@@ -18,7 +18,7 @@ final class DacpServer private(config:Config) extends AutoCloseable {
   private var flight:FlightServer=null
   private var flightThreads:java.util.concurrent.ExecutorService=null
 
-  private var s3:S3Service=null
+  @volatile private var s3:S3Service=null
   def s3Port:Option[Int]=synchronized {Option(s3).map(_.port)}
   private var dashboard:NodeDashboard=null
   private var startedAt=0L
@@ -38,7 +38,7 @@ final class DacpServer private(config:Config) extends AutoCloseable {
       flight=dacp.union.Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),new Producer(config,allocator,Some(tasks),union)),new dacp.union.Tls(config.cert,config.key,config.ca),Some(config.credentials))
         .maxInboundMessageSize(dacp.union.Rpc.MaxMessage).executor(flightThreads).build()
       flight.start();union.foreach(_.start());startedAt=System.currentTimeMillis()
-      if(config.web.enabled){dashboard=new NodeDashboard(config,flight.getPort,startedAt,()=>union.toVector.flatMap(_.executionSnapshots));dashboard.start();config.runningWebUrl=Some(dashboard.publicUrl)}
+      if(config.web.enabled){dashboard=new NodeDashboard(config,flight.getPort,startedAt,()=>union.toVector.flatMap(_.executionSnapshots),()=>Option(s3).map(_.snapshot).getOrElse(dacp.union.Json.obj().put("enabled",config.s3.enabled).put("state",if(config.s3.enabled)"starting"else "disabled")));dashboard.start();config.runningWebUrl=Some(dashboard.publicUrl)}
       if(config.s3.enabled){s3=new S3Service(config,flight.getPort,allocator);s3.start()}
       state="started"
       val log=org.slf4j.LoggerFactory.getLogger("dacp.Main")

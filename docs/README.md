@@ -8,7 +8,7 @@ Protocol overview: [DACP (Data Access and Collaboration Protocol)](protocol.md).
 
 Dynamic catalogs and application embedding: [DataCatalog](dataset-catalogs.md), [embedded server](embedded-server.md).
 
-The [collaboration operator catalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog.md) documents the six published operators, ports, parameters, input/output and Shell / Job examples.
+The [collaboration operator catalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog.md) documents the configured collaboration operators, ports, parameters, input/output and Shell / Job examples.
 
 ## Read by role
 
@@ -27,7 +27,7 @@ The [collaboration operator catalog](https://github.com/rdcn-link/xstream-codex/
 | Scala SDK | [Scala client](../dacp-client-scala/README.md) |
 | DACP Server | [Administrator guide](administrators/README.md), [configuration and protocol reference](reference.md) |
 | Union Server and web dashboard | [Union manual](../dacp-union-server/README.md), [collaboration protocol](union.md), [two-node example](../examples/union/README.md) |
-| Operator repository CLI and website | [Repository manual](https://github.com/bluejoe2008/xstream-operator-repository/blob/main/README.md) |
+| Operator repository CLI and website | [Repository manual](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README.md) |
 | Plugin API and Union transport utilities | [Plugin API](../dacp-plugin-api/README.md), [Union protocol module](../dacp-union-protocol/README.md) |
 
 ## Topic references
@@ -59,13 +59,13 @@ Commands run from the project root unless a document specifies otherwise. Relati
 
 [Node web dashboard](node-web.md): default HTTP service, configuration, and G6 execution DAGs.
 
-Official website builds, deployment and software download publication: [dacp-website](https://github.com/bluejoe2008/dacp-website). Website content is English-only.
+Official website builds, deployment and software download publication: [dacp-website](https://github.com/rdcn-link/dacp-website). Website content is English-only.
 
 [S3-compatible reads](s3-service.md): dataset buckets and Item objects exposed at node startup, with SigV4-authenticated read-only downloads.
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](union-proxy.md).
 
-[Authentication and access control](security.md): Flight tokens, Union service credentials, S3 SigV4, revocation and audit. [Structure inference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference.md): mandatory operator output inference and workflow validation.
+[Authentication and access control](security.md): Flight tokens, Union service credentials, S3 SigV4, revocation and audit. [Structure inference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference.md): design-time operator output structures and bounded samples; execution does not call schema inference.
 
 [Streaming versus per-step materialization benchmark](materialization-benchmark.md): 500,000 weather observations, three measured runs and actual persisted bytes.
 
@@ -78,3 +78,5 @@ Project presentation material: [English meeting poster and A4 PDF](../assets/pos
 - [Operator parameter types and designer forms](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-parameters.md)
 
 Source-only operator publication: [submission, isolated builds, review and trust scores](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
+
+Project boundaries: [DACP services powered by XStream](ecosystem.md). The visual designer, SDK/engine and operator repository are independently maintained projects.

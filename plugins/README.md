@@ -1,8 +1,8 @@
-# DACP bundled plugins
+# DACP plugin integration
 
 [中文](README_zh.md)
 
-All bundled extension implementations live here. Plugins depend on `dacp-plugin-api`, not `dacp-server`, and register through `META-INF/services/` inside their JARs. They use the same discovery mechanism as contributed plugins; core registries do not enumerate built-in classes.
+This directory owns `dacp-plugin-execution-file`. Data backends, formats, archives, catalogs and operator launch implementations are maintained in XStream and consumed as versioned artifacts. They register through `META-INF/services/` inside their JARs and do not depend on `dacp-server`. They use the same discovery mechanism as contributed plugins; core registries do not enumerate built-in classes.
 
 | Module | Implementations and registration IDs | Implementation-specific dependencies |
 |---|---|---|
@@ -45,7 +45,7 @@ datasets:
 
 ## Architecture and extensions
 
-`dacp-plugin-api` supplies contracts, generic Arrow scans and record utilities, discovery, and resource utilities. `dacp-server` retains Flight, authorization, and request/task lifecycles. Core `sources` entries contain only provider/settings; the Dataset plugin validates JDBC settings and implements connections, queries and type mapping. Production MongoDB, S3, NetCDF, and FITS implementations are not provided.
+XStream data modules supply data contracts, parsing, typed views, codecs and plugin discovery; `dacp-plugin-api` supplies service integration and execution contracts. `dacp-server` retains Flight, authorization, and request/task lifecycles. Core `sources` entries contain only provider/settings; the Dataset plugin validates JDBC settings and implements connections, queries and type mapping. NetCDF, FITS and FASTA parsing and scientific view codecs are implemented by XStream data plugins; do not confuse file-format support with planned remote-backend integrations such as MongoDB or S3-backed catalogs.
 
 Adding a plugin for an existing extension point requires only registration, installation, and configuration, without core or client changes. See [the plugin guide](../docs/plugins.md), [Dataset/Item access](../docs/dataset-access.md), [independent contributor examples](../examples/plugins/README.md), and [executor documentation](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-operator-executors/README.md).
 

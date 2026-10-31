@@ -266,7 +266,7 @@ Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Save
 
 ## Collaboration and tasks
 
-DACP organizes tasks as YAML DAGs. A coordinating node resolves dependencies and places each task on the node hosting its first input unless an execution node is specified. Nodes collaborate through service connections protected by mutual TLS. Eligible node subjobs [share one container and process](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion.md), while other tasks execute independently; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
+DACP executes YAML Jobs through the embedded XStream engine. Users describe logical stream dependencies without assigning execution nodes. Union resolves Item locations and plans node-local subjobs automatically; member collaboration uses mutual TLS and node-issued service credentials. Eligible node subjobs [share one container and process](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion.md), while other tasks execute independently; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
 
 Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, configure an operator repository containing approved operators and start the server. Stop the quick-start server first if it is still running:
 
@@ -280,13 +280,13 @@ In a connected shell started from the project root, run the complete weather wor
 Further reading:
 
 - [Two-node example](../../examples/multi-node/README.md): task placement, remote inputs, and consuming outputs.
-- [Scala operator repository and website](https://github.com/bluejoe2008/xstream-operator-repository/blob/main/README.md): public search, version details, downloads, and immutable operator publication.
+- [Scala operator repository and website](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README.md): public search, version details, downloads, and immutable operator publication.
 - [Write and upload custom operators](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md): complete Scala/Python source, packaging, publication, remote transfer, and execution.
 - [Task and operator reference](../reference.md#task-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
 
-Start an empty repository using `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820`, publish operators through source submission and approval, then open `http://localhost:8820/` to search, view, and download operators without signing in. See the repository guide for HTTPS deployment.
+From the independent operator repository checkout, start the service using `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820`, publish operators through source submission and approval, then open `http://localhost:8820/` to search, view, and download operators without signing in. See the repository guide for HTTPS deployment.
 
-Operators can share a dependency environment and a code bundle. JVM operators can use thin JARs with `xstream/operator-jvm:1.1`; Python source and wheels are also supported in shared runtime containers. Runtime and code artifacts are stored and cached by SHA-256, so each distinct artifact is downloaded once per node. See [operator packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md) and the [Python example](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/python/README.md).
+Operators share dependency environments and small code packages. The independent repository accepts source only, builds JVM JARs or Python bytecode ZIPs, and publishes after review. Runtime and package artifacts are verified and cached by SHA-256. Operator development and deployment belong to the XStream documentation; DACP users configure repository URLs and consume approved versions.
 
 
 `run` and `submit` print `Execution time: 1.234 s` after completion, failure or cancellation. This is elapsed time measured by the shell from submission through closing the result stream, including connection, runtime preparation, execution, transfer, display and client cleanup. It excludes heredoc entry time and is not server task CPU time. Multi-task jobs print one total for the whole job.

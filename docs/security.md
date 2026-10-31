@@ -55,7 +55,7 @@ Credential files should be accessible only to the service account. Ordinary toke
 
 Implemented features include local credential management and hot reload, ordinary Flight token authentication, certificate-bound Union service credentials, job ownership isolation, exact peer plan authorization, separate collaboration SDKs, S3 SigV4 and presigned GET. Automated tests cover admitted streams continuing after ordinary token revocation while subsequent calls fail, active collaboration stopping after service credential revocation, ownership surviving token rotation, and audit records for rejected requests. Live integration verifies authentication on three member nodes, Union collaboration calls, and boto3 signed listing, metadata, content, Range and presigned GET requests.
 
-Related documentation: [access logs](access-logs.md), [data access](dataset-access.md), [operator repository](https://github.com/bluejoe2008/xstream-operator-repository/blob/main/README.md). Ordinary client examples require a token file; Union member configuration requires a node-issued service credential file.
+Related documentation: [access logs](access-logs.md), [data access](dataset-access.md), [operator repository](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README.md). Ordinary client examples require a token file; Union member configuration requires a node-issued service credential file.
 
 ## Local credential operations
 

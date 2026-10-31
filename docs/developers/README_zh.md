@@ -2,7 +2,7 @@
 
 [English](README.md) · [文档目录](../README_zh.md) · [用户指南](../users/README_zh.md)
 
-引擎内置 `read_item@1.0` 只负责传输，后端和格式继续由 Dataset/Item 插件提供；流连接和控制依赖契约见[作业说明](../jobs_zh.md).
+引擎内置 `read_item@1.0` 只负责传输，后端和格式继续由 Dataset/Item 插件提供；流依赖契约见[作业说明](../jobs_zh.md).
 
 面向实现算子、Dataset provider、格式处理器、执行器、SDK 或服务端的贡献者。连接节点、浏览数据、配置内置 provider 和运行作业请先阅读用户指南。除非另有说明，命令均从项目根目录执行。
 
@@ -14,11 +14,11 @@
 
 | 模块 | 职责 |
 |---|---|
-| `dacp-plugin-api` | Provider、格式、扫描及执行器公开契约 |
+| `dacp-plugin-api` | 服务集成、执行及执行器公开契约；数据契约来自 XStream |
 | `dacp-server` | Flight 服务、命名空间、协调与资源生命周期 |
 | `dacp-client`、`dacp-client-scala` | 客户端 API 与 shell |
-| `plugins/xstream-plugin-operator-executors` | 容器启动器与原生命令桥接器 |
-| `xstream-operator-repository` | 不可变发布、公开搜索与下载 |
+| XStream 的 `plugins/xstream-plugin-operator-executors` | 独立维护的容器启动器与原生命令桥接器 |
+| 独立项目 `xstream-operator-repository` | 源码提交、隔离构建、审核、公开目录与下载 |
 | `proto/dacp.proto` | 共享线协议消息 |
 
 ## 编写与发布算子
@@ -154,4 +154,4 @@ Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名�
 
 ## XStream 集成测试
 
-算子模块、运行环境工具和源码审核测试位于 [xstream-codex](https://github.com/rdcn-link/xstream-codex)。DACP 构建依赖已发布的 XStream 制品。需要算子示例源码的开发集成测试通过显式 `XSTREAM_SOURCE_ROOT=/path/to/xstream-codex` 选择测试素材；该路径不是生产构建依赖。气象算子示例需要在测试 Python 环境安装 `xstream-operator-sdk/python`。
+引擎、数据和算子 SDK、推导与运行环境工具位于 [xstream-codex](https://github.com/rdcn-link/xstream-codex)，仓库服务及源码审核集成测试位于独立[算子仓库](https://github.com/rdcn-link/xstream-operator-repository)。DACP 构建依赖已发布的 XStream 制品。需要算子示例源码的开发集成测试通过显式 `XSTREAM_SOURCE_ROOT=/path/to/xstream-codex` 选择测试素材；该路径不是生产构建依赖。气象算子示例需要在测试 Python 环境安装 `xstream-operator-sdk/python`。

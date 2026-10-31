@@ -36,6 +36,29 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
   private case class Failure(status:Int,code:String) extends RuntimeException(code)
   private case object RangeComplete extends RuntimeException with scala.util.control.NoStackTrace
   private val closed=new AtomicBoolean()
+  @volatile private var startedAt=0L
+  @volatile private var startedNanos=0L
+  private val requests=new java.util.concurrent.atomic.LongAdder()
+  private val succeeded=new java.util.concurrent.atomic.LongAdder()
+  private val failed=new java.util.concurrent.atomic.LongAdder()
+  private val downloadedBytes=new java.util.concurrent.atomic.LongAdder()
+  private val elapsedNanos=new java.util.concurrent.atomic.LongAdder()
+  private val methodCounts=new java.util.concurrent.ConcurrentHashMap[String,java.util.concurrent.atomic.LongAdder]()
+  private val statusCounts=new java.util.concurrent.ConcurrentHashMap[String,java.util.concurrent.atomic.LongAdder]()
+  def snapshot:com.fasterxml.jackson.databind.JsonNode={
+    val n=dacp.union.Json.obj().put("enabled",true).put("state",if(closed.get())"stopped"else if(startedAt>0)"running"else "starting")
+      .put("listen_host",config.s3.host).put("port",port).put("endpoint",new java.net.URI("https",null,config.publicHost,port,"/",null,null).toASCIIString)
+      .put("started_at_ms",startedAt).put("uptime_ms",if(startedNanos==0)0L else TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-startedNanos))
+      .put("observed_at_ms",System.currentTimeMillis()).put("read_only",true)
+      .put("active_requests",active.size()).put("requests_total",requests.sum()).put("requests_succeeded",succeeded.sum()).put("requests_failed",failed.sum())
+      .put("object_bytes_sent",downloadedBytes.sum())
+    val done=succeeded.sum()+failed.sum()
+    n.put("mean_request_ms",if(done==0)0.0 else elapsedNanos.sum().toDouble/done/1000000)
+    n.putArray("authentication").add("SigV4 request headers").add("Presigned GET URLs")
+    val methods=n.putObject("methods");Seq("GET","HEAD","OTHER").foreach(k=>methods.put(k,Option(methodCounts.get(k)).map(_.sum()).getOrElse(0L)))
+    val statuses=n.putObject("http_statuses");statusCounts.asScala.toVector.sortBy(_._1).foreach{case(k,v)=>statuses.put(k,v.sum())}
+    n
+  }
   private val server=HttpsServer.create(new InetSocketAddress(config.s3.host,config.s3.bindPort(flightPort)),32)
   server.setHttpsConfigurator(new HttpsConfigurator(new dacp.union.Tls(config.cert,config.key,config.ca).sslContext))
   private val threads=new ThreadPoolExecutor(8,8,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue[Runnable](64),new ThreadPoolExecutor.AbortPolicy())
@@ -43,7 +66,7 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
   server.setExecutor(threads)
   server.createContext("/",(e:HttpExchange)=>handle(e))
   def port:Int=server.getAddress.getPort
-  def start():Unit={server.start();org.slf4j.LoggerFactory.getLogger("dacp.Main").info(s"dacp authenticated read-only S3 listening on https://${config.s3.host}:$port")}
+  def start():Unit={server.start();startedAt=System.currentTimeMillis();startedNanos=System.nanoTime();org.slf4j.LoggerFactory.getLogger("dacp.Main").info(s"dacp authenticated read-only S3 listening on https://${config.s3.host}:$port")}
   def close():Unit=if(closed.compareAndSet(false,true)){active.asScala.foreach(_.close());server.stop(0);threads.shutdownNow();threads.awaitTermination(5,TimeUnit.SECONDS)}
   private def check():Unit=if(closed.get() || Thread.currentThread().isInterrupted)throw new java.util.concurrent.CancellationException()
   private def xml(s:String):String=s.flatMap {case '&'=>"&amp;";case '<'=>"&lt;";case '>'=>"&gt;";case '"'=>"&quot;";case '\''=>"&apos;";case c=>c.toString}
@@ -55,6 +78,9 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
     if(e.getRequestMethod=="HEAD")e.sendResponseHeaders(status,-1)else{e.sendResponseHeaders(status,b.length);e.getResponseBody.write(b)}
   }
   private def handle(e:HttpExchange):Unit={
+    val began=System.nanoTime();requests.increment()
+    val method=if(Set("GET","HEAD")(e.getRequestMethod))e.getRequestMethod else "OTHER"
+    methodCounts.computeIfAbsent(method,_=>new java.util.concurrent.atomic.LongAdder()).increment()
     active.add(e);e.getResponseHeaders.set("x-amz-request-id",java.util.UUID.randomUUID().toString);val audit=config.accessLog.begin("s3_"+e.getRequestMethod.toLowerCase(java.util.Locale.ROOT))
     var success=false
     try {
@@ -107,7 +133,12 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
           }
           try reply(e,status,"<Error>"+tag("Code",code)+tag("Message",code)+"</Error>")catch{case NonFatal(_)=>()}
         }
-    }finally {e.close();active.remove(e);audit.finish(if(success)"completed"else "failed")}
+    }finally {
+      if(success)succeeded.increment()else failed.increment()
+      elapsedNanos.add(System.nanoTime()-began)
+      statusCounts.computeIfAbsent(e.getResponseCode.toString,_=>new java.util.concurrent.atomic.LongAdder()).increment()
+      e.close();active.remove(e);audit.finish(if(success)"completed"else "failed")
+    }
   }
   private def list(e:HttpExchange,ds:DatasetAccess,bucket:String,q:Map[String,String]):Unit={
     if(!q.keySet.subsetOf(Set("list-type","prefix","delimiter","max-keys","continuation-token","start-after","marker","encoding-type")))throw Failure(501,"NotImplemented")
@@ -184,7 +215,7 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
             check()
             val skip=math.min(b.length.toLong,math.max(0L,offset-position)).toInt
             val take=math.min((b.length-skip).toLong,length.map(_-written).getOrElse(Long.MaxValue)).toInt
-            if(take>0){e.getResponseBody.write(b.bytes,b.offset+skip,take);written+=take;audit.add(0,take)}
+            if(take>0){e.getResponseBody.write(b.bytes,b.offset+skip,take);written+=take;downloadedBytes.add(take);audit.add(0,take)}
             position+=b.length
             if(range.nonEmpty && length.contains(written)){complete=true;throw RangeComplete}
           }

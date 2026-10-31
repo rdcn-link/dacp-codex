@@ -150,6 +150,17 @@ web: {host: localhost, port: 0}
     val server=DacpServer.builder().config(c).catalog(catalog(count)).build().start();val port=server.webPort.get
     try {
       assert(http(port,"/").body().contains("Node overview"))
+      assert(http(port,"/").body().contains("href=\"/datasets\""))
+      assert(!http(port,"/").body().contains("id=\"datasets\""))
+      assert(http(port,"/datasets").body().contains("NODE DATA CATALOG"))
+      assert(http(port,"/datasets.js").statusCode()==200)
+      assert(http(port,"/s3").body().contains("S3 OPERATIONS"))
+      assert(http(port,"/s3.js").statusCode()==200)
+      val s3Status=dacp.union.Json.mapper.readTree(http(port,"/api/s3").body())
+      assert(s3Status.path("enabled").asBoolean && s3Status.path("state").asText=="running")
+      assert(!s3Status.has("buckets") && !s3Status.has("objects"))
+      assert(http(port,"/api/s3","POST").statusCode()==405)
+      assert(http(port,"/datasets","POST").statusCode()==405)
       assert(http(port,"/dag.js").body().contains("DacpDag"))
       assert(http(port,"/vendor/g6-5.1.1.min.js").statusCode()==200)
       assert(http(port,"/assets/dacp-logo.png").statusCode()==200)

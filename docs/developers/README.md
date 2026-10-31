@@ -14,11 +14,11 @@ Core owns contracts, discovery and lifecycle, transport, authorization, namespac
 
 | Module | Responsibility |
 |---|---|
-| `dacp-plugin-api` | Public provider, format, scan and executor contracts |
+| `dacp-plugin-api` | Public service integration, execution and executor contracts; data contracts come from XStream |
 | `dacp-server` | Flight service, namespace, coordination and resource lifecycle |
 | `dacp-client`, `dacp-client-scala` | Public client APIs and shell |
-| `plugins/xstream-plugin-operator-executors` | Container launchers and native-command bridge |
-| `xstream-operator-repository` | Immutable publication, public search and downloads |
+| XStream `plugins/xstream-plugin-operator-executors` | Independently maintained container launchers and native-command bridge |
+| Independent `xstream-operator-repository` project | Source submission, isolated build, review, public catalog and downloads |
 | `proto/dacp.proto` | Shared wire messages |
 
 ## Write and publish operators
@@ -154,4 +154,4 @@ Source-only operator publication: [submission, isolated builds, review and trust
 
 ## XStream integration tests
 
-Operator modules, runtime tools and source-review tests live in [xstream-codex](https://github.com/rdcn-link/xstream-codex). Build DACP against published XStream artifacts. Development integration fixtures requiring operator example sources accept an explicit `XSTREAM_SOURCE_ROOT=/path/to/xstream-codex`; this is a test-fixture path, not a production build dependency. Install `xstream-operator-sdk/python` into the test Python environment for climate operator examples.
+The engine, data and operator SDKs, inference and runtime tools live in [xstream-codex](https://github.com/rdcn-link/xstream-codex). Repository service and source-review integration tests live in the independent [operator repository](https://github.com/rdcn-link/xstream-operator-repository). Build DACP against published XStream artifacts. Development integration fixtures requiring operator example sources accept an explicit `XSTREAM_SOURCE_ROOT=/path/to/xstream-codex`; this is a test-fixture path, not a production build dependency. Install `xstream-operator-sdk/python` into the test Python environment for climate operator examples.

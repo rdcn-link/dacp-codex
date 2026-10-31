@@ -59,6 +59,25 @@ class S3ServiceSpec extends AnyFunSuite {
   private def request(s:S3Service,path:String,method:String="GET",headers:Map[String,String]=Map.empty)={
     client.send(SecurityTestSupport.signed(s.port,path,method,headers),HttpResponse.BodyHandlers.ofString())
   }
+  test("aggregate runtime metrics count requests and object payload without exposing catalog contents") {fixture{(_,service,closed,_)=>
+    val before=closed.get()
+    val initial=service.snapshot
+    assert(initial.path("state").asText=="running")
+    assert(initial.path("started_at_ms").asLong>0 && initial.path("requests_total").asLong==0)
+    assert(closed.get()==before && !initial.has("buckets") && !initial.has("objects"))
+    assert(request(service,"/science/folder/a%20%2B%26.bin").statusCode()==200)
+    assert(request(service,"/science/folder/a%20%2B%26.bin","HEAD").statusCode()==200)
+    assert(request(service,"/missing").statusCode()==404)
+    assert(request(service,"/","POST").statusCode()==405)
+    val until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(2)
+    while(service.snapshot.path("requests_succeeded").asLong+service.snapshot.path("requests_failed").asLong<4 && System.nanoTime()<until)Thread.sleep(5)
+    val n=service.snapshot
+    assert(n.path("requests_total").asLong==4 && n.path("requests_succeeded").asLong==2 && n.path("requests_failed").asLong==2)
+    assert(n.path("object_bytes_sent").asLong==10)
+    assert(n.path("methods").path("GET").asLong==2 && n.path("methods").path("HEAD").asLong==1 && n.path("methods").path("OTHER").asLong==1)
+    assert(n.path("http_statuses").path("404").asLong==1 && n.path("http_statuses").path("405").asLong==1)
+    assert(!n.toString.contains("a +&.bin") && !n.toString.contains("science"))
+  }}
   test("live buckets, escaped keys, delimiter and bound pagination tokens") {fixture{(_,s,_,remove)=>
     assert(request(s,"/").body.contains("<Name>science</Name>"))
     val listing=request(s,"/science?list-type=2&max-keys=1")

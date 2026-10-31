@@ -94,3 +94,7 @@ DACP_S3_TEST_PYTHON="$(command -v python3)" sbt 'testOnly dacp.S3ServiceSpec dac
 ```
 
 Contract tests cover third-party Dataset interfaces, the built-in file plugin, live catalogs, encoding, pagination, ranges, empty objects, unknown sizes, resource cleanup, and managed downloads with a real boto3 client. Only the boto3 integration test is skipped when `DACP_S3_TEST_PYTHON` is unset.
+
+## S3 operations overview
+
+The S3 service page at /s3 reads /api/s3 to show enabled/running state, endpoint as plain text, startup time, uptime, active requests, request method and HTTP response counts, successful/failed requests, mean completed-request time, and object bytes sent. Transfer and request rates are differences between two browser samples. Counters are in-memory aggregates since S3 startup and reset on restart; concurrent snapshots are approximate. Object bytes count successful payload writes, including ranges and partial transfers, and exclude XML listing/error bodies, HTTP and TLS overhead. A failed transfer can have an HTTP 200/206 header, so failure counters and status-code counts describe different aspects. No credentials, bucket/object names or Item paths are included. Reading these metrics never opens a dataset or consumes a data stream. The page does not provide S3 browsing, downloads, signing or credential-management controls.

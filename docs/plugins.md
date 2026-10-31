@@ -40,7 +40,7 @@ Published item paths and views are the client contract. Backend-specific parsing
 
 ## Plugin foundation
 
-The standalone [dacp-plugin-api](../dacp-plugin-api/README.md) module contains the shared contracts, without a dependency on the server implementation. The [example project](../examples/plugins/README.md) demonstrates independent compilation, service registration, native Dataset construction, and direct structured-file child access. `PluginChecks.listing` provides reusable metadata contract checks; the server suite tests end-to-end Flight integration, cancellation, and cleanup.
+Data contracts, typed views and format discovery belong to XStream data modules. The standalone [dacp-plugin-api](../dacp-plugin-api/README.md) adds public service/execution contracts without depending on the server implementation. The [example project](../examples/plugins/README.md) demonstrates independent compilation, service registration, native Dataset construction, and direct structured-file child access. `PluginChecks.listing` provides reusable metadata contract checks; the server suite tests end-to-end Flight integration, cancellation, and cleanup.
 
 Configure `plugin_directory` to load plugin and private dependency JARs before registries initialize. Built-ins and contributed implementations use the same interfaces. Dataset providers receive a `DatasetContext` rather than the server's `Config`. Each handler validates its private YAML `options` map; `format` and `schema` remain common reader settings. Access handles are closed per request, and provider resources are closed on shutdown. Plugins are trusted server code and are not hot-reloaded.
 
@@ -50,7 +50,6 @@ Structured files implement `StructuredFileHandler.openStructure` to return logic
 
 Scientific parsers, views and network codecs are provided by [xstream-data](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/README.md).
 
-Scientific parsers, views and network codecs are provided by [xstream-data](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/README.md).
 
 New extension points should follow the same principle: define a focused shared contract, discover implementations through registration, and keep implementation-specific branches out of core dispatch. Do not introduce an extension abstraction without a concrete contribution or use case. During unreleased development, improve contracts directly and update their users together rather than accumulating compatibility layers.
 

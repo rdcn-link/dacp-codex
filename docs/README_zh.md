@@ -27,7 +27,7 @@
 | Scala SDK | [Scala 客户端](../dacp-client-scala/README_zh.md) |
 | DACP Server | [管理员指南](administrators/README_zh.md)、[配置和协议参考](reference_zh.md) |
 | Union Server 与 Web 看板 | [Union 手册](../dacp-union-server/README_zh.md)、[协作协议](union_zh.md)、[双节点示例](../examples/union/README_zh.md) |
-| 算子仓库 CLI 与网站 | [仓库手册](https://github.com/bluejoe2008/xstream-operator-repository/blob/main/README_zh.md) |
+| 算子仓库 CLI 与网站 | [仓库手册](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README_zh.md) |
 | 插件 API 与 Union 传输工具 | [插件 API](../dacp-plugin-api/README_zh.md)、[Union 协议模块](../dacp-union-protocol/README_zh.md) |
 
 ## 专题参考
@@ -59,13 +59,13 @@
 
 [节点 Web 看板](node-web_zh.md)：默认 HTTP 服务、配置开关及 G6 任务 DAG。
 
-官方网站的构建、部署和软件下载发布：[dacp-website](https://github.com/bluejoe2008/dacp-website/blob/main/README_zh.md)。网站仅提供英文内容。
+官方网站的构建、部署和软件下载发布：[dacp-website](https://github.com/rdcn-link/dacp-website/blob/main/README_zh.md)。网站仅提供英文内容。
 
 [S3 兼容读取](s3-service_zh.md)：节点启动时公开 dataset bucket 与 Item object，支持 SigV4 认证的只读下载。
 
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](union-proxy_zh.md)。
 
-[认证与访问控制](security_zh.md)：Flight Token、Union 服务凭据、S3 SigV4、撤销与审计。[结构推导](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference_zh.md)：算子必选输出推导与工作流校验。
+[认证与访问控制](security_zh.md)：Flight Token、Union 服务凭据、S3 SigV4、撤销与审计。[结构推导](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference_zh.md)：设计期算子输出结构与有限样例；执行时不调用结构推导。
 
 [流传递与逐步物化实测](materialization-benchmark_zh.md)：50 万条气象记录、三轮耗时和实际落盘量。
 
@@ -78,3 +78,5 @@ Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名�
 - [算子参数类型及设计器表单](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-parameters_zh.md)
 
 算子仅源码发布：[提交、隔离构建、审核和可信度](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
+
+项目边界：[基于 XStream 的 DACP 服务](ecosystem_zh.md)。可视化设计器、SDK/引擎及算子仓库由独立项目维护。

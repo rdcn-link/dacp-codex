@@ -21,7 +21,7 @@ async function refresh(){if(busy)return;busy=true;try{
  $('page').textContent=' '+(offset+1)+'–'+(offset+page.records.length)+' ';$('previous').disabled=offset===0;$('next').disabled=page.records.length<50;
  $('connection').textContent='Connected';$('error').hidden=true;
  }catch(e){showError(e);}finally{busy=false;}}
-async function datasets(){try{const data=await api('/api/datasets'),body=$('datasets');body.replaceChildren();for(const d of data.datasets){const row=el('tr');for(const v of [d.name,d.description,d.uri])cell(row,v);body.append(row);}if(!data.datasets.length){const r=el('tr');cell(r,'No datasets');body.append(r);}}catch(e){showError(e);}}
+
 $('execution-source').addEventListener('change',()=>{offset=0;selected=null;previous.clear();refresh();});
-$('refresh').addEventListener('click',()=>{refresh();datasets();});$('previous').addEventListener('click',()=>{offset=Math.max(0,offset-50);refresh();});$('next').addEventListener('click',()=>{offset+=50;refresh();});
-refresh();datasets();setInterval(refresh,2000);
+$('refresh').addEventListener('click',()=>{refresh();});$('previous').addEventListener('click',()=>{offset=Math.max(0,offset-50);refresh();});$('next').addEventListener('click',()=>{offset+=50;refresh();});
+refresh();setInterval(refresh,2000);

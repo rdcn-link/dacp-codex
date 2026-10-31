@@ -31,12 +31,12 @@ object NodeWebSettings {
 }
 
 /** Public read-only metadata view: never opens Items or claims execution output streams. */
-private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:Long,live:()=>Vector[JsonNode]) extends AutoCloseable {
+private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:Long,live:()=>Vector[JsonNode],s3Status:()=>JsonNode) extends AutoCloseable {
   private val server=HttpServer.create(new InetSocketAddress(config.web.host,config.web.bindPort(flightPort)),16)
   private val threads=new ThreadPoolExecutor(4,4,0L,java.util.concurrent.TimeUnit.MILLISECONDS,new ArrayBlockingQueue[Runnable](64),new ThreadPoolExecutor.AbortPolicy())
   private val closed=new AtomicBoolean()
   private val origin=new java.net.URI("dacp",null,config.publicHost,flightPort,null,null,null).toASCIIString
-  private val files=Map("/job"->("job.html","text/html; charset=utf-8"),"/job.js"->("job.js","text/javascript; charset=utf-8"),"/job-script.js"->("job-script.js","text/javascript"),"/attempts.js"->("attempts.js","text/javascript"),"/"->("index.html","text/html"),"/duration.js"->("duration.js","text/javascript"),"/app.js"->("app.js","text/javascript"),"/dag.js"->("dag.js","text/javascript"),"/style.css"->("style.css","text/css"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"))
+  private val files=Map("/s3"->("s3.html","text/html"),"/s3.js"->("s3.js","text/javascript"),"/datasets"->("datasets.html","text/html"),"/datasets.js"->("datasets.js","text/javascript"),"/job"->("job.html","text/html; charset=utf-8"),"/job.js"->("job.js","text/javascript; charset=utf-8"),"/job-script.js"->("job-script.js","text/javascript"),"/attempts.js"->("attempts.js","text/javascript"),"/"->("index.html","text/html"),"/duration.js"->("duration.js","text/javascript"),"/app.js"->("app.js","text/javascript"),"/dag.js"->("dag.js","text/javascript"),"/style.css"->("style.css","text/css"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"))
   server.setExecutor(threads)
   server.createContext("/",(e:HttpExchange)=>handle(e))
   def port:Int=server.getAddress.getPort
@@ -134,6 +134,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
         val n=Json.obj().put("web_url",publicUrl).put("flight_uri",origin).put("started_at_ms",startedAt).put("uptime_ms",System.currentTimeMillis()-startedAt).put("capacity",config.maxConcurrentTasks).put("reserved_tasks",config.maxConcurrentTasks-config.taskSlots.availablePermits()).put("mode",if(config.debug)"DEBUG"else "NORMAL")
         n.set[JsonNode]("resources",NodeResources.snapshot())
         val executors=n.putArray("executors");config.plugins.services(classOf[OperatorExecutor]).foreach(x=>executors.add(x.id));json(e,200,n)
+      case "/api/s3"=>json(e,200,s3Status())
       case "/api/datasets"=>
         val n=Json.obj();val a=n.putArray("datasets");config.datasetInfos().foreach { d=>val item=a.addObject().put("name",d.name).put("uri",origin+"/"+d.name).put("description",d.description) };json(e,200,n)
       case "/api/history"=>

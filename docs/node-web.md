@@ -52,3 +52,11 @@ While locked, scrolling the wheel over the DAG scrolls the page normally; only u
 Cross-node input interfaces appear in a separate upstream-server group outside this node’s execution area. Interface cards identify the upstream step and output port, such as `parse.result`; they are not steps executed on this node. Dependency and swimlane layouts use the same ownership.
 
 Jobs have a required readable `name` and a system-generated execution ID. Node and Union job lists share Name, Job ID, Source, Type, Status, Started at and Duration columns; details show the name and full ID. Job definitions, subjob definitions and execution policies display as YAML.
+
+## Data catalog
+
+Open **Data catalog** in the navigation, or visit /datasets, to browse this node’s published datasets. The separate page uses the Union catalog’s layout, with local names, JSON descriptions, DACP URIs, text filtering and an explicit refresh button. It loads /api/datasets asynchronously on entry and on refresh, so a custom dynamic DataCatalog supplies the current list. Failures show an error and retain the previous successful list. Browsing metadata does not open Items, consume streams or submit Jobs. The overview focuses on node health and Job history.
+
+## S3 operations overview
+
+Open /s3 for runtime information and aggregate request/transfer statistics. It offers no bucket browsing, object downloads or credential controls. See [S3 monitoring and counter semantics](s3-service.md#s3-operations-overview) for fields, reset behavior and byte-count scope.
