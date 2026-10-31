@@ -59,7 +59,7 @@ Commands run from the project root unless a document specifies otherwise. Relati
 
 [Node web dashboard](node-web.md): default HTTP service, configuration, and G6 execution DAGs.
 
-Official website builds, deployment and software download publication: [dacp-website](../dacp-website/README.md). Website content is English-only.
+Official website builds, deployment and software download publication: [dacp-website](https://github.com/bluejoe2008/dacp-website). Website content is English-only.
 
 [S3-compatible reads](s3-service.md): dataset buckets and Item objects exposed at node startup, with SigV4-authenticated read-only downloads.
 

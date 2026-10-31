@@ -59,7 +59,7 @@
 
 [节点 Web 看板](node-web_zh.md)：默认 HTTP 服务、配置开关及 G6 任务 DAG。
 
-官方网站的构建、部署和软件下载发布：[dacp-website](../dacp-website/README_zh.md)。网站仅提供英文内容。
+官方网站的构建、部署和软件下载发布：[dacp-website](https://github.com/bluejoe2008/dacp-website/blob/main/README_zh.md)。网站仅提供英文内容。
 
 [S3 兼容读取](s3-service_zh.md)：节点启动时公开 dataset bucket 与 Item object，支持 SigV4 认证的只读下载。
 
