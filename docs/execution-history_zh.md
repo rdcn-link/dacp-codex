@@ -21,13 +21,13 @@ U 使用 `state_directory/executions`。不同运行实例应使用独立目录�
 
 ```bash
 # DACP 节点
- target/universal/stage/bin/dacp-server history list /var/lib/dacp/node-a/executions
- target/universal/stage/bin/dacp-server history list /var/lib/dacp/node-a/executions 100 100
- target/universal/stage/bin/dacp-server history get /var/lib/dacp/node-a/executions RECORD_ID
+ target/universal/stage/bin/dacp-admin list-history /var/lib/dacp/node-a/executions
+ target/universal/stage/bin/dacp-admin list-history /var/lib/dacp/node-a/executions 100 100
+ target/universal/stage/bin/dacp-admin get-history /var/lib/dacp/node-a/executions RECORD_ID
 
 # U
- target/universal/stage/bin/dacp-union-server history list ../.union-demo/x/executions
- target/universal/stage/bin/dacp-union-server history get ../.union-demo/x/executions JOB_ID
+ target/universal/stage/bin/union-admin list-history ../.union-demo/x/executions
+ target/universal/stage/bin/union-admin get-history ../.union-demo/x/executions JOB_ID
 ```
 
 Union HTTP 看板的“执行历史”可分页查看 U 的持久化作业、任务状态与流量。`GET /api/history?offset=0&limit=100` 查询历史；`GET /api/jobs/ID` 在内存会话失效后仍返回历史元数据。列表最大分页大小为 1000，网页每页 100 条，搜索和状态筛选作用于当前页。历史记录与看板公开只读，无需登录或 token。历史数据不能用于重放结果、恢复 Job 或重新授权读取源数据。

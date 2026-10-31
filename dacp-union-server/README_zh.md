@@ -12,7 +12,7 @@ Union 提供标准 DACP 数据目录、Item 访问与 Job 执行，公开数据�
 
 ```bash
 sbt test stage
-target/universal/stage/bin/dacp-union-server identity ../.union-demo/x.yaml
+target/universal/stage/bin/union-admin identity ../.union-demo/x.yaml
 target/universal/stage/bin/dacp-union-server serve ../.union-demo/x.yaml
 ```
 
@@ -46,7 +46,7 @@ s3: {enabled: true, host: 127.0.0.1, port: 21860}
 普通客户端使用 TLS 与 Bearer Token，无需客户端证书。本地创建示例：
 
 ```bash
-target/universal/stage/bin/dacp-union-server credentials ../.union-demo/x/credentials create --subject alice
+target/universal/stage/bin/union-admin create-account ../.union-demo/x/credentials --role runner --subject alice
 ```
 
 将返回的 Token 保存到受保护文件，通过 `dacp-shell dacp://localhost:19860 --ca ../examples/certs/ca.crt --token-file /protected/alice.token` 使用。见[客户端示例](../docs/union-proxy_zh.md)。任务使用公开命名空间或逻辑节点名称；状态、取消、重放、结果与事件流检查所有者。
@@ -55,7 +55,7 @@ target/universal/stage/bin/dacp-union-server credentials ../.union-demo/x/creden
 
 Job 通过 `inputs` 连接步骤，不支持控制依赖，允许无输出算子。每个算子必须实现[结构推导](https://github.com/rdcn-link/xstream-codex/blob/main/docs/structure-inference_zh.md)。[执行策略](../docs/materialization_zh.md)控制物化、重放、重试次数与总超时。自动重试要求客户端丢弃失败尝试的部分结果，不强制最终结果物化。流使用有界队列与背压；重启中断的任务不会自动恢复，但已提交的物化结果可重放。
 
-前缀 `dacp.union.` 的 Flight Actions 包括 `submit`、`replay_job`、`job_status` 和 `cancel_job`。结果与事件 Ticket 携带 `job_id`，事件还携带 `after`。普通目录使用 `dacp.catalog`，逻辑节点使用 `dacp.nodes`。请求大小上限为 1 MiB。HTTP 看板是内网只读接口，不管理凭据。S3 使用独立 SigV4 认证，见 [S3](../docs/s3-service_zh.md)。
+前缀 `dacp.union.` 的 Flight Actions 包括 `submit`、`replay_job`、`job_status` 和 `cancel_job`。结果与事件 Ticket 携带 `job_id`，事件还携带 `after`。普通目录使用 `dacp.catalog`，逻辑节点使用 `dacp.nodes`。请求大小上限为 1 MiB。HTTP 看板是内网只读接口，不管理凭据。S3 与 DACP 共享主体和角色，使用独立 SigV4 密钥，见 [S3](../docs/s3-service_zh.md)。
 
 每个 Job 支持 64 步及 1024 个连接端口，每步最多 32 个输入和 32 个连接输出。Union 最多 64 个活动任务及 4096 个内存会话。事件保留最多 128 条、4 MiB，旧游标收到 gap 通知。备份配置、凭据、Union 身份、成员证书固定记录、命名空间路由、执行历史和物化存储；凭据应与公开数据分别保护。
 

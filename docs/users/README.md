@@ -36,8 +36,8 @@ cd dacp-server
 sbt stage
 (umask 077
  mkdir -p .dacp-security/8815
- target/universal/stage/bin/dacp-server credentials .dacp-security/8815 create --subject alice > .dacp-security/8815/alice-issued.json
- python3 -c 'import json,pathlib; p=pathlib.Path(".dacp-security/8815"); (p/"alice.token").write_text(json.loads((p/"alice-issued.json").read_text())["token"]); (p/"alice-issued.json").unlink()'
+ target/universal/stage/bin/dacp-admin create-account .dacp-security/8815 --role runner --subject alice > .dacp-security/8815/alice-issued.json
+ python3 -c 'import json,pathlib; p=pathlib.Path(".dacp-security/8815"); (p/"alice.token").write_text(json.loads((p/"alice-issued.json").read_text())["token"])'
 )
 target/universal/stage/bin/dacp-server
 ```
@@ -293,7 +293,7 @@ Operators share dependency environments and small code packages. The independent
 
 ## Security and operating limits
 
-Ordinary DACP access uses TLS and tokens; Union collaboration uses mutual TLS and service credentials. Published datasets and their Items are browsable and readable by default, without an additional URI allowlist. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
+DACP metadata is anonymous over TLS. Data reads require a token whose subject has reader or runner; execution and inference require runner. Union collaboration uses mutual TLS and service credentials. No Dataset/Item ACL is configured. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
 
 Unpublished physical files and database tables are not automatically exposed. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and tasks are not restored after restart. See the [technical reference](../reference.md#protocol-and-configuration) for full configuration and protocol details.
 
@@ -339,3 +339,13 @@ Both single-node DACP Server multi-step jobs and Union collaborative jobs accept
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy.md).
 
 [Online Job Designer](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README.md): design local and cross-node jobs in the browser and export YAML for Shell / SDK submission.
+
+For metadata-only browsing, omit `--token-file`: `dacp-shell dacp://host:8815`. Dataset and Item listings and Item metadata remain available; `cat`, queries and computed counts require reader or runner, and `run`/`submit` require runner.
+
+### Anonymous browsing by address
+
+```bash
+.venv/bin/dacp-shell dacp://10.0.82.103:18861
+```
+
+With no `DACP_TOKEN_FILE`, `DACP_CA` or client certificate configured, public catalogs and Item metadata need no `ca.crt`. This mode keeps TLS encryption without server certificate verification. Supplying `--ca` enables verification; token-authenticated access still requires a trusted server certificate. Anonymous access cannot read data streams or execute jobs.

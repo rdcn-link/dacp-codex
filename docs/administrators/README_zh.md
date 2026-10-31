@@ -51,7 +51,7 @@ Union 从配置构建唯一的 Union，使用节点签发的凭据连接独立�
 
 节点默认同时开启只读 HTTP 看板，端口为 DACP 服务端口加 1000；可通过 `web.enabled: false` 关闭。配置和 DAG 展示见[节点 Web 看板](../node-web_zh.md)。
 
-节点默认同时启用 [S3 兼容读取服务](../s3-service_zh.md)，端口为 DACP 服务端口加 2000；它通过 HTTPS 与 SigV4 认证下载 bytes Item，凭据独立于 DACP 数据服务。可通过 `s3: {enabled: false}` 关闭。
+节点默认同时启用 [S3 兼容读取服务](../s3-service_zh.md)，端口为 DACP 服务端口加 2000；它通过 HTTPS 与 SigV4 认证下载 bytes Item，签名密钥独立，主体及 reader/runner 角色与 DACP 共用。可通过 `s3: {enabled: false}` 关闭。
 
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy_zh.md)。
 

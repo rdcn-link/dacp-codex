@@ -186,7 +186,7 @@ Configuration in `examples/server.yaml`:
 | `task_input_prefixes` | Optional execution-node input URI prefix restriction; omitted or empty means no additional prefix restriction |
 | `max_concurrent_tasks` | Concurrency limit for local tasks and control requests (default 2); returns UNAVAILABLE immediately when full |
 
-Published node datasets are available to authenticated TLS / token clients without an additional data-read allowlist. Union collaboration uses node-issued service credentials and mutual TLS; peer streams must also match exact execution plans.
+Published node metadata is anonymous over TLS. Reading data requires a reader or runner subject; execution and inference require runner. Union collaboration uses node-issued service credentials and mutual TLS; peer streams must also match exact execution plans.
 
 Service errors use Flight/gRPC statuses and explicit dacp error names: missing resources return `NOT_FOUND`; denied access returns `UNAUTHORIZED` with `FORBIDDEN`; schema conflicts return `INVALID_ARGUMENT` with `SCHEMA_CONFLICT`. Protobuf also defines error codes for protocol extensions. Any transport failure invalidates the current reader, and callers must reopen from the beginning; there are no retries within a stream.
 

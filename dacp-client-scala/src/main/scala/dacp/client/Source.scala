@@ -108,7 +108,7 @@ object Source {
     val allocator = new RootAllocator(Long.MaxValue)
     try {
       val client=dacp.union.ClientTransport.open(allocator,new URI("dacp",null,u.getHost,if(u.getPort<0)8815 else u.getPort,null,null,null).toString,
-        ca,cert,key,()=>tls.token.orElse(credential(tls.tokenFile,"DACP_TOKEN_FILE").map(p=>Files.readString(p).trim)))
+        ca,cert,key,()=>tls.token.orElse(credential(tls.tokenFile,"DACP_TOKEN_FILE").map(p=>Files.readString(p).trim)),allowAnonymousWithoutCa=true)
       (client,allocator)
     }catch{case t:Throwable=>allocator.close();throw DacpErrors.translate(t)}
   }

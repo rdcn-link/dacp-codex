@@ -186,7 +186,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | `task_input_prefixes` | 可选的执行节点输入 URI 前缀限制；省略或为空时不增加前缀限制 |
 | `max_concurrent_tasks` | 本地任务及控制请求并发上限（默认 2）；满载立即返回 UNAVAILABLE |
 
-节点发布的数据集默认对通过 TLS / Token 认证的客户端开放；不另设数据读取白名单。Union 协作使用节点签发的服务凭据和双向 TLS；节点间流还须匹配精确执行计划。
+节点发布的目录、Item 列表及元信息允许通过 TLS 匿名访问；数据读取需要 reader 或 runner，执行和结构推导需要 runner。Union 协作使用节点签发的服务凭据和双向 TLS；节点间流还须匹配精确执行计划。
 
 服务错误使用 Flight/gRPC 状态和明确的 dacp 错误名称：资源不存在为 `NOT_FOUND`；禁止访问为 `UNAUTHORIZED` 且消息含 `FORBIDDEN`；schema 冲突为 `INVALID_ARGUMENT` 且消息含 `SCHEMA_CONFLICT`。protobuf 同时定义错误码供协议扩展。任何传输失败使当前 reader 作废，调用方从头 open；没有流内重试。算子结果只通过流返回，不注册输出数据集或使用输出 TTL。
 

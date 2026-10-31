@@ -18,7 +18,7 @@ class SourceSpec extends AnyFunSuite {
     val description="""{"summary":"Orders","owner":{"team":"sales"},"fields":["id","amount"]}"""
     val metadata=Metadata.DataSet.newBuilder().setName("orders").setUri("dacp://localhost/orders").setDescription(description).setObservedAtMs(42).build()
     val info=new FlightInfo(bytesSchema,FlightDescriptor.path("datasets","orders"),java.util.Collections.emptyList[FlightEndpoint](),-1,-1,false,org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,metadata.toByteArray)
-    val dataset=DatasetInfo.fromFlight(info)
+    val dataset=dacp.client.DatasetInfo.fromFlight(info)
     assert(dataset.name=="orders" && dataset.description==description && dataset.observedAtMs==42)
     assert(!metadata.getAllFields.keySet.asScala.exists(f=>Set("title","tags")(f.getName)))
   }

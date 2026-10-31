@@ -175,6 +175,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     }
   }
   def getStream(ctx:CallContext,ticket:Ticket,listener:ServerStreamListener):Unit=Rpc.stream(ctx,ticket,listener) { (n,who)=>
+    if(Rpc.isAuthenticatedCall && !(Set("peer","union")(Rpc.principal.kind) && Rpc.principal.certificate.nonEmpty))denied("certificate-bound execution consumer required")
     Json.fields(n,Set("type","execution_id","task","port"));require(Json.text(n,"type")==Rpc.Prefix+"output","unknown Union ticket")
     val session=find(Json.text(n,"execution_id"),who,owner=false)
     val out=session.output(Json.id(Json.text(n,"task")),Json.id(Json.text(n,"port")));out.claim(who)

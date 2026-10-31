@@ -20,7 +20,7 @@ s3:
 
 服务随 `DacpServer.start()` 启动，随 `close()` 关闭；绑定失败会回滚整个节点启动。嵌入式应用通过 `server.s3Port` 获取实际端口。启动日志输出 S3 监听地址；通过 `http://节点主机:S3端口/` 访问。
 
-S3 是独立认证的只读 HTTPS 端点，使用节点 TLS 证书。所有读取（含列表和元数据）要求 SigV4 认证，不支持匿名访问。密钥与 Flight Token 独立，通过本地凭据工具创建 kind=s3 的密钥；密钥撤销拒绝后续请求，已接纳的下载继续。支持预签名 GET 临时分享对象，不支持预签名列表请求。
+S3 是只读 HTTPS 端点，使用节点 TLS 证书，与 DACP 共享主体和角色。每个请求（含列表和元数据）需要有效 SigV4 签名以及 reader 或 runner，不支持匿名 S3 访问。DACP Token 与 S3 签名密钥是同一主体的两类独立凭据，可分别撤销。清空主体角色后，两个协议的后续读取均被拒绝，包括预签名 GET 和 Range 请求；已接纳的下载继续。支持预签名 GET 临时分享对象，不支持预签名列表请求。
 
 ## 数据表示与插件
 
@@ -34,10 +34,10 @@ S3 是核心传输适配层，不是存储后端插件。已有 Dataset provider
 
 ## 客户端示例
 
-在服务器本地创建密钥，妥善保存返回的访问密钥 ID 与仅显示一次的秘密：
+在服务器本地创建账号，同时签发其 DACP Token 和 S3 密钥。需要执行 Job 时使用 runner 而非 reader。妥善保存返回的 Token、访问密钥 ID 与仅显示一次的秘密：
 
 ```bash
-target/universal/stage/bin/dacp-server credentials /protected/node-credentials create --subject download-user --kind s3
+target/universal/stage/bin/dacp-admin create-account /protected/node-credentials --role reader --subject alice
 ```
 
 ```python
@@ -66,7 +66,7 @@ url = s3.generate_presigned_url('get_object',
 AWS CLI 使用同样的访问密钥环境变量，并指定 `--endpoint-url https://localhost:10815` 与 `--ca-bundle examples/certs/ca.crt`，不要使用 `--no-sign-request`。也可以通过本地工具生成预签名 URL：
 
 ```bash
-target/universal/stage/bin/dacp-server credentials /protected/node-credentials presign ACCESS_KEY_ID https://localhost:10815/climate/observations/day.csv 300
+target/universal/stage/bin/dacp-admin presign-get /protected/node-credentials ACCESS_KEY_ID https://localhost:10815/climate/observations/day.csv 300
 ```
 
 
@@ -99,3 +99,5 @@ DACP_S3_TEST_PYTHON="$(command -v python3)" sbt 'testOnly dacp.S3ServiceSpec dac
 ## S3 运行概览
 
 /s3 页面通过 /api/s3 展示启用／运行状态、纯文本服务地址、启动时间、已运行时间、活动请求数、按方法及 HTTP 状态码统计的请求量、成功／失败次数、已完成请求的平均耗时和对象发送字节数。传输速率和请求速率由浏览器两次采样的差值计算。计数为 S3 启动以来的内存聚合值，重启后清零；并发快照为近似值。对象字节统计成功写出的数据内容，包括范围请求及中途失败前的部分传输，不计 XML 列表／错误响应、HTTP 和 TLS 开销。失败传输也可能已发送 HTTP 200／206 头，因此失败计数与状态码计数描述不同维度。不返回凭据、桶／对象名或 Item 路径。读取指标不会打开数据集或消费数据流。页面不提供 S3 浏览、下载、签名或凭据管理操作。
+
+Union 发行包通过 `union-admin` 提供完全相同的命令。`list-credentials DIRECTORY` 隐藏秘密；`revoke-credential DIRECTORY ID` 和 `rotate-credential DIRECTORY ID` 作用于单个凭据。`presign-get` 要求当前具有 reader 或 runner，URL 不能绕过之后的角色变更。

@@ -66,7 +66,7 @@ def main():
                 workers=[r for r in records if r.get('request_type')=='task']
                 assert len(workers)==4 and all(r.get('parent_execution_id') for r in workers)
                 assert all('def process' not in json.dumps(r) for r in workers)
-                listing=subprocess.run([str(NODE),'history','list',str(state/'executions')],capture_output=True,text=True,check=True)
+                listing=subprocess.run([str(NODE.with_name('dacp-admin')),'list-history',str(state/'executions')],capture_output=True,text=True,check=True)
                 assert len(json.loads(listing.stdout))==7
                 print('PASS: ordinary Flight jobs and worker tasks persist success, failure, cancellation, timing, correlation and live CLI history')
             except BaseException:

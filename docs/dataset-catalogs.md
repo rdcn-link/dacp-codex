@@ -78,7 +78,7 @@ Startup matches configured `provider` against the plugin's `id` and calls `creat
 - Acquired leases must remain usable after registry removal or refresh. Underlying file or database removal can still fail a read; this does not guarantee content snapshots or persistent results.
 - Override the `check` overloads and check cancellation inside query loops and expensive operations. Reading still follows existing backpressure and cancellation contracts.
 - The server closes the catalog instance. Catalogs release only their own resources; application-injected shared pools remain application-owned.
-- Directory information requires no additional data or Union execution grant and still uses Flight TLS / Token. Published datasets are readable by default; namespace and resource-path validation remain in place.
+- Directory, Item-list and Item-metadata requests allow anonymous TLS access. Data reads require reader or runner; execution requires runner. Namespace and resource-path validation remain in place.
 
 Discovery uses the Flight `dacp.catalog` Action, returning entries and completeness. Standard `ListFlights` returns a complete directory or fails for incomplete catalogs. Each `FlightInfo.app_metadata` is a `DataSet` protobuf containing public names, URIs and user-defined JSON object strings in `description`, without Item contents. See [dataset directories](dataset-directory.md) for descriptions, the shell and per-member browsing on the Union website.
 

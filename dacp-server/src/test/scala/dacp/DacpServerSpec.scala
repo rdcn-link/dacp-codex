@@ -39,6 +39,7 @@ class DacpServerSpec extends AnyFunSuite {
     }
     val server=DacpServer.builder().config(c).catalog(cat).build().start()
     val allocator=new RootAllocator()
+    c.credentials.setRoles("scientific-reader",Set("runner"))
     val token=c.credentials.create("scientific-reader")._2
     val client=dacp.union.ClientTransport.open(allocator,c.uri(""),Some(cert),None,None,()=>Some(token))
     try {

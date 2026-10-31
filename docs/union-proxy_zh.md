@@ -30,7 +30,7 @@ dacp-shell> ls /
 dacp-shell> cat /observations records
 ```
 
-Shell 的启动参数绑定服务器地址。`datasets` 不接收地址参数。完整目录只有一个数据集时自动选择；直接使用公开名称选择，例如 `use ds-k7m2-9wqr`，或执行 `datasets` 后通过 `use 1` 选择对应行。列表只显示行号、名称和 JSON 描述，不显示 URI。SDK 的 `Source.datasets(...)` 返回可迭代目录并提供完整性字段；访问 Item、记录扫描和 bytes 流沿用普通 DACP 接口。S3 默认开启、匿名只读，以公开名称 作为 bucket，Item 逻辑路径作为 key；使用 `s3: {enabled: false}` 可关闭。S3 不能表达部分 bucket 清单，目录不完整时返回 503。
+Shell 的启动参数绑定服务器地址。`datasets` 不接收地址参数。完整目录只有一个数据集时自动选择；直接使用公开名称选择，例如 `use ds-k7m2-9wqr`，或执行 `datasets` 后通过 `use 1` 选择对应行。列表只显示行号、名称和 JSON 描述，不显示 URI。SDK 的 `Source.datasets(...)` 返回可迭代目录并提供完整性字段；访问 Item、记录扫描和 bytes 流沿用普通 DACP 接口。S3 默认开启，使用独立 SigV4 认证并提供只读访问，以公开名称 作为 bucket，Item 逻辑路径作为 key；使用 `s3: {enabled: false}` 可关闭。S3 不能表达部分 bucket 清单，目录不完整时返回 503。
 
 ## 普通任务与位置选择
 

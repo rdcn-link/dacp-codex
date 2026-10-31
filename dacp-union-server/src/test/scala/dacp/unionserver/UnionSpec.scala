@@ -97,6 +97,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       MemberSettings(DacpUri.origin(c.uri("")),path)
     }
     val settings=Settings("localhost",xp,s"dacp://localhost:$xp",root.resolve("x.crt"),root.resolve("x.key"),root.resolve("ca.crt"),dir.resolve("x-state"),100,timeoutSeconds,30,web,memberSettings=Vector(issue(ca,"a"),issue(cb,"b")),s3=S3Settings(port=Some(0)))
+    settings.credentials.setRoles("alice",Set("runner"));settings.credentials.setRoles("bob",Set("runner"))
     val clientToken=settings.credentials.create("alice")._2
     val strangerToken=if(allowStranger)settings.credentials.create("bob")._2 else "invalid"
     val x=new Coordinator(settings)
@@ -168,6 +169,46 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     def close():Unit={x.close();a.close();b.close();af.close();bf.close();client.close();stranger.close();Thread.sleep(100);ca.close();cb.close();allocator.close()}
   }
   private def policy(all:Boolean=false):JsonNode=if(all)Json.parse("""{"materialization":{"default":"materialize"}}""")else Json.parse("""{"materialization":{"tasks":{"ta":{"outputs":{"result":"materialize"}}}}}""")
+  test("Union exposes anonymous metadata and enforces reader versus runner on execution") {
+    val f=new Fixture
+    val anonymous=ClientTransport.open(f.allocator,f.settings.publicUrl,Some(tls("c").ca),None,None,()=>None)
+    val nodeAnonymous=ClientTransport.open(f.allocator,f.ca.uri(""),Some(tls("a").ca),None,None,()=>None)
+    f.settings.credentials.setRoles("read-only",Set("reader"))
+    val token=f.settings.credentials.create("read-only")._2
+    val reader=new Remote(None,credential=_=>Some(token),ca=Some(tls("c").ca))
+    try {
+      f.approved()
+      val entries=catalog(anonymous).getDatasetsList.asScala
+      assert(entries.size==2)
+      val name=entries.head.getName
+      assert(anonymous.getInfo(FlightDescriptor.path("datasets",name)).getAppMetadata.nonEmpty)
+      val info=anonymous.getInfo(FlightDescriptor.path("datasets",name,"/input"))
+      val blocked=anonymous.getStream(info.getEndpoints.get(0).getTicket)
+      try assert(intercept[FlightRuntimeException](blocked.next()).status.code==UNAUTHORIZED)finally blocked.close()
+      assert(nodeAnonymous.listFlights(Criteria.ALL).asScala.nonEmpty)
+      f.ca.credentials.setRoles(tls("b").identity,Set("runner"))
+      val forgedToken=f.ca.credentials.create(tls("b").identity)._2
+      val forged=ClientTransport.open(f.allocator,f.ca.uri(""),Some(tls("a").ca),None,None,()=>Some(forgedToken))
+      try {
+        val stream=forged.getStream(Rpc.ticket("output",Json.obj().put("execution_id","unknown").put("task","ta").put("port","result")))
+        try assert(intercept[FlightRuntimeException](stream.next()).status.code==UNAUTHORIZED)finally stream.close()
+      }finally forged.close()
+      assert(intercept[FlightRuntimeException](anonymous.doAction(new Action("dacp.infer","{}".getBytes("UTF-8"))).next()).status.code==UNAUTHORIZED)
+      val body=Json.obj().put("job_yaml",f.publicYaml(f.yaml))
+      assert(intercept[UnionFailure](reader.action(f.settings.publicUrl,"submit",body)).code==UNAUTHORIZED)
+      val client=reader.dataClient(f.settings.publicUrl,None)
+      val allowed=client.getStream(info.getEndpoints.get(0).getTicket)
+      try assert(allowed.next())finally{allowed.cancel("test complete",null);allowed.close()}
+      f.settings.credentials.setRoles("read-only",Set("runner"))
+      val id=reader.action(f.settings.publicUrl,"submit",body).path("job_id").asText
+      val ticket=Json.obj().put("job_id",id)
+      val result=reader.stream(f.settings.publicUrl,"results",ticket)
+      try {while(result.next().nonEmpty)()}finally result.close()
+      assert(intercept[UnionFailure](f.client.action(f.settings.publicUrl,"job_status",ticket)).code==UNAUTHORIZED)
+      f.settings.credentials.setRoles("read-only",Set("reader"))
+      assert(intercept[UnionFailure](reader.action(f.settings.publicUrl,"job_status",ticket)).code==UNAUTHORIZED)
+    }finally {reader.close();anonymous.close();nodeAnonymous.close();f.close()}
+  }
   test("scientific selections survive public Union proxy reads and member Job dispatch") {
     val f=new Fixture(scientific=true);val client=publicClient(f)
     try {
@@ -698,6 +739,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val bytes=client.getStream(info.getEndpoints.get(0).getTicket);val out=new java.io.ByteArrayOutputStream()
       try while(bytes.next()){val r=bytes.getRoot;(0 until r.getRowCount).foreach(i=>out.write(r.getVector(0).asInstanceOf[org.apache.arrow.vector.VarBinaryVector].get(i)))}finally bytes.close()
       assert(out.toByteArray.sameElements(f.inputA))
+      f.settings.credentials.setRoles("download",Set("reader"))
       val key=f.settings.credentials.create("download","s3")
       val uri=SigV4.presignGet(java.net.URI.create(s"https://localhost:${f.x.s3Port.get}/${entry.getName}/input"),key._1.path("id").asText,key._2)
       val trust=java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType);trust.load(null,null)

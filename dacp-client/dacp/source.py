@@ -30,11 +30,16 @@ def _flight_client(u, tls_root_certs=None, cert_chain=None, private_key=None, to
     class AuthFactory(flight.ClientMiddlewareFactory):
         def start_call(self, info): return AuthMiddleware()
     host = f"[{u.hostname}]" if ":" in u.hostname else u.hostname
+    ca = credential(tls_root_certs, "DACP_CA")
+    certificate = credential(cert_chain, "DACP_CERT")
+    key = credential(private_key, "DACP_KEY")
+    anonymous = token is None and certificate is None and key is None
     return flight.FlightClient(
         f"grpc+tls://{host}:{u.port or 8815}",
-        tls_root_certs=credential(tls_root_certs, "DACP_CA"),
-        cert_chain=credential(cert_chain, "DACP_CERT"),
-        private_key=credential(private_key, "DACP_KEY"), middleware=[AuthFactory()])
+        tls_root_certs=ca,
+        disable_server_verification=anonymous and ca is None,
+        cert_chain=certificate,
+        private_key=key, middleware=[AuthFactory()])
 
 def _logical_path(path):
     if (not isinstance(path, str) or not path.startswith("/") or "\\" in path

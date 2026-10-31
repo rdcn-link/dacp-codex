@@ -27,7 +27,7 @@ Union subjobs display the definitions and steps assigned to this node. External 
 
 Node status and the selected execution refresh every 2 seconds. Dataset directories are read on page load or manual refresh. The dashboard does not open Items, run operators, cancel jobs, or consume result streams.
 
-The page publicly exposes execution metadata and stored scripts and task parameters. Use it where this information may be public, configure its bind address, or disable it. Flight uses TLS and tokens; published datasets are public by default, while execution retains its separate authorization rules. Responses use `Cache-Control: no-store`; static resources require no external network access.
+The page publicly exposes execution metadata and stored scripts and task parameters. Use it where this information may be public, configure its bind address, or disable it. Flight uses TLS and tokens; published metadata is anonymous, reading requires reader or runner, and execution requires runner. Responses use `Cache-Control: no-store`; static resources require no external network access.
 
 Union provides public DACP proxy catalogs and per-member dataset pages on its management website; see [dataset directories](dataset-directory.md).
 

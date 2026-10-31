@@ -30,13 +30,17 @@ object Rpc {
     require(hops.size<=8 && hops.forall(_.matches("[a-zA-Z0-9_-]+")),"invalid proxy path")
     val headers=new FlightCallHeaders();headers.insert("x-dacp-proxy-hops",hops.mkString(","));new HeaderCallOption(headers)
   }
-  final case class Principal(subject:String,kind:String,certificate:Option[String],credentialId:Option[String]=None,unionId:Option[String]=None,active:()=>Boolean=()=>true)
+  final case class Principal(subject:String,kind:String,certificate:Option[String],credentialId:Option[String]=None,unionId:Option[String]=None,active:()=>Boolean=()=>true,permissions:Set[String]=Set.empty)
   private val principalKey:Context.Key[Principal]=Context.key("dacp-principal")
   def principal:Principal=Option(principalKey.get()).getOrElse(throw UnionFailure(FlightStatusCode.UNAUTHENTICATED,"authenticated principal required"))
   def identity:String={val p=principal;if(p.kind=="token")p.subject else p.certificate.getOrElse(p.subject)}
   def isAuthenticatedCall:Boolean=principalKey.get()!=null
-  def clientOperation():Unit=if(isAuthenticatedCall && !Set("token","union")(principal.kind))throw CallStatus.UNAUTHORIZED.withDescription("client credential required").toRuntimeException
-  def requireClient():Unit=if(!Set("token","union")(principal.kind))throw UnionFailure(FlightStatusCode.UNAUTHORIZED,"client credential required")
+  def requirePermission(permission:String):Unit=if(isAuthenticatedCall){
+    val p=principal
+    if(p.kind!="union" && !(p.kind=="token" && p.permissions(permission)))
+      throw CallStatus.UNAUTHORIZED.withDescription("permission required: "+permission).toRuntimeException
+  }
+  def requireClient():Unit=requirePermission("job:execute")
   def requireUnion(id:String):Unit={val p=principal;if(p.kind!="union" || !p.unionId.contains(id))throw UnionFailure(FlightStatusCode.UNAUTHORIZED,"Union service credential required")}
   def checkService():Unit={val p=principal;if(p.kind=="union" && !p.active())throw UnionFailure(FlightStatusCode.UNAUTHORIZED,"Union credential revoked or expired")}
   def interceptor(credentials:Option[Credentials]):ServerInterceptor=new ServerInterceptor {
@@ -52,13 +56,12 @@ object Rpc {
       val actor=auth match {
         case Some(header) if header.startsWith("Bearer ") && header.length<=1024=>
           credentials.flatMap(_.authenticate(header.substring(7),peer)).map { c=>
-            Principal(c.subject,c.kind,peer,Some(c.id),Option(c.unionId).filter(_.nonEmpty),()=>credentials.exists(_.valid(c.id)))
+            Principal(c.subject,c.kind,peer,Some(c.id),Option(c.unionId).filter(_.nonEmpty),()=>credentials.exists(_.valid(c.id)),credentials.get.permissions(c))
           }
         case Some(_)=>None
-        case None=>peer.map(id=>Principal(id,"peer",peer))
+        case None=>Some(peer.map(id=>Principal(id,"peer",peer)).getOrElse(Principal("anonymous","anonymous",None)))
       }
       if(actor.isEmpty)return reject("valid credential required")
-      if(actor.get.kind=="peer" && !Set("DoGet","DoAction")(call.getMethodDescriptor.getBareMethodName))return reject("client credential required")
       val hops=Option(headers.get(Metadata.Key.of("x-dacp-proxy-hops",Metadata.ASCII_STRING_MARSHALLER))).getOrElse("")
       val audited=new io.grpc.ForwardingServerCall.SimpleForwardingServerCall[A,B](call) {
         override def close(status:io.grpc.Status,trailers:Metadata):Unit={

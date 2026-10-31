@@ -21,13 +21,13 @@ From the corresponding module directory, query records using the local CLI, incl
 
 ```bash
 # DACP node
- target/universal/stage/bin/dacp-server history list /var/lib/dacp/node-a/executions
- target/universal/stage/bin/dacp-server history list /var/lib/dacp/node-a/executions 100 100
- target/universal/stage/bin/dacp-server history get /var/lib/dacp/node-a/executions RECORD_ID
+ target/universal/stage/bin/dacp-admin list-history /var/lib/dacp/node-a/executions
+ target/universal/stage/bin/dacp-admin list-history /var/lib/dacp/node-a/executions 100 100
+ target/universal/stage/bin/dacp-admin get-history /var/lib/dacp/node-a/executions RECORD_ID
 
 # U
- target/universal/stage/bin/dacp-union-server history list ../.union-demo/x/executions
- target/universal/stage/bin/dacp-union-server history get ../.union-demo/x/executions JOB_ID
+ target/universal/stage/bin/union-admin list-history ../.union-demo/x/executions
+ target/universal/stage/bin/union-admin get-history ../.union-demo/x/executions JOB_ID
 ```
 
 The Union HTTP dashboard's execution-history view paginates U's persistent jobs, task states, and traffic. `GET /api/history?offset=0&limit=100` queries history; `GET /api/jobs/ID` continues to return historical metadata after its in-memory session expires. The maximum page size is 1000; the website uses 100 records per page, with search and state filters applying to that page. History and dashboard are public read-only views without login or tokens. It cannot replay outputs, resume Jobs, or grant access to source data.

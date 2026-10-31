@@ -9,7 +9,8 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 STATE = ROOT / '.union-demo'
 NODE = ROOT / 'dacp-server/target/universal/stage/bin/dacp-server'
-UNION = ROOT / 'dacp-union-server/target/universal/stage/bin/dacp-union-server'
+UNION_ADMIN = ROOT / 'dacp-union-server/target/universal/stage/bin/union-admin'
+ADMIN = ROOT / 'dacp-server/target/universal/stage/bin/dacp-admin'
 STATE.mkdir(exist_ok=True)
 
 def local(program, *args):
@@ -28,12 +29,13 @@ config = dict(host='127.0.0.1', port=19860, public_url='dacp://localhost:19860',
     members=[dict(url=f'dacp://localhost:{port}', credential_file=str(STATE/f'{name}-union.token')) for name,port in [('a',18861),('b',18862)]])
 path=STATE/'x.yaml'
 path.write_text(json.dumps(config, indent=2)+'\n')
-identity=local(UNION, 'identity', path)
+identity=local(UNION_ADMIN, 'identity', path)
 for name in ('a','b'):
     store=STATE/f'{name}-credentials'
-    issued=local(NODE,'credentials',store,'create','--subject','demo-union','--kind','union',
+    issued=local(ADMIN,'grant-union',store,'--subject','demo-union',
         '--union-id',identity['union_id'],'--fingerprint',identity['scheduler_identity'])
     secret_file(STATE/f'{name}-union.token',issued['token'])
-issued=local(UNION,'credentials',STATE/'x/credentials','create','--subject','demo-user')
+issued=local(UNION_ADMIN,'create-account',STATE/'x/credentials','--subject','demo-user','--role','runner')
+secret_file(STATE/'demo-user-account.json',json.dumps(issued,indent=2))
 secret_file(STATE/'demo-user.token',issued['token'])
 print('Prepared .union-demo/x.yaml and protected credential files. No secrets printed.')

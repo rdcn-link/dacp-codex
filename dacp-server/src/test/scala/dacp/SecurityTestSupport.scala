@@ -27,7 +27,7 @@ private[dacp] object SecurityTestSupport {
     HttpClient.newBuilder().sslContext(ssl).build()
   }
   val credentials=new java.util.concurrent.ConcurrentHashMap[Int,(String,String)]()
-  def register(port:Int,c:Config):Unit={val issued=c.credentials.create("s3-test","s3");credentials.put(port,issued._1.path("id").asText->issued._2);()}
+  def register(port:Int,c:Config):Unit={c.credentials.setRoles("s3-test",Set("reader"));val issued=c.credentials.create("s3-test","s3");credentials.put(port,issued._1.path("id").asText->issued._2);()}
   // Independent SigV4 header signer for request tests. Production validation does not call this code.
   def signed(port:Int,path:String,method:String="GET",headers:Map[String,String]=Map.empty):HttpRequest={
     val (id,secret)=credentials.get(port)

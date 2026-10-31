@@ -14,7 +14,7 @@ Local names and Union public names belong to different namespaces. Datasets have
 
 ## Access boundaries
 
-Node directory reads authenticate with an ordinary token or Union service credential and require no additional data-access grant. See [Union proxy service](union-proxy.md) for management Web access boundaries. Union uses its own certificate to query the selected configured member and verifies the member identity. Arbitrary remote addresses are not accepted. Directories show names, URIs and JSON descriptions without reading Items or data contents. Published datasets are readable by default; execution still requires its corresponding authorization.
+Directory, Item-list and Item-metadata requests allow anonymous TLS access. Data streams and queries require a `reader` or `runner` subject role. See [Union proxy service](union-proxy.md) for management Web access boundaries. Union uses its own certificate to query the selected configured member and verifies the member identity. Arbitrary remote addresses are not accepted. Directories show names, URIs and JSON descriptions without reading Items or data contents. Published data requires a reader or runner role; execution requires runner.
 
 ## Administrators: static descriptions
 
@@ -63,7 +63,7 @@ dacp-shell> use orders
 dacp-shell> ls /
 ```
 
-`datasets` accepts no arguments and shows row numbers, dataset names, and descriptions in the columns `#`, `Name`, and `Description (JSON)`, without URIs. On startup or `connect dacp://host:port`, the shell automatically selects and prints the sole Dataset when the complete catalog contains exactly one Dataset. With zero or multiple Datasets, select one with `use NAME` or `use NUMBER` before `ls`, `count`, `cat`, `SELECT`, or `run`. `use` selects a Dataset on the current server; published datasets are readable by default. Union uses automatically assigned public short names, selected directly with `use NAME`. Incomplete catalogs never trigger automatic selection. Row numbers start at 1 and refer to the latest `datasets` output, for example `use 1`. Running `datasets` updates the mapping; reconnecting clears it. Numeric arguments are interpreted as row numbers, with out-of-range values rejected.
+`datasets` accepts no arguments and shows row numbers, dataset names, and descriptions in the columns `#`, `Name`, and `Description (JSON)`, without URIs. On startup or `connect dacp://host:port`, the shell automatically selects and prints the sole Dataset when the complete catalog contains exactly one Dataset. With zero or multiple Datasets, select one with `use NAME` or `use NUMBER` before `ls`, `count`, `cat`, `SELECT`, or `run`. `use` selects a Dataset on the current server; metadata is anonymous and data reading requires reader or runner. Union uses automatically assigned public short names, selected directly with `use NAME`. Incomplete catalogs never trigger automatic selection. Row numbers start at 1 and refer to the latest `datasets` output, for example `use 1`. Running `datasets` updates the mapping; reconnecting clears it. Numeric arguments are interpreted as row numbers, with out-of-range values rejected.
 
 ## Python
 

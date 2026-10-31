@@ -12,21 +12,25 @@ import io.netty.handler.ssl.{SslProvider,SslContextBuilder}
 /** Shared connection, TLS and per-RPC credential implementation for both Scala SDK artifacts. */
 object ClientTransport {
   def open(allocator:BufferAllocator,origin:String,ca:Option[Path],cert:Option[Path],key:Option[Path],token:()=>Option[String],
-    pin:Option[String]=None,observed:String=>Unit=_=>(),traffic:Option[FlightTraffic]=None):FlightClient={
+    pin:Option[String]=None,observed:String=>Unit=_=>(),traffic:Option[FlightTraffic]=None,allowAnonymousWithoutCa:Boolean=false):FlightClient={
     val canonical=Json.origin(origin);val u=new URI(canonical)
     require(cert.isDefined==key.isDefined,"client certificate and key must be provided together")
+    val anonymousWithoutCa=allowAnonymousWithoutCa && ca.isEmpty && cert.isEmpty && pin.isEmpty && token().isEmpty
     val ssl=GrpcSslContexts.configure(SslContextBuilder.forClient(),SslProvider.JDK)
     if(pin.nonEmpty){
       require(ca.nonEmpty && cert.nonEmpty,"pinned service connections require CA and identity")
       ssl.trustManager(new Tls(cert.get,key.get,ca.get).trustManager(pin,observed))
-    }else ca.foreach(p=>ssl.trustManager(p.toFile))
+    }else if(anonymousWithoutCa)ssl.trustManager(io.netty.handler.ssl.util.InsecureTrustManagerFactory.INSTANCE)
+    else ca.foreach(p=>ssl.trustManager(p.toFile))
     cert.foreach(p=>ssl.keyManager(p.toFile,key.get.toFile))
     val interceptor=new ClientInterceptor {
       def interceptCall[A,B](method:MethodDescriptor[A,B],options:CallOptions,next:Channel):ClientCall[A,B]=
         new ForwardingClientCall.SimpleForwardingClientCall[A,B](next.newCall(method,
           traffic.map(t=>options.withStreamTracerFactory(t.factory(canonical,method.getFullMethodName))).getOrElse(options))) {
           override def start(listener:ClientCall.Listener[B],headers:Metadata):Unit={
-            token().foreach(v=>headers.put(Metadata.Key.of("authorization",Metadata.ASCII_STRING_MARSHALLER),"Bearer "+v))
+            val credential=token()
+            require(!anonymousWithoutCa || credential.isEmpty,"reconnect with a trusted CA before sending credentials")
+            credential.foreach(v=>headers.put(Metadata.Key.of("authorization",Metadata.ASCII_STRING_MARSHALLER),"Bearer "+v))
             super.start(listener,headers)
           }
         }

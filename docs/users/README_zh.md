@@ -36,8 +36,8 @@ cd dacp-server
 sbt stage
 (umask 077
  mkdir -p .dacp-security/8815
- target/universal/stage/bin/dacp-server credentials .dacp-security/8815 create --subject alice > .dacp-security/8815/alice-issued.json
- python3 -c 'import json,pathlib; p=pathlib.Path(".dacp-security/8815"); (p/"alice.token").write_text(json.loads((p/"alice-issued.json").read_text())["token"]); (p/"alice-issued.json").unlink()'
+ target/universal/stage/bin/dacp-admin create-account .dacp-security/8815 --role runner --subject alice > .dacp-security/8815/alice-issued.json
+ python3 -c 'import json,pathlib; p=pathlib.Path(".dacp-security/8815"); (p/"alice.token").write_text(json.loads((p/"alice-issued.json").read_text())["token"])'
 )
 target/universal/stage/bin/dacp-server
 ```
@@ -293,7 +293,7 @@ sbt 'run ../examples/server.yaml'
 
 ## 安全与运行边界
 
-普通 DACP 访问使用 TLS 与 Token；Union 协作使用双向 TLS 与服务凭据。已发布的数据集及其 Items 默认可浏览和读取，无需额外的 URI 白名单。公开元数据、ticket 和数据服务错误隐藏私有存储绑定；数据内容仍包含源数据自身的字段和值。Python 的 `DacpError` 和 Scala 的 `DacpException` 提供错误码和可读消息，shell 显示简洁提示。
+DACP 元信息允许通过 TLS 匿名查看；数据读取需要 Token 对应主体具有 reader 或 runner，执行和推导需要 runner。Union 协作使用双向 TLS 与服务凭据，暂不配置 Dataset/Item ACL。公开元数据、ticket 和数据服务错误隐藏私有存储绑定；数据内容仍包含源数据自身的字段和值。Python 的 `DacpError` 和 Scala 的 `DacpException` 提供错误码和可读消息，shell 显示简洁提示。
 
 未发布的物理文件和数据库表不会自动公开。读取失败后从头重开，不支持流内重试、checkpoint 或恢复。任务输出仅为实时流，客户端须消费或取消；不提供保存的结果 URI，重启不恢复任务。完整配置和协议说明见 [技术参考](../reference_zh.md#协议与配置)。
 
@@ -339,3 +339,13 @@ DACP 与 Union 默认持久化全部执行记录；Union 看板支持重启后�
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy_zh.md)。
 
 [在线 Job 设计器](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README_zh.md)：从浏览器设计单机与跨节点作业，导出 YAML 供 Shell / SDK 提交。
+
+仅浏览元信息时可省略 `--token-file`：`dacp-shell dacp://host:8815`。数据集、Item 列表及元数据可匿名查看；`cat`、查询及计算记录数需要 reader 或 runner，`run`/`submit` 需要 runner。
+
+### 仅凭地址匿名浏览
+
+```bash
+.venv/bin/dacp-shell dacp://10.0.82.103:18861
+```
+
+未配置 `DACP_TOKEN_FILE`、`DACP_CA` 或客户端证书时，无需 `ca.crt` 即可浏览公开目录和 Item 元信息。此模式保留 TLS 加密，不校验服务器证书。显式传入 `--ca` 会启用校验；携带 Token 的访问仍需可信的服务器证书。匿名访问不能读取数据流或执行任务。

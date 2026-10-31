@@ -59,6 +59,41 @@ class S3ServiceSpec extends AnyFunSuite {
   private def request(s:S3Service,path:String,method:String="GET",headers:Map[String,String]=Map.empty)={
     client.send(SecurityTestSupport.signed(s.port,path,method,headers),HttpResponse.BodyHandlers.ofString())
   }
+  test("DACP and S3 share subject roles while token and key lifecycles remain separate") {fixture{(c,s,closed,_)=>
+    val a=new RootAllocator()
+    val flight=dacp.union.Rpc.secure(org.apache.arrow.flight.FlightServer.builder(a,org.apache.arrow.flight.Location.forGrpcTls("localhost",0),new Producer(c,a)),new dacp.union.Tls(c.cert,c.key,c.ca),Some(c.credentials)).build().start()
+    val issued=c.credentials.create("s3-test")
+    val connection=dacp.union.ClientTransport.open(a,s"dacp://localhost:${flight.getPort}",Some(c.ca),None,None,()=>Some(issued._2))
+    val info=connection.getInfo(org.apache.arrow.flight.FlightDescriptor.path("datasets","science","/folder/a +&.bin"))
+    def read():Unit={val stream=connection.getStream(info.getEndpoints.get(0).getTicket);try assert(stream.next())finally stream.close()}
+    def deniedRead():Unit={val stream=connection.getStream(info.getEndpoints.get(0).getTicket);try assert(intercept[org.apache.arrow.flight.FlightRuntimeException](stream.next()).status.code==org.apache.arrow.flight.FlightStatusCode.UNAUTHORIZED)finally stream.close()}
+    val (id,secret)=SecurityTestSupport.credentials.get(s.port)
+    val presigned=dacp.union.SigV4.presignGet(URI.create(s"https://localhost:${s.port}/science/folder/a%20%2B%26.bin"),id,secret,60)
+    def shared=client.send(HttpRequest.newBuilder(presigned).GET().build(),HttpResponse.BodyHandlers.ofString()).statusCode()
+    try {
+      read();assert(request(s,"/").statusCode()==200 && shared==200)
+      c.credentials.setRoles("s3-test",Set.empty)
+      val before=closed.get()
+      assert(request(s,"/").statusCode()==403 && request(s,"/science/folder/a%20%2B%26.bin","HEAD").statusCode()==403 && shared==403)
+      assert(closed.get()==before) // Denied S3 calls never open a dataset.
+      deniedRead()
+      c.credentials.setRoles("s3-test",Set("runner"))
+      read();assert(shared==200)
+      c.credentials.revoke(issued._1.path("id").asText)
+      assert(shared==200) // Revoking a DACP token does not revoke the S3 key.
+      val next=c.credentials.rotate(id)
+      assert(next._1.path("subject").asText=="s3-test" && shared==403)
+      SecurityTestSupport.credentials.put(s.port,next._1.path("id").asText->next._2)
+      assert(request(s,"/").statusCode()==200)
+      val token=c.credentials.create("s3-test")
+      c.credentials.revoke(next._1.path("id").asText)
+      assert(request(s,"/").statusCode()==403 && c.credentials.authenticate(token._2,None).nonEmpty)
+      val noRole=c.credentials.create("unassigned","s3")
+      val denied=dacp.union.SigV4.presignGet(URI.create(s"https://localhost:${s.port}/science/folder/a%20%2B%26.bin"),noRole._1.path("id").asText,noRole._2,60)
+      assert(client.send(HttpRequest.newBuilder(denied).GET().build(),HttpResponse.BodyHandlers.ofString()).statusCode()==403)
+      intercept[IllegalArgumentException](dacp.union.CredentialAdmin.main(Array("presign-get",c.credentials.directory.toString,noRole._1.path("id").asText,s"https://localhost:${s.port}/science/x")))
+    }finally{connection.close();flight.close();a.close()}
+  }}
   test("aggregate runtime metrics count requests and object payload without exposing catalog contents") {fixture{(_,service,closed,_)=>
     val before=closed.get()
     val initial=service.snapshot

@@ -12,7 +12,7 @@ Requires JDK 17 and sbt. Run in this module:
 
 ```bash
 sbt test stage
-target/universal/stage/bin/dacp-union-server identity ../.union-demo/x.yaml
+target/universal/stage/bin/union-admin identity ../.union-demo/x.yaml
 target/universal/stage/bin/dacp-union-server serve ../.union-demo/x.yaml
 ```
 
@@ -46,7 +46,7 @@ Follow [authentication and access control](../docs/security.md) for local creden
 Ordinary clients use TLS and a bearer token, without requiring a client certificate. Create one locally:
 
 ```bash
-target/universal/stage/bin/dacp-union-server credentials ../.union-demo/x/credentials create --subject alice
+target/universal/stage/bin/union-admin create-account ../.union-demo/x/credentials --role runner --subject alice
 ```
 
 Store the returned token in a protected file and use `dacp-shell dacp://localhost:19860 --ca ../examples/certs/ca.crt --token-file /protected/alice.token`. See [client examples](../docs/union-proxy.md). Jobs use the public namespace or logical node IDs. Owner checks protect status, cancellation, replay and result/event streams.

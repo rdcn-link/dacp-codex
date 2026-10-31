@@ -14,7 +14,7 @@ Union Web 分为三个独立页面：
 
 ## 访问边界
 
-节点目录读取使用普通 Token 或 Union 服务凭据认证，不需要额外数据范围授权。管理 Web 的访问边界见 [Union 代理服务](union-proxy_zh.md)。Union 使用自身证书查询已配置的指定成员，并校验成员身份；不接受任意远程地址。目录仅展示名称、URI 和 JSON 描述，不读取 Items 或数据内容。已发布的数据集默认可读取；计算执行仍需相应授权。
+目录、Item 列表及元数据允许通过 TLS 匿名访问。数据流及查询需要主体具有 `reader` 或 `runner` 角色。管理 Web 的访问边界见 [Union 代理服务](union-proxy_zh.md)。Union 使用自身证书查询已配置的指定成员，并校验成员身份；不接受任意远程地址。目录仅展示名称、URI 和 JSON 描述，不读取 Items 或数据内容。已发布数据的读取需要 reader 或 runner，执行需要 runner。
 
 ## 管理员：静态目录描述
 
@@ -63,7 +63,7 @@ dacp-shell> use orders
 dacp-shell> ls /
 ```
 
-`datasets` 不接受参数，按 `#`、`Name`、`Description (JSON)` 三列显示行号、数据集名称和描述，不显示 URI。启动或 `connect dacp://host:port` 后，若完整目录中只有一个数据集，Shell 自动选择并打印名称；没有或有多个数据集时先执行 `use NAME` 或 `use NUMBER`，选中后才能执行 `ls`、`count`、`cat`、`SELECT` 和 `run`。`use` 只选择当前服务器的数据集，已发布的数据集默认可读取。Union 使用自动分配的公开短名称，直接通过 `use NAME` 选择；不完整目录不会触发自动选择。行号从 1 开始，对应最近一次 `datasets` 输出，例如 `use 1`；再次执行 `datasets` 会更新行号映射，重新连接服务器会清空映射。纯数字参数按行号解释，越界会报错。
+`datasets` 不接受参数，按 `#`、`Name`、`Description (JSON)` 三列显示行号、数据集名称和描述，不显示 URI。启动或 `connect dacp://host:port` 后，若完整目录中只有一个数据集，Shell 自动选择并打印名称；没有或有多个数据集时先执行 `use NAME` 或 `use NUMBER`，选中后才能执行 `ls`、`count`、`cat`、`SELECT` 和 `run`。`use` 只选择当前服务器的数据集，元信息匿名可看，数据读取需要 reader 或 runner。Union 使用自动分配的公开短名称，直接通过 `use NAME` 选择；不完整目录不会触发自动选择。行号从 1 开始，对应最近一次 `datasets` 输出，例如 `use 1`；再次执行 `datasets` 会更新行号映射，重新连接服务器会清空映射。纯数字参数按行号解释，越界会报错。
 
 ## Python
 

@@ -50,7 +50,7 @@ Dataset 列表可由 [DataCatalog 插件](docs/dataset-catalogs_zh.md)动态提�
 - 跨节点演示：运行[双节点 Union 示例](examples/union/README_zh.md)。
 - 自定义计算：阅读[算子编写与发布](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)。
 
-普通数据访问与任务执行使用 TLS 与 Token；Union 协作使用双向 TLS 和节点签发的服务凭据。S3 使用独立 SigV4 认证，算子仓库下载公开、发布要求 Token，内网看板公开只读。见[认证与访问控制](docs/security_zh.md)。算子使用隔离的运行环境；符合条件的节点子作业会合并到同一进程执行，见[算子合并执行](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion_zh.md)。输出不注册为 Dataset；服务器持久化执行元数据，结果内容通过一次性流交付。显式执行策略可对指定边界进行物化与重放。
+目录及 Item 元信息允许通过 TLS 匿名访问；数据读取需要 reader 或 runner，执行需要 runner，角色分配给 Token 对应的主体；Union 协作使用双向 TLS 和节点签发的服务凭据。S3 与 DACP 共享主体和角色，使用独立 SigV4 密钥，算子仓库下载公开、发布要求 Token，内网看板公开只读。见[认证与访问控制](docs/security_zh.md)。算子使用隔离的运行环境；符合条件的节点子作业会合并到同一进程执行，见[算子合并执行](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion_zh.md)。输出不注册为 Dataset；服务器持久化执行元数据，结果内容通过一次性流交付。显式执行策略可对指定边界进行物化与重放。
 
 [在线 Job 设计器](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README_zh.md)：拖拽编排、本地及远程目录浏览、实时算子仓库、结构预览、变量、聊天草案和 YAML 导入导出。
 

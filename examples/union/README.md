@@ -14,7 +14,7 @@ bash scripts/certs.sh
 .venv/bin/python examples/union/prepare.py
 ```
 
-The preparation script creates the stable Union identity, node-issued service credentials bound to the Union certificate, and a user token. Secrets are written to protected files, not printed. Re-running preparation creates additional credentials; revoke obsolete ones with the local credential CLI.
+The preparation script creates the stable Union identity, node-issued service credentials bound to the Union certificate, and a user token. Secrets are written to protected files, not printed. Account creation issues both DACP and S3 credentials, saved in protected `demo-user-account.json`. Re-running preparation with the same account fails; retain the generated state and use the admin tools to manage credentials.
 
 ## Start
 

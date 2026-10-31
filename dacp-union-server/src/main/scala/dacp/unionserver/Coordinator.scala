@@ -59,9 +59,9 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     override def getFlightInfo(ctx:CallContext,d:FlightDescriptor):FlightInfo=standard.getFlightInfo(ctx,d)
     override def doExchange(ctx:CallContext,r:FlightStream,out:ServerStreamListener):Unit=publicExchange(ctx,r,out)
     override def doAction(ctx:CallContext,a:Action,out:StreamListener[Result]):Unit={
-      if(a.getType=="dacp.nodes")try {require(Set("token","union")(Rpc.principal.kind));out.onNext(new Result(Json.mapper.writeValueAsBytes(planner.nodes)));out.onCompleted()}catch{case scala.util.control.NonFatal(_)=>out.onError(CallStatus.UNAUTHORIZED.withDescription("access denied").toRuntimeException)}
+      if(a.getType=="dacp.nodes")try {Rpc.requirePermission("job:execute");out.onNext(new Result(Json.mapper.writeValueAsBytes(planner.nodes)));out.onCompleted()}catch{case scala.util.control.NonFatal(_)=>out.onError(CallStatus.UNAUTHORIZED.withDescription("access denied").toRuntimeException)}
       else if(Set("dacp.infer","dacp.infer_job")(a.getType))try {
-        require(Set("token","union")(Rpc.principal.kind),"access denied")
+        Rpc.requirePermission("job:execute")
         require(a.getBody.length<=StructureInference.MaxBytes,"inference request exceeds 1 MiB")
         val n=Json.mapper.readTree(a.getBody)
         val result=if(a.getType=="dacp.infer_job") {
@@ -76,7 +76,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         }
         val bytes=Json.mapper.writeValueAsBytes(result);require(bytes.length<=StructureInference.MaxBytes,"inference result exceeds 1 MiB")
         out.onNext(new Result(bytes));out.onCompleted()
-      }catch{case scala.util.control.NonFatal(t)=>out.onError(CallStatus.INVALID_ARGUMENT.withDescription(t.getMessage).toRuntimeException)}
+      }catch{case scala.util.control.NonFatal(t)=>out.onError(Rpc.failure(t))}
       else if(a.getType=="dacp.catalog")standard.doAction(ctx,a,out)
       else if(workerActions(a.getType.stripPrefix(Rpc.Prefix))) {
         if(Rpc.proxyHops.contains(members.unionId) || Rpc.proxyHops.size>=8)out.onError(CallStatus.INVALID_ARGUMENT.withDescription("proxy cycle or depth limit").toRuntimeException)
@@ -230,7 +230,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   private def denied():Nothing=throw UnionFailure(UNAUTHORIZED,"client identity denied")
   private def owned(id:String,who:String):Execution={val j=Option(jobs.get(Json.id(id))).getOrElse(throw UnionFailure(NOT_FOUND,"job unavailable"));if(j.owner!=who)denied();j}
   private def action(op:String,n:JsonNode,who:String):JsonNode={
-    Rpc.requireClient()
+    Rpc.requirePermission(if(Set("job_status","cancel_job")(op))"job:manage:self"else "job:execute")
     val result=op match {
       case "submit"=>
         Json.fields(n,Set("job_yaml"),Set("execution_policy_yaml"));val script=Json.text(n,"job_yaml");val plan=Jobs.parse(script)
@@ -275,7 +275,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     n
   }
   private def stream(n:JsonNode,who:String,listener:ServerStreamListener):Unit={
-    Rpc.requireClient()
+    Rpc.requirePermission("job:manage:self")
     val kind=Json.text(n,"type")
     kind match {
       case "dacp.union.events"=>

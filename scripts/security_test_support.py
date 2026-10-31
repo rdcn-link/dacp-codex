@@ -11,7 +11,7 @@ def authorize(config, state, *, subject='live-test'):
     directory = Path(state) / 'credentials'
     config['credential_directory'] = str(directory)
     result = subprocess.run([
-        str(ROOT / 'dacp-server/target/universal/stage/bin/dacp-server'),
-        'credentials', str(directory), 'create', '--subject', subject,
+        str(ROOT / 'dacp-server/target/universal/stage/bin/dacp-admin'),
+        'create-account', str(directory), '--subject', subject, '--role', 'runner',
     ], capture_output=True, text=True, check=True)
     return json.loads(result.stdout)['token']

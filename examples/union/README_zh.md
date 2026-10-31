@@ -14,7 +14,7 @@ bash scripts/certs.sh
 .venv/bin/python examples/union/prepare.py
 ```
 
-准备程序创建稳定 Union 身份、绑定 Union 证书的节点服务凭据以及用户 Token。秘密写入受保护文件，不打印。再次运行会创建更多凭据，旧凭据可通过本地工具撤销。
+准备程序创建稳定 Union 身份、绑定 Union 证书的节点服务凭据以及用户 Token。秘密写入受保护文件，不打印。创建账号同时签发 DACP 和 S3 凭据，完整响应保存在受保护的 `demo-user-account.json`。同名账号不能重复创建；保留生成的状态，通过管理工具管理凭据。
 
 ## 启动
 

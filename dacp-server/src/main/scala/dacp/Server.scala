@@ -191,7 +191,7 @@ object Config {
 }
 class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskService] = None, union: Option[UnionWorker] = None) extends NoOpFlightProducer {
   override def doExchange(ctx: FlightProducer.CallContext, reader: FlightStream, writer: FlightProducer.ServerStreamListener): Unit = {
-    dacp.union.Rpc.clientOperation()
+    dacp.union.Rpc.requirePermission("job:execute")
     val audit=config.accessLog.begin("do_exchange");val out=AccessLogging.stream(audit,writer)
     try tasks match {
       case Some(service)=>service.exchange(ctx,reader,out)
@@ -238,7 +238,6 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     b.build()
   }
   override def getFlightInfo(ctx: FlightProducer.CallContext, desc: FlightDescriptor): FlightInfo = {
-    dacp.union.Rpc.clientOperation()
     val audit=config.accessLog.begin("get_flight_info")
     try {
     val p = desc.getPath.asScala.toSeq
@@ -250,6 +249,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     val a = adapter(ds,item,ctx)
     try {
     if (p.size == 4 && p(2) == "count") {
+      dacp.union.Rpc.requirePermission("data:read")
       val metadata = itemMetadata(Item(item,"",None,recordCount=a.count(item)))
       new FlightInfo(PluginSchemas.bytes, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,
         org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,metadata.toByteArray)
@@ -273,7 +273,6 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
   } catch { case t: Throwable => audit.finish(AccessLogging.status(t));throw fail(t) }finally audit.finish(if(ctx.isCancelled)"cancelled" else "completed")
   }
   override def listFlights(ctx:FlightProducer.CallContext,criteria:Criteria,raw:FlightProducer.StreamListener[FlightInfo]):Unit={
-    dacp.union.Rpc.clientOperation()
     val audit=config.accessLog.begin("list_flights");val listener=AccessLogging.results(audit,raw)
     try {
     def check():Unit=if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()
@@ -287,7 +286,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
   }catch{case scala.util.control.NonFatal(t)=>listener.onError(fail(t))}
   }
   override def doAction(ctx:FlightProducer.CallContext,action:Action,raw:FlightProducer.StreamListener[Result]):Unit={
-    if(!action.getType.startsWith(dacp.union.Rpc.Prefix))dacp.union.Rpc.clientOperation()
+    if(Set("dacp.infer","dacp.infer_job")(action.getType))dacp.union.Rpc.requirePermission("job:execute")
     val audit=config.accessLog.begin("do_action");val listener=AccessLogging.results(audit,raw)
     try if(action.getType=="dacp.catalog") {
       require(action.getBody.isEmpty,"catalog action takes no body")
@@ -322,7 +321,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     }catch{case scala.util.control.NonFatal(t)=>listener.onError(fail(t))}
   }
   override def getStream(ctx: FlightProducer.CallContext, ticket: Ticket, raw: FlightProducer.ServerStreamListener): Unit = {
-    if(!dacp.union.Rpc.isTicket(ticket.getBytes))dacp.union.Rpc.clientOperation()
+    if(!dacp.union.Rpc.isTicket(ticket.getBytes))dacp.union.Rpc.requirePermission("data:read")
     val audit=config.accessLog.begin("get_stream");val listener=AccessLogging.stream(audit,raw)
     if(dacp.union.Rpc.isTicket(ticket.getBytes)){
       union match {case Some(worker)=>worker.getStream(ctx,ticket,listener);case None=>listener.error(CallStatus.UNIMPLEMENTED.withDescription("Union disabled").toRuntimeException)}
@@ -366,9 +365,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
 }
 object Main {
   def main(args: Array[String]): Unit = {
-    if(args.headOption.contains("history")){ExecutionHistoryAdmin.main(args.drop(1));return}
-    if(args.headOption.contains("credentials")){dacp.union.CredentialAdmin.main(args.drop(1));return}
-    require(args.length<=1,"submit jobs through the shell or SDK")
+    require(args.length<=1,"dacp-server [CONFIG]; use dacp-admin for local administration")
     val server=DacpServer.builder().configFile(args.headOption.getOrElse("../examples/server.yaml")).build()
     val stopped=new AtomicBoolean()
     def stop():Unit=if(stopped.compareAndSet(false,true))server.close()

@@ -6,10 +6,10 @@ This document describes implemented DACP authentication, authorization boundarie
 
 | Service | Authentication and access scope |
 | --- | --- |
-| Ordinary node and Union Flight services | TLS and bearer tokens; server-side authorization |
+| Ordinary node and Union Flight services | Public metadata over TLS; bearer tokens and subject roles for data and execution |
 | Union collaboration calls to members | Mutual TLS and a node-issued Union service credential |
 | Task streams between nodes | Mutual TLS and execution plans bound to tasks, ports and consumers |
-| S3 service | Independent access keys; HTTPS, SigV4 header authentication and presigned GET |
+| S3 service | Shared DACP subjects and read roles; separate access keys, HTTPS, SigV4 and presigned GET |
 | Node and Union dashboards | Public read-only access inside the internal network; no login or access control |
 | Operator repository | Public approved operators and runtimes; per-submitter Tokens for sources; authenticated administrator review |
 
@@ -17,11 +17,38 @@ Authorization takes place on the server. Ordinary and collaboration SDKs are sep
 
 ## Ordinary clients
 
-Clients use tokens; individual client certificates are not required. Clients perform standard TLS CA and hostname verification, without manual certificate pinning or additional identity confirmation.
+Catalogs, Dataset Item lists, Folder child lists and Item metadata (Views, Schema, size, modification time and already available record counts) are anonymous over TLS. Metadata access never requests an explicit count scan. Data streams, queries, computed counts and Job operations require a token. Individual client certificates are not required. Anonymous clients can connect using only the server address: when no CA, token or client certificate is configured, the SDK keeps TLS encryption but skips server certificate verification. An explicit CA enables certificate verification. Authenticated connections retain certificate verification; Union mutual TLS and certificate bindings are unchanged.
 
 Tokens belong to a stable subject, which can hold multiple tokens. Jobs, status, results, cancellation and replay are authorized by job ownership. Token replacement or rotation must preserve the subject and historical job ownership.
 
 Administrators create, list, revoke and rotate credentials using local server tooling. Tokens contain at least 256 bits of randomness, are shown only when created, and are stored as digests. Changes reload automatically. The server checks credentials in memory at the start of each RPC. Revoking or expiring an ordinary token leaves admitted RPCs and result streams running; subsequent RPCs on the same connection must pass authentication again.
+
+## Subject roles and authorization
+
+Roles belong to a stable subject, not to individual tokens. A subject may hold several independently revocable tokens. Assign roles locally with `set-roles`; the command replaces the complete role set. `none` removes all roles. Issuing a token does not grant any role implicitly.
+
+| Role | Permissions |
+| --- | --- |
+| Anonymous | Public catalog, Item and Folder listings, and Item metadata |
+| `reader` | Public metadata plus `data:read`: DACP streams, allowed queries, slices, computed counts and S3 reads |
+| `runner` | Reader permissions plus `job:execute` and `job:manage:self`: execution, inference, samples and management/results of owned Jobs |
+| Union service | Separate certificate-bound service credential; member collaboration operations, subject to node resource limits |
+| Execution consumer | Exact execution-plan authorization for the designated intermediate output; not a permanent user role |
+
+Permissions apply to the whole service; Dataset/Item ACLs and custom roles are not implemented. Runner includes data reading because operator execution can return input data. The service checks permissions and execution ownership, independent of SDK choice. A reader cannot submit Jobs or invoke inference. A token without assigned roles can only use public metadata. An invalid, revoked, expired or S3 credential is rejected even on a metadata request; omit credentials for anonymous access. A client certificate alone grants no data or Job permissions.
+
+The service reads immutable in-memory credential and subject snapshots for each new call. Local changes reload within approximately 250 ms. Already admitted ordinary calls and streams retain their permission snapshot; role changes, token revocation and expiry affect subsequent calls. Union service revocation still cancels associated active collaboration. A malformed credential file rejects its credentials. A malformed subject file clears shared user roles, denying new DACP data/execution and S3 requests while leaving Union service authentication unchanged.
+
+Subjects are stored in `subjects.json` in the credential directory, independently of `credentials.json`:
+
+```json
+{
+  "analyst": {"roles": ["runner"]},
+  "data_client": {"roles": ["reader"]}
+}
+```
+
+The CLI validates roles and atomically writes protected files. It provides no remote administration interface. Internal node/Union dashboards remain read-only, unfiltered by user identity and protected by deployment networking, not these roles. Their pages and HTTP APIs must remain on the internal network; do not expose them through a public proxy. S3 shares the instance’s subjects and roles, using separate signing keys. Operator-repository accounts remain independent.
 
 ## Union and member nodes
 
@@ -35,9 +62,9 @@ Members of the same Union need no additional peer grants. However, certificates 
 
 ## S3
 
-S3 and Flight are independent services and do not require a unified user or credential system. S3 has no anonymous reading mode: listings, metadata and content requests all require authentication.
+DACP and its S3 endpoint share the instance’s `subjects.json` and roles. A subject may hold both DACP tokens and S3 access keys. S3 credentials receive `data:read` from reader or runner; an S3 key never authenticates a DACP call or grants Job execution. S3 has no anonymous mode: listings, metadata and content require both valid SigV4 authentication and a reader or runner role. DACP metadata remains anonymous. Node and Union instances each maintain their own subject directory; this is not a global account service.
 
-S3 supports SigV4 header authentication and presigned GET URLs for temporary object sharing. Key revocation rejects subsequent requests, including new Range requests; admitted downloads continue. A presigned URL is a temporary credential and must not be logged or shared publicly.
+S3 supports SigV4 header authentication and presigned GET URLs for temporary object sharing. Key revocation rejects subsequent requests, including new Range requests; admitted downloads continue. Role changes apply to each new S3 request, including presigned GET and Range requests. Removing all subject roles blocks new data reads through both protocols without rotating credentials. Already admitted downloads continue. Tokens and S3 keys can be revoked or rotated independently; role assignments survive rotation. Local presigning also requires a current read role. A presigned URL is a temporary credential and must not be logged or shared publicly.
 
 ## Dashboards and operator repository
 
@@ -53,33 +80,48 @@ Credential files should be accessible only to the service account. Ordinary toke
 
 ## Implementation and verification status
 
-Implemented features include local credential management and hot reload, ordinary Flight token authentication, certificate-bound Union service credentials, job ownership isolation, exact peer plan authorization, separate collaboration SDKs, S3 SigV4 and presigned GET. Automated tests cover admitted streams continuing after ordinary token revocation while subsequent calls fail, active collaboration stopping after service credential revocation, ownership surviving token rotation, and audit records for rejected requests. Live integration verifies authentication on three member nodes, Union collaboration calls, and boto3 signed listing, metadata, content, Range and presigned GET requests.
+Implemented features include local credential management and hot reload, anonymous metadata, subject roles and ordinary Flight token authentication, certificate-bound Union service credentials, job ownership isolation, exact peer plan authorization, separate collaboration SDKs, S3 SigV4 and presigned GET. Automated tests cover admitted streams continuing after ordinary token revocation while subsequent calls fail, active collaboration stopping after service credential revocation, ownership surviving token rotation, and audit records for rejected requests. Live integration verifies authentication on three member nodes, Union collaboration calls, and boto3 signed listing, metadata, content, Range and presigned GET requests.
 
-Related documentation: [access logs](access-logs.md), [data access](dataset-access.md), [operator repository](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README.md). Ordinary client examples require a token file; Union member configuration requires a node-issued service credential file.
+Related documentation: [access logs](access-logs.md), [data access](dataset-access.md), [operator repository](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README.md). Data-read and execution examples require a token file with the appropriate subject role; Union member configuration requires a node-issued service credential file.
 
 ## Local credential operations
 
 Set node `credential_directory: /protected/node-credentials` and configure a separate directory for Union. By default, a node uses `.dacp-security/PORT` under its process working directory, and Union uses `state_directory/credentials`. Directory permissions are 700 and credential files are 600.
 
-Run these commands in the corresponding module. For Union, replace the executable with `dacp-union-server` and use its own credential directory:
+Local tools use these subcommands. Servers themselves only start services; they do not expose administration commands:
+
+| Tool | Subcommands |
+| --- | --- |
+| `dacp-admin` | Common account, credential and execution-history commands |
+| `union-admin` | Identical common commands, plus `identity CONFIG` and `members CONFIG` |
+
+Common commands share one implementation: arguments, defaults, JSON output and errors are identical. Pass the target service's credential directory. `create-account` creates an account and issues both a DACP token and S3 keys; its default role is reader. Use runner for Job execution. `create-token` issues an additional token for an existing account. `grant-union` issues a member's certificate-bound Union service credential, without an ordinary account or S3 keys. Superseded nested commands are removed.
 
 ```bash
-target/universal/stage/bin/dacp-server credentials /protected/node-credentials create --subject alice --expires-in 86400
-target/universal/stage/bin/dacp-server credentials /protected/node-credentials list
-target/universal/stage/bin/dacp-server credentials /protected/node-credentials rotate CREDENTIAL_ID
-target/universal/stage/bin/dacp-server credentials /protected/node-credentials revoke CREDENTIAL_ID
+target/universal/stage/bin/dacp-admin create-account /protected/node-credentials --subject alice --role runner --expires-in 86400
+target/universal/stage/bin/dacp-admin create-account /protected/node-credentials --subject data_client
+target/universal/stage/bin/dacp-admin create-token /protected/node-credentials --subject alice
+target/universal/stage/bin/dacp-admin list-subjects /protected/node-credentials
+target/universal/stage/bin/dacp-admin set-roles /protected/node-credentials alice reader
+target/universal/stage/bin/dacp-admin list-credentials /protected/node-credentials
+target/universal/stage/bin/dacp-admin rotate-credential /protected/node-credentials CREDENTIAL_ID
+target/universal/stage/bin/dacp-admin revoke-credential /protected/node-credentials CREDENTIAL_ID
 ```
 
-Creation and rotation return JSON containing the one-time `token`. Save its value as a text file readable only by the service account. Listing never returns secrets. Python uses `token=` or `DACP_TOKEN_FILE`; Scala uses `TlsConfig(tokenFile=...)`; the shell uses `--token-file`. Supply the CA through `--ca`, SDK parameters or `DACP_CA`. Do not use the complete JSON response as a token file.
+Use `set-roles DIRECTORY SUBJECT none` to remove account permissions for subsequent DACP and S3 requests; admitted streams continue. Credentials can be revoked or rotated independently.
 
-First run `dacp-union-server identity CONFIG` to obtain the stable `union_id` and `scheduler_identity`. Then issue a credential locally at each member:
+Account creation returns `subject`, `roles`, `token_id`, `token`, `access_key_id`, `secret_key` and `expires_at_ms`. Secrets are returned only on issuance; listing hides them. Protect the response and save the `token` value separately in a mode-600 text file for `--token-file`; do not use the complete JSON as a token file. Duplicate account creation fails without changing existing permissions.
+
+First run `union-admin identity CONFIG` to obtain the stable `union_id` and `scheduler_identity`. Then issue a credential locally at each member:
 
 ```bash
-target/universal/stage/bin/dacp-server credentials /protected/node-credentials create --subject union-service --kind union --union-id UNION_ID --fingerprint SCHEDULER_IDENTITY
+target/universal/stage/bin/dacp-admin grant-union /protected/node-credentials --subject union-service --union-id UNION_ID --fingerprint SCHEDULER_IDENTITY
 ```
 
 Save the returned `token` in that member's Union `credential_file`. Subsequent calls read replacement file contents. Unreachable members, invalid credentials and temporarily unreadable credential files produce unavailable status and are retried by polling without preventing Union startup.
 
-Create S3 keys with `--kind s3`. The returned `id` is the Access Key ID and `secret_key` is the Secret Access Key; neither acts as a Flight token. See [S3](s3-service.md) for presigning commands and boto3 examples.
+No separate S3 issuance is required. `access_key_id` and `secret_key` sign S3 requests and cannot authenticate DACP calls. See [S3](s3-service.md) for presigning and boto3 examples.
 
 The authentication layer also writes `authentication-audit.jsonl`, recording RPC methods, subjects, status and duration, including authentication and authorization rejections. `credential-audit.jsonl` records credential management events. Each rotates to its corresponding `.previous.jsonl` after exceeding 1 MiB. Node access logs and execution history supply business payload counts and resource details.
+
+`list-history DIRECTORY [OFFSET LIMIT]` and `get-history DIRECTORY RECORD_ID` read local history; see [execution history](execution-history.md). `identity CONFIG` reads or initializes Union identity. `members CONFIG` diagnoses members online using configured credentials; other administration commands operate locally.

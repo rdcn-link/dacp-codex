@@ -90,6 +90,7 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
         e.getRequestHeaders.asScala.map{case(k,v)=>k->v.asScala.toVector}.toMap,config.credentials)
         catch{case NonFatal(_)=>throw Failure(403,"AccessDenied")}
       audit.actor(credential.subject)
+      if(!config.credentials.permissions(credential)("data:read"))throw Failure(403,"AccessDenied")
       val pairs=dacp.union.SigV4.query(e.getRequestURI).filterNot(_._1.startsWith("X-Amz-"))
       require(pairs.map(_._1).distinct.length==pairs.length,"duplicate parameter")
       val q=pairs.toMap
