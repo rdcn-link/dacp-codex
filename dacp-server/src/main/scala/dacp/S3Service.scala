@@ -210,7 +210,7 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
     val stream=ds.requireView(item.path,DataViews.Bytes).open(AllBytes,StreamContext(allocator,()=>check()))
     try {
       try {
-        stream.consume(new DataConsumer[ByteChunk] {
+        ArrowBlocks.consume(stream,new DataConsumer[ByteChunk] {
           def start(d:DataDescriptor[ByteChunk]):Unit=e.sendResponseHeaders(status,length.getOrElse(0L))
           def accept(b:ByteChunk):Unit={
             check()

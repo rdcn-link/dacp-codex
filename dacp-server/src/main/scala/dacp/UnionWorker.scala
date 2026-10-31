@@ -262,7 +262,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       val reader=client.getStream(new Ticket(ticket.toByteArray),CallOptions.timeout(settings.executionTimeoutSeconds,TimeUnit.SECONDS))
       cancel.add(new AutoCloseable{def close():Unit={reader.cancel("dataset input cancelled",null);reader.close()}})
       if(!Set("records","bytes")(view))return ItemFrameStreams.remote(meta.getFormat,cancel){out=>
-        try dacp.union.ScientificWire.consume(reader,view,out,()=>cancel.active())finally reader.close()
+        try dacp.union.ArrowViewWire.consume(reader,view,out,()=>cancel.active())finally reader.close()
       }
       new FrameSource {
         private var started=false;private var ended=false;private var pending=Iterator.empty[Array[Byte]]
@@ -291,7 +291,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       StreamProtocol.thread(cancel){
         try {
           val scan=Option(b.get("sql")).map(x=>ItemSql.parse(x.asText))
-          ItemFrameStreams.consume(access,path,view,meta.format,scan,StreamContext(allocator,()=>cancel.active()),if(Set("records","bytes")(view))None else Some(DataViewCodecs.named(config.plugins,view)),Option(b.get("selection")))(queue.put)
+          ItemFrameStreams.consume(access,path,view,meta.format,scan,StreamContext(allocator,()=>cancel.active()),if(Set("records","bytes")(view))None else Some(DataViewSupports.named(config.plugins,view)),Option(b.get("selection")))(queue.put)
           queue.put(StreamProtocol.frame("end"));queue.end()
         } finally access.close()
       }
@@ -397,7 +397,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
               try {
                 var phase=0;var end=Option.empty[OperatorFrame];var chunk=source.next()
                 while(chunk.nonEmpty){
-                  cancel.active();val f=OperatorFrames.decode(chunk.get);val h=StreamProtocol.header(f)
+                  cancel.active();val f=chunk.get;val h=StreamProtocol.header(f)
                   require(h.path("port").asText==port,"replay port mismatch")
                   h.path("type").asText match {
                     case "start"=>require(phase==0,"invalid replay start");phase=1
@@ -440,7 +440,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
                 case "end"=>require(phases.get(port).contains(1),"invalid materialized end");phases(port)=2
                 case _=>throw new IllegalArgumentException("invalid materialized frame")
               }
-              writer.get.append(port,OperatorFrames.encode(f))
+              writer.get.append(port,f)
             }
             outputs.get((taskId,port)).foreach(out=>{observed(taskId,"outputs",port,f,out.consumer.nonEmpty);out.queue.put(f)})
           }

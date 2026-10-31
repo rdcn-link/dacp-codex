@@ -15,6 +15,6 @@ Test / javaOptions ++= Seq("--add-opens=java.base/java.nio=ALL-UNNAMED", "-Dio.n
 lazy val unionProtocol = RootProject(file("../dacp-union-protocol"))
 dependsOn(unionProtocol)
 
-libraryDependencies += "io.github.rdcn-link" %% "xstream-data-scientific-codecs" % "0.1.0-SNAPSHOT" % "runtime,test"
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-scientific-views" % "0.1.0-SNAPSHOT" % "runtime,test"
 
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-core" % "0.1.0-SNAPSHOT"

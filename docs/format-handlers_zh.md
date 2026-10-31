@@ -55,11 +55,11 @@ ZIP 列表读取归档目录，不解压载荷；TAR 和压缩 TAR 顺序扫描�
 
 ## 原生结构化文件
 
-实现 `StructuredFileHandler` 并在格式服务文件注册。`openStructure(source, options, context, check)` 返回以 `/` 为根的请求级 `DatasetAccess`，可以直接暴露逻辑对象，无需提取文件。公开绝对路径相对结构根，服务器加上发布文件别名前缀。实现递归 `list()`、直接子项 `list(path)`、`describe`、`count` 和类型化 `view`；视图打开同步 `DataStream`，空流也必须声明描述信息。子 Item 使用无文件处理器的原生格式时，必须明确声明视图；records schema 应匹配 records 视图；非表格的科学视图使用自己的类型化描述信息，不伪造 Arrow 表格 schema。核心在成功和失败后关闭句柄。发现时遵守 `check`，读写数据块前遵守 `StreamContext.check`；取消后也要释放文件句柄。
+实现 `StructuredFileHandler` 并在格式服务文件注册。`openStructure(source, options, context, check)` 返回以 `/` 为根的请求级 `DatasetAccess`，可以直接暴露逻辑对象，无需提取文件。公开绝对路径相对结构根，服务器加上发布文件别名前缀。实现递归 `list()`、直接子项 `list(path)`、`describe`、`count` 和类型化 `view`；视图打开同步 `ArrowDataStream`，空流也必须声明描述信息。子 Item 使用无文件处理器的原生格式时，必须明确声明视图；records schema 应匹配 records 视图；非表格的科学视图使用自己的类型化描述信息，不伪造 Arrow 表格 schema。核心在成功和失败后关闭句柄。发现时遵守 `check`，读写数据块前遵守 `StreamContext.check`；取消后也要释放文件句柄。
 
 文件根是带原文件 bytes 的 folder，属性未知；根元数据不打开结构或计算后代。嵌套 folder 属性同样未知。子对象 bytes 的语义由处理器说明，根 bytes 始终保留原文件。普通列表不得计算昂贵计数，启动计数跳过结构化根。
 
-使用 `PluginChecks.listing(access)` 检查元数据契约。[PluginSpec](../dacp-server/src/test/scala/dacp/PluginSpec.scala) 展示流、取消、私有错误和清理测试。NetCDF/FITS 可通过该接口暴露组、变量和 HDU，但尚不包含解析器及数组/图像视图。记录投影必须明确设计，不能静默展开数组。
+使用 `PluginChecks.listing(access)` 检查元数据契约。[PluginSpec](../dacp-server/src/test/scala/dacp/PluginSpec.scala) 展示流、取消、私有错误和清理测试。XStream NetCDF/FITS 插件通过该接口暴露组、变量或 HDU，并将数值数组输出为类型化 Arrow 批次。记录投影必须明确设计，不能静默展开数组。
 
 ## 记录扫描
 

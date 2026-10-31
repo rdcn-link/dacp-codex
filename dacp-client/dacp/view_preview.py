@@ -1,14 +1,5 @@
-"""Bounded textual previews of the public scientific wire representations.
-
-Unknown representation/encoding plugins retain a metadata + hexadecimal preview.
-No file-format detection or format-specific dependency belongs in the shell.
-"""
+"""Bounded previews of ordinary Arrow batches, with no representation wire codecs."""
 import json
-import struct
-
-_NUMERIC = {'int8': 'b', 'uint8': 'B', 'int16': 'h', 'uint16': 'H',
-            'int32': 'i', 'uint32': 'I', 'int64': 'q', 'uint64': 'Q',
-            'float32': 'f', 'float64': 'd'}
 
 
 def compact(value, limit):
@@ -16,23 +7,39 @@ def compact(value, limit):
     return text if len(text) <= limit else text[:limit] + ' ...'
 
 
-def block_preview(view, descriptor, chunk, rows, byte_limit):
-    """Return preview text, displayed element count, and consumed payload bytes."""
-    code = _NUMERIC.get(descriptor.get('data_type'))
-    if view in ('array', 'image') and code and descriptor.get('version') == 1:
-        order = descriptor.get('byte_order')
-        if order not in ('little', 'big'):
-            raise ValueError('invalid scientific byte order')
-        width = struct.calcsize(code)
-        if len(chunk.data) % width:
-            raise ValueError('misaligned scientific numeric payload')
-        count = min(rows, byte_limit // width, len(chunk.data) // width)
-        values = [struct.unpack_from(('<' if order == 'little' else '>') + code,
-                                     chunk.data, i * width)[0] for i in range(count)]
-        return compact(values, byte_limit), count, count * width
-    if view == 'sequence' and descriptor.get('version') == 1:
-        payload = chunk.data[:byte_limit]
-        text = payload.decode('utf-8', errors='replace')
-        return text, 1, len(payload)
-    payload = chunk.data[:byte_limit]
-    return payload.hex(' '), 1, len(payload)
+def batch_previews(view, descriptor, batch, rows, byte_limit):
+    """Yield location, text, element count and consumed payload bytes within budgets."""
+    for i in range(batch.num_rows):
+        if rows <= 0 or byte_limit <= 0:
+            return
+        if view == 'array':
+            required = ('origin', 'shape', 'stride', 'values')
+            if not all(name in batch.schema.names for name in required):
+                raise ValueError('invalid array Arrow columns')
+            scalar = batch.column('values')[i]
+            if not scalar.is_valid:
+                raise ValueError('null array block')
+            values = scalar.values
+            width = max(1, getattr(values.type, 'bit_width', 8) // 8)
+            count = min(rows, byte_limit // width, len(values))
+            if count == 0:
+                return
+            text = compact(values.slice(0, count).to_pylist(), byte_limit)
+            location = {name: batch.column(name)[i].as_py() for name in required[:-1]}
+            size = count * width
+        elif view == 'sequence':
+            symbols = batch.column('symbols')[i].as_py()
+            if not isinstance(symbols, str):
+                raise ValueError('invalid sequence symbols')
+            payload = symbols.encode('utf-8')[:byte_limit]
+            text = payload.decode('utf-8', errors='replace')
+            location = {name: batch.column(name)[i].as_py() for name in ('id', 'offset', 'last')}
+            count, size = 1, len(payload)
+        else:
+            # Preview one row, including nested values, without format-specific decoding.
+            text = compact(batch.slice(i, 1).to_pylist()[0], byte_limit)
+            location = {'row': i}
+            count, size = 1, min(byte_limit, len(text.encode('utf-8')))
+        yield location, text, count, size
+        rows -= count
+        byte_limit -= size

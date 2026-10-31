@@ -125,3 +125,7 @@ No separate S3 issuance is required. `access_key_id` and `secret_key` sign S3 re
 The authentication layer also writes `authentication-audit.jsonl`, recording RPC methods, subjects, status and duration, including authentication and authorization rejections. `credential-audit.jsonl` records credential management events. Each rotates to its corresponding `.previous.jsonl` after exceeding 1 MiB. Node access logs and execution history supply business payload counts and resource details.
 
 `list-history DIRECTORY [OFFSET LIMIT]` and `get-history DIRECTORY RECORD_ID` read local history; see [execution history](execution-history.md). `identity CONFIG` reads or initializes Union identity. `members CONFIG` diagnoses members online using configured credentials; other administration commands operate locally.
+
+## Local source operator boundary
+
+Standalone XStream supports `operator: {local: ./directory}` for trusted local development and later source publication. DACP and Union remote Job interfaces reject this reference, including in DEBUG mode; they do not expose host paths or build commands. Server execution continues to use repository operators and the separately configured DEBUG inline-source mechanism.

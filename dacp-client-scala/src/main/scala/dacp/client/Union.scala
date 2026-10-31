@@ -78,7 +78,7 @@ final class UnionEvents private[client](reader:BinarySource) extends Iterator[Js
   def close():Unit=if(!closed){closed=true;reader.close()}
 }
 final class UnionResults private[client](in:BinarySource,success:()=>Unit,abort:()=>Unit,onRetry:Option[JsonNode=>Unit]=None) extends Iterator[OutputEvent] with AutoCloseable {
-  private case class Port(repr:String,format:String,schema:Option[Schema],var ended:Boolean=false)
+  private case class Port(repr:String,format:String,schema:Option[Schema],structure:Option[JsonNode],var ended:Boolean=false)
   private val ports=mutable.Map.empty[String,Port]
   private val allocator=new RootAllocator()
   private var pending:Option[OutputEvent]=None
@@ -98,9 +98,9 @@ final class UnionResults private[client](in:BinarySource,success:()=>Unit,abort:
         case "complete"=>require(ports.nonEmpty && ports.values.forall(_.ended),"incomplete results");require(in.next().isEmpty,"events after completion");complete=true;success()
         case "start"=>
           val repr=m.path("representation").asText
-          require(port.nonEmpty && !ports.contains(port) && Set("bytes","records")(repr),"invalid output start")
-          val schema=if(repr=="records")Some(MessageSerializer.deserializeSchema(new ReadChannel(java.nio.channels.Channels.newChannel(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder.decode(m.path("schema").asText))))))else None
-          ports(port)=Port(repr,m.path("format").asText,schema)
+          require(port.nonEmpty && !ports.contains(port) && repr.matches("[a-z][a-z0-9_-]*"),"invalid output start")
+          val schema=if(repr!="bytes")Some(MessageSerializer.deserializeSchema(new ReadChannel(java.nio.channels.Channels.newChannel(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder.decode(m.path("schema").asText))))))else None
+          ports(port)=Port(repr,m.path("format").asText,schema,Option(m.get("structure")))
         case "data"|"end"=>
           require(ports.contains(port) && !ports(port).ended,"invalid output event")
           if(kind=="end")ports(port).ended=true
@@ -111,7 +111,7 @@ final class UnionResults private[client](in:BinarySource,success:()=>Unit,abort:
         case _=>throw new IllegalArgumentException("unknown result event")
       }
       val p=ports.get(port)
-      pending=Some(OutputEvent(kind,port,Option(m.get("task")).map(_.asText),p.map(_.repr),p.map(_.format),p.flatMap(_.schema),bytes));true
+      pending=Some(OutputEvent(kind,port,Option(m.get("task")).map(_.asText),p.map(_.repr),p.map(_.format),p.flatMap(_.schema),bytes,structure=p.flatMap(_.structure)));true
     }catch{case scala.util.control.NonFatal(t)=>close();throw t}
   }
   def next():OutputEvent={if(!hasNext)throw new NoSuchElementException;val n=pending.get;pending=None;n}

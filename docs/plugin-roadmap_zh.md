@@ -37,7 +37,7 @@
 
 [Producer.fail](../dacp-server/src/main/scala/dacp/Server.scala) 仍识别 `java.sql.SQLException`，并依赖部分异常消息字符串。应改成统一的类型化失败契约，由插件把内部错误转换成安全的公共错误类别，核心统一映射 Flight 状态；不要允许任意插件错误消息直接成为客户端响应。
 
-[Item.views](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/Models.scala)、流端口和 Flight 读取目前明确支持 records/bytes。数组、图像、多维变量和 selection 需要先定义跨客户端的描述、schema、能力与选择语义，再让插件实现；不能仅让插件注册任意字符串，也不能将科学结构静默拉平成 records。
+[Item.views](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/Models.scala) 公告 records、bytes、array 和 sequence。公共视图输出带共享描述、schema 和选择语义的 Arrow 流。新视图必须定义这些契约；不能仅注册任意字符串，也不能将科学结构静默拉平成 records。
 
 
 Flight、URI/票据解析、命名空间安全验证、基本流协议、取消、背压和资源上限继续属于核心职责。优先抽取具体用户场景需要替换的策略与实现，不为所有分支建立扩展点。

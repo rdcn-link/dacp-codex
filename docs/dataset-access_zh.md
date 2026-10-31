@@ -1,6 +1,6 @@
 # 数据集、Item 与流访问
 
-DACP 的访问链为 `DataCatalog → PublishedDataset → DatasetAccess → ItemAccess → DataView[K,S] → DataStream[K]`。`ItemAccess` 是可选的逐 Item 实现方式；需要自行管理多个 Item 的插件也可直接实现 `DatasetAccess`。
+DACP 的访问链为 `DataCatalog → PublishedDataset → DatasetAccess → ItemAccess → DataView[S] → ArrowDataStream`。`ItemAccess` 是可选的逐 Item 实现方式；需要自行管理多个 Item 的插件也可直接实现 `DatasetAccess`。
 
 目录决定有哪些 Dataset，Provider 决定如何访问 Dataset；Item 是公开元数据，不包含本地文件、SQL 连接、MongoDB collection 或 S3 对象凭证。客户端始终使用 Dataset 名称、逻辑 Item 路径和视图。
 
@@ -14,7 +14,7 @@ DACP 的访问链为 `DataCatalog → PublishedDataset → DatasetAccess → Ite
 
 ## 按 Item 实现后端
 
-插件可以继承 `ItemDatasetAccess`，实现 `list()`、`list(path)`、`describe(path)` 和 `openItem(path)`。返回的 `ItemAccess` 实现 `count()` 和 `view(kind)`：不支持的能力返回 `None`，支持的 `DataView` 根据类型化选择条件打开 `DataStream`。records 使用 `Scan`，bytes 使用 `AllBytes`。`BatchItemAccess` 是可选的 Arrow 回调工具：实现 `read`，重写 `readScan` 下推查询，或使用有界批次扫描。详见[类型化流与科学数据表示](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams_zh.md)。
+插件可以继承 `ItemDatasetAccess`，实现 `list()`、`list(path)`、`describe(path)` 和 `openItem(path)`。返回的 `ItemAccess` 实现 `count()` 和 `view(kind)`：不支持的能力返回 `None`，支持的 `DataView` 根据类型化选择条件打开 `ArrowDataStream`。records 使用 `Scan`，bytes 使用 `AllBytes`。`BatchItemAccess` 是可选的 Arrow 回调工具：实现 `read`，重写 `readScan` 下推查询，或使用有界批次扫描。详见[类型化流与科学数据表示](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams_zh.md)。
 
 `describe` 必须显式声明插件原生支持的 `Item.views`，如 `Some(Seq("records"))` 或 `Some(Seq("bytes"))`。类型名不必注册为文件格式。未知计数返回 `None`；普通文件夹不开放内容视图。支持原始字节的结构根可以显式开放 `bytes`。
 

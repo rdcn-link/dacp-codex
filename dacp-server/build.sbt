@@ -54,7 +54,7 @@ Compile / resourceGenerators += Def.task {
   val output = (Compile / resourceManaged).value / "node-web"
   val files = Seq("duration.js", "job-script.js", "dag.js", "attempts.js", "style.css", "vendor/g6-5.1.1.min.js", "vendor/G6-LICENSE.txt")
   val copied = files.map { name => val target=output / name; IO.copyFile(shared / name,target); target }
-  val branding=Seq("dacp-logo.png", "dacp-favicon.png", "dacp-favicon.ico").map { name =>
+  val branding=Seq("dacp-mark.svg", "dacp-logo.png", "dacp-favicon.png", "dacp-favicon.ico").map { name =>
     val target=output / name
     IO.copyFile(baseDirectory.value.getParentFile / "assets" / name,target)
     target
@@ -71,7 +71,7 @@ libraryDependencies += "io.github.rdcn-link" %% "xstream-operator-inference" % "
 
 libraryDependencies += "io.github.rdcn-link" %% "xstream-engine" % "0.1.0-SNAPSHOT"
 
-libraryDependencies += "io.github.rdcn-link" %% "xstream-data-scientific-codecs" % "0.1.0-SNAPSHOT" % "runtime,test"
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-scientific-views" % "0.1.0-SNAPSHOT" % "runtime,test"
 
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-netcdf" % "0.1.0-SNAPSHOT" % "runtime,test"
 

@@ -48,9 +48,9 @@ Dataset 提供者构建逻辑命名空间，实现列表、元数据、计数和
 
 ## 科学数据和未来扩展
 
-科学格式解析插件、科学视图及网络编码见 [xstream-data](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/README_zh.md)。
+科学格式解析插件、科学视图及标准 Arrow 流表示见 [xstream-data](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/README_zh.md)。
 
-当前公共视图是 `records` 和 `bytes`。数组和图像视图仍需明确共享 schema、元数据和选择语义。不得静默把科学数组展开为记录，也不得虚构记录数。插件基础设施的存在不表示这些表示已经实现。
+当前公共视图包括 `records`、`bytes`、`array` 和 `sequence`，统一输出标准 Arrow 流。科学数组保留维度及选择语义，不能静默展开为记录。
 
 新的扩展点同样应定义聚焦的公共契约，通过注册发现实现，并避免核心分发中的领域分支。没有具体贡献或用例时不引入抽象。未发布阶段直接改进契约并同步调用方，不累积兼容层。
 
@@ -94,4 +94,4 @@ S3 兼容读取是复用 DatasetAccess 的核心传输层，不是新的存储�
 
 ## 类型化数据视图
 
-科学格式解析插件、科学视图及网络编码见 [xstream-data](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/README_zh.md)。
+科学格式解析插件、科学视图及标准 Arrow 流表示见 [xstream-data](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/README_zh.md)。

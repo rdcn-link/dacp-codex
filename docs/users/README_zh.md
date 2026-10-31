@@ -144,7 +144,7 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 `ls` 以带外边框的表格显示 #、Path、Format、Views、Bytes、Records 和 Modified (UTC)，首列为从 1 开始的条目编号。未知值显示为 `-`，时间格式为 `2026-10-16 06:22:02`；终端中集合路径以加粗青色高亮。
 
-`cat` 接受路径或最近一次列表中的编号；默认优先显示 records，其次是 bytes（十六进制），再选择第一个已声明的科学视图。记录使用带列名的表格，`text` 显示文本，`hex` 显示偏移量、十六进制及 ASCII。默认最多预览 20 行或 4096 字节，可通过 `--rows` 和 `--bytes` 调整。`cat 2 array`、`cat /sky.fits/hdu0 image`、`cat /genome.fa/sequences sequence` 显示有界的结构描述，以及包含块位置/标识和样例的表格。array/image 根据声明的数据类型和字节序解码数值；image 不渲染为图片。科学视图达到元素/块数量或载荷字节预算后停止并取消读取器；单个传入块可能大于展示预算。未知科学表示或编码展示元数据与十六进制载荷，不假设文件格式。`cat ITEM bytes` 等同于 `hex`。请求 Item 未声明的视图会明确报错。`Views` 列列出全部已声明的表示；空列表显示为 `-`。
+`cat` 接受路径或最近一次列表中的编号；默认优先显示 records，其次是 bytes（十六进制），再选择第一个已声明的科学视图。记录使用带列名的表格，`text` 显示文本，`hex` 显示偏移量、十六进制及 ASCII。默认最多预览 20 行或 4096 字节，可通过 `--rows` 和 `--bytes` 调整。`cat 2 array`、`cat /sky.fits/hdu0 array`、`cat /genome.fa/sequences sequence` 显示有界的结构描述，以及包含块位置/标识和样例的表格。array 根据声明的数据类型和字节序解码数值。科学视图达到元素/块数量或载荷字节预算后停止并取消读取器；单个传入块可能大于展示预算。未知科学表示或编码展示元数据与十六进制载荷，不假设文件格式。`cat ITEM bytes` 等同于 `hex`。请求 Item 未声明的视图会明确报错。`Views` 列列出全部已声明的表示；空列表显示为 `-`。
 
 `datasets` 显示 `#`、`Name`、`Description (JSON)` 三列，不显示 URI。使用 `use NAME` 按名称切换同一服务器上的数据集，也可用 `use 1` 选择最近一次 `datasets` 列表中的第 1 行。行号从 1 开始，刷新列表会更新映射，重新连接会清空映射；纯数字参数按行号解释。使用 `connect URI` 连接其他位置，`help` 查看命令。证书也可通过 `--ca`、`--cert`、`--key` 指定。
 

@@ -13,7 +13,7 @@ Universal / javaOptions ++= Seq("-J--add-opens=java.base/java.nio=ALL-UNNAMED", 
 
 // Package the full logo and compact C favicons.
 Compile / resourceGenerators += Def.task {
-  Seq("dacp-logo.png", "dacp-favicon.png", "dacp-favicon.ico").map { name =>
+  Seq("dacp-mark.svg", "dacp-logo.png", "dacp-favicon.png", "dacp-favicon.ico").map { name =>
     val output = (Compile / resourceManaged).value / "web" / name
     IO.copyFile(baseDirectory.value.getParentFile / "assets" / name, output)
     output
@@ -27,7 +27,7 @@ dependsOn(collaborationClient)
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-fasta" % "0.1.0-SNAPSHOT" % "runtime,test"
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-fits" % "0.1.0-SNAPSHOT" % "runtime,test"
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-netcdf" % "0.1.0-SNAPSHOT" % "runtime,test"
-libraryDependencies += "io.github.rdcn-link" %% "xstream-data-scientific-codecs" % "0.1.0-SNAPSHOT" % "runtime,test"
+libraryDependencies += "io.github.rdcn-link" %% "xstream-data-scientific-views" % "0.1.0-SNAPSHOT" % "runtime,test"
 
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-core" % "0.1.0-SNAPSHOT"
 

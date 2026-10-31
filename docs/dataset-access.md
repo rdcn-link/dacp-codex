@@ -1,6 +1,6 @@
 # Dataset, Item, and stream access
 
-The DACP access chain is `DataCatalog → PublishedDataset → DatasetAccess → ItemAccess → DataView[K,S] → DataStream[K]`. `ItemAccess` is an optional per-Item implementation style; plugins that manage several Items together may implement `DatasetAccess` directly.
+The DACP access chain is `DataCatalog → PublishedDataset → DatasetAccess → ItemAccess → DataView[S] → ArrowDataStream`. `ItemAccess` is an optional per-Item implementation style; plugins that manage several Items together may implement `DatasetAccess` directly.
 
 The catalog determines which Datasets exist; the provider determines how to access them. An Item is public metadata, without local files, SQL connections, MongoDB collections, or S3 object credentials. Clients always use Dataset names, logical Item paths, and views.
 
@@ -14,7 +14,7 @@ The catalog determines which Datasets exist; the provider determines how to acce
 
 ## Implementing a backend per Item
 
-A plugin may extend `ItemDatasetAccess`, implementing `list()`, `list(path)`, `describe(path)`, and `openItem(path)`. The returned `ItemAccess` implements `count()` and `view(kind)`. Return `None` for unsupported capabilities; a supported `DataView` opens a `DataStream` with a typed selection. Records use `Scan`, bytes use `AllBytes`. `BatchItemAccess` is an optional Arrow callback helper: implement `read` and override `readScan` for source pushdown, or use its bounded fallback. See [typed streams and scientific representations](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams.md).
+A plugin may extend `ItemDatasetAccess`, implementing `list()`, `list(path)`, `describe(path)`, and `openItem(path)`. The returned `ItemAccess` implements `count()` and `view(kind)`. Return `None` for unsupported capabilities; a supported `DataView` opens an `ArrowDataStream` with a typed selection. Records use `Scan`, bytes use `AllBytes`. `BatchItemAccess` is an optional Arrow callback helper: implement `read` and override `readScan` for source pushdown, or use its bounded fallback. See [typed streams and scientific representations](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams.md).
 
 `describe` must explicitly advertise the plugin's native `Item.views`, such as `Some(Seq("records"))` or `Some(Seq("bytes"))`. The type name does not need file-format registration. Return `None` for unknown counts; ordinary folders have no content views. Structure roots supporting original bytes may explicitly advertise `bytes`.
 

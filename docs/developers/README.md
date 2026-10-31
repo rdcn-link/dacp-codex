@@ -29,7 +29,7 @@ Core owns contracts, discovery and lifecycle, transport, authorization, namespac
 - [Stream contract](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams.md): named ports, frames, backpressure, cancellation and current scheduling limits.
 - [DEBUG source](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md): Python/Scala compilation and launch contracts; raw Java source is unsupported.
 
-Operator outputs are transient streams. There is no result-dataset registration, saved-result mode or output TTL. Preserve scientific structures; bytes and records are implemented, while new array/image representations need a shared contract first. General pipeline scheduling and fan-out are not implemented.
+Operator outputs are transient streams. There is no result-dataset registration, saved-result mode or output TTL. Bytes, records, arrays and sequences share Arrow streaming contracts; scientific dimensions remain explicit. General pipeline scheduling and fan-out are not implemented.
 
 ## Extend datasets and formats
 
@@ -97,7 +97,7 @@ File plugins implement `FormatHandler` and register in `META-INF/services/xstrea
 
 To browse logical objects inside a file, implement `StructuredFileHandler` and register through the same format service file. Its `openStructure` returns `DatasetAccess` and can stream internal objects directly without extracting temporary files. The file root is a folder with original bytes; children explicitly advertise `records` or `bytes`. Archive readers can implement `ContainerReader` and register in `META-INF/services/xstream.data.ContainerReader`, without modifying core format registries.
 
-The standalone API lives in [dacp-plugin-api](../../dacp-plugin-api). Runnable contributions and build/install instructions are in [examples/plugins](../../examples/plugins/README.md). `PluginChecks.listing` provides reusable metadata contract checks. The server closes request-scoped access handles and releases provider resources on shutdown. Concrete NetCDF/FITS parsers and new array/image views are not implemented yet; contributors can represent internal file objects through the current interfaces, without silently flattening arrays into records.
+The standalone API lives in [dacp-plugin-api](../../dacp-plugin-api). Runnable contributions and build/install instructions are in [examples/plugins](../../examples/plugins/README.md). `PluginChecks.listing` provides reusable metadata contract checks. The server closes request-scoped access handles and releases provider resources on shutdown. XStream data plugins implement NetCDF/FITS/FASTA parsing and arrays/sequences over standard Arrow streams. Contributors expose internal file objects through shared contracts, without silently flattening arrays into records.
 
 ## Development and validation
 

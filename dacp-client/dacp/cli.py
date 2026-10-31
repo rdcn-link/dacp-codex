@@ -13,7 +13,7 @@ import time
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from .source import Source
-from .view_preview import block_preview, compact
+from .view_preview import batch_previews, compact
 from .jobs import Job
 from .errors import user_message
 from .sql import parse_query
@@ -262,7 +262,7 @@ class Browser(cmd.Cmd):
           cat "/file name" text
           cat /image hex
           cat 2 array
-          cat /sky.fits/hdu0 image
+          cat /sky.fits/hdu0 array
           cat /genome.fa/sequences sequence
         A number refers to the latest ls result. Ordinary folders use ls instead.
         """
@@ -300,20 +300,18 @@ class Browser(cmd.Cmd):
                 self.write(f'{len(data)} bytes shown (limit {self.byte_limit})')
 
     def show_view(self, stream, view):
-        # Descriptor and block metadata remain bounded even for third-party codecs.
+        # Arrow schema descriptors and previews remain bounded for custom views.
         with stream.as_view(view) as reader:
             self.write(f'View: {view}')
             self.write('Structure: ' + compact(reader.descriptor, self.byte_limit))
             rows, elements, used = [], 0, 0
-            for chunk in reader:
-                preview, count, size = block_preview(view, reader.descriptor, chunk,
-                                                      self.rows - elements, self.byte_limit - used)
-                if count == 0:
-                    break
-                rows.append((str(len(rows) + 1), compact(chunk.metadata, self.byte_limit),
-                             safe(preview).replace('\n', r'\n')[:self.byte_limit]))
-                elements += count
-                used += size
+            for batch in reader:
+                for location, preview, count, size in batch_previews(view, reader.descriptor, batch,
+                                                                    self.rows - elements, self.byte_limit - used):
+                    rows.append((str(len(rows) + 1), compact(location, self.byte_limit),
+                                 safe(preview).replace('\n', r'\n')[:self.byte_limit]))
+                    elements += count
+                    used += size
                 if elements >= self.rows or used >= self.byte_limit:
                     break
             self.table(('Block', 'Location / identity', 'Sample'), rows, numeric=(0,))

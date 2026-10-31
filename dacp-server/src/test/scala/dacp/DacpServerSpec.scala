@@ -47,12 +47,11 @@ class DacpServerSpec extends AnyFunSuite {
         .setSelectionJson(com.google.protobuf.ByteString.copyFromUtf8("{\"offset\":2,\"length\":4}")).build()
       val reader=client.getStream(new Ticket(request.toByteArray))
       val chunks=scala.collection.mutable.ArrayBuffer.empty[SequenceChunk]
-      val codec=new _root_.xstream.data.scientific.SequenceCodec()
-      try dacp.union.ScientificWire.consume(reader,"sequence",new EncodedDataConsumer {
-        var descriptor:DataDescriptor[SequenceChunk]=null
-        def start(d:com.fasterxml.jackson.databind.JsonNode):Unit={descriptor=codec.descriptor(d)}
-        def accept(b:EncodedDataBlock):Unit=chunks+=codec.decode(b,descriptor)
-      },()=>())finally reader.close()
+      val codec=new _root_.xstream.data.scientific.SequenceViewSupport()
+      try dacp.union.ArrowViewWire.consume(reader,"sequence",ArrowBlocks.consumer(new DataConsumer[SequenceChunk] {
+        def start(d:DataDescriptor[SequenceChunk]):Unit=assert(d.isInstanceOf[SequenceDescriptor])
+        def accept(b:SequenceChunk):Unit=chunks+=b
+      }),()=>())finally reader.close()
       assert(chunks.map(_.symbols.toString).mkString=="GTAC" && chunks.head.offset==2 && chunks.last.last)
       val yaml="name: Scientific Job\ntasks:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: 'context:/science/sequences', view: sequence, selection: {offset: 1, length: 3}}\noutputs: {result: read}\n"
       val tls=dacp.client.TlsConfig(ca=Some(cert),token=Some(token))
@@ -61,7 +60,16 @@ class DacpServerSpec extends AnyFunSuite {
       val job=dacp.client.Job.run(c.uri(""),yaml,tls)
       try {
         val events=job.toVector
-        val parts=events.filter(_.kind=="data").map(_.scientific(codec))
+        val parts=scala.collection.mutable.ArrayBuffer.empty[SequenceChunk]
+        events.filter(_.kind=="data").foreach { e=>
+          val reader=e.arrow(allocator)
+          try {
+            while(reader.loadNextBatch())ArrowBlocks.consumer(new DataConsumer[SequenceChunk] {
+              def start(d:DataDescriptor[SequenceChunk]):Unit=()
+              def accept(b:SequenceChunk):Unit=parts+=b
+            }) match {case consumer=>consumer.start(reader.getVectorSchemaRoot.getSchema,reader);consumer.accept(ArrowBatch(reader.getVectorSchemaRoot,reader))}
+          }finally reader.close()
+        }
         assert(parts.map(_.symbols.toString).mkString=="CGT" && parts.head.offset==1)
         assert(events.exists(_.kind=="complete"))
       }finally job.close()

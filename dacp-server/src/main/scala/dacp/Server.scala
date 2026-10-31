@@ -116,7 +116,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
       def list(path:String):Seq[Item]=access.list(path)
       def describe(path:String):Item=access.describe(path)
       def count(path:String):Option[Long]=access.count(path)
-      def view[K,S](path:String,kind:DataViewType[K,S]):Option[DataView[K,S]]=access.view(path,kind)
+      def view[S](path:String,kind:DataViewType[S]):Option[DataView[S]]=access.view(path,kind)
       override def close():Unit=if(ended.compareAndSet(false,true))try access.close()finally lease.close()
     }
   }
@@ -263,7 +263,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     } else {
       val description = a.describe(item)
       require(config.plugins.views(description).nonEmpty, "folder has no content stream")
-      val schema = description.schema.getOrElse {val first=config.plugins.views(description).head;require(first!="records","records view requires schema");if(first=="bytes")PluginSchemas.bytes else {DataViewCodecs.named(config.plugins,first);dacp.union.ScientificWire.envelopeSchema(first)}}
+      val schema = description.schema.getOrElse {val first=config.plugins.views(description).head;require(first!="records","records view requires schema");if(first=="bytes")PluginSchemas.bytes else {dacp.union.ArrowViewWire.schema(DataViewSupports.named(config.plugins,first),a,item,allocator)}}
       val ticket = Metadata.Ticket.newBuilder().setDataset(ds).setItem(item).setView(config.plugins.views(description).head).build()
       new FlightInfo(schema,desc,List(new FlightEndpoint(new Ticket(ticket.toByteArray))).asJava,-1,-1,false,
         org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,
@@ -351,9 +351,9 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
         require(t.getSelectionJson.isEmpty,"selection requires a scientific view")
         FlightDataStreams.send(namespace,t.getItem,t.getView,allocator,listener,() => ready())
       } else {
-        val codec=DataViewCodecs.named(config.plugins,t.getView)
-        val selection=if(t.getSelectionJson.isEmpty)Data.mapper.createObjectNode()else dacp.union.ScientificWire.json(t.getSelectionJson.toByteArray)
-        dacp.union.ScientificWire.send(codec,namespace,t.getItem,selection,allocator,listener,()=>ready())
+        val codec=DataViewSupports.named(config.plugins,t.getView)
+        val selection=if(t.getSelectionJson.isEmpty)Data.mapper.createObjectNode()else dacp.union.ArrowViewWire.json(t.getSelectionJson.toByteArray)
+        dacp.union.ArrowViewWire.send(codec,namespace,t.getItem,selection,allocator,listener,()=>ready())
       }
       } finally namespace.close()
           audit.finish(if(ctx.isCancelled || listener.isCancelled)"cancelled" else "completed")

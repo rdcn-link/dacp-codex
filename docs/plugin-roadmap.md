@@ -37,7 +37,7 @@ The instance-scoped plugin environment defines ownership rules for construction,
 
 [Producer.fail](../dacp-server/src/main/scala/dacp/Server.scala) still recognizes `java.sql.SQLException` and matches some exception messages. Replace this with typed failures: plugins translate internal errors into safe public categories, and core consistently maps them to Flight status. Do not expose arbitrary plugin exception text to clients.
 
-[Item.views](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/Models.scala), stream ports, and Flight reads explicitly support records/bytes. Arrays, images, multidimensional variables, and selections require cross-client descriptions, schemas, capabilities, and selection semantics before plugins implement them. Registering arbitrary strings or silently flattening scientific structures into records is insufficient.
+[Item.views](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/Models.scala) advertises records, bytes, arrays and sequences. Public views output Arrow streams with shared descriptors, schemas and selection semantics. New views must define these contracts; registering arbitrary strings or silently flattening scientific structures into records is insufficient.
 
 
 Flight, URI/ticket parsing, namespace security validation, basic stream protocols, cancellation, backpressure, and resource limits remain core responsibilities. Extract policies and implementations that actual user scenarios need to replace, rather than creating an extension point for every branch.

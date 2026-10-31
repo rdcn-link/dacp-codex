@@ -691,22 +691,33 @@ def test_submit_rejects_nonobject_variable_files(browser, monkeypatch, tmp_path,
 
 @pytest.mark.parametrize('view,dtype,payload,expected', [
     ('array', 'float32', __import__('struct').pack('<4f', 1, 2, 3, 4), '[1.0,2.0,3.0]'),
-    ('image', 'int16', __import__('struct').pack('>4h', 2, 5, 8, 9), '[2,5,8]'),
+    ('array', 'int16', __import__('struct').pack('>4h', 2, 5, 8, 9), '[2,5,8]'),
     ('sequence', None, b'ACGTACGT', 'ACGTACGT'),
-    ('custom-view', None, b'AB', '41 42'),
+    ('custom-view', None, b'AB', 'AB'),
 ])
 def test_scientific_cat_number_preview_and_cancellation(browser, view, dtype, payload, expected):
-    from dacp.source import ScientificChunk
     b, ds, out = browser
     class Reader:
         descriptor = dict(version=1, view=view, data_type=dtype,
-                          byte_order='big' if view == 'image' else 'little')
+                          byte_order='big' if dtype == 'int16' else 'little')
         closed = False
         def __enter__(self): return self
         def __exit__(self, *args): self.closed = True
         def __iter__(self):
-            yield ScientificChunk({'origin': [0], 'shape': [4]}, payload)
-            if view in ('array', 'image'):
+            if view == 'array':
+                import struct
+                code = 'h' if dtype == 'int16' else 'f'
+                values = struct.unpack(('>' if dtype == 'int16' else '<') + '4' + code, payload)
+                yield pa.record_batch([pa.array([[0]], type=pa.list_(pa.int64())),
+                                       pa.array([[4]], type=pa.list_(pa.int64())),
+                                       pa.array([[1]], type=pa.list_(pa.int64())),
+                                       pa.array([list(values)], type=pa.list_(pa.int16() if code == 'h' else pa.float32()))],
+                                      names=['origin', 'shape', 'stride', 'values'])
+            elif view == 'sequence':
+                yield pa.record_batch([['chr1'], [0], [payload.decode()], [True]], names=['id', 'offset', 'symbols', 'last'])
+            else:
+                yield pa.record_batch([[payload]], names=['data'])
+            if view == 'array':
                 raise AssertionError('read beyond element preview limit')
     reader = Reader()
     ds.stream.views = (view,)
@@ -718,7 +729,6 @@ def test_scientific_cat_number_preview_and_cancellation(browser, view, dtype, pa
 
 
 def test_scientific_cat_auto_empty_and_payload_budget(browser):
-    from dacp.source import ScientificChunk
     b, ds, out = browser
     class Reader:
         descriptor = dict(version=1, view='sequence', alphabet='DNA')
@@ -726,7 +736,7 @@ def test_scientific_cat_auto_empty_and_payload_budget(browser):
         def __enter__(self): return self
         def __exit__(self, *args): self.closed = True
         def __iter__(self):
-            yield ScientificChunk({'id': 'chr1'}, b'A' * 100)
+            yield pa.record_batch([['chr1'], [0], ['A' * 100], [True]], names=['id', 'offset', 'symbols', 'last'])
             raise AssertionError('read beyond byte budget')
     reader = Reader()
     ds.stream.views = ('sequence',)
@@ -740,17 +750,16 @@ def test_scientific_cat_auto_empty_and_payload_budget(browser):
 
 
 def test_scientific_preview_error_closes_reader(browser):
-    from dacp.source import ScientificChunk
     b, ds, out = browser
     class Reader:
         descriptor = dict(version=1, view='array', data_type='float64', byte_order='little')
         closed = False
         def __enter__(self): return self
         def __exit__(self, *args): self.closed = True
-        def __iter__(self): yield ScientificChunk({}, b'bad')
+        def __iter__(self): yield pa.record_batch([['bad']], names=['bad'])
     reader = Reader()
     ds.stream.views = ('array',)
     ds.stream.as_view = lambda view: reader
     b.onecmd('cat 1 array')
     assert reader.closed
-    assert 'misaligned' in out.getvalue()
+    assert 'invalid array Arrow columns' in out.getvalue()

@@ -70,7 +70,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
           inferPlan(planner.plan(input,()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()))
         }else {
           val task=WorkflowInference.parseTask(n)
-          require(task.source.isEmpty,"Union requires versioned operators")
+          require(task.source.isEmpty && task.localOperator.isEmpty,"Union requires versioned operators")
           val planned=planner.plan(JobPlan(Vector(task),Map.empty),()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()).tasks.head
           StructureInference.json(inferTask(planned,StructureInference.ports(n.path("inputs"))))
         }
@@ -313,7 +313,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     private val proxyPath={require(!incomingPath.contains(members.unionId) && incomingPath.size<8,"proxy cycle or depth limit");incomingPath:+members.unionId}
     private val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     def requiresRetryAwareness:Boolean=policy.maxRetries>0
-    require(plan.tasks.forall(t=>t.node.nonEmpty && t.source.isEmpty),"union tasks require explicit node and versioned operator")
+    require(plan.tasks.forall(t=>t.node.nonEmpty && t.source.isEmpty && t.localOperator.isEmpty),"union tasks require explicit node and versioned operator")
     @volatile private var replaySources=initialReplaySources
     @volatile private var attemptId=id
     @volatile private var retryCount=0

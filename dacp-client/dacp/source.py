@@ -173,10 +173,10 @@ class Stream:
     def __init__(self, client, ticket, views=("records", "bytes"), item_schema=None):
         self._client, self._ticket, self._owns_client = client, ticket, False
         self.views, self.item_schema = views, item_schema
-        self._scientific_readers = set()
+        self._view_readers = set()
     @public_errors
     def close(self):
-        for reader in tuple(self._scientific_readers): reader.close()
+        for reader in tuple(self._view_readers): reader.close()
         if self._owns_client: self._client.close()
     def __enter__(self): return self
     def __exit__(self, *args): self.close()
@@ -207,66 +207,49 @@ class Stream:
     def as_bytes(self): return io.BufferedReader(_Bytes(self._reader("bytes")))
 
     def as_view(self, view, selection=None):
-        """Read a registered scientific view as a descriptor and bounded metadata/payload blocks."""
-        reader = ScientificReader(self._reader(view, {} if selection is None else selection), view,
-                                  lambda r: self._scientific_readers.discard(r))
-        self._scientific_readers.add(reader)
+        """Read a view as standard Arrow RecordBatches, retaining its schema and descriptor."""
+        reader = ArrowViewReader(self._reader(view, {} if selection is None else selection), view,
+                                  lambda r: self._view_readers.discard(r))
+        self._view_readers.add(reader)
         return reader
     def as_array(self, selection=None): return self.as_view("array", selection)
-    def as_image(self, selection=None): return self.as_view("image", selection)
     def as_sequences(self, selection=None): return self.as_view("sequence", selection)
 
-@dataclass(frozen=True)
-class ScientificChunk:
-    metadata: dict
-    data: bytes
-    @property
-    def text(self): return self.data.decode("utf-8")
-
-class ScientificReader:
-    """Single-pass scientific blocks. The descriptor is available even for an empty stream."""
+class ArrowViewReader:
+    """Single-pass Arrow batches; schema and descriptor are available for empty streams."""
     @public_errors
     def __init__(self, reader, view, released=lambda r: None):
         self._reader, self._released, self._closed = reader, released, False
         try:
-            schema = reader.schema
-            if (schema.names != ["metadata", "data"] or schema.types != [pa.string(), pa.binary()]
-                    or (schema.metadata or {}).get(b"xstream.view") != view.encode("utf-8")):
-                raise ValueError("invalid scientific envelope")
-            self.descriptor = self._json((schema.metadata or {}).get(b"xstream.descriptor", b""))
+            self.schema = reader.schema
+            metadata = self.schema.metadata or {}
+            if (metadata.get(b"xstream.view") != view.encode("utf-8")
+                    or metadata.get(b"xstream.view.version") != b"1"):
+                raise ValueError("invalid Arrow view metadata")
+            data = metadata.get(b"xstream.descriptor", b"")
+            if len(data) > 1024 * 1024:
+                raise ValueError("view descriptor too large")
+            self.descriptor = json.loads(data)
+            if not isinstance(self.descriptor, dict):
+                raise ValueError("view descriptor must be an object")
             self.view = view
             self._batches = iter(reader)
-            self._pending = iter(())
         except Exception:
             reader.cancel()
             raise
-    @staticmethod
-    def _json(data):
-        if len(data) > 1024 * 1024: raise ValueError("scientific metadata too large")
-        value = json.loads(data)
-        if not isinstance(value, dict): raise ValueError("scientific metadata must be an object")
-        return value
     def __iter__(self): return self
     @public_errors
     def __next__(self):
         if self._closed: raise StopIteration
         try:
             while True:
-                pair = next(self._pending, None)
-                if pair is not None:
-                    metadata, data = pair
-                    if metadata is None or data is None or len(data) > 16 * 1024 * 1024:
-                        raise ValueError("invalid scientific block")
-                    return ScientificChunk(self._json(metadata.encode("utf-8")), data)
                 chunk = next(self._batches)
                 if chunk.data is None: continue
                 batch = chunk.data
-                if batch.num_rows > 1024: raise ValueError("too many scientific blocks")
-                self._pending = iter(zip(batch.column(0).to_pylist(), batch.column(1).to_pylist()))
-        except StopIteration:
-            self.close()
-            raise
-        except Exception:
+                if not batch.schema.equals(self.schema, check_metadata=True):
+                    raise ValueError("view schema changed")
+                return batch
+        except BaseException:
             self.close()
             raise
     @public_errors

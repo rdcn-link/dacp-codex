@@ -26,7 +26,7 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
     val readSizes=scala.collection.mutable.Map.empty[String,(String,Option[Long])]
     val decisions=scala.collection.mutable.ArrayBuffer.empty[PlacementDecision]
     val tasks=Jobs.resolveReads(input,origin).tasks.map { t=>
-      require(t.source.isEmpty,"Union requires versioned operators")
+      require(t.source.isEmpty && t.localOperator.isEmpty,"Union requires versioned operators")
       val sources=Jobs.readBinding(t).toVector.flatMap { b=>b.uri.filter(uri=>DacpUri.origin(uri)==origin).map { uri=>
         val port="result"
         require(DacpUri.origin(uri)==origin,"input must use the Union public URI")

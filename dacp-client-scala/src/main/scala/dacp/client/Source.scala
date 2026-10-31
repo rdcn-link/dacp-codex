@@ -218,22 +218,21 @@ final class ItemStream private[client] (dataset: Dataset, ticket: Ticket, val vi
   }
   private var codecEnvironment:Option[PluginEnvironment]=None
   /** Typed scientific stream; descriptor and chunks are decoded by a discovered codec. */
-  def asView[K,S](kind:DataViewType[K,S],selection:S):DataStream[K]={
+  def asView[S](kind:DataViewType[S],selection:S):ArrowDataStream={
     val environment=codecEnvironment.getOrElse {val e=new PluginEnvironment();codecEnvironment=Some(e);e}
-    val codec=DataViewCodecs.forType(environment,kind).getOrElse(throw new IllegalArgumentException("view codec unavailable: "+kind.name))
+    val codec=DataViewSupports.forType(environment,kind).getOrElse(throw new IllegalArgumentException("view codec unavailable: "+kind.name))
     val view=codec.remoteView(kind)((request,out,context)=>{
       val reader=flight(kind.name,Some(request))
       readers+=reader
-      try dacp.union.ScientificWire.consume(reader,kind.name,out,context.check) finally {reader.cancel("view closed",null);reader.close();readers-=reader}
+      try dacp.union.ArrowViewWire.consume(reader,kind.name,out,context.check) finally {reader.cancel("view closed",null);reader.close();readers-=reader}
     }).get
     // No allocator is used for decoded scientific blocks; the transport owns its allocator.
     val stream=view.open(selection,StreamContext(dataset.allocator))
     readers+=stream
     stream
   }
-  def asArray(selection:ArraySelection=ArraySelection()):DataStream[ArrayChunk]=asView(ScientificViews.Arrays,selection)
-  def asImage(selection:ImageSelection=ImageSelection()):DataStream[ImageTile]=asView(ScientificViews.Images,selection)
-  def asSequences(selection:SequenceSelection=SequenceSelection()):DataStream[SequenceChunk]=asView(ScientificViews.Sequences,selection)
+  def asArray(selection:ArraySelection=ArraySelection()):ArrowDataStream=asView(ScientificViews.Arrays,selection)
+  def asSequences(selection:SequenceSelection=SequenceSelection()):ArrowDataStream=asView(ScientificViews.Sequences,selection)
   def asRecords(): RecordStream = {
     val reader = new RecordStream(flight("records"), r => readers -= r)
     readers += reader
@@ -258,6 +257,7 @@ final class ItemStream private[client] (dataset: Dataset, ticket: Ticket, val vi
 final class RecordStream private[client] (stream: FlightStream, released: AutoCloseable => Unit) extends AutoCloseable {
   private var closed = false
   private var ended = false
+  def dictionaries: org.apache.arrow.vector.dictionary.DictionaryProvider = { require(!closed, "reader is closed"); stream.getDictionaryProvider }
   def schema: Schema = { require(!closed, "reader is closed"); DacpErrors.protect(stream.getSchema) }
   def root: VectorSchemaRoot = { require(!closed, "reader is closed"); DacpErrors.protect(stream.getRoot) }
   def next(): Boolean = {

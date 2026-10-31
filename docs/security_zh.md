@@ -127,3 +127,7 @@ target/universal/stage/bin/dacp-admin grant-union /protected/node-credentials --
 S3 对每个新请求检查当前角色，包括预签名 GET 和 Range 请求。清空主体角色会同时阻止两个协议的后续数据读取，无需轮换凭据；已接纳的下载继续。Token 与 S3 密钥可独立撤销或轮换，轮换后保留主体角色。本地生成预签名 URL 同样要求当前具有读取角色。为同一账号签发两类凭据时，使用相同的 `--subject`。
 
 `list-history DIRECTORY [OFFSET LIMIT]` 和 `get-history DIRECTORY RECORD_ID` 读取本地历史，详见[执行历史](execution-history_zh.md)。`identity CONFIG` 查询或初始化 Union 身份；`members CONFIG` 使用配置中的凭据在线诊断成员，其他管理命令在本地操作。
+
+## 本地源码算子边界
+
+独立 XStream 支持 `operator: {local: ./directory}`，用于可信本地开发并可提交源码到仓库。DACP 和 Union 的远程 Job 接口不接受此引用，DEBUG 模式也不会开放本机路径或构建命令。服务端继续使用仓库算子及已配置的 DEBUG 内联源码机制。

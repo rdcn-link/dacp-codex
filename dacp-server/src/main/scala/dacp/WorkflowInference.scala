@@ -21,6 +21,7 @@ object WorkflowInference {
   }
 
   def taskJson(task:Task,inputs:Map[String,StreamDescriptor]):JsonNode={
+    require(task.localOperator.isEmpty,"local operator paths cannot be sent to remote inference")
     val n=StructureInference.json(InferenceRequest(inputs,Data.mapper.valueToTree(task.params))).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
     task.source match {
       case None=>n.put("operator",task.operator)
@@ -51,13 +52,13 @@ object WorkflowInference {
           val schema=if(view=="records" && !meta.getArrowSchema.isEmpty)Some(binding.scan.map(_.bind(info.getSchema).outputSchema).getOrElse(info.getSchema))else None
           if(Set("bytes","records")(view))InferenceResult(Map("result"->StreamDescriptor(Set(view),Set(meta.getFormat),schema,if(view=="bytes" || schema.nonEmpty)"known"else "unknown")))
           else {
-            val codec=DataViewCodecs.named(config.plugins,view)
+            val codec=DataViewSupports.named(config.plugins,view)
             val selection=codec.selection(binding.selection.getOrElse(Data.mapper.createObjectNode()))
             val ticket=dacp.protocol.Metadata.Ticket.newBuilder().setDataset(parts(0)).setItem("/"+parts(1)).setView(view)
               .setSelectionJson(com.google.protobuf.ByteString.copyFrom(Data.mapper.writeValueAsBytes(codec.selectionJson(selection)))).build()
             val typed=codec.remoteView(codec.kind){(_,out,c)=>
               val reader=client.getStream(new org.apache.arrow.flight.Ticket(ticket.toByteArray))
-              try dacp.union.ScientificWire.consume(reader,view,out,c.check)finally {reader.cancel("metadata read complete",null);reader.close()}
+              try dacp.union.ArrowViewWire.consume(reader,view,out,c.check)finally {reader.cancel("metadata read complete",null);reader.close()}
             }.get.open(selection,StreamContext(allocator,()=>cancel.active()))
             InferenceResult(Map("result"->DataViewInference.inspect(codec)(typed,selection,meta.getFormat,None,()=>cancel.active())))
           }

@@ -73,7 +73,7 @@ META-INF/services/xstream.data.DatasetProvider
 
 1. `create(definition, context)` 校验私有设置，为服务器配置构建 `PublishedDataset`，可初始化发现或发布元数据。日志和公共错误中不能出现凭据或物理标识；`DatasetDefinition.toString` 隐去设置。
 2. `PublishedDataset.open(check)` 创建请求级 `DatasetAccess`，取消请求时通过回调中止发现。
-3. `DatasetAccess` 实现递归列表、直接子项列表、元数据、精确计数和流式交付。`view(path, kind)` 返回可选的类型化 `DataView`，通过 `open(selection, StreamContext)` 获得单次消费的 `DataStream`。读写前检查取消，在成功、失败和取消时关闭资源，见[类型化数据流](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams_zh.md)。
+3. `DatasetAccess` 实现递归列表、直接子项列表、元数据、精确计数和流式交付。`view(path, kind)` 返回可选的类型化 `DataView`，通过 `open(selection, StreamContext)` 获得单次消费的 `ArrowDataStream`。读写前检查取消，在成功、失败和取消时关闭资源，见[类型化数据流](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams_zh.md)。
 
 用 `Item.views = Some(Seq("records", "bytes"))` 显式声明原生能力，无需依赖文件格式处理器。records 开始前必须有匹配的 Arrow schema。进程内 bytes 输出 `ByteChunk`，网络适配器使用单 binary 列的 Arrow 信封。普通 folder 没有视图，其大小、时间和记录数保持未知。不存在的资源抛 `FileNotFoundException`；格式失败使用固定消息的 `FormatFailure`，不能包含私有信息。核心实施 URI 授权并清理错误，不应抛出包含后端诊断的传输异常。
 

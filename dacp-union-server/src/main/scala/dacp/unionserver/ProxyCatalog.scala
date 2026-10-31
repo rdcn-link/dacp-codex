@@ -97,7 +97,7 @@ private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,
         def list(p:String):Seq[Item]={LogicalPath.validate(p);Metadata.DataSet.parseFrom(info("datasets",local,"list",p).getAppMetadata).getItemsList.asScala.map(item).toVector}
         def describe(p:String):Item={LogicalPath.validate(p);item(Metadata.Item.parseFrom(info("datasets",local,p).getAppMetadata))}
         def count(p:String):Option[Long]={LogicalPath.validate(p);val m=Metadata.Item.parseFrom(info("datasets",local,"count",p).getAppMetadata);if(m.hasRecordCount)Some(m.getRecordCount)else None}
-        override def view[K,S](p:String,kind:DataViewType[K,S]):Option[DataView[K,S]]=DataViewCodecs.forType(plugins,kind) match {
+        override def view[S](p:String,kind:DataViewType[S]):Option[DataView[S]]=DataViewSupports.forType(plugins,kind) match {
           case None=>super.view(p,kind)
           case Some(codec)=>codec.remoteView(kind)((selection,out,context)=>{
             LogicalPath.validate(p);ready();context.check()
@@ -108,7 +108,7 @@ private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,
               reader=client.getStream(new Ticket(ticket.toByteArray),CallOptions.timeout(settings.timeout,TimeUnit.SECONDS),Rpc.hopOptions(path));readers.add(reader)
               val current=reader
               guard=monitor.scheduleWithFixedDelay(new Runnable{def run():Unit=try {ready();context.check()}catch{case NonFatal(_)=>current.cancel("proxy cancelled",null)}},0,50,TimeUnit.MILLISECONDS)
-              dacp.union.ScientificWire.consume(reader,kind.name,out,()=>{ready();context.check()})
+              dacp.union.ArrowViewWire.consume(reader,kind.name,out,()=>{ready();context.check()})
             }catch{case NonFatal(t)=>generic(t)}finally {if(guard!=null)guard.cancel(false);if(reader!=null){reader.cancel("proxy read ended",null);try reader.close()finally readers.remove(reader)};slots.release()}
           })
         }

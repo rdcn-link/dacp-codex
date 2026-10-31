@@ -17,11 +17,11 @@ import scala.util.Using
 
 /** Payloads are owned byte arrays, valid after advancing or closing the stream. */
 final case class OutputEvent(kind:String, port:String, task:Option[String], representation:Option[String],
-  format:Option[String], schema:Option[Schema], data:Array[Byte], executionId:Option[String]=None,structure:Option[com.fasterxml.jackson.databind.JsonNode]=None,block:Option[com.fasterxml.jackson.databind.JsonNode]=None) {
-  def scientific(codec:_root_.xstream.data.DataViewCodec):codec.Block={
-    require(kind=="data" && representation.contains(codec.kind.name),"event representation does not match codec")
-    codec.decode(_root_.xstream.data.EncodedDataBlock(block.getOrElse(throw new IllegalArgumentException("missing scientific block metadata")),data),
-      codec.descriptor(structure.getOrElse(throw new IllegalArgumentException("missing scientific structure"))))
+  format:Option[String], schema:Option[Schema], data:Array[Byte], executionId:Option[String]=None,structure:Option[com.fasterxml.jackson.databind.JsonNode]=None) {
+  /** Non-byte data events contain an ordinary Arrow IPC stream for their view. */
+  def arrow(allocator:org.apache.arrow.memory.BufferAllocator):ArrowStreamReader = {
+    require(kind=="data" && !representation.contains("bytes"),"event does not contain Arrow data")
+    new ArrowStreamReader(new java.io.ByteArrayInputStream(data),allocator)
   }
   /** Record payload contains one independent IPC stream. Caller closes this reader. */
   def records(allocator:org.apache.arrow.memory.BufferAllocator):ArrowStreamReader = {
@@ -124,7 +124,7 @@ final class JobStream private[client](client:FlightClient,allocator:RootAllocato
           val repr=meta.path("representation").asText
           require(port.nonEmpty && !ports.contains(port) && repr.matches("[a-z][a-z0-9_-]*"),"invalid output start")
           if(!Set("bytes","records")(repr))require(meta.path("structure").isObject && meta.path("structure").path("view").asText==repr,"missing scientific structure")
-          val schema=if(repr=="records")Some(MessageSerializer.deserializeSchema(new ReadChannel(java.nio.channels.Channels.newChannel(
+          val schema=if(repr!="bytes")Some(MessageSerializer.deserializeSchema(new ReadChannel(java.nio.channels.Channels.newChannel(
             new java.io.ByteArrayInputStream(Base64.getDecoder.decode(meta.path("schema").asText))))))else None
           ports(port)=Port(repr,meta.path("format").asText,schema,structure=Option(meta.get("structure")))
         case "data"|"end"=>
@@ -139,7 +139,7 @@ final class JobStream private[client](client:FlightClient,allocator:RootAllocato
         case _=>throw new IllegalArgumentException("unknown output event")
       }
       val state=ports.get(port)
-      pending=Some(OutputEvent(kind,port,Option(meta.get("task")).map(_.asText),state.map(_.representation),state.map(_.format),state.flatMap(_.schema),data,executionId,state.flatMap(_.structure),Option(meta.get("block"))))
+      pending=Some(OutputEvent(kind,port,Option(meta.get("task")).map(_.asText),state.map(_.representation),state.map(_.format),state.flatMap(_.schema),data,executionId,state.flatMap(_.structure)))
       true
     } catch {case t:Throwable=>try close()catch{case cleanup:Throwable=>t.addSuppressed(cleanup)};throw DacpErrors.translate(t)}
   }

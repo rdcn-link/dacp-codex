@@ -169,6 +169,15 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     def close():Unit={x.close();a.close();b.close();af.close();bf.close();client.close();stranger.close();Thread.sleep(100);ca.close();cb.close();allocator.close()}
   }
   private def policy(all:Boolean=false):JsonNode=if(all)Json.parse("""{"materialization":{"default":"materialize"}}""")else Json.parse("""{"materialization":{"tasks":{"ta":{"outputs":{"result":"materialize"}}}}}""")
+  test("Union rejects local source directories before dispatch") {
+    val f=new Fixture
+    try {
+      f.approved()
+      val text="name: Local attempt\ntasks:\n- id: run\n  operator: {local: /tmp/private-operator}\n  inputs: {}\noutputs: {result: run}\n"
+      val error=intercept[UnionFailure](f.submit(text))
+      assert(error.code==org.apache.arrow.flight.FlightStatusCode.INVALID_ARGUMENT)
+    }finally f.close()
+  }
   test("Union exposes anonymous metadata and enforces reader versus runner on execution") {
     val f=new Fixture
     val anonymous=ClientTransport.open(f.allocator,f.settings.publicUrl,Some(tls("c").ca),None,None,()=>None)
@@ -218,17 +227,25 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val request=dacp.protocol.Metadata.Ticket.parseFrom(info.getEndpoints.get(0).getTicket.getBytes).toBuilder.setView("sequence")
         .setSelectionJson(com.google.protobuf.ByteString.copyFromUtf8("{\"offset\":2,\"length\":4}")).build()
       val reader=client.getStream(new Ticket(request.toByteArray))
-      val codec=new _root_.xstream.data.scientific.SequenceCodec()
+      val codec=new _root_.xstream.data.scientific.SequenceViewSupport()
       var descriptor:DataDescriptor[SequenceChunk]=null
       val parts=scala.collection.mutable.ArrayBuffer.empty[SequenceChunk]
-      try ScientificWire.consume(reader,"sequence",new EncodedDataConsumer {
-        def start(d:JsonNode):Unit={descriptor=codec.descriptor(d)}
-        def accept(b:EncodedDataBlock):Unit=parts+=codec.decode(b,descriptor)
-      },()=>())finally reader.close()
+      try ArrowViewWire.consume(reader,"sequence",ArrowBlocks.consumer(new DataConsumer[SequenceChunk] {
+        def start(d:DataDescriptor[SequenceChunk]):Unit=()
+        def accept(b:SequenceChunk):Unit=parts+=b
+      }),()=>())finally reader.close()
       assert(parts.map(_.symbols.toString).mkString=="GTAC" && parts.head.offset==2)
       val yaml=s"name: Union scientific selection\ntasks:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: '${f.ca.uri("data","/genome/sequences")}', view: sequence, selection: {offset: 1, length: 3}}\noutputs: {result: read}\n"
       val id=f.submit(yaml)
-      assert(new String(f.bytes(id),java.nio.charset.StandardCharsets.UTF_8)=="CGT")
+      val allocator=new org.apache.arrow.memory.RootAllocator()
+      try {
+        val pieces=scala.collection.mutable.ArrayBuffer.empty[SequenceChunk]
+        ArrowBlocks.consume(ArrowIpc.readStream(new java.io.ByteArrayInputStream(f.bytes(id)),StreamContext(allocator)),new DataConsumer[SequenceChunk] {
+          def start(d:DataDescriptor[SequenceChunk]):Unit=()
+          def accept(b:SequenceChunk):Unit=pieces+=b
+        })
+        assert(pieces.map(_.symbols.toString).mkString=="CGT")
+      }finally allocator.close()
       eventually(f.status(id).path("state").asText=="succeeded")
     }finally {client.close();f.close()}
   }

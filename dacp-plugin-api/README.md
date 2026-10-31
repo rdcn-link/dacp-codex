@@ -16,8 +16,8 @@ Contributed plugins compile against `io.github.rdcn-link:dacp-plugin-api_2.13:0.
 - `DataCatalog`, `DataCatalogProvider`, `CatalogContext`, and `DatasetInfo`: discover Datasets dynamically and acquire independent access leases; see [dynamic catalogs](../docs/dataset-catalogs.md).
 - `DatasetProvider`, `DatasetDefinition`, `DatasetContext`, `PublishedDataset`, and `DatasetAccess`: construct and access native namespaces.
 - `ItemDatasetAccess` and `ItemAccess`: open objects or cursors per Item with scoped cleanup; see [access contracts](../docs/dataset-access.md).
-- `DataView[K,S]`, `DataStream[K]`, `DataConsumer[K]`, `ByteChunk`, and `RecordBatch`: typed, synchronous block streaming with explicit descriptors, selections and borrowed-buffer lifetimes; see [data streams](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams.md).
-- `ScientificViews`: local array, image and sequence contracts preserving scientific structures. NetCDF/FITS/FASTA parsers and scientific wire codecs are not bundled.
+- `DataView[S]`, `ArrowDataStream`, `ArrowConsumer` and `ArrowBatch`: synchronous Arrow streaming with explicit descriptors, selections and borrowed-buffer lifetimes; see [data streams](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams.md).
+- `ScientificViews`: array and sequence views preserving scientific structures. NetCDF/FITS/FASTA parsers and standard Arrow representations are supplied by XStream data plugins.
 - `FormatHandler`, `FileOptions`, and `Records`: interpret files and stream Arrow batches.
 - `StructuredFileHandler`: expose file-internal logical objects directly as a namespace.
 - `OperatorExecutor`, `OperatorProgram`, and `OperatorCommand`: validate operator artifacts and select container launch commands; see [operator packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md).
@@ -37,4 +37,10 @@ Operator `OperatorProgram.configuration` carries plugin-owned `executor_config`;
 
 `PluginEnvironment` scopes discovery, injected implementations and lifecycle to one application/server. `ByteSource` decouples format readers from local paths. `ExecutionStore`/`ExecutionStoreProvider` define execution metadata persistence. Registration and configuration are documented in [plugins](../docs/plugins.md).
 
-- `MaterializationStoreProvider`, `MaterializationStore`, `MaterializationWriter`, `MaterializedTask`, `MaterializedChunks`: atomic task-output commit, leases, opaque frame chunks, and replay integrity; see [materialization contracts](../docs/materialization.md).
+- `MaterializationStoreProvider`, `MaterializationStore`, `MaterializationWriter`, `MaterializedTask`, `MaterializedFrames`: atomic task-output commit, leases, typed OperatorFrames, and replay integrity; see [materialization contracts](../docs/materialization.md).
+
+## Arrow data views
+
+`DataView[S]` opens an `ArrowDataStream` using a typed selection. `ArrowConsumer` synchronously receives the schema, dictionaries and borrowed `ArrowBatch` values. All views output Arrow; `ByteChunk`, `RecordBatch` and `DataConsumer[K]` are parser helpers. Plugins need no network listener. Dataset providers receive `Scan` through the records view; optional `BatchDatasetAccess.readScan` and file handlers' `scan` preserve source-side optimizations.
+
+`ScientificViews` defines structure-preserving array and sequence views. XStream data plugins provide NetCDF/FITS/FASTA parsers and standard Arrow representations; see [data streams](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams.md).

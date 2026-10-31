@@ -60,6 +60,12 @@ class SecuritySpec extends AnyFunSuite {
       try assert(intercept[FlightRuntimeException](denied.next()).status.code==FlightStatusCode.UNAUTHORIZED)finally denied.close()
     }finally public.close()
   }}
+  test("remote-serving environments reject local operators even in DEBUG mode") {fixture{(c,_,_)=>
+    val task=Jobs.parse("name: Local attempt\ntasks:\n- id: run\n  operator: {local: /tmp/private-operator}\n  inputs: {}\noutputs: {result: run}\n").tasks.head
+    assert(intercept[IllegalArgumentException](Jobs.authorizeSource(c,task)).getMessage.contains("local engine"))
+    assert(intercept[IllegalArgumentException](Jobs.authorizeSource(c.copy(debug=true),task)).getMessage.contains("local engine"))
+    intercept[IllegalArgumentException](WorkflowInference.taskJson(task,Map.empty))
+  }}
   test("ordinary revocation rejects subsequent RPCs on the same connection and preserves an admitted stream") {fixture{(c,_,a)=>
     val issued=c.credentials.create("alice");val connection=client(c,a,()=>Some(issued._2));val reader=stream(connection)
     try {

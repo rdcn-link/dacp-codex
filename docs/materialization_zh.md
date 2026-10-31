@@ -4,7 +4,7 @@
 
 执行策略同时用于通过 Python 或 Scala 客户端提交的单机 DACP Server 任务和 Union 协作工作流。业务任务文件定义算子、输入输出、依赖及执行节点；独立的执行策略 YAML 控制哪些**已连接的输出端口**物化。
 
-默认仍是直接流处理，不保存输出。`materialize` 表示在产出节点边传输边保存原始 OperatorFrame（包括 bytes 或 records 的 schema 与批次边界）。它不创建 Dataset，不把跨节点数据中转到 Union，不包含算子内部状态 checkpoint。
+默认仍是直接流处理，不保存输出。`materialize` 表示在产出节点边传输边保存类型化 Arrow IPC File 分段，保留 bytes、records 和科学视图的 schema、字典及批次边界。它不创建 Dataset，不把跨节点数据中转到 Union，不包含算子内部状态 checkpoint。
 
 ## 管理员：启用节点存储
 
@@ -26,7 +26,7 @@ union:
 
 `directory` 是节点私有路径，不能由任务提交者指定。文件存储插件随标准发行包提供，位于 `plugins/dacp-plugin-execution-file`。省略 `materialization_store` 时，该节点拒绝需要物化或重放的任务。Union 先 prepare 全部节点，再启动任何步骤，因此不支持存储会导致准备失败，而非静默降级。
 
-文件插件必须提供 `directory`；其余三个设置默认为上述值，且须为正整数。`max_bytes` 限制整个目录的受管理数据，`max_task_bytes` 限制单个任务的所有选定输出，两者包含帧长度前缀和清单开销；配额不足使执行失败，清理未提交数据。物化保留时间与内存会话的 `union.retention_seconds` 相互独立。到期数据不能被新执行获取；正在使用的租约关闭后才删除文件。存储目录只允许一个写入服务，启动时清理未提交临时目录。
+文件插件必须提供 `directory`；其余三个设置默认为上述值，且须为正整数。`max_bytes` 限制整个目录的受管理数据，`max_task_bytes` 限制单个任务的所有选定输出，两者包含 Arrow 文件和清单开销；配额不足使执行失败，清理未提交数据。物化保留时间与内存会话的 `union.retention_seconds` 相互独立。到期数据不能被新执行获取；正在使用的租约关闭后才删除文件。存储目录只允许一个写入服务，启动时清理未提交临时目录。
 
 只有算子成功、输入完整消费且所有选定输出均完整时，任务的全部选定端口才原子提交。提交前不可重放；取消、失败和配额错误会废弃未提交数据。已成功提交的上游输出不因下游失败而删除。文件插件同步文件并原子发布清单，通过长度和 SHA-256 检查拒绝截断或损坏的重放数据。
 
@@ -214,8 +214,8 @@ Shell 显示执行 ID，重试前明确标记上一轮输出作废并重置显�
 
 节点 `prepare` 的各任务增加 `materialize: ["result"]` 以及可选 `replay_from: "源执行 ID"`。准备阶段验证所有重放输出存在，并持有租约；重放数据继续使用新的执行 ID 与原消费者证书绑定，不直接向客户端暴露磁盘路径。
 
-公共契约在 `dacp-plugin-api`：`MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask` 和 `MaterializedChunks`。外部实现通过 `META-INF/services/dacp.MaterializationStoreProvider` 注册提供者类，将 JAR 与依赖安装到节点 `plugin_directory`，并将 `provider` 设置为其 `id`，无须修改核心注册表。
+公共契约在 `dacp-plugin-api`：`MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask` 和 `MaterializedFrames`。外部实现通过 `META-INF/services/dacp.MaterializationStoreProvider` 注册提供者类，将 JAR 与依赖安装到节点 `plugin_directory`，并将 `provider` 设置为其 `id`，无须修改核心注册表。
 
-插件负责私有配置、配额、过期清理、原子任务提交、持久化、租约与读取完整性；核心负责授权、策略校验、帧协议、取消及运行资源。每个 opaque chunk 不超过 9 MiB，插件不得缓存整个任务。关闭未提交 writer 必须中止，提交后才可 `get`，到期后不可新建租约；清理不得破坏现有租约。新实现应通过发现、提交/中止、重启读取、配额、过期/租约、截断/损坏和关闭清理契约测试；参考 `MaterializationSpec` 及跨节点 `UnionSpec`。
+插件负责私有配置、配额、过期清理、原子任务提交、持久化、租约与读取完整性；核心负责授权、策略校验、帧协议、取消及运行资源。`append(port, OperatorFrame)` 接收类型化帧，重放返回 `MaterializedFrames`。帧头上限 64 KiB，载荷上限 8 MiB；插件不得缓存整个任务。文件插件先写零行 Arrow File 分段，再写独立的数据分段，清单记录有序文件名、大小及校验和。append 失败后禁止提交。关闭未提交 writer 必须中止，提交后才可 `get`，到期后不可新建租约；清理不得破坏现有租约。新实现应通过发现、提交/中止、重启读取、配额、过期/租约、截断/损坏和关闭清理契约测试；参考 `MaterializationSpec` 及跨节点 `UnionSpec`。
 
 单机 Flight DoExchange 的 `OperatorRequest` 增加 `execution_policy_yaml`（YAML 字节）、`retry_aware`（布尔值）与 `replay_from`（原执行 ID，此时 `job_yaml` 必须为空）。结果流首先发送 `execution` 元数据帧（包含 `execution_id`），随后输出帧也包含该 ID。两种传输在下一次尝试前均发送 `attempt_failed` 元数据，包含 `attempt_id`、`next_attempt_id`、`retry_count` 和 `message`。Union 的结果 ticket 通过 `retry_aware: true` 声明接收能力。

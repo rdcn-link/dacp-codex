@@ -117,7 +117,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
       restored.run(plan,p,"alice",record(restarted),Some(r.id),receive,new StreamCancel())
       assert(bytes.toString=="weather\n");assert(upstream.get()==1 && downstream.get()==2)
       val execution=restarted.executionHistory.get(r.id).get.path("materialized_sources").path("b").asText
-      val file=Path.of(restarted.materializationStore.get.settings("directory").toString).resolve(ExecutionPolicy.key(execution,"b")).resolve("result.bin")
+      val file=Path.of(restarted.materializationStore.get.settings("directory").toString).resolve(ExecutionPolicy.key(execution,"b")).resolve("result-00000001.arrow")
       val corrupted=Files.readAllBytes(file);val index=new String(corrupted,java.nio.charset.StandardCharsets.ISO_8859_1).indexOf("weather")
       assert(index>=0);corrupted(index)=(corrupted(index)^1).toByte;Files.write(file,corrupted)
       var ends=0

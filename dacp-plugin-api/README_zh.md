@@ -35,10 +35,10 @@
 
 `PluginEnvironment` 按应用/服务器管理发现、注入实现和生命周期。`ByteSource` 解耦格式读取与本地路径。`ExecutionStore`/`ExecutionStoreProvider` 定义执行元数据持久化。注册和配置见[插件指南](../docs/plugins_zh.md)。
 
-- `MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask`、`MaterializedChunks`：任务输出原子提交、租约、不透明帧块及重放完整性，见[物化契约](../docs/materialization_zh.md)。
+- `MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask`、`MaterializedFrames`：任务输出原子提交、租约、类型化 OperatorFrame及重放完整性，见[物化契约](../docs/materialization_zh.md)。
 
 ## 类型化数据流
 
-`DataView[K,S]` 根据类型化选择条件打开 `DataStream[K]`，通过 `DataConsumer[K]` 同步传递描述信息与借用的数据块。bytes 使用 `ByteChunk`，records 使用 `RecordBatch`；插件无需实现网络监听器。Dataset 提供者通过 records 视图接收 `Scan`，可选的 `BatchDatasetAccess` 工具重写 `readScan`，文件处理器仍重写 `scan` 实现源端优化。
+`DataView[S]` 根据类型化选择条件打开 `ArrowDataStream`，通过 `ArrowConsumer` 同步传递 schema、字典和借用的 `ArrowBatch`。所有视图均输出 Arrow；`ByteChunk`、`RecordBatch` 和 `DataConsumer[K]` 仅为解析器辅助接口。插件无需实现网络监听器。Dataset 提供者通过 records 视图接收 `Scan`；可选的 `BatchDatasetAccess.readScan` 及文件处理器的 `scan` 保留源端优化。
 
-`ScientificViews` 定义保留科学结构的进程内数组、图像和序列契约，尚未内置 NetCDF、FITS、FASTA 解析器及科学数据网络编码。详见[类型化数据流](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams_zh.md)。
+`ScientificViews` 定义保留科学结构的数组和序列视图。NetCDF、FITS、FASTA 解析器及标准 Arrow 表示由 XStream 数据插件提供。详见[类型化数据流](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-streams_zh.md)。

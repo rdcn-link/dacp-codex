@@ -6,3 +6,5 @@ lazy val pluginApi = RootProject(file("../../dacp-plugin-api"))
 dependsOn(pluginApi)
 
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-core" % "0.1.0-SNAPSHOT"
+
+libraryDependencies += "org.apache.arrow" % "arrow-memory-netty" % "18.3.0"

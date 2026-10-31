@@ -48,7 +48,7 @@ Structured files implement `StructuredFileHandler.openStructure` to return logic
 
 ## Scientific data and future extensions
 
-Scientific parsers, views and network codecs are provided by [xstream-data](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/README.md).
+Scientific parsers, views and standard Arrow stream representations are provided by [xstream-data](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/README.md).
 
 
 New extension points should follow the same principle: define a focused shared contract, discover implementations through registration, and keep implementation-specific branches out of core dispatch. Do not introduce an extension abstraction without a concrete contribution or use case. During unreleased development, improve contracts directly and update their users together rather than accumulating compatibility layers.
@@ -93,4 +93,4 @@ Operators must also provide `icon`; administrators assign public `categories`; s
 
 ## Typed data views
 
-Scientific parsers, views and network codecs are provided by [xstream-data](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/README.md).
+Scientific parsers, views and standard Arrow stream representations are provided by [xstream-data](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/README.md).

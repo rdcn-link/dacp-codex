@@ -1,5 +1,5 @@
-from .source import Source, DataSet, Item, DatasetInfo, DatasetDirectory, ScientificChunk, ScientificReader
-__all__ = ["Source", "DataSet", "Item", "DatasetInfo", "DatasetDirectory", "ScientificChunk", "ScientificReader"]
+from .source import Source, DataSet, Item, DatasetInfo, DatasetDirectory, ArrowViewReader
+__all__ = ["Source", "DataSet", "Item", "DatasetInfo", "DatasetDirectory", "ArrowViewReader"]
 
 from .jobs import Job
 __all__.append("Job")

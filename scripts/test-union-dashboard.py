@@ -47,7 +47,7 @@ class Site(BaseHTTPRequestHandler):
         elif path == '/api/jobs/g6-browser-test':
             data = self.job
         else:
-            assets = {'/assets/' + name: ROOT / 'assets' / name for name in ['dacp-logo.png', 'dacp-favicon.png']}
+            assets = {'/assets/' + name: ROOT / 'assets' / name for name in ['dacp-mark.svg', 'dacp-logo.png', 'dacp-favicon.png']}
             assets['/favicon.ico'] = ROOT / 'assets/dacp-favicon.ico'
             assets['/datasets'] = WEB / 'datasets.html'
             assets['/nodes'] = WEB / 'nodes.html'

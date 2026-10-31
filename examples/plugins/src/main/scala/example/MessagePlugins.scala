@@ -58,15 +58,15 @@ class MessageAccess(message: () => String, check: () => Unit) extends ItemDatase
     require(selected.kind == "data", "folder has no content stream")
     new ItemAccess {
       def count(): Option[Long] = if (path == summary.path) Some(1L) else None
-      def view[K,S](kind:DataViewType[K,S]):Option[DataView[K,S]] = {
+      def view[S](kind:DataViewType[S]):Option[DataView[S]] = {
         if(path==item.path) DataViews.when(kind,DataViews.Bytes)(
-          DataViews[ByteChunk,AllBytes.type]((_,context,out)=>{
+          DataViews.blocks[ByteChunk,AllBytes.type]((_,context,out)=>{
             context.check();val bytes=content().getBytes(UTF_8)
             out.start(BytesDescriptor("text/plain; charset=utf-8"));context.check()
             out.accept(ByteChunk(bytes,0,bytes.length))
           }))
         else DataViews.when(kind,DataViews.Records)(
-          DataViews[RecordBatch,Scan]((scan,context,out)=>{
+          DataViews.blocks[RecordBatch,Scan]((scan,context,out)=>{
             context.check();val text=content()
             ScanStreams.stream(scan,context.allocator,BatchStreams.records(out,context.check)){ receiver=>
               val root=VectorSchemaRoot.create(summarySchema,context.allocator)

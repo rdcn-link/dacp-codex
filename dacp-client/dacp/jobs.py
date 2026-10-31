@@ -79,7 +79,7 @@ class JobStream:
                     if event['representation'] not in ('bytes', 'records') and (not isinstance(event.get('structure'), dict) or event['structure'].get('view') != event['representation']):
                         raise ValueError('missing scientific structure')
                     schema = None
-                    if event['representation'] == 'records':
+                    if event['representation'] != 'bytes':
                         schema = pa.ipc.read_schema(pa.BufferReader(base64.b64decode(event['schema'], validate=True)))
                     self.ports[port] = dict(ended=False, schema=schema, metadata=event.copy())
                 elif kind in ('data', 'end'):

@@ -108,7 +108,7 @@ class RecordJsonlSpec extends AnyFunSuite {
     try {
       assert(wrapped.describe("/records").views.contains(Seq("records","bytes")))
       assert(wrapped.list().head.totalSizeBytes.isEmpty && wrapped.list("/").last.totalSizeBytes.contains(123L))
-      for(path<-Seq("/records","/native")){val stream=wrapped.requireView(path,DataViews.Bytes).open(AllBytes,StreamContext(a));try stream.consume(out)finally stream.close()}
+      for(path<-Seq("/records","/native")){val stream=wrapped.requireView(path,DataViews.Bytes).open(AllBytes,StreamContext(a));try ArrowBlocks.consume(stream,out)finally stream.close()}
       assert(nativeCalls==1 && recordCalls==1 && out.completedCount==0)
     }finally {wrapped.close();assert(closes==1);a.close()}
   }

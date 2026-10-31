@@ -30,7 +30,7 @@ object ReadItemParameters {
     require(!params.containsKey("selection") || params.get("selection")!=null,"selection must be a mapping")
     Option(params.get("selection")).map { raw=>
       val n=Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](raw)
-      require(n.isObject && Data.mapper.writeValueAsBytes(n).length<=DataViewCodecs.MaxMetadataBytes,"selection must be a bounded mapping")
+      require(n.isObject && Data.mapper.writeValueAsBytes(n).length<=DataViewSupports.MaxMetadataBytes,"selection must be a bounded mapping")
       require(!params.containsKey("sql") && !Set("records","bytes")(view(params)),"selection requires a scientific view and cannot use sql")
       n
     }

@@ -29,22 +29,22 @@ object ItemSource {
     val ticket=ticketBuilder.build()
     val stream=c.add(client.getStream(new Ticket(ticket.toByteArray)))
     if(!Set("records","bytes")(view))return ItemFrameStreams.remote(meta.getFormat,c){out=>
-      try dacp.union.ScientificWire.consume(stream,view,out,()=>c.active())finally {stream.close();client.close()}
+      try dacp.union.ArrowViewWire.consume(stream,view,out,()=>c.active())finally {stream.close();client.close()}
     }
     new FrameSource {
       private var began=false;private var ended=false;private var pending=Iterator.empty[Array[Byte]]
       def next():Option[OperatorFrame]={
         c.active()
-        if(!began){began=true;return Some(StreamProtocol.start("",view,meta.getFormat,if(view=="records")Some(stream.getSchema)else None))}
+        if(!began){began=true;return Some(StreamProtocol.start("",view,meta.getFormat,if(view=="records")Some(stream.getSchema)else None,dictionaries=if(view=="records")stream.getDictionaryProvider else null))}
         if(ended)return None
         if(view=="bytes") {
           while(!pending.hasNext) {
             if(!stream.next()){ended=true;return Some(StreamProtocol.frame("end"))}
-            val root=stream.getRoot;require(root.getSchema==PluginSchemas.bytes,"invalid byte input schema")
+            val root=stream.getRoot;require(root.getSchema.getFields==PluginSchemas.bytes.getFields,"invalid byte input schema")
             pending=(0 until root.getRowCount).iterator.flatMap(i=>root.getVector(0).asInstanceOf[VarBinaryVector].get(i).grouped(65536))
           }
           Some(StreamProtocol.frame("data",data=pending.next()))
-        } else if(stream.next())Some(StreamProtocol.frame("data",data=StreamProtocol.batch(stream.getRoot)))
+        } else if(stream.next())Some(StreamProtocol.frame("data",data=StreamProtocol.batch(stream.getRoot,stream.getDictionaryProvider)))
         else {ended=true;Some(StreamProtocol.frame("end"))}
       }
       def close():Unit={stream.close();client.close()}

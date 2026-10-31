@@ -14,7 +14,7 @@ case class PortContract(representations: Set[String], formats: Set[String], sche
     require(formats.isEmpty || formats(h.path("format").asText),"unsupported port format")
     if(repr=="records") {
       val actual=org.apache.arrow.vector.types.pojo.Schema.deserializeMessage(java.nio.ByteBuffer.wrap(java.util.Base64.getDecoder.decode(h.path("schema").asText)))
-      schema.foreach(s=>require(s==actual,"operator port schema mismatch"))
+      schema.foreach(s=>require(_root_.xstream.data.ArrowStreamMetadata.logical(s)==_root_.xstream.data.ArrowStreamMetadata.logical(actual),"operator port schema mismatch"))
     } else if(repr!="bytes")require(h.path("structure").isObject && h.path("structure").path("view").asText==repr,"scientific stream needs a structure descriptor")
   }
 }
