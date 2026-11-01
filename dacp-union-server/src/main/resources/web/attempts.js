@@ -20,8 +20,8 @@ window.DacpAttempts={render(container,job){
   if(a.retry_index>0)body.append(make('p','Automatic retry after failure · retry '+a.retry_index,'muted'));
   let count=0;
   for(const [identity,node] of Object.entries(a.nodes||{})){
-   const section=make('div',undefined,'attempt-node');section.append(make('strong',job.tasks?.find(t=>t.node_identity===identity)?.node||identity));
-   for(const [task,state] of Object.entries(node.tasks||{})){const title=job.tasks?.find(t=>t.id===task)?.title||task;section.append(make('p',title+' · '+(states[state]||state)));count++;}
+   const section=make('div',undefined,'attempt-node');section.append(make('strong',job.steps?.find(t=>t.node_identity===identity)?.node||identity));
+   for(const [task,state] of Object.entries(node.steps||{})){const title=job.steps?.find(t=>t.id===task)?.title||task;section.append(make('p',title+' · '+(states[state]||state)));count++;}
    body.append(section);
   }
   if(!count)body.append(make('p','No step snapshots were recorded for this attempt.','muted'));

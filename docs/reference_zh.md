@@ -6,7 +6,7 @@
 
 ## 格式与视图
 
-format 标识源数据表示方式，view 标识读取方式。客户端使用服务器公布的 `views`，包括以后新增的格式，不再根据文件名猜测能力。格式名称使用小写。
+format 标识源数据表示方式，view 标识读取方式。客户端使用服务器公布的 `views`，包括以后新增的格式，以视图声明确定访问能力。格式名称使用小写。
 
 | 来源 | Format | Views |
 |---|---|---|
@@ -97,7 +97,7 @@ Excel 使用 Apache POI 5.5.1 的 XLS/XLSX 事件读取接口。空表头生成 
 
 列举不解析 CSV、NDJSON 或 Excel 记录；除发布时已填充的记录数外，其记录数保持未知。打开记录视图时通过有限采样推断 schema；除可选的启动计数外，只有显式 `count` 扫描文件，Parquet 可直接读取 footer 中的数量。Excel 解析队列最多保留 16 行，关闭或取消时停止解析；schema、当前 batch、单个单元格及 POI 共享字符串表还会占用内存，大型共享字符串表仍可能需要较多内存。不会在内存中构建完整工作表。
 
-服务端扩展接口为 [`FormatHandler`](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/FormatHandler.scala)。提供者实现检测、可选的低成本元数据、schema、记录读取、显式计数及资源释放；文件 bytes 使用公共读取器。将提供者 JAR 加入类路径，在 `META-INF/services/xstream.data.FormatHandler` 注册公开的无参类并重启。格式 ID 和扩展名注册必须唯一，`sql` 保留给 SQL adapter。新增格式不需要修改核心服务端或 SDK。参见[处理器开发说明](format-handlers_zh.md)。
+服务端扩展接口为 [`FormatHandler`](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/FormatHandler.scala)。提供者实现检测、可选的低成本元数据、schema、记录读取、显式计数及资源释放；文件 bytes 使用公共读取器。将提供者 JAR 加入类路径，在 `META-INF/services/xstream.data.FormatHandler` 注册公开的无参类并重启。格式 ID 和扩展名注册必须唯一，`sql` 保留给 SQL adapter。新增格式不需要修改核心服务端或 SDK。参见[处理器开发说明](https://github.com/rdcn-link/xstream-codex/blob/main/docs/format-handlers_zh.md)。
 
 ## Item 属性
 
@@ -134,11 +134,11 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 目录 Dataset 不跟随符号链接。集合属性和直接子项列举不递归扫描普通子目录；只有 `list()` 才递归发现所有文件和归档条目。配置加载时启用启动计数会扫描初始文件，后续新文件只被发现、不自动计数。读取选项覆盖按公开路径匹配，不改变文件命名。目录中的新增 SQL 绑定或绝对路径映射被拒绝；这类组合应使用 mixed。
 
-Dataset provider、容器 reader、格式 handler 分别负责构建数据集、浏览归档、解释内容。MongoDB 等未来 provider 可自行实现列举、元数据及流式读取，无需伪装成文件或 SQL 表，也不要求修改协议或 SDK。参见 [provider 开发指南](dataset-providers_zh.md)。
+Dataset provider、容器 reader、格式 handler 分别负责构建数据集、浏览归档、解释内容。MongoDB 等未来 provider 可自行实现列举、元数据及流式读取，无需伪装成文件或 SQL 表，也不要求修改协议或 SDK。参见 [provider 开发指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers_zh.md)。
 
 ## 任务执行与算子
 
-任务输入只引用上游步骤的输出，使用 `task[:port]`，省略端口时为 `result`。外部数据项通过 `read_item@1.0` 的 `params.uri/view` 读取，详见[作业格式](jobs_zh.md)。输出为命名流，不保存数据集。shell 支持 `run OP --input source=/item` 和 `submit job.yaml`，并逐块打印结果。普通任务通过 TLS 与 Token 的 Flight DoExchange 协作；流水线任务使用有界队列并发执行。每个输出端口最多有一个下游消费者；多个输入按端口名称字典序消费。
+任务输入只引用上游步骤的输出，使用 `step[:port]`，省略端口时为 `result`。外部数据项通过 `read_item@1.0` 的 `params.uri/view` 读取，详见[作业格式](jobs_zh.md)。输出为命名流，不保存数据集。shell 支持 `run OP --input source=/item` 和 `submit job.yaml`，并逐块打印结果。普通任务通过 TLS 与 Token 的 Flight DoExchange 协作；流水线任务使用有界队列并发执行。每个输出端口最多有一个下游消费者；多个输入按端口名称字典序消费。
 
 算子启动参数为 `operator /input /input/params.json`。输入为 Arrow IPC FIFO，由 `/input/manifest.json` 描述。stdout 写 start/data/end 协议帧，stderr 写诊断。无输出目录、输出注册、TTL 或结果数据集 URI。Parquet 转换使用私有临时空间完成 footer 后流式发送字节。
 
@@ -195,7 +195,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 
 ## DataCatalog
 
-`data_catalog` 选择目录 provider，通过 `source` 传入插件私有参数；不能同时配置非空 `datasets`。未配置时使用静态目录。具体契约、JDBC 示例、发现和授权见[动态目录](dataset-catalogs_zh.md)。标准 Flight `ListFlights` 返回公开 Dataset URI 及描述，不额外要求数据授权，不返回 Item 内容。
+`data_catalog` 选择目录 provider，通过 `source` 传入插件私有参数；不能同时配置非空 `datasets`。未配置时使用静态目录。具体契约、JDBC 示例、发现和授权见[动态目录](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)。标准 Flight `ListFlights` 返回公开 Dataset URI 及描述，不额外要求数据授权，不返回 Item 内容。
 
 ## S3 兼容端口
 

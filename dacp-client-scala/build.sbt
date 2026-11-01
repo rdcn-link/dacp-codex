@@ -18,3 +18,6 @@ dependsOn(unionProtocol)
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-scientific-views" % "0.1.0-SNAPSHOT" % "runtime,test"
 
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-core" % "0.1.0-SNAPSHOT"
+
+// Shared Flight, TLS and view-stream transport.
+libraryDependencies += "io.github.rdcn-link" %% "xstream-dacp-protocol" % "0.1.0-SNAPSHOT"

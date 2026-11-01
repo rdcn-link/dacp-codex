@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.engine.{InputBinding,JobPlan,Jobs,OperatorGroups,Task}
+import _root_.xstream.execution.{OperatorCommand,OperatorProgram,PortContract}
+
 import _root_.xstream.operator.inference._
 
 import _root_.xstream.data._
@@ -35,19 +38,19 @@ class OperatorGroupsSpec extends AnyFunSuite {
     val c=config
     val params=new java.util.LinkedHashMap[String,Object]();params.put("uri","dacp://localhost:8815/data/item");params.put("view","bytes")
     val read=Task("read",Map.empty,Jobs.ReadItem,params)
-    try assert(OperatorGroups.prepare(c,plan.copy(tasks=plan.tasks:+read))==Left("unconsumed_transport_source")) finally c.close()
+    try assert(OperatorGroups.prepare(c,plan.copy(steps=plan.steps:+read))==Left("unconsumed_transport_source")) finally c.close()
   }
   test("fixed image IDs, executor IDs and process environments must all agree") {
     val c=config
     try {
-      assert(OperatorGroups.prepareResolved(c,plan,Map("a"->op(),"b"->op(image="sha256:"+"b"*64)))==Left("different_runtime_images"))
+      assert(OperatorGroups.prepareResolved(c,plan,Map("a"->op(),"b"->op(image="sha256:"+"b"*64)))==Left("different_dependency_environments"))
       assert(OperatorGroups.prepareResolved(c,plan,Map("a"->op(),"b"->op(executor="python")))==Left("different_executors"))
       assert(OperatorGroups.prepareResolved(c,plan,Map("a"->op(),"b"->op(environment=Map("LANG"->"C"))))==Left("different_process_environments"))
       assert(OperatorGroups.prepareResolved(c,plan,Map("a"->op(),"b"->op()))==Left("executor_or_operator_not_fusible"))
     }finally c.close()
   }
   test("node contraction rejects A to B to A, while preserving ordinary cross-node DAGs") {
-    val expanded=plan.copy(tasks=plan.tasks:+task("c",InputBinding(task=Some("b"))))
+    val expanded=plan.copy(steps=plan.steps:+task("c",InputBinding(task=Some("b"))))
     assert(!Jobs.canGroupByNode(expanded,Map("a"->"A","b"->"B","c"->"A")))
     assert(Jobs.canGroupByNode(expanded,Map("a"->"A","b"->"B","c"->"B")))
     assert(Jobs.canGroupByNode(expanded,Map("a"->"A","b"->"A","c"->"A")))

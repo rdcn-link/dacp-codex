@@ -121,10 +121,10 @@ def test_policy_and_replay_are_separate_flight_fields(monkeypatch):
 
 def test_job_resolves_variables_before_flight_and_replay_cannot_override(monkeypatch):
     client = setup(monkeypatch, [])
-    client.expected_yaml = yaml.safe_dump({'name': 'demo', 'tasks': [{'params': {'limit': 123}}]})
-    with Job.run('dacp://node-a', 'name: demo\ntasks: [{params: {limit: $LIMIT}}]', variables={'LIMIT': 123}):
+    client.expected_yaml = yaml.safe_dump({'name': 'demo', 'steps': [{'params': {'limit': 123}}]})
+    with Job.run('dacp://node-a', 'name: demo\nsteps: [{params: {limit: $LIMIT}}]', variables={'LIMIT': 123}):
         pass
-    assert yaml.safe_load(client.request.job_yaml)['tasks'][0]['params']['limit'] == 123
+    assert yaml.safe_load(client.request.job_yaml)['steps'][0]['params']['limit'] == 123
     with pytest.raises(ValueError, match='original resolved variables'):
         Job.replay('dacp://node-a', 'previous', variables={'LIMIT': 456})
 

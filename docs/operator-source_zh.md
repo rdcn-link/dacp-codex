@@ -29,4 +29,4 @@ END
 
 Scala 源码是完整编译单元，通过 `--entrypoint` 选择主类，参考 [Scala 示例](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/inline/Uppercase.scala)。启动器传入 `operator /input /input/params.json`。使用 XStream 算子 SDK 管理流帧和生命周期，不手工构造传输帧。编译依赖必须预先安装在选定镜像中。
 
-Shell 增量接收输出，Ctrl-C 取消执行。`--preview-rows` 和 `--preview-bytes` 可限制预览，不创建结果 Dataset。同一步骤的源码与普通仓库算子互斥。执行器实现 `OperatorExecutor.sourceCommand`，通过 `META-INF/services/dacp.OperatorExecutor` 注册；默认拒绝源码执行。
+Shell 增量接收输出，Ctrl-C 取消执行。`--preview-rows` 和 `--preview-bytes` 可限制预览，不创建结果 Dataset。同一步骤的源码与普通仓库算子互斥。执行器实现 `OperatorExecutor.sourceCommand`，通过 `META-INF/services/xstream.execution.OperatorExecutor` 注册；默认拒绝源码执行。

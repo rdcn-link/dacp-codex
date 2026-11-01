@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.execution.{OperatorExecutor}
+
 import _root_.xstream.data._
 
 import java.util.ServiceLoader

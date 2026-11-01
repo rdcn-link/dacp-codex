@@ -10,7 +10,7 @@ Membership comes only from configuration, without remote invitation or administr
 
 ## Execution and streams
 
-Clients submit standard Jobs with public Union input URIs, optional logical task.node and explicit outputs. Asynchronous submission uses the same public namespace. See [Union proxy service](union-proxy.md). X reuses DAG validation and groups tasks into node subjobs. Union accepts versioned operators only, without inline source. Inputs use upstream `task[:port]` references; external Items enter through `read_item@1.0` with `params.uri/view`. Foreign member streams use Flight. Nodes read local Items through DatasetAccess, without downloading through X or Flight. Each output connection has one consumer.
+Clients submit standard Jobs with public Union input URIs, optional logical task.node and explicit outputs. Asynchronous submission uses the same public namespace. See [Union proxy service](union-proxy.md). X reuses DAG validation and groups steps into node subjobs. Union accepts versioned operators only, without inline source. Inputs use upstream `step[:port]` references; external Items enter through `read_item@1.0` with `params.uri/view`. Foreign member streams use Flight. Nodes read local Items through DatasetAccess, without downloading through X or Flight. Each output connection has one consumer.
 
 X prepares every subjob before starting any. Nodes check capacity and authorization and reject plans they cannot execute. A's output binds the execution/task/port to B's certificate identity; B pulls it over mTLS. Local connections use bounded queues; cross-node streams use Flight `DoGet` with backpressure. OperatorFrames are reused: start/data/end is followed by complete only after successful execution; failures terminate with a Flight error. After complete, consumers must still verify successful Flight end-of-stream. Outputs create no Dataset and stream directly by default; explicit policy can materialize selected outputs on the producing node for replay.
 
@@ -20,13 +20,13 @@ Final results travel from a node through X's bounded queue to the client. Status
 
 Global jobs, node subjobs, execution policies and variable files use YAML. U retains the received workflow text as `submitted_job_yaml` and persists the planned execution definition as YAML. Subjobs travel in the `job_yaml` text field of Flight control messages; policies use `execution_policy_yaml`. Clients resolve variables before submitting YAML. Status and traffic metadata remain structured messages.
 
-User Job inputs accept only `task[:port]`; top-level `outputs` selects returned streams. An internal task dispatched by U to C looks like the following. Replace identity placeholders with actual 64-character hexadecimal certificate digests:
+User Job inputs accept only `step[:port]`; top-level `outputs` selects returned streams. An internal task dispatched by U to C looks like the following. Replace identity placeholders with actual 64-character hexadecimal certificate digests:
 
 ```yaml
 name: Weather screening
 union_id: union-U
 execution_id: job-001
-tasks:
+steps:
   - id: export
     operator: piflow_csv_save@1.0
     params: {header: true}
@@ -43,7 +43,7 @@ tasks:
 
 Local inputs use `source: read:result`; `inputs` alone establishes the connection without a local identity digest. Cross-node inputs use location objects containing `origin`, `producer_identity`, `task` and `port`. Object-form local inputs are rejected.
 
-`output_routes` declares only outputs read remotely over Flight, including final outputs returned to U. Omit it when there are no remote outputs. Each value must contain exactly `consumer_identity`. The superseded `outputs` routing field and scalar identity values are rejected. One output port cannot have both local and remote consumers. Nodes derive connected ports from the union of local `inputs` and remote `output_routes` for execution, materialization and replay. Local streams connect only within the node and cannot be read through Flight. Actual representations come from operator stream headers, not routing declarations.
+`output_routes` declares only outputs read remotely over Flight, including final outputs returned to U. Omit it when there are no remote outputs. Each value must contain exactly `consumer_identity`. One output port cannot have both local and remote consumers. Nodes derive connected ports from the union of local `inputs` and remote `output_routes` for execution, materialization and replay. Local streams connect only within the node and cannot be read through Flight. Actual representations come from operator stream headers, not routing declarations.
 
 For example, A’s read step has no `output_routes`. Its parse step consumes the reader through `inputs: {source: read:result}` and declares B’s identity for its remote `result` output.
 
@@ -59,7 +59,7 @@ The implementation does not promise automatic running-job recovery, internal che
 
 Union accepts a separate `execution_policy` JSON alongside `job_yaml`. Streaming remains the default. Selected connected outputs are saved on their producing node through `MaterializationStoreProvider`; all selected ports commit together after the task succeeds and inputs are verified. `materialization.allowed: false` prohibits engine output materialization and rejects conflicting defaults or task overrides.
 
-The owner can explicitly request `replay_job` after the source execution terminates. This creates a new execution, reuses complete, unexpired selected outputs, prunes unnecessary upstream work, and reruns downstream tasks. Final outputs can also be replayed. Original and effective policies, source links, and replay state are retained in history. Nodes must enable a storage plugin and revalidate authorization. Read [execution policy, storage configuration, client examples, and plugin contracts](materialization.md).
+The owner can explicitly request `replay_job` after the source execution terminates. This creates a new execution, reuses complete, unexpired selected outputs, prunes unnecessary upstream work, and reruns downstream steps. Final outputs can also be replayed. Original and effective policies, source links, and replay state are retained in history. Nodes must enable a storage plugin and revalidate authorization. Read [execution policy, storage configuration, client examples, and plugin contracts](materialization.md).
 
 This is task-boundary replay, not internal operator checkpoints, byte-offset resume, or restoration of running processes. Expired, incomplete, or corrupt artifacts cannot successfully replay. Standard `Job.run` is also supported at Union, sharing its scheduling and execution policy engine.
 
@@ -69,11 +69,11 @@ Top-level `max_retries` (0–10, default 0) bounds execution retries. Results re
 
 U can expose a read-only operations dashboard on a separate HTTP listener without changing the Flight collaboration protocol above. The operations page uses U's cached state without triggering node RPCs or claiming results. The nodes page reads a member's live catalog when its card is expanded. The public read-only dashboard exposes execution metadata across submitters without login or tokens. See the [Union server](../dacp-union-server/README.md#execution-and-interfaces) for configuration and read-only HTTP interfaces.
 
-A task `id` is its unique dependency identifier within the Job, used by input `task[:port]` references, final outputs, scheduling, status, and traffic correlation; it is required. Optional `title` describes its purpose, supports Unicode, and must contain 1–256 characters without control characters. Titles need not be unique and do not resolve dependencies. Dashboard cards and DAGs show the title with the ID; execution history retains titles.
+A task `id` is its unique dependency identifier within the Job, used by input `step[:port]` references, final outputs, scheduling, status, and traffic correlation; it is required. Optional `title` describes its purpose, supports Unicode, and must contain 1–256 characters without control characters. Titles need not be unique and do not resolve dependencies. Dashboard cards and DAGs show the title with the ID; execution history retains titles.
 
 ```yaml
 name: daily-temperature
-tasks:
+steps:
   - id: read_observations
     operator: read_item@1.0
     inputs: {}
@@ -94,7 +94,7 @@ The DAG uses locally bundled AntV G6 5.1.1 without an external CDN. Task cards s
 
 Color, symbols and borders distinguish steps: solid green ✓ for completed, thick blue ▶ for running, dashed gray ○ for not yet executed, and red ! for failed, cancelled, interrupted or expired. Unknown execution state uses an amber border and `?` label rather than implying the step has not executed. A legend and explicit state text remain visible.
 
-G6 supports dependency and swimlane layouts, each with horizontal (left to right) or vertical (top to bottom) flow. Swimlanes align dependency stages in server rows or columns. Layout controls are independent; refresh preserves both choices. The default combined layout is: both server groups and their internal tasks are automatically arranged left to right by dependency. Each server region has a contrasting background color and border and a heading with its address and task count. Local inputs and tasks stay within the server region, cross-region edges represent data flow, and final outputs occupy a separate Union → client region. Double-click group backgrounds to collapse or expand them; “Expand all” restores the complete view.
+G6 supports dependency and swimlane layouts, each with horizontal (left to right) or vertical (top to bottom) flow. Swimlanes align dependency stages in server rows or columns. Layout controls are independent; refresh preserves both choices. The default combined layout is: both server groups and their internal steps are automatically arranged left to right by dependency. Each server region has a contrasting background color and border and a heading with its address and task count. Local inputs and steps stay within the server region, cross-region edges represent data flow, and final outputs occupy a separate Union → client region. Double-click group backgrounds to collapse or expand them; “Expand all” restores the complete view.
 
 The toolbar offers zoom in/out, fit canvas and 100% display, with 15%–250% zoom. Drag to pan and scroll to zoom around the pointer. State refreshes update content while preserving layout, zoom, pan and collapsed groups. Switching jobs lays out and fits the new graph. Canvas information is also available in the task and port tables below for reading and assistive technology access.
 
@@ -120,7 +120,7 @@ Topology traffic labels use a separate top layer above the Union hub, nodes and 
 
 DAGs in the node and Union dashboards lock mouse-wheel zoom by default. Click 🔒 Mouse zoom to unlock it and 🔓 Mouse zoom to lock it again. Toolbar zoom controls remain available.
 
-Input locations, including `read_source`, use `producer_identity` to verify the data provider, paired with output `consumer_identity`. The old input field `identity` is rejected. Member metadata retains its distinct `identity` field.
+Input locations, including `read_source`, use `producer_identity` to verify the data provider, paired with output `consumer_identity`. Member metadata retains its distinct `identity` field.
 
 Job names in both the Union and node dashboards open a dedicated `/job?id=...` page. This page can be bookmarked and loads current or historical execution details directly by ID. It keeps the DAG, script, policy, attempts and traffic together and loads on opening or clicking Refresh. Use **Back to jobs** to return to the list.
 

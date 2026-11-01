@@ -1,5 +1,7 @@
 package dacp.collaboration
 
+import _root_.xstream.connector.dacp.wire.{FlightTraffic,Tls}
+
 
 import dacp.union._
 import com.fasterxml.jackson.databind.JsonNode

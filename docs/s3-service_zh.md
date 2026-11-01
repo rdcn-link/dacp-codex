@@ -30,7 +30,7 @@ S3 是只读 HTTPS 端点，使用节点 TLS 证书，与 DACP 共享主体和�
 - 每次请求在线读取目录和元数据，不维护持久化缓存。读取结束、失败或取消时释放请求级 Dataset 租约。
 - 使用 path-style 地址：`https://host:port/bucket/key`，不支持虚拟主机 bucket 地址。保留 Dataset 原名；为兼容 AWS CLI/SDK 的 bucket 校验，建议使用符合 S3 bucket 命名规则的数据集名。
 
-S3 是核心传输适配层，不是存储后端插件。已有 Dataset provider 无需注册第二个实现；外部插件按 [Dataset 访问契约](dataset-access_zh.md) 注册，提供递归 `list()`、`describe`、`bytes` 元数据和流。声明插件原生支持的 `Item.views`，如 `Some(Seq("bytes"))` 或 `Some(Seq("records"))`；节点会为后者补充 JSONL bytes。尽可能提供 `totalSizeBytes` 与 `lastModifiedTimeMs`；内容流使用 `PluginSchemas.bytes`，每批有界分块，遵守 `ready()` 检查，在 `finally` 释放资源。无需修改 S3 代码或客户端。JSONL 回退的大小未知，Item key 不添加 `.jsonl` 后缀；完整语义见 [通用 JSONL bytes 视图](dataset-access_zh.md#通用-jsonl-bytes-视图)。未知大小的对象使用 HTTP chunked 下载，列表不虚构 Size，HEAD 不提供 Content-Length；依赖已知大小的托管下载工具可能无法处理这类对象。
+S3 是核心传输适配层，不是存储后端插件。已有 Dataset provider 无需注册第二个实现；外部插件按 [Dataset 访问契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access_zh.md) 注册，提供递归 `list()`、`describe`、`bytes` 元数据和流。声明插件原生支持的 `Item.views`，如 `Some(Seq("bytes"))` 或 `Some(Seq("records"))`；节点会为后者补充 JSONL bytes。尽可能提供 `totalSizeBytes` 与 `lastModifiedTimeMs`；内容流使用 `PluginSchemas.bytes`，每批有界分块，遵守 `ready()` 检查，在 `finally` 释放资源。无需修改 S3 代码或客户端。JSONL 回退的大小未知，Item key 不添加 `.jsonl` 后缀；完整语义见 [通用 JSONL bytes 视图](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access_zh.md#通用-jsonl-bytes-视图)。未知大小的对象使用 HTTP chunked 下载，列表不虚构 Size，HEAD 不提供 Content-Length；依赖已知大小的托管下载工具可能无法处理这类对象。
 
 ## 客户端示例
 

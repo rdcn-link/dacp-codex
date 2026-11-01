@@ -1,5 +1,5 @@
 name: eastern-station-temperature-anomalies
-tasks:
+steps:
 - id: read_daily_source
   operator: read_item@1.0
   inputs: {}

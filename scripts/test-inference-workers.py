@@ -34,19 +34,19 @@ public class InferenceProbe {
   static final String instance=java.util.UUID.randomUUID().toString();
   static int calls=0;
   public static void main(String[] args) {
-    xstream.operator.OperatorRunner.infer(args,System.out,new scala.runtime.AbstractFunction3<scala.collection.immutable.Map<String,dacp.StreamDescriptor>,JsonNode,dacp.PreviewLimits,scala.collection.immutable.Map<String,dacp.OutputSample>>() {
-      public scala.collection.immutable.Map<String,dacp.OutputSample> apply(scala.collection.immutable.Map<String,dacp.StreamDescriptor> inputs,JsonNode params,dacp.PreviewLimits limits) {
+    xstream.operator.OperatorRunner.infer(args,System.out,new scala.runtime.AbstractFunction3<scala.collection.immutable.Map<String,xstream.execution.StreamDescriptor>,JsonNode,xstream.execution.PreviewLimits,scala.collection.immutable.Map<String,xstream.execution.OutputSample>>() {
+      public scala.collection.immutable.Map<String,xstream.execution.OutputSample> apply(scala.collection.immutable.Map<String,xstream.execution.StreamDescriptor> inputs,JsonNode params,xstream.execution.PreviewLimits limits) {
         return scala.collection.immutable.Map$.MODULE$.empty();
       }
-    },new scala.runtime.AbstractFunction2<scala.collection.immutable.Map<String,dacp.StreamDescriptor>,JsonNode,dacp.InferenceResult>() {
-      public dacp.InferenceResult apply(scala.collection.immutable.Map<String,dacp.StreamDescriptor> inputs,JsonNode params) {
+    },new scala.runtime.AbstractFunction2<scala.collection.immutable.Map<String,xstream.execution.StreamDescriptor>,JsonNode,xstream.execution.InferenceResult>() {
+      public xstream.execution.InferenceResult apply(scala.collection.immutable.Map<String,xstream.execution.StreamDescriptor> inputs,JsonNode params) {
         calls++;
         if(params.path("fail").asBoolean())throw new IllegalArgumentException("requested probe failure");
-        ObjectNode n=dacp.StructureInference.mapper().createObjectNode();n.putArray("diagnostics");
+        ObjectNode n=xstream.execution.StructureInference.mapper().createObjectNode();n.putArray("diagnostics");
         ObjectNode d=n.putObject("outputs").putObject("result");
         d.putArray("representations").add("bytes");d.putArray("formats").add(params.path("format").asText());d.put("certainty","known");
         d.putObject("structure").put("instance",instance).put("calls",calls).put("pid",ProcessHandle.current().pid());
-        return dacp.StructureInference.result(n);
+        return xstream.execution.StructureInference.result(n);
       }
     });
   }

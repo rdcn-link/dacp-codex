@@ -15,7 +15,7 @@ execution_store:
 
 U uses `state_directory/executions`. Running instances need separate directories; only one execution-record writer may own a directory. History metadata is independent of `retention_seconds` and is never automatically deleted. That setting only clears in-memory execution sessions, result queues, and status event windows. Administrators can back up the record directory.
 
-Records include an independent `record_id`, type, submitter, node, task or execution correlation IDs, operator, input references, state transitions, start/end/update times, elapsed time, available per-port byte and record counters, and failure or cancellation reasons. Inline programs record only their runtime identifier. Error text is limited to 2048 characters and may contain program diagnostics. Ordinary DACP Jobs and their worker tasks have separate records correlated by `parent_execution_id`. Union global Jobs, node executions, and individual tasks have separate records correlated by their shared `execution_id` and `parent_record_id`.
+Records include an independent `record_id`, type, submitter, node, task or execution correlation IDs, operator, input references, state transitions, start/end/update times, elapsed time, available per-port byte and record counters, and failure or cancellation reasons. Inline programs record only their runtime identifier. Error text is limited to 2048 characters and may contain program diagnostics. Ordinary DACP Jobs and their worker steps have separate records correlated by `parent_execution_id`. Union global Jobs, node executions, and individual steps have separate records correlated by their shared `execution_id` and `parent_record_id`.
 
 From the corresponding module directory, query records using the local CLI, including while the service is running:
 
@@ -32,7 +32,7 @@ From the corresponding module directory, query records using the local CLI, incl
 
 The Union HTTP dashboard's execution-history view paginates U's persistent jobs, task states, and traffic. `GET /api/history?offset=0&limit=100` queries history; `GET /api/jobs/ID` continues to return historical metadata after its in-memory session expires. The maximum page size is 1000; the website uses 100 records per page, with search and state filters applying to that page. History and dashboard are public read-only views without login or tokens. It cannot replay outputs, resume Jobs, or grant access to source data.
 
-On restart, unfinished records become `interrupted`, with `interruption_detected_at_ms` recording detection time. Unknown actual completion times are not presented as certain: `finished_at_ms` and `elapsed_ms` use the last observation, while the event records when interruption was detected. Tasks cleaned up during a normal shutdown are recorded as cancelled or completed. Retaining history does not resume tasks.
+On restart, unfinished records become `interrupted`, with `interruption_detected_at_ms` recording detection time. Unknown actual completion times are not presented as certain: `finished_at_ms` and `elapsed_ms` use the last observation, while the event records when interruption was detected. Tasks cleaned up during a normal shutdown are recorded as cancelled or completed. Retaining history does not resume steps.
 
 ## Developers
 
@@ -42,11 +42,11 @@ The shared implementation is `dacp-server/ExecutionHistory.scala`, reused by U. 
 
 Validate with `cd dacp-server && sbt test` and `cd dacp-union-server && sbt test`. After `sbt stage` in both modules and preparing the example certificates and `xstream/operator-python:1.0` image, run `python3 scripts/test-execution-history.py` and `python3 scripts/test-union.py` from the root to check actual Docker execution and history. Both scripts use temporary ports and directories and shut down the services they start.
 
-The Union dashboard displays the submitted Job YAML and a DAG of datasets, tasks, port dependencies and final outputs. Union history retains the complete submitted Job YAML (including parameters) for this view; nodes also retain local Job scripts or dispatched subjob definitions. The public read-only dashboard and query APIs expose this information; server administrators manage the history files. Node health reports include JVM process start time (`started_at_ms`) and monotonic uptime (`uptime_ms`); unreachable nodes retain their last observation. Older records without saved source display an explicit unavailable message.
+The Union dashboard displays the submitted Job YAML and a DAG of datasets, steps, port dependencies and final outputs. Union history retains the complete submitted Job YAML (including parameters) for this view; nodes also retain local Job scripts or dispatched subjob definitions. The public read-only dashboard and query APIs expose this information; server administrators manage the history files. Node health reports include JVM process start time (`started_at_ms`) and monotonic uptime (`uptime_ms`); unreachable nodes retain their last observation. Older records without saved source display an explicit unavailable message.
 
 ## Storage extension
 
-Both nodes and Union accept the `execution_store` mapping above. `provider` selects a ServiceLoader-registered `ExecutionStoreProvider`; the implementation validates private `settings`. The default `file` implementation is in `plugins/xstream-plugin-execution-file`; `ExecutionHistory` retains state transitions, interrupted-execution recovery and pagination. Applications can construct `new ExecutionHistory(store, ownsStore = false)` to retain ownership. See [plugin registration](plugins.md#instance-environments-and-execution-storage).
+Both nodes and Union accept the `execution_store` mapping above. `provider` selects a ServiceLoader-registered `ExecutionStoreProvider`; the implementation validates private `settings`. The default `file` implementation is in `plugins/xstream-plugin-execution-file`; `ExecutionHistory` retains state transitions, interrupted-execution recovery and pagination. Applications can construct `new ExecutionHistory(store, ownsStore = false)` to retain ownership. See [plugin registration](plugins.md#embedded-hosts-and-lifecycle).
 
 ## Jobs and steps in the dashboard
 

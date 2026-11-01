@@ -1,6 +1,6 @@
 # 嵌入式 DACP Server 示例
 
-[English](README.md) · [嵌入接口](../../docs/embedded-server_zh.md) · [目录契约](../../docs/dataset-catalogs_zh.md)
+[English](README.md) · [嵌入接口](../../docs/embedded-server_zh.md) · [目录契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)
 
 示例应用在自己的 JVM 中启动 DACP Server，直接注入 `DataCatalog`，无需 ServiceLoader 注册。服务器启动后，应用将 `reports` 加入并发注册表，公开 `/orders` CSV Item。运行期间业务程序可以继续添加或删除注册记录。
 

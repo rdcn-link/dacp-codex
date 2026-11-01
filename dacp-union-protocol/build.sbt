@@ -11,3 +11,6 @@ libraryDependencies += "io.github.rdcn-link" %% "xstream-execution-api" % "0.1.0
 libraryDependencies += "org.apache.arrow" % "arrow-memory-netty" % "18.3.0"
 
 libraryDependencies += "io.github.rdcn-link" %% "xstream-data-core" % "0.1.0-SNAPSHOT"
+
+// One Flight/TLS/view-stream implementation shared with the XStream connector.
+libraryDependencies += "io.github.rdcn-link" %% "xstream-dacp-protocol" % "0.1.0-SNAPSHOT"

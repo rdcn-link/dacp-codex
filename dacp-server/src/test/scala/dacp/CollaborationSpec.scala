@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.engine.{Jobs}
+
 import _root_.xstream.data._
 
 
@@ -10,7 +12,7 @@ import org.apache.arrow.memory.RootAllocator
 class CollaborationSpec extends AnyFunSuite {
   def config = Config("localhost",18815,"localhost",Map.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"))
   val yaml="""name: inline
-    |tasks:
+    |steps:
     | - id: first
     |   operator:
     |     runtime: python@1.0
@@ -21,28 +23,28 @@ class CollaborationSpec extends AnyFunSuite {
     |""".stripMargin
   test("task titles describe work while ids remain dependency identifiers") {
     val text=yaml.replace("id: first","id: first\n   title: 汇总销量")
-    assert(Jobs.parse(text).tasks.head.title.contains("汇总销量"))
-    assert(Jobs.parse(text).tasks.head.id=="first")
+    assert(Jobs.parse(text).steps.head.title.contains("汇总销量"))
+    assert(Jobs.parse(text).steps.head.id=="first")
     for(value<-Seq("''","123","null","'"+("x"*257)+"'"))
       intercept[IllegalArgumentException](Jobs.parse(yaml.replace("id: first",s"id: first\n   title: $value")))
   }
   test("inline source preserves text and requires DEBUG") {
-    val task=Jobs.parse(yaml).tasks.head
+    val task=Jobs.parse(yaml).steps.head
     assert(task.source.get.runtime=="python@1.0" && task.source.get.source.contains("    ctx.bytes_output"))
     assert(intercept[IllegalArgumentException](Jobs.authorizeSource(config,task)).getMessage.contains("FORBIDDEN"))
     Jobs.authorizeSource(config.copy(debug=true),task)
   }
   test("references use task with optional port and reject old object bindings") {
     val text="""name: pipeline
-      |tasks:
+      |steps:
       | - {id: b, operator: identity@1.1, inputs: {source: a}}
       | - {id: a, operator: live_ticks@1.0, inputs: {}}
       |outputs: {result: b}
       |""".stripMargin
     val plan=Jobs.parse(text)
-    assert(plan.tasks.map(_.id)==Vector("a","b"))
-    assert(plan.tasks.last.inputs("source").port=="result" && plan.outputs("result")==("b","result"))
-    assert(Jobs.parse(text.replace("source: a","source: a:other")).tasks.last.inputs("source").port=="other")
+    assert(plan.steps.map(_.id)==Vector("a","b"))
+    assert(plan.steps.last.inputs("source").port=="result" && plan.outputs("result")==("b","result"))
+    assert(Jobs.parse(text.replace("source: a","source: a:other")).steps.last.inputs("source").port=="other")
     Seq("{task: a}","{uri: 'dacp://localhost:18815/data/item'}","a:","a:b:c","unknown").foreach { binding=>
       intercept[IllegalArgumentException](Jobs.parse(text.replace("source: a","source: "+binding)))
     }
@@ -50,26 +52,26 @@ class CollaborationSpec extends AnyFunSuite {
   }
   test("stream dependencies define the graph and depends_on is rejected") {
     val text="""name: stream
-      |tasks:
+      |steps:
       | - {id: consume, operator: sink@1, inputs: {source: generate}}
       | - {id: generate, operator: generate@1, inputs: {}}
       |outputs: {}
       |""".stripMargin
     val plan=Jobs.parse(text)
-    assert(Jobs.dependencies(plan.tasks.last).toSet==Set("generate"))
+    assert(Jobs.dependencies(plan.steps.last).toSet==Set("generate"))
     assert(Jobs.roots(plan)==Set("consume"))
     intercept[IllegalArgumentException](Jobs.parse(text.replace("source: generate}","source: generate}, depends_on: [generate]")))
     intercept[IllegalArgumentException](Jobs.parse(text.replace("id: generate, operator: generate@1, inputs: {}","id: generate, operator: generate@1, inputs: {source: consume}")))
   }
   test("read_item requires an Item URI and defaults to metadata-based view selection") {
     val text="""name: read
-      |tasks:
+      |steps:
       | - {id: read, operator: read_item@1.0, inputs: {}, params: {uri: 'dacp://localhost:18815/data/item', view: records}}
       |outputs: {result: read}
       |""".stripMargin
-    assert(Jobs.readBinding(Jobs.parse(text).tasks.head).get.view=="records")
-    assert(Jobs.readBinding(Jobs.parse(text.replace(", view: records","")).tasks.head).get.view=="auto")
-    assert(Jobs.readBinding(Jobs.parse(text.replace("view: records","view: image")).tasks.head).get.view=="image")
+    assert(Jobs.readBinding(Jobs.parse(text).steps.head).get.view=="records")
+    assert(Jobs.readBinding(Jobs.parse(text.replace(", view: records","")).steps.head).get.view=="auto")
+    assert(Jobs.readBinding(Jobs.parse(text.replace("view: records","view: image")).steps.head).get.view=="image")
     Seq(text.replace("/data/item","/data"),text.replace("view: records","view: bad view"),text.replace("view: records","view: auto"),text.replace("inputs: {}","inputs: {source: read}"))
       .foreach(s=>intercept[IllegalArgumentException](Jobs.parse(s)))
   }

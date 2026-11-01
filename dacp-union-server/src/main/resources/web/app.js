@@ -13,7 +13,7 @@ function empty(body,columns,text){const row=el('tr');cell(row,text,'empty').colS
 async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error('Status request failed ('+r.status+')');return r.json();}
 function renderJobs(){
  if(!snapshot)return;const body=$('jobs');body.replaceChildren();const query=$('search').value.trim().toLowerCase(),filter=$('state-filter').value;
- const jobs=snapshot.jobs.filter(j=>(!filter||(filter==='active'?!terminal.has(j.state):j.state===filter))&&(!query||[j.name||'',j.job_id,...j.tasks.flatMap(t=>[t.node,t.operator,t.id,t.title||''])].join(' ').toLowerCase().includes(query)));
+ const jobs=snapshot.jobs.filter(j=>(!filter||(filter==='active'?!terminal.has(j.state):j.state===filter))&&(!query||[j.name||'',j.job_id,...j.steps.flatMap(t=>[t.node,t.operator,t.id,t.title||''])].join(' ').toLowerCase().includes(query)));
  if(!jobs.length)return empty(body,7,snapshot.jobs.length?'No matching jobs':'No jobs yet. Submit a collaborative job through a DACP client.');
  for(const j of jobs){const row=el('tr',undefined,j.job_id===selected?'selected':'');const b=el('a',j.name||'Unnamed job','job-link');b.title=j.job_id;b.href='/job?id='+encodeURIComponent(j.job_id);cell(row,b);cell(row,short(j.job_id),'mono').title=j.job_id;cell(row,badge('Direct client'));cell(row,'Union job');cell(row,badge(j.state));cell(row,time(j.created_at_ms));cell(row,duration(j.elapsed_ms));body.append(row);}
 }

@@ -82,20 +82,20 @@ DACP 及其 S3 端点共享本实例的 `subjects.json` 和角色。同一主体
 
 已实现本地凭据管理与热加载、普通 Flight Token 认证、Union 服务凭据与证书绑定、任务所有者隔离、节点间精确计划授权、独立协作 SDK、S3 SigV4 和预签名 GET。自动化测试覆盖普通 Token 撤销后已有流继续、后续调用拒绝，服务凭据撤销后运行中任务与流终止，Token 轮换后保留任务归属，以及拒绝请求的审计。真实服务联调验证了三个成员节点的认证、Union 协作调用和 boto3 的签名列表、元数据、内容、Range 及预签名 GET。
 
-相关说明：[访问日志](access-logs_zh.md)、[数据访问](dataset-access_zh.md)、[算子仓库](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README_zh.md)。普通客户端示例应提供 Token 文件；Union 成员配置应提供节点签发的服务凭据文件。
+相关说明：[访问日志](access-logs_zh.md)、[数据访问](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access_zh.md)、[算子仓库](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README_zh.md)。普通客户端示例应提供 Token 文件；Union 成员配置应提供节点签发的服务凭据文件。
 
 ## 本地凭据操作
 
 节点配置 `credential_directory: /protected/node-credentials`，Union 配置自己的 `credential_directory`。未指定时，节点使用进程工作目录下 `.dacp-security/端口`，Union 使用 `state_directory/credentials`。目录权限为 700，凭据文件为 600。
 
-本地工具的子命令如下。服务器程序只负责启动服务，不再提供管理命令：
+本地工具的子命令如下。服务器程序负责启动服务，管理操作使用以下工具：
 
 | 工具 | 子命令 |
 | --- | --- |
 | `dacp-admin` | 公共账号、凭据和执行历史命令 |
 | `union-admin` | 同一套公共命令，以及 `identity CONFIG`、`members CONFIG` |
 
-两套工具的公共命令共享同一实现，参数、默认值、JSON 输出和错误行为一致。使用目标服务的凭据目录。`create-account` 创建账号，同时签发 DACP Token 和 S3 密钥；默认角色为 reader，需要执行 Job 时指定 runner。`create-token` 为已有账号补发 Token。`grant-union` 是成员节点授予 Union 的证书绑定服务凭据，不是普通账号，不签发 S3 密钥。旧的嵌套命令不再提供。
+两套工具的公共命令共享同一实现，参数、默认值、JSON 输出和错误行为一致。使用目标服务的凭据目录。`create-account` 创建账号，同时签发 DACP Token 和 S3 密钥；默认角色为 reader，需要执行 Job 时指定 runner。`create-token` 为已有账号补发 Token。`grant-union` 是成员节点授予 Union 的证书绑定服务凭据，不是普通账号，不签发 S3 密钥。
 
 ```bash
 target/universal/stage/bin/dacp-admin create-account /protected/node-credentials --subject alice --role runner --expires-in 86400

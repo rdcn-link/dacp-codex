@@ -4,13 +4,13 @@
 
 [中文](README_zh.md)
 
-DACP provides data access and collaborative computation across nodes. Servers publish files, SQL tables, and structured-file contents as Datasets and Items. Clients browse data, read record or byte streams, and submit tasks composed of operators. Computation runs near the data and returns live output streams.
+DACP provides data access and collaborative computation across nodes. Servers publish files, SQL tables, and structured-file contents as Datasets and Items. Clients browse data, read record or byte streams, and submit steps composed of operators. Computation runs near the data and returns live output streams.
 
 DACP is powered by the embedded **XStream streaming engine**: typed data views, stream-connected operators, cancellation and execution policies are shared with standalone XStream. DACP adds authenticated data services and Union planning across independent nodes. See [project responsibilities](docs/ecosystem.md).
 
 For the data model, transport, trust, and collaboration contracts of DACP (Data Access and Collaboration Protocol), see the [protocol overview](docs/protocol.md).
 
-[DataCatalog plugins](docs/dataset-catalogs.md) can supply Dataset identities dynamically; Scala/JVM applications can host nodes through the [DacpServer API](docs/embedded-server.md).
+[DataCatalog plugins](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md) can supply Dataset identities dynamically; Scala/JVM applications can host nodes through the [DacpServer API](docs/embedded-server.md).
 
 Nodes also expose an [S3-compatible read-only service](docs/s3-service.md) by default, allowing S3 clients to list dataset buckets and download Item byte streams.
 
@@ -32,7 +32,7 @@ Job definitions, node subjobs, execution policies and variable files use YAML. E
 
 | Component | Purpose |
 |---|---|
-| `dacp-server` | Publishes data, handles data access requests, and executes local and distributed tasks |
+| `dacp-server` | Publishes data, handles data access requests, and executes local and distributed steps |
 | [dacp-proxy-server](dacp-proxy-server/README.md) | Expose one private DACP service through a relay preserving end-to-end TLS and authentication |
 | `dacp-shell` | Interactive browsing, SQL queries, operator execution, and job-file submission; installed with the Python SDK |
 | `dacp-client` / `dacp-client-scala` | Python / Scala applications access data, execute Jobs, and submit Union jobs |

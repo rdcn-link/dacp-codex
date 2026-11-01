@@ -34,3 +34,6 @@ libraryDependencies += "io.github.rdcn-link" %% "xstream-data-core" % "0.1.0-SNA
 libraryDependencies += "io.github.rdcn-link" %% "xstream-operator-inference" % "0.1.0-SNAPSHOT"
 
 libraryDependencies += "io.github.rdcn-link" %% "xstream-execution-api" % "0.1.0-SNAPSHOT"
+
+// Shared Flight, TLS and view-stream transport.
+libraryDependencies += "io.github.rdcn-link" %% "xstream-dacp-protocol" % "0.1.0-SNAPSHOT"

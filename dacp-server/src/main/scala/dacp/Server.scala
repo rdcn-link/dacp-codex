@@ -1,5 +1,10 @@
 package dacp
 
+import _root_.xstream.connector.dacp.wire.{ArrowViewWire}
+
+import _root_.xstream.engine.{EngineEnvironment,ExecutionHistory,InputBinding,Jobs,SourceRuntime,Task}
+import _root_.xstream.execution.{ExecutionStoreDefinition,ExecutionStoreProvider,FrameSource,InferenceResult,MaterializationStore,MaterializationStoreDefinition,MaterializationStoreProvider,OperatorExecutor,StreamCancel,StreamDescriptor,StructureInference}
+
 import _root_.xstream.operator.inference._
 
 import _root_.xstream.data._
@@ -44,7 +49,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
     if(activePlugins==null)activePlugins=suppliedPlugins.getOrElse(new PluginEnvironment(pluginDirectory))
     activePlugins
   }
-  private[dacp] val taskSlots=new java.util.concurrent.Semaphore(maxConcurrentTasks)
+  val taskSlots=new java.util.concurrent.Semaphore(maxConcurrentTasks)
   private var accessLogger:AccessLog=null
   def accessLog:AccessLog=synchronized {
     require(!closed.get(),"configuration is closed")
@@ -58,7 +63,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
     inferencePool
   }
   private val materializationStores=scala.collection.mutable.Map.empty[MaterializationStoreDefinition,MaterializationStore]
-  private[dacp] def openMaterialization(d:MaterializationStoreDefinition):MaterializationStore=synchronized {
+  def openMaterialization(d:MaterializationStoreDefinition):MaterializationStore=synchronized {
     require(!closed.get(),"configuration is closed")
     materializationStores.getOrElseUpdate(d,plugins.byId(classOf[MaterializationStoreProvider],d.provider).open(d.settings))
   }
@@ -158,7 +163,7 @@ object Config {
       name->SourceDefinition(value("provider").toString,value("settings").asInstanceOf[java.util.Map[String,Object]].asScala.toMap)
     }.toMap).getOrElse(Map.empty[String,SourceDefinition])
     val definitions=(if(catalogOverride.isDefined)None else m.get("datasets")).map(_.asInstanceOf[java.util.Map[String,Object]].asScala.map {case(name,raw)=>
-      require(raw.isInstanceOf[java.util.Map[_,_]],"datasets require provider settings");name->environment.datasetDefinition(raw.asInstanceOf[java.util.Map[String,Object]].asScala.toMap)
+      require(raw.isInstanceOf[java.util.Map[_,_]],"datasets require provider settings");name->environment.datasetDefinition(raw.asInstanceOf[java.util.Map[String,Object]].asScala.toMap,name)
     }.toMap).getOrElse(Map.empty[String,DatasetDefinition])
     val catalogDefinition=if(catalogOverride.isDefined)None else m.get("data_catalog").map { raw=>
       require(raw.isInstanceOf[java.util.Map[_,_]],"data_catalog must be a mapping")
@@ -194,11 +199,11 @@ object Config {
     }catch{case scala.util.control.NonFatal(t)=>if(providedPlugins.isEmpty || ownsProvidedPlugins)try environment.close()catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)};throw t}
   }
 }
-class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskService] = None, union: Option[UnionWorker] = None) extends NoOpFlightProducer {
+class Producer(config: Config, allocator: BufferAllocator, steps: Option[TaskService] = None, union: Option[UnionWorker] = None) extends NoOpFlightProducer {
   override def doExchange(ctx: FlightProducer.CallContext, reader: FlightStream, writer: FlightProducer.ServerStreamListener): Unit = {
     dacp.union.Rpc.requirePermission("job:execute")
     val audit=config.accessLog.begin("do_exchange");val out=AccessLogging.stream(audit,writer)
-    try tasks match {
+    try steps match {
       case Some(service)=>service.exchange(ctx,reader,out)
       case None=>out.error(CallStatus.UNIMPLEMENTED.withDescription("task execution disabled").toRuntimeException)
     }catch{case scala.util.control.NonFatal(t)=>out.error(fail(t))}
@@ -269,7 +274,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     } else {
       val description = a.describe(item)
       require(config.plugins.views(description).nonEmpty, "folder has no content stream")
-      val schema = description.schema.getOrElse {val first=config.plugins.views(description).head;require(first!="records","records view requires schema");if(first=="bytes")PluginSchemas.bytes else {dacp.union.ArrowViewWire.schema(DataViewSupports.named(config.plugins,first),a,item,allocator)}}
+      val schema = description.schema.getOrElse {val first=config.plugins.views(description).head;require(first!="records","records view requires schema");if(first=="bytes")PluginSchemas.bytes else {xstream.connector.dacp.wire.ArrowViewWire.schema(DataViewSupports.named(config.plugins,first),a,item,allocator)}}
       val ticket = Metadata.Ticket.newBuilder().setDataset(ds).setItem(item).setView(config.plugins.views(description).head).build()
       new FlightInfo(schema,desc,List(new FlightEndpoint(new Ticket(ticket.toByteArray))).asJava,-1,-1,false,
         org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,
@@ -294,7 +299,20 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
   override def doAction(ctx:FlightProducer.CallContext,action:Action,raw:FlightProducer.StreamListener[Result]):Unit={
     if(Set("dacp.infer","dacp.infer_job")(action.getType))dacp.union.Rpc.requirePermission("job:execute")
     val audit=config.accessLog.begin("do_action");val listener=AccessLogging.results(audit,raw)
-    try if(action.getType=="dacp.catalog") {
+    try if(action.getType=="dacp.capabilities") {
+      require(action.getBody.isEmpty,"capabilities action takes no body")
+      val n=_root_.xstream.util.Json.obj()
+      n.putObject("service").put("job_execute",true).put("job_cancel",true).put("result_stream",true)
+      def allowed(permission:String):Boolean=if(!dacp.union.Rpc.isAuthenticatedCall)true else {
+        val p=dacp.union.Rpc.principal
+        p.kind=="union" && p.active() || p.kind=="token" && p.permissions(permission)
+      }
+      n.putObject("permissions").put("catalog_read",true).put("item_metadata",true)
+        .put("item_read",allowed("data:read")).put("job_submit",allowed("job:execute"))
+      val resources=n.putObject("resources").put("max_concurrent_steps",config.maxConcurrentTasks)
+      val executors=n.putArray("executors");config.plugins.services(classOf[OperatorExecutor]).foreach(p=>executors.add(p.id))
+      listener.onNext(new Result(Data.mapper.writeValueAsBytes(n)));listener.onCompleted()
+    } else if(action.getType=="dacp.catalog") {
       require(action.getBody.isEmpty,"catalog action takes no body")
       val snapshot=config.datasetDirectory(()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException())
       val directory=Metadata.Directory.newBuilder().setComplete(snapshot.complete).setUnavailableSources(snapshot.unavailableSources)
@@ -358,8 +376,8 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
         FlightDataStreams.send(namespace,t.getItem,t.getView,allocator,listener,() => ready())
       } else {
         val codec=DataViewSupports.named(config.plugins,t.getView)
-        val selection=if(t.getSelectionJson.isEmpty)Data.mapper.createObjectNode()else dacp.union.ArrowViewWire.json(t.getSelectionJson.toByteArray)
-        dacp.union.ArrowViewWire.send(codec,namespace,t.getItem,selection,allocator,listener,()=>ready())
+        val selection=if(t.getSelectionJson.isEmpty)Data.mapper.createObjectNode()else xstream.connector.dacp.wire.ArrowViewWire.json(t.getSelectionJson.toByteArray)
+        xstream.connector.dacp.wire.ArrowViewWire.send(codec,namespace,t.getItem,selection,allocator,listener,()=>ready())
       }
       } finally namespace.close()
           audit.finish(if(ctx.isCancelled || listener.isCancelled)"cancelled" else "completed")

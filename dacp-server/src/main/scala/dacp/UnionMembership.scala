@@ -1,9 +1,12 @@
 package dacp
 
+import _root_.xstream.execution.{MaterializationStoreDefinition}
+
 
 import org.apache.arrow.flight.FlightStatusCode._
 
 import dacp.union.{Json,UnionFailure}
+
 import com.fasterxml.jackson.databind.JsonNode
 import java.nio.file.{Files,Path}
 import scala.jdk.CollectionConverters._

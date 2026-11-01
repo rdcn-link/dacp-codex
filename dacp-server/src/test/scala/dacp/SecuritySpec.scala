@@ -1,5 +1,10 @@
 package dacp
 
+import _root_.xstream.connector.dacp.wire.{ClientTransport,Tls}
+
+import _root_.xstream.engine.{Jobs}
+import _root_.xstream.execution.{ExecutionStoreDefinition,StreamCancel,StreamProtocol}
+
 import _root_.xstream.data._
 
 import dacp.union._
@@ -37,6 +42,59 @@ class SecuritySpec extends AnyFunSuite {
   }
   private def client(c:Config,a:RootAllocator,token:()=>Option[String],cert:Boolean=false)=ClientTransport.open(a,c.uri(""),Some(c.ca),if(cert)Some(c.cert)else None,if(cert)Some(c.key)else None,token)
   private def stream(c:FlightClient):FlightStream={val info=c.getInfo(FlightDescriptor.path("datasets","live","/ticks"));c.getStream(info.getEndpoints.get(0).getTicket)}
+  test("capabilities distinguish public metadata, reader access and runner submission") {fixture{(c,_,a)=>
+    def capabilities(client:FlightClient)= {
+      val results=client.doAction(new Action("dacp.capabilities",Array.emptyByteArray)).asScala.toVector
+      assert(results.size==1);Data.mapper.readTree(results.head.getBody)
+    }
+    val anonymous=client(c,a,()=>None)
+    val issued=c.credentials.create("alice");val reader=client(c,a,()=>Some(issued._2))
+    try {
+      assert(capabilities(anonymous).path("permissions").path("catalog_read").asBoolean)
+      assert(!capabilities(anonymous).path("permissions").path("job_submit").asBoolean)
+      assert(capabilities(reader).path("permissions").path("item_read").asBoolean)
+      assert(!capabilities(reader).path("permissions").path("job_submit").asBoolean)
+      c.credentials.setRoles("alice",Set("runner"))
+      assert(capabilities(reader).path("permissions").path("job_submit").asBoolean)
+    }finally {anonymous.close();reader.close()}
+  }}
+  test("DACP execution-target adapter reports caller rights, streams results and cancels remotely") {fixture{(c,_,a)=>
+    val dir=Files.createTempDirectory("target-credential-")
+    val issued=c.credentials.create("alice");val token=dir.resolve("token");Files.writeString(token,issued._2)
+    val settings=_root_.xstream.util.Json.obj().put("url",c.uri("").stripSuffix("/")).put("ca",c.ca.toString).put("token_file",token.toString)
+    val target=new _root_.xstream.connector.dacp.DacpExecutionTarget("test",settings)
+    val cancel=new StreamCancel()
+    try {
+      assert(!target.describe(cancel).canSubmit)
+      c.credentials.setRoles("alice",Set("runner"))
+      assert(target.describe(cancel).canSubmit)
+      val job="name: Remote source\nsteps:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: 'context:/live/ticks', view: bytes}\noutputs: {result: read}\n"
+      val handle=target.submit(_root_.xstream.execution.ExecutionRequest(job,_root_.xstream.util.Json.obj(),30),cancel)
+      try {
+        assert(StreamProtocol.header(handle.next().get).path("type").asText=="start")
+        assert(StreamProtocol.header(handle.next().get).path("type").asText=="data")
+        assert(handle.status().id.nonEmpty)
+        handle.cancel();assert(handle.status().state=="cancelled")
+      }finally handle.close()
+    }finally {cancel.close();target.close();Data.deleteTree(dir)}
+  }}
+  test("remote Item provider reads with reader credentials without needing job submission") {fixture{(c,_,a)=>
+    val dir=Files.createTempDirectory("item-credential-")
+    val issued=c.credentials.create("alice");val token=dir.resolve("token");Files.writeString(token,issued._2)
+    val settings=_root_.xstream.util.Json.obj()
+    settings.putArray("nodes").addObject().put("url",c.uri("").stripSuffix("/")).put("ca",c.ca.toString).put("token_file",token.toString)
+    val provider=new _root_.xstream.connector.dacp.DacpRemoteItemProvider()
+    val environment=new PluginEnvironment(registrations=Seq(PluginRegistration(provider)))
+    val cancel=new StreamCancel()
+    try {
+      environment.byId(classOf[_root_.xstream.execution.RemoteItemProvider],"dacp")
+      val source=provider.open(settings,_root_.xstream.execution.RemoteItemRequest(c.uri("live/ticks"),"bytes",None,None),a,cancel)
+      try {
+        assert(StreamProtocol.header(source.next().get).path("type").asText=="start")
+        assert(StreamProtocol.header(source.next().get).path("type").asText=="data")
+      }finally source.close()
+    }finally {cancel.close();environment.close();provider.close();Data.deleteTree(dir)}
+  }}
   test("metadata is public; certificates alone cannot read data and S3 keys cannot authenticate Flight") {fixture{(c,_,a)=>
     val issued=c.credentials.create("alice");val good=client(c,a,()=>Some(issued._2))
     val peer=client(c,a,()=>None,true);val s3=c.credentials.create("s3","s3");val wrong=client(c,a,()=>Some(s3._2))
@@ -61,7 +119,7 @@ class SecuritySpec extends AnyFunSuite {
     }finally public.close()
   }}
   test("remote-serving environments reject local operators even in DEBUG mode") {fixture{(c,_,_)=>
-    val task=Jobs.parse("name: Local attempt\ntasks:\n- id: run\n  operator: {local: /tmp/private-operator}\n  inputs: {}\noutputs: {result: run}\n").tasks.head
+    val task=Jobs.parse("name: Local attempt\nsteps:\n- id: run\n  operator: {local: /tmp/private-operator}\n  inputs: {}\noutputs: {result: run}\n").steps.head
     assert(intercept[IllegalArgumentException](Jobs.authorizeSource(c,task)).getMessage.contains("local engine"))
     assert(intercept[IllegalArgumentException](Jobs.authorizeSource(c.copy(debug=true),task)).getMessage.contains("local engine"))
     intercept[IllegalArgumentException](WorkflowInference.taskJson(task,Map.empty))

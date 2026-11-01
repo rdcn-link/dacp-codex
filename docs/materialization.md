@@ -24,7 +24,7 @@ union:
       retention_seconds: 86400
 ```
 
-`directory` is private node configuration, not a submitter-selected path. The file plugin ships with the standard distribution in `plugins/xstream-plugin-execution-file`. Without `materialization_store`, the node rejects tasks requiring materialization or replay. Union prepares every node before starting any step, so unsupported storage causes preparation failure rather than silent fallback.
+`directory` is private node configuration, not a submitter-selected path. The file plugin ships with the standard distribution in `plugins/xstream-plugin-execution-file`. Without `materialization_store`, the node rejects steps requiring materialization or replay. Union prepares every node before starting any step, so unsupported storage causes preparation failure rather than silent fallback.
 
 The file plugin requires `directory`; the other three settings default to the values above and must be positive integers. `max_bytes` limits managed data across the directory; `max_task_bytes` limits all selected outputs of one task, including Arrow file and manifest overhead. Exceeding quota fails execution and removes uncommitted data. Materialization retention is independent of in-memory `union.retention_seconds`. Expired artifacts cannot be acquired by new executions; files remain until active leases close. Only one writer service may open a storage directory. Startup removes uncommitted temporary directories.
 
@@ -39,7 +39,7 @@ max_retries: 0
 materialization:
   allowed: true
   default: stream
-  tasks:
+  steps:
     ta:
       outputs:
         result: materialize
@@ -47,9 +47,9 @@ materialization:
 
 - `allowed` defaults to `true`: permission alone does not enable materialization.
 - `default` defaults to `stream`; use `materialize` to select all connected outputs.
-- `tasks.<task id>.outputs.<port>` overrides the default with `stream` or `materialize`. The task ID identifies a step, not a server.
+- `steps.<task id>.outputs.<port>` overrides the default with `stream` or `materialize`. The task ID identifies a step, not a server.
 - Omitting policy means direct streaming. The engine never enables materialization based on risk estimates.
-- Unknown fields, incorrect types, missing tasks, unconnected ports, invalid modes, and conflicts are rejected at submission. The engine does not create consumers for otherwise unconnected operator ports.
+- Unknown fields, incorrect types, missing steps, unconnected ports, invalid modes, and conflicts are rejected at submission. The engine does not create consumers for otherwise unconnected operator ports.
 
 To prohibit engine retention of result streams throughout the workflow:
 
@@ -96,18 +96,18 @@ Status and history retain `execution_policy` (submitted values) and `effective_e
 Replay occurs only on an **explicit client request**. The source execution must have terminated: succeeded, failed, cancelled, expired, or marked interrupted after restart. Active workflows cannot be replayed, and automatic retry occurs only when `max_retries` is explicitly positive.
 
 ```python
-with union.replay(job_id, tasks=['ta']) as replay:
+with union.replay(job_id, steps=['ta']) as replay:
     print(replay.job_id)  # A new execution ID
     for event in replay.results():
         if event['type'] == 'data':
             print(event.get('batch', event['data']))
 ```
 
-`execution.replay(tasks=['ta'])` is also available. Scala equivalents are `union.replay(jobId, Some(Seq("ta")))` and `execution.replay(Some(Seq("ta")))`.
+`execution.replay(steps=['ta'])` is also available. Scala equivalents are `union.replay(jobId, Some(Seq("ta")))` and `execution.replay(Some(Seq("ta")))`.
 
 - **Downstream failure**: reuse committed `ta` outputs without rerunning its operator; rerun downstream steps that are still needed. The client must consume a new result stream.
 - **Retrieve successful results again**: if every connected output of the final-output steps was materialized, replay those steps directly. Their raw inputs and upstream operators are unnecessary; pruned steps are recorded as `skipped`.
-- Without `tasks`, inspect policy-eligible steps whose connected outputs all require materialization, select those with complete, unexpired artifacts, then prune the required workflow from its final outputs. With explicit `tasks`, every requested step must be available or the request fails. At least one replayable step is required.
+- Without `steps`, inspect policy-eligible steps whose connected outputs all require materialization, select those with complete, unexpired artifacts, then prune the required workflow from its final outputs. With explicit `steps`, every requested step must be available or the request fails. At least one replayable step is required.
 - Skipping an operator requires **all of its connected outputs** to be materialized. Partial-output materialization can save data but cannot skip a multi-output step. Replay reads ports concurrently with backpressure to avoid waits caused by port ordering.
 - Replay uses the original task file and policy; operators, parameters, and inputs cannot be changed through this operation. Nodes revalidate task definitions against stored manifests. The client must still own the source execution, the Union must remain approved, and operator/input authorization is rechecked.
 - New replay executions work after Union/node restart while source history and node storage remain available. This is neither automatic restoration of an old process or execution plan nor byte-offset resume.
@@ -207,14 +207,14 @@ Use the existing Arrow Flight TLS / Token transport; there is no HTTP write inte
 | Action | Request JSON | Response |
 |---|---|---|
 | `submit` | `{"job_yaml":"...","execution_policy_yaml":"materialization:\n  allowed: false\n"}` | New execution snapshot; policy is optional |
-| `replay_job` | `{"job_id":"source ID","tasks":["ta"]}` | New execution snapshot; `tasks` is optional |
+| `replay_job` | `{"job_id":"source ID","steps":["ta"]}` | New execution snapshot; `steps` is optional |
 | Node `materialized_status` | `{"union_id":"...","execution_id":"...","task":"ta"}` | Commit status, expiry, and stored-port integrity metadata; approved schedulers only |
 
 Results still use the existing `results` Flight stream, requiring `start/data/end/complete` and successful Flight termination. Ordinary result streams remain single-claim; use `replay_job` for a new execution instead of claiming them twice.
 
 Each node `prepare` task adds `materialize: ["result"]` and optional `replay_from: "source execution ID"`. Preparation checks every replay output and acquires leases. Replayed data binds the new execution ID to the intended consumer certificate; disk paths are never exposed directly to clients.
 
-Public contracts live in `xstream-execution-api`: `MaterializationStoreProvider`, `MaterializationStore`, `MaterializationWriter`, `MaterializedTask`, and `MaterializedFrames`. Register an external provider class through `META-INF/services/dacp.MaterializationStoreProvider`, install its JAR and dependencies in the node `plugin_directory`, and configure `provider` to its `id`. No core registry edits are needed.
+Public contracts live in `xstream-execution-api`: `MaterializationStoreProvider`, `MaterializationStore`, `MaterializationWriter`, `MaterializedTask`, and `MaterializedFrames`. Register an external provider class through `META-INF/services/xstream.execution.MaterializationStoreProvider`, install its JAR and dependencies in the node `plugin_directory`, and configure `provider` to its `id`. No core registry edits are needed.
 
 Plugins own private configuration, quotas, expiration, atomic task commit, durability, leases, and read integrity. Core owns authorization, policy validation, frame protocol, cancellation, and execution resources. `append(port, OperatorFrame)` accepts typed frames; replay returns `MaterializedFrames`. Frame headers are bounded by 64 KiB and payloads by 8 MiB. Plugins must not buffer a whole task. The file plugin stores an initial zero-row Arrow File segment and independent data segments, with ordered names, sizes and checksums in a manifest. A failed append prevents commit. Closing an uncommitted writer must abort it, `get` may expose committed artifacts only, and expired artifacts cannot receive new leases. Cleanup must preserve existing leases. New implementations should test discovery, commit/abort, restart reads, quota, expiration/leases, truncation/corruption, and close cleanup. See `MaterializationSpec` and cross-node `UnionSpec`.
 

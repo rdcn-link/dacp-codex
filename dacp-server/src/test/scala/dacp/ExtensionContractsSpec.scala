@@ -1,5 +1,9 @@
 package dacp
 
+import _root_.xstream.data.files.{FileDatasets,PublishedItem}
+import _root_.xstream.engine.{ExecutionHistory}
+import _root_.xstream.execution.{ExecutionStore}
+
 import _root_.xstream.data._
 
 import org.scalatest.funsuite.AnyFunSuite

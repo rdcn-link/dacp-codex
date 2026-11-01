@@ -168,3 +168,24 @@ def test_item_creation_time_preserves_unknown_and_epoch():
     item = Item('/epoch', 'bin', creation_time_ms=0, last_modified_time_ms=1000)
     assert item.creation_time == datetime(1970, 1, 1, tzinfo=timezone.utc)
     assert item.last_modified_time == datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
+
+
+def test_capabilities_returns_effective_grants_and_closes_client(monkeypatch):
+    import json
+    import pyarrow.flight as flight
+    class Client:
+        closed = False
+        def do_action(self, action, options=None):
+            assert action.type == 'dacp.capabilities' and action.body.to_pybytes() == b''
+            return iter([flight.Result(json.dumps({'service': {'job_execute': True},
+                                                  'permissions': {'job_submit': False}}).encode())])
+        def close(self): self.closed = True
+    client = Client()
+    monkeypatch.setattr('dacp.source._flight_client', lambda *args, **kwargs: client)
+    assert Source.capabilities('dacp://example:18861')['permissions']['job_submit'] is False
+    assert client.closed
+
+
+@pytest.mark.parametrize('uri', ['http://host', 'dacp://host/dataset', 'dacp://host?secret=x'])
+def test_capabilities_rejects_non_origin_addresses(uri):
+    with pytest.raises(ValueError): Source.capabilities(uri)

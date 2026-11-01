@@ -23,13 +23,13 @@ datasets:
   orders:
     provider: mixed
     description: |-
-      {"summary":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}
+      {"title":"Orders","description":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}
     items:
       /records:
         file: /srv/data/orders.csv
 ```
 
-`description` 是包含一个合法 JSON 对象的字符串。内部字段及嵌套结构由用户自行定义，DACP 不约定描述字段的 schema。它与 provider 的 `source`、`items` 参数分开。省略时发布 `"{}"`。字符串最多 32768 字符；普通文本、数组、标量、非法 JSON、多个 JSON 值和 YAML 映射均会被拒绝。公开描述中不要包含凭据或私有存储配置。完整节点配置仍需要 TLS 等常规字段。
+`description` 是包含一个合法 JSON 对象的字符串，必须包含非空字符串 `title` 和字符串 `description`（后者允许为空）。其他字段和嵌套结构由用户定义。它与 provider 的 `source`、`items` 参数分开。静态配置省略时生成 `{"title":"数据集名称","description":""}`。重复 JSON 键会被拒绝。字符串最多 32768 字符；普通文本、数组、标量、非法 JSON、多个 JSON 值和 YAML 映射均会被拒绝。公开描述中不要包含凭据或私有存储配置。完整节点配置仍需要 TLS 等常规字段。
 
 ## 开发者：动态目录描述
 
@@ -40,12 +40,12 @@ import xstream.data.DatasetInfo
 
 override def list(): Seq[DatasetInfo] = Seq(
   DatasetInfo("orders", description =
-    """{"summary":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}"""
+    """{"title":"Orders","description":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}"""
   )
 )
 ```
 
-字符串在公共插件契约处校验，并经 Flight、SDK、Shell 和 Web 原样传递。目录读取不会调用 `open()` 或扫描数据内容；后端目录查询失败必须抛出异常，而不是返回空列表。注册、配置和租约实现见[动态目录插件](dataset-catalogs_zh.md)。
+字符串在公共插件契约处校验，并经 Flight、SDK、Shell 和 Web 原样传递。目录读取不会调用 `open()` 或扫描数据内容；后端目录查询失败必须抛出异常，而不是返回空列表。注册、配置和租约实现见[动态目录插件](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)。
 
 ## Shell
 
@@ -93,3 +93,5 @@ Scala 客户端使用 `Source.datasets(origin, tls)` 直接查询节点。节点
 (cd dacp-client-scala && sbt test)
 PYTHONPATH=dacp-client .venv/bin/python -m pytest dacp-client/tests
 ```
+
+Union 仅改写公开 `name` 和 URI；描述 JSON 字符串与成员返回值完全一致，包括 title、description、其他字段和原有空白，不重新生成标题或重序列化。

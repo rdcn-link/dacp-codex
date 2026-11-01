@@ -13,14 +13,14 @@ The criterion is whether adding a user implementation requires no core registry 
 - `mounted` Dataset provider: nested Dataset definitions compose arbitrary backend namespaces. PublishedItem/SqlConfig live in the backend plugin; core sources retain only provider/settings.
 - `ExecutionStoreProvider`: core owns execution transitions/recovery; the file plugin owns atomic files and the single-writer lock. Nodes and Union choose implementations through execution_store.
 
-Registration, configuration and ownership are covered in [plugins](plugins.md) and [Dataset providers](dataset-providers.md). Concrete MongoDB/S3 backends are not bundled; extension contracts do not imply those implementations exist.
+Registration, configuration and ownership are covered in [plugins](plugins.md) and [Dataset providers](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers.md). Concrete MongoDB/S3 backends are not bundled; extension contracts do not imply those implementations exist.
 
 ## Priority boundaries
 
 | Priority | Current coupling and location | Proposal and practical benefit |
 |---|---|---|
 | Medium | Core validates token subjects, Union service credentials, task ownership and exact peer stream plans | A discoverable institutional authorization policy is a possible extension. Any plugin must preserve core authentication, credential revocation and execution-plan boundaries |
-| Medium | [TaskExecutor](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-engine/src/main/scala/dacp/TaskExecutor.scala) directly creates Docker clients and containers; [OperatorLibrary.resolve](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-inference/src/main/scala/xstream/operator/inference/OperatorLibrary.scala) also accepts DockerClient | Separate artifact resolution from runtime preparation, then define a full `ExecutionBackend` lifecycle. Existing `OperatorExecutor` continues producing language/entrypoint launch commands; Docker and future Podman/Kubernetes backends own execution, cancellation, resources, and cleanup. This does not authorize unrestricted host execution |
+| Medium | [TaskExecutor](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-engine/src/main/scala/xstream/engine/TaskExecutor.scala) directly creates Docker clients and containers; [OperatorLibrary.resolve](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-inference/src/main/scala/xstream/operator/inference/OperatorLibrary.scala) also accepts DockerClient | Separate artifact resolution from runtime preparation, then define a full `ExecutionBackend` lifecycle. Existing `OperatorExecutor` continues producing language/entrypoint launch commands; Docker and future Podman/Kubernetes backends own execution, cancellation, resources, and cleanup. This does not authorize unrestricted host execution |
 
 Native Dataset providers can already expose MongoDB/S3-style Items and streams directly. Byte sources and generic mounting address **format-plugin reuse and cross-backend composition**, rather than prerequisites for a single backend. `mixed` currently combines files and JDBC explicitly.
 

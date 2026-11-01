@@ -2,7 +2,7 @@
 
 [English](README.md) · [文档目录](../README_zh.md) · [开发者指南](../developers/README_zh.md)
 
-Job 的输入和最终输出使用 `task[:port]`，端口缺省为 `result`；外部数据通过 `read_item@1.0` 接入，仅通过流连接建立依赖。详见[流式作业](../jobs_zh.md).
+Job 的输入和最终输出使用 `step[:port]`，端口缺省为 `result`；外部数据通过 `read_item@1.0` 接入，仅通过流连接建立依赖。详见[流式作业](../jobs_zh.md).
 
 面向浏览数据、使用 SDK、执行算子，以及使用已有插件配置 DACP 节点的用户。除非另有说明，命令均从项目根目录执行。实现新后端、格式或算子请阅读开发者指南。
 
@@ -230,7 +230,7 @@ sources:
 
 SQL Dataset 的 `tables` 将公开路径绑定到选定连接的私有表名，不自动暴露所有表。`mixed` 保留逐项映射和混合来源的灵活性。每个 Dataset 必须显式指定 `provider`。
 
-默认示例同时提供 `data1`、`csv_data`（mixed）和 `documents`（directory）。在 shell 中执行 `use documents`、`ls /`，或读取 `/nested/orders.csv`。SQLDB 的完整初始化示例见 [SQL 示例](../../examples/sql/README_zh.md)。添加 MongoDB 等新来源时，可通过 provider JAR 扩展，无需修改客户端；开发接口见 [Dataset provider 指南](../dataset-providers_zh.md)。
+默认示例同时提供 `data1`、`csv_data`（mixed）和 `documents`（directory）。在 shell 中执行 `use documents`、`ls /`，或读取 `/nested/orders.csv`。SQLDB 的完整初始化示例见 [SQL 示例](../../examples/sql/README_zh.md)。添加 MongoDB 等新来源时，可通过 provider JAR 扩展，无需修改客户端；开发接口见 [Dataset provider 指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers_zh.md)。
 
 ### 格式与视图
 
@@ -254,7 +254,7 @@ ZIP、TAR、压缩 TAR 的子项可按 `/archive/reports/orders.csv` 浏览和�
 
 ZIP 列举只读取目录索引；TAR 需要顺序扫描，`.tar.gz` / `.tgz` 还需要解压，因此大归档的首次列举和读取可能较慢。读取条目时只将所需条目暂存到临时文件。嵌套归档暂不展开；`.bz2`、`.xz` 和 `.zst` 目前仍作为普通二进制数据读取。
 
-格式细节、Excel 行为、归档限制和 schema 规则见 [技术参考](../reference_zh.md)，第三方处理器开发见 [格式扩展](../format-handlers_zh.md)。
+格式细节、Excel 行为、归档限制和 schema 规则见 [技术参考](../reference_zh.md)，第三方处理器开发见 [格式扩展](https://github.com/rdcn-link/xstream-codex/blob/main/docs/format-handlers_zh.md)。
 
 ### 元数据与计数
 

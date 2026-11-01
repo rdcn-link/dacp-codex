@@ -39,7 +39,7 @@ max_retries: 0
 materialization:
   allowed: true
   default: stream
-  tasks:
+  steps:
     ta:
       outputs:
         result: materialize
@@ -47,7 +47,7 @@ materialization:
 
 - `allowed` 默认 `true`，只表示允许，不会自动开启物化。
 - `default` 默认 `stream`；可设为 `materialize`，为所有已连接输出开启物化。
-- `tasks.<任务 id>.outputs.<端口>` 可覆盖默认值，值为 `stream` 或 `materialize`。这里的任务 id 是步骤标识，不是服务器名。
+- `steps.<任务 id>.outputs.<端口>` 可覆盖默认值，值为 `stream` 或 `materialize`。这里的任务 id 是步骤标识，不是服务器名。
 - 省略策略等同于直接流处理；不存在风险判断后自动物化。
 - 未知字段、类型错误、不存在的步骤、未连接的端口、非法取值及策略冲突在提交时拒绝。不为未连接的算子端口额外创建消费者。
 
@@ -96,18 +96,18 @@ scala.util.Using.resource(union.submit(workflowYaml, policy)) { execution =>
 仅在客户端**显式请求**时重放。原执行必须已经结束：成功、失败、取消、超时或重启后标记为中断。运行中的工作流不支持重放；仅当显式设置正数 `max_retries` 时才自动重试。
 
 ```python
-with union.replay(job_id, tasks=['ta']) as replay:
+with union.replay(job_id, steps=['ta']) as replay:
     print(replay.job_id)  # 新的执行 ID
     for event in replay.results():
         if event['type'] == 'data':
             print(event.get('batch', event['data']))
 ```
 
-也可调用 `execution.replay(tasks=['ta'])`。Scala 对应 `union.replay(jobId, Some(Seq("ta")))` 或 `execution.replay(Some(Seq("ta")))`。
+也可调用 `execution.replay(steps=['ta'])`。Scala 对应 `union.replay(jobId, Some(Seq("ta")))` 或 `execution.replay(Some(Seq("ta")))`。
 
 - **下游失败**：复用 `ta` 的已提交输出，不重新执行 `ta` 算子；仍需执行的下游重新运行。客户端需要重新消费结果流。
 - **重新获取成功结果**：若最终输出步骤的全部已连接输出均已物化，可直接重放这些步骤。无须读取它们的原始输入或执行其上游；被剪枝步骤记录为 `skipped`。
-- 省略 `tasks` 时，先检查策略中所有输出均要求物化的步骤，选择当前已有完整、未过期提交的步骤，再按最终输出裁剪所需工作流。指定 `tasks` 时，每个步骤都必须可用，否则拒绝。至少需要一个可重放步骤。
+- 省略 `steps` 时，先检查策略中所有输出均要求物化的步骤，选择当前已有完整、未过期提交的步骤，再按最终输出裁剪所需工作流。指定 `steps` 时，每个步骤都必须可用，否则拒绝。至少需要一个可重放步骤。
 - 只有某步骤**全部已连接输出**均物化时，才能跳过该算子；仅物化部分输出仍可保存，但不能用于跳过这个多输出步骤。多端口重放并行读取，保留背压，避免端口顺序导致互相等待。
 - 重放使用原任务文件与原策略，不能借此修改算子、参数或输入。节点会再次核对定义与存储清单。客户端必须仍为原提交者，Union 仍须获节点批准，算子及输入授权也会重新校验。
 - 原执行元数据及节点存储都保留时，Union/节点重启后仍可新建重放执行。它不是自动恢复旧进程或执行计划，也不是按字节游标续读。
@@ -207,14 +207,14 @@ Shell 显示执行 ID，重试前明确标记上一轮输出作废并重置显�
 | Action | 请求 JSON | 返回 |
 |---|---|---|
 | `submit` | `{"job_yaml":"...","execution_policy_yaml":"materialization:\n  allowed: false\n"}` | 新执行快照；策略可省略 |
-| `replay_job` | `{"job_id":"原执行 ID","tasks":["ta"]}` | 新执行快照；`tasks` 可省略 |
+| `replay_job` | `{"job_id":"原执行 ID","steps":["ta"]}` | 新执行快照；`steps` 可省略 |
 | 节点 `materialized_status` | `{"union_id":"...","execution_id":"...","task":"ta"}` | 是否提交、到期时间、存储端口校验信息；仅批准的调度者可用 |
 
 结果继续通过原有 `results` Flight 流读取，要求 `start/data/end/complete` 以及成功的 Flight 结束状态。普通结果流仍只允许领取一次；第二次读取使用 `replay_job` 创建新执行。
 
 节点 `prepare` 的各任务增加 `materialize: ["result"]` 以及可选 `replay_from: "源执行 ID"`。准备阶段验证所有重放输出存在，并持有租约；重放数据继续使用新的执行 ID 与原消费者证书绑定，不直接向客户端暴露磁盘路径。
 
-公共契约在 `xstream-execution-api`：`MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask` 和 `MaterializedFrames`。外部实现通过 `META-INF/services/dacp.MaterializationStoreProvider` 注册提供者类，将 JAR 与依赖安装到节点 `plugin_directory`，并将 `provider` 设置为其 `id`，无须修改核心注册表。
+公共契约在 `xstream-execution-api`：`MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask` 和 `MaterializedFrames`。外部实现通过 `META-INF/services/xstream.execution.MaterializationStoreProvider` 注册提供者类，将 JAR 与依赖安装到节点 `plugin_directory`，并将 `provider` 设置为其 `id`，无须修改核心注册表。
 
 插件负责私有配置、配额、过期清理、原子任务提交、持久化、租约与读取完整性；核心负责授权、策略校验、帧协议、取消及运行资源。`append(port, OperatorFrame)` 接收类型化帧，重放返回 `MaterializedFrames`。帧头上限 64 KiB，载荷上限 8 MiB；插件不得缓存整个任务。文件插件先写零行 Arrow File 分段，再写独立的数据分段，清单记录有序文件名、大小及校验和。append 失败后禁止提交。关闭未提交 writer 必须中止，提交后才可 `get`，到期后不可新建租约；清理不得破坏现有租约。新实现应通过发现、提交/中止、重启读取、配额、过期/租约、截断/损坏和关闭清理契约测试；参考 `MaterializationSpec` 及跨节点 `UnionSpec`。
 

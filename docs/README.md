@@ -6,7 +6,7 @@ For job format and stream dependencies, see [Jobs](jobs.md).
 
 Protocol overview: [DACP (Data Access and Collaboration Protocol)](protocol.md).
 
-Dynamic catalogs and application embedding: [DataCatalog](dataset-catalogs.md), [embedded server](embedded-server.md).
+Dynamic catalogs and application embedding: [DataCatalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md), [embedded server](embedded-server.md).
 
 The [collaboration operator catalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog.md) documents the configured collaboration operators, ports, parameters, input/output and Shell / Job examples.
 
@@ -40,7 +40,7 @@ The [collaboration operator catalog](https://github.com/rdcn-link/xstream-codex/
 | Source, licenses, build instructions, and SBOM | [Operator review material](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance.md) |
 | Execution records, history queries, and restart semantics | [Execution history](execution-history.md) |
 | Plugin discovery and contribution requirements | [Plugin architecture](plugins.md) |
-| Dataset backends, file formats, and structured browsing | [Dataset providers](dataset-providers.md), [format handlers](format-handlers.md) |
+| Dataset backends, file formats, and structured browsing | [Dataset providers](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers.md), [format handlers](https://github.com/rdcn-link/xstream-codex/blob/main/docs/format-handlers.md) |
 | Filters, projections, SQL shell, and optimization contracts | [Records queries](records-scans.md) |
 | Data model, read capabilities, and node settings | [Technical reference](reference.md) |
 

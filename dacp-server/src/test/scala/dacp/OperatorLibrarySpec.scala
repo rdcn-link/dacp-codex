@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.engine.{Jobs}
+import _root_.xstream.execution.{OperatorPorts}
+
 import _root_.xstream.operator.inference._
 
 import _root_.xstream.data._
@@ -11,16 +14,16 @@ import org.scalatest.funsuite.AnyFunSuite
 import scala.jdk.CollectionConverters._
 
 class OperatorLibrarySpec extends AnyFunSuite {
-  test("source tasks and operator contracts accept explicitly empty inputs only") {
+  test("source steps and operator contracts accept explicitly empty inputs only") {
     val source="""name: source
-    |tasks:
+    |steps:
     |- id: ticks
     |  operator: live_ticks@1.0
     |  inputs: {}
     |outputs:
     |  result: ticks
     |""".stripMargin
-    assert(Jobs.parse(source).tasks.head.inputs.isEmpty)
+    assert(Jobs.parse(source).steps.head.inputs.isEmpty)
     intercept[IllegalArgumentException](Jobs.parse(source.replace("  inputs: {}\n", "")))
     val empty=Data.mapper.readTree("{}")
     assert(OperatorPorts.read(empty).isEmpty)

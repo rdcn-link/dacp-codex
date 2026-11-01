@@ -1,5 +1,9 @@
 package dacp
 
+import _root_.xstream.data.files.{FileDatasets,PublishedItem,SqlAdapter,SqlScanPlan}
+import _root_.xstream.data.parquet.{Parquet}
+import _root_.xstream.execution.{ItemSql}
+
 import _root_.xstream.data._
 
 import org.scalatest.funsuite.AnyFunSuite

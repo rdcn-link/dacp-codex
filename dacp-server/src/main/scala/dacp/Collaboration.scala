@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.connector.dacp.wire.{ClientTransport}
+
 
 import java.net.URI
 import java.nio.file.Files
@@ -15,7 +17,7 @@ object NodeConnection {
   def open(config: Config, allocator: BufferAllocator, value: String): FlightClient = {
     val u = DacpUri.parse(value,false)
     val origin=DacpUri.origin(value)
-    dacp.union.ClientTransport.open(allocator,origin,Some(config.ca),Some(config.cert),Some(config.key),
+    xstream.connector.dacp.wire.ClientTransport.open(allocator,origin,Some(config.ca),Some(config.cert),Some(config.key),
       ()=>if(origin==DacpUri.origin(config.uri("")))Some(config.internalToken)else config.remoteItemCredentials.get(origin).map(p=>java.nio.file.Files.readString(p).trim))
   }
 }

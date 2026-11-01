@@ -6,7 +6,7 @@
 
 协议总览：[DACP（Data Access and Collaboration Protocol）](protocol_zh.md)。
 
-动态数据集目录与程序内启动：[DataCatalog](dataset-catalogs_zh.md)、[嵌入式服务器](embedded-server_zh.md)。
+动态数据集目录与程序内启动：[DataCatalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)、[嵌入式服务器](embedded-server_zh.md)。
 
 当前协作部署的[算子库清单](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog_zh.md)：6 个已发布算子的端口、参数、输入输出和 Shell / Job 示例。
 
@@ -40,7 +40,7 @@
 | 源码、许可证、构建说明和 SBOM | [算子审查材料](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance_zh.md) |
 | 执行记录、历史查询和重启语义 | [执行记录](execution-history_zh.md) |
 | 插件发现与贡献要求 | [插件体系](plugins_zh.md)（英文） |
-| Dataset 后端、文件格式和结构化浏览 | [Dataset provider](dataset-providers_zh.md)、[格式处理器](format-handlers_zh.md)（英文） |
+| Dataset 后端、文件格式和结构化浏览 | [Dataset provider](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers_zh.md)、[格式处理器](https://github.com/rdcn-link/xstream-codex/blob/main/docs/format-handlers_zh.md)（英文） |
 | 过滤、列投影、SQL shell 与优化契约 | [记录查询](records-scans_zh.md)（英文） |
 | 数据模型、读取能力和节点配置字段 | [技术参考](reference_zh.md) |
 

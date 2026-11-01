@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix='dacp-repository-example-check-') as tem
     except Exception: time.sleep(.1)
    else: raise RuntimeError('server readiness timeout')
    def run(operator,item='input',view='bytes',params=None):
-    job=dict(name='repository-example-check',tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=node+'/data/'+item,view=view)),dict(id='check',operator=operator,inputs=dict(source='read'),params=params or {})],outputs={'result':'check'})
+    job=dict(name='repository-example-check',steps=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=node+'/data/'+item,view=view)),dict(id='check',operator=operator,inputs=dict(source='read'),params=params or {})],outputs={'result':'check'})
     with Job.run(node,yaml.safe_dump(job,sort_keys=False),timeout=60,**creds) as stream: events=list(stream)
     assert events[-1]['type']=='complete'
     return events

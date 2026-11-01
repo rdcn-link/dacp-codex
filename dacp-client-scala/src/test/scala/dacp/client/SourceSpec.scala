@@ -14,8 +14,8 @@ import scala.util.Using
 
 class SourceSpec extends AnyFunSuite {
   @volatile private var scanTicket: Option[Metadata.Ticket] = None
-  test("dataset discovery retains a user-defined JSON description without fixed title or tags") {
-    val description="""{"summary":"Orders","owner":{"team":"sales"},"fields":["id","amount"]}"""
+  test("dataset discovery retains a user-defined JSON description with required title and description and extensible fields") {
+    val description="""{"title":"Orders","description":"Order records","owner":{"team":"sales"},"fields":["id","amount"]}"""
     val metadata=Metadata.DataSet.newBuilder().setName("orders").setUri("dacp://localhost/orders").setDescription(description).setObservedAtMs(42).build()
     val info=new FlightInfo(bytesSchema,FlightDescriptor.path("datasets","orders"),java.util.Collections.emptyList[FlightEndpoint](),-1,-1,false,org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,metadata.toByteArray)
     val dataset=dacp.client.DatasetInfo.fromFlight(info)

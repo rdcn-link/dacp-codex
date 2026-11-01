@@ -101,6 +101,30 @@ def _dataset_infos(client, timeout=30):
 class Source:
     @staticmethod
     @public_errors
+    def capabilities(url, *, tls_root_certs=None, cert_chain=None, private_key=None, token=None, timeout=30):
+        """Query service features and this caller's effective grants; submission still authorizes."""
+        u = urlsplit(url)
+        if (u.scheme != "dacp" or not u.hostname or u.username is not None or u.query or u.fragment
+                or u.path not in ("", "/") or u.port is not None and not 0 < u.port <= 65535 or timeout <= 0):
+            raise ValueError("expected dacp://host[:port] origin and positive timeout")
+        client = _flight_client(u, tls_root_certs, cert_chain, private_key, **({"token": token} if token is not None else {}))
+        try:
+            results = iter(client.do_action(flight.Action("dacp.capabilities", b""), options=flight.FlightCallOptions(timeout=timeout)))
+            first = next(results, None)
+            if first is None:
+                raise ValueError("missing capabilities response")
+            data = first.body.to_pybytes()
+            if len(data) > 1024 * 1024 or next(results, None) is not None:
+                raise ValueError("invalid capabilities response")
+            result = json.loads(data)
+            if not isinstance(result, dict) or not isinstance(result.get("service"), dict) or not isinstance(result.get("permissions"), dict):
+                raise ValueError("invalid capabilities response")
+            return result
+        finally:
+            client.close()
+
+    @staticmethod
+    @public_errors
     def datasets(url, *, tls_root_certs=None, cert_chain=None, private_key=None, token=None, timeout=30):
         """Read public metadata from dacp-server."""
         u = urlsplit(url)

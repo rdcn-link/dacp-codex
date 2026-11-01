@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.engine.{ExecutionHistory}
+import _root_.xstream.execution.file.{FileExecutionStore}
+
 import _root_.xstream.data._
 
 

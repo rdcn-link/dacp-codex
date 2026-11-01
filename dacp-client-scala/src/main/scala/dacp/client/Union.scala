@@ -1,7 +1,12 @@
 package dacp.client
 
+import _root_.xstream.execution.{OperatorFrames}
 
-import dacp.union.{BinarySource,Json,Remote,Tls}
+import _root_.xstream.util.WorkflowVariables
+
+
+import dacp.union.{BinarySource,Json,Remote}
+import _root_.xstream.connector.dacp.wire.{Tls}
 import com.fasterxml.jackson.databind.JsonNode
 import java.nio.file.Path
 import org.apache.arrow.memory.RootAllocator
@@ -30,8 +35,8 @@ final class Union(url:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=1800)
     val n=remote.action(origin,"submit",body)
     new UnionExecution(this,Json.id(Json.text(n,"job_id")))
   }
-  def replay(id:String,tasks:Option[Seq[String]]=None):UnionExecution={
-    val body=Json.obj().put("job_id",Json.id(id));tasks.foreach(ts=>{val a=body.putArray("tasks");ts.foreach(a.add)})
+  def replay(id:String,steps:Option[Seq[String]]=None):UnionExecution={
+    val body=Json.obj().put("job_id",Json.id(id));steps.foreach(ts=>{val a=body.putArray("steps");ts.foreach(a.add)})
     val n=remote.action(origin,"replay_job",body);new UnionExecution(this,Json.id(Json.text(n,"job_id")))
   }
   def execution(id:String):UnionExecution=new UnionExecution(this,Json.id(id))
@@ -42,7 +47,7 @@ final class UnionExecution private[client](union:Union,val id:String) extends Au
   @volatile private var complete=false
   private var closed=false
   private val streams=mutable.ArrayBuffer.empty[AutoCloseable]
-  def replay(tasks:Option[Seq[String]]=None):UnionExecution=union.replay(id,tasks)
+  def replay(steps:Option[Seq[String]]=None):UnionExecution=union.replay(id,steps)
   def status():JsonNode=union.remote.action(union.origin,"job_status",body)
   def cancel():JsonNode=union.remote.action(union.origin,"cancel_job",body)
   def events(after:Long=0):UnionEvents=synchronized {
@@ -89,7 +94,7 @@ final class UnionResults private[client](in:BinarySource,success:()=>Unit,abort:
     if(closed)return false
     if(complete){close();return false}
     try {
-      val frame=dacp.OperatorFrames.decode(in.next().getOrElse(throw new IllegalArgumentException("truncated Union result")))
+      val frame=xstream.execution.OperatorFrames.decode(in.next().getOrElse(throw new IllegalArgumentException("truncated Union result")))
       val bytes=frame.data;val m=Json.mapper.readTree(frame.metadata);val kind=m.path("type").asText;val port=m.path("port").asText
       kind match {
         case "attempt_failed"=>

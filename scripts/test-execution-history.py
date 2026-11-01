@@ -43,7 +43,7 @@ def main():
                         assert time.monotonic()<deadline
                         time.sleep(.1)
                 def run(code):
-                    job=yaml.safe_dump(dict(name='history-test',tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/input',view='bytes')),dict(id='run',operator=dict(runtime='python@1.0',source=code+"\ndef infer_outputs(inputs, params):\n    return {'outputs': {'result': inputs['source']}, 'diagnostics': []}\n"),inputs={'source':'read'},params={'output_format':'csv'})],outputs={'result':'run'}))
+                    job=yaml.safe_dump(dict(name='history-test',steps=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/input',view='bytes')),dict(id='run',operator=dict(runtime='python@1.0',source=code+"\ndef infer_outputs(inputs, params):\n    return {'outputs': {'result': inputs['source']}, 'diagnostics': []}\n"),inputs={'source':'read'},params={'output_format':'csv'})],outputs={'result':'run'}))
                     return Job.run(origin,job,timeout=30,**CREDS)
                 with run("def process(inputs, params):\n    yield from inputs['source']\n") as stream:
                     assert list(stream)[-1]['type']=='complete'
@@ -68,7 +68,7 @@ def main():
                 assert all('def process' not in json.dumps(r) for r in workers)
                 listing=subprocess.run([str(NODE.with_name('dacp-admin')),'list-history',str(state/'executions')],capture_output=True,text=True,check=True)
                 assert len(json.loads(listing.stdout))==7
-                print('PASS: ordinary Flight jobs and worker tasks persist success, failure, cancellation, timing, correlation and live CLI history')
+                print('PASS: ordinary Flight jobs and worker steps persist success, failure, cancellation, timing, correlation and live CLI history')
             except BaseException:
                 log.flush();log.seek(0);print(log.read()[-15000:]);raise
             finally:

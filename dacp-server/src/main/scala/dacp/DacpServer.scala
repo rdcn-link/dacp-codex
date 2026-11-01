@@ -1,5 +1,9 @@
 package dacp
 
+import _root_.xstream.connector.dacp.wire.{Tls}
+
+import _root_.xstream.engine.{JobEngine}
+
 import _root_.xstream.data._
 
 import java.nio.file.Path
@@ -11,7 +15,7 @@ import scala.util.control.NonFatal
 final class DacpServer private(config:Config) extends AutoCloseable {
   private var state="built"
   private var allocator:RootAllocator=null
-  private var tasks:TaskService=null
+  private var steps:TaskService=null
   private var engine:JobEngine=null
   def jobEngine:JobEngine=synchronized {require(engine!=null,"server is not started");engine}
   private var union:Option[UnionWorker]=None
@@ -32,10 +36,10 @@ final class DacpServer private(config:Config) extends AutoCloseable {
       config.accessLog
       config.executionHistory
       engine=new JobEngine(config,allocator)
-      tasks=new TaskService(config,allocator,engine.executor,Some(engine))
+      steps=new TaskService(config,allocator,engine.executor,Some(engine))
       union=config.union.map(s=>new UnionWorker(config,s,allocator))
       flightThreads=java.util.concurrent.Executors.newFixedThreadPool(128)
-      flight=dacp.union.Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),new Producer(config,allocator,Some(tasks),union)),new dacp.union.Tls(config.cert,config.key,config.ca),Some(config.credentials))
+      flight=dacp.union.Rpc.secure(FlightServer.builder(allocator,Location.forGrpcTls(config.host,config.port),new Producer(config,allocator,Some(steps),union)),new xstream.connector.dacp.wire.Tls(config.cert,config.key,config.ca),Some(config.credentials))
         .maxInboundMessageSize(dacp.union.Rpc.MaxMessage).executor(flightThreads).build()
       flight.start();union.foreach(_.start());startedAt=System.currentTimeMillis()
       if(config.web.enabled){dashboard=new NodeDashboard(config,flight.getPort,startedAt,()=>union.toVector.flatMap(_.executionSnapshots),()=>Option(s3).map(_.snapshot).getOrElse(dacp.union.Json.obj().put("enabled",config.s3.enabled).put("state",if(config.s3.enabled)"starting"else "disabled")));dashboard.start();config.runningWebUrl=Some(dashboard.publicUrl)}
@@ -59,7 +63,7 @@ final class DacpServer private(config:Config) extends AutoCloseable {
       state="closed"
       config.runningWebUrl=None
       var failure:Throwable=null
-      val resources=Option(s3).toSeq++Option(dashboard).toSeq++union.toSeq++Option(tasks).toSeq++Option(flight).toSeq++Option(flightThreads).toSeq.map(pool=>new AutoCloseable {
+      val resources=Option(s3).toSeq++Option(dashboard).toSeq++union.toSeq++Option(steps).toSeq++Option(flight).toSeq++Option(flightThreads).toSeq.map(pool=>new AutoCloseable {
         def close():Unit={pool.shutdownNow();require(pool.awaitTermination(10,java.util.concurrent.TimeUnit.SECONDS),"Flight handlers failed to stop")}
       })++Option(engine).toSeq++Seq(config)++Option(allocator).toSeq
       resources.foreach(r=>try r.close()catch{case NonFatal(e)=>if(failure==null)failure=e else failure.addSuppressed(e)})

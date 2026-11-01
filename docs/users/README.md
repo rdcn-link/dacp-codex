@@ -2,7 +2,7 @@
 
 [中文](README_zh.md) · [Documentation](../README.md) · [Developer guide](../developers/README.md)
 
-Job inputs and outputs use `task[:port]`, defaulting to `result`. External data enters through `read_item@1.0`; only stream connections establish dependencies. See [streaming jobs](../jobs.md).
+Job inputs and outputs use `step[:port]`, defaulting to `result`. External data enters through `read_item@1.0`; only stream connections establish dependencies. See [streaming jobs](../jobs.md).
 
 For people browsing data, using SDKs, running operators, and configuring DACP nodes with existing plugins. Commands below run from the project root unless stated otherwise. To implement a new backend, format, or operator, use the developer guide.
 
@@ -24,7 +24,7 @@ A Dataset is a logical namespace and may contain both files and SQL tables. Admi
 
 ## Quick start
 
-The data service requires JDK 17, sbt 1.10.x, and Python 3.10+. Browsing data does not require Docker; configure Docker when you want to run container tasks.
+The data service requires JDK 17, sbt 1.10.x, and Python 3.10+. Browsing data does not require Docker; configure Docker when you want to run container steps.
 
 From the project directory, install the Python SDK, generate local example certificates, and start the server:
 
@@ -230,7 +230,7 @@ Directory Datasets expose paths relative to their root, such as `/reports/orders
 
 SQL Dataset `tables` bind public paths to private tables in the selected connection; tables are not automatically exposed. `mixed` retains explicit mappings and mixed-source flexibility. Every Dataset must explicitly specify `provider`.
 
-The default example provides `data1` and `csv_data` (mixed), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](../../examples/sql/README.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](../dataset-providers.md).
+The default example provides `data1` and `csv_data` (mixed), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](../../examples/sql/README.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers.md).
 
 ### Formats and views
 
@@ -254,7 +254,7 @@ Browse ZIP, TAR, and compressed TAR entries through paths such as `/archive/repo
 
 ZIP listings read the directory index. TAR requires a sequential scan, and `.tar.gz` / `.tgz` also requires decompression, so initial listings and reads can be slow for large archives. Reading stages only the requested entry into a temporary file. Nested containers are not expanded; `.bz2`, `.xz`, and `.zst` currently remain ordinary binary data.
 
-See the [technical reference](../reference.md) for format details, Excel behavior, archive limits, and schema rules, and [format extensions](../format-handlers.md) for third-party handler development.
+See the [technical reference](../reference.md) for format details, Excel behavior, archive limits, and schema rules, and [format extensions](https://github.com/rdcn-link/xstream-codex/blob/main/docs/format-handlers.md) for third-party handler development.
 
 ### Metadata and counting
 
@@ -264,9 +264,9 @@ The example server enables `count_file_records_on_startup: true`: mixed file map
 
 Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Saved file counts become unknown when size or modification time changes. Restart to repopulate them, or use `count` to request the latest value explicitly; explicit requests do not update saved listing counts. Parquet can still obtain counts from its footer. Metadata is not an atomic snapshot with subsequent reads.
 
-## Collaboration and tasks
+## Collaboration and steps
 
-DACP executes YAML Jobs through the embedded XStream engine. Users describe logical stream dependencies without assigning execution nodes. Union resolves Item locations and plans node-local subjobs automatically; member collaboration uses mutual TLS and node-issued service credentials. Eligible node subjobs [share one container and process](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion.md), while other tasks execute independently; named ports consume data-item streams and send output directly to clients or downstream tasks, without saving output datasets.
+DACP executes YAML Jobs through the embedded XStream engine. Users describe logical stream dependencies without assigning execution nodes. Union resolves Item locations and plans node-local subjobs automatically; member collaboration uses mutual TLS and node-issued service credentials. Eligible node subjobs [share one container and process](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion.md), while other steps execute independently; named ports consume data-item streams and send output directly to clients or downstream steps, without saving output datasets.
 
 Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, configure an operator repository containing approved operators and start the server. Stop the quick-start server first if it is still running:
 
@@ -295,9 +295,9 @@ Operators share dependency environments and small code packages. The independent
 
 DACP metadata is anonymous over TLS. Data reads require a token whose subject has reader or runner; execution and inference require runner. Union collaboration uses mutual TLS and service credentials. No Dataset/Item ACL is configured. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
 
-Unpublished physical files and database tables are not automatically exposed. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and tasks are not restored after restart. See the [technical reference](../reference.md#protocol-and-configuration) for full configuration and protocol details.
+Unpublished physical files and database tables are not automatically exposed. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and steps are not restored after restart. See the [technical reference](../reference.md#protocol-and-configuration) for full configuration and protocol details.
 
-In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`; `--source` and `--code` are unsupported. Servers default to NORMAL and reject source tasks at both coordinator and execution nodes. See [source operators](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md) for configuration, Python/Scala examples, and the plugin contract.
+In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`; `--source` and `--code` are unsupported. Servers default to NORMAL and reject source steps at both coordinator and execution nodes. See [source operators](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md) for configuration, Python/Scala examples, and the plugin contract.
 
 Native executables can use stdin/stdout through the `command` executor without implementing the DACP protocol in the program. It supports one bytes input and output, with execution isolated inside a container. See [configuration and publication](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands.md) and the [C example](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/native/README.md).
 

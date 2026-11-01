@@ -83,43 +83,6 @@ SQLGlot 在本地把语句解析为类型化扫描表达式，服务器不接收
 
 当前拒绝关联、别名、限定列引用、CTE、子查询、多语句、排序、分组、聚合、计算列、任意函数和 offset，不静默忽略不支持的子句。路径不存在或无效、未知列、字面量类型不合法或无 records 能力时报告错误，Shell 保持连接。
 
-## 表达式语义
+## 语义与扩展实现
 
-- 引用精确匹配公开 Arrow 顶层字段，区分大小写。不支持嵌套遍历、列间比较、算术、排序、聚合和 offset。
-- 比较为 `eq`、`ne`、`lt`、`le`、`gt`、`ge`，以及 `in`、`is_null`、`is_not_null`；布尔表达式为 `and`、`or`、`not`。
-- 空记录参与比较得到 unknown。布尔逻辑为 true/false/unknown，只有 true 匹配。例如 `NOT (temperature > 20)` 同样排除空温度，需要显式空值检查才能保留。
-- 不允许 null 字面量或 `in` 中的 null。空 `in` 恒为 false，包括空记录。
-- 字面量携带明确类型和规范文本，保留 decimal/整数精度。整数必须处于列范围；decimal 必须能按声明精度和 scale 表示；浮点列接受整数和有限浮点数。不进行字符串转数字。
-- 字符串按 Unicode 标量顺序区分大小写比较，不使用区域排序或正规化。布尔 false 小于 true。NaN 与普通字面量不相等且不满足有序比较；正负零相等。拒绝 NaN/无穷字面量。
-- 日期使用日历日期。带时区时间戳按 UTC 瞬间比较，不带时区按本地日期时间比较，不能混用。Python 使用 `date`、`datetime`、`Decimal`；Scala 使用 `LocalDate`、`LocalDateTime`、`Instant`/`OffsetDateTime`、`BigDecimal`。
-- binary、list、map、struct 等不支持类型可投影和检查空值，不能与普通字面量比较。目前拒绝字典编码的扫描流。
-
-未知字段、重复/空投影、无效字面量、负限制和畸形表达式明确失败。读流时在输出批次前校验，schema 推断可能先读样本。谓词最多 32 层、1,024 个节点，每个 `in` 最多 10,000 个成员。
-
-投影保留请求列顺序，省略则返回所有列。谓词可以引用未输出的列。限制为非负有符号 64 位整数，跨批次全局生效。零只返回投影后的 schema。到达限制后停止上游并释放资源，读取器可能已缓冲一个批次、JDBC fetch 窗口或 Parquet row group。保留源顺序，但独立读取之间不保证稳定顺序。
-
-## 执行和源端下推
-
-| 数据源 | 当前行为 |
-|---|---|
-| JDBC SQL | 整数、decimal、布尔和空值谓词使用预编译参数；投影包含输出及过滤列，只有完整谓词已处理时设置 JDBC 最大行数。 |
-| DACP Parquet | Avro/Parquet 列投影；支持的有符号整数谓词传给读取器，用于记录及可用 row-group 剪枝。 |
-| CSV、NDJSON、Excel | 服务器有界批次过滤、投影，到达限制后提前终止。 |
-| 外部提供者或原生结构子对象 | 公共流式回退，或语义等价的插件扫描实现。 |
-
-下推只是优化。SQL/Parquet 下推后公共求值器仍检查原谓词，不支持的部分留给公共求值器。合取可部分下推；析取必须保持所有匹配行的安全超集。限制绝不能放在剩余过滤之前。SQL 中受排序规则影响的字符串比较和浮点比较交给公共求值器。
-
-授权仍针对公开 Item 路径。扫描只包含公开字段和字面量，不包含物理路径、SQL 标识或可执行查询。插件日志应把谓词视为潜在敏感数据。
-
-## 插件实现契约
-
-独立 `xstream-execution-api` 提供 `Literal`、`Predicate`、`Scan`、`BoundScan`、`ScanStreams`。
-
-- `access.requireView(path, DataViews.Records).open(request, context)` 使用类型化 `Scan`；`BatchDatasetAccess.readScan` 默认使用 `ScanStreams` 对 Arrow 批次作有界变换。
-- `FormatHandler.scan(source, options, request, allocator, batch, sample, receiver, demand)` 默认包装 records 读取器，适用于 directory、mixed 和暂存归档条目。
-- 结构化子对象使用 `DataViews.Records`，科学格式插件可查询原生 records，无需暴露物理文件或展开数组。
-- 优化后端时先用 `request.bind(schema)` 对完整公开 schema 校验完整请求，再翻译；过滤完成前保留谓词列。需要时使用正确引用的标识和绑定值。
-- 覆盖实现负责完整语义。部分下推时通过 `ScanStreams.stream(request, allocator, receiver) { filtered => ... }` 传递源批次，用源 root 启动 `filtered` 并通过它输出，使其负责剩余过滤、投影和全局限制。保留原谓词做最终检查。
-- 保持同步异常传播、背压/取消及 `finally` 清理。到达限制后在当前批次结束时展开并关闭读取器，不吞掉 `start`、`putNext` 或 demand 的异常。
-
-传输、语义、下推和资源测试见 [ScanSpec](../dacp-server/src/test/scala/dacp/ScanSpec.scala)、[SqlSpec](../dacp-server/src/test/scala/dacp/SqlSpec.scala)。
+通用表达式、源端下推和插件契约见 [XStream 记录扫描](https://github.com/rdcn-link/xstream-codex/blob/main/docs/records-scans_zh.md)。DACP 负责请求解码、授权和传输，数据层执行扫描。

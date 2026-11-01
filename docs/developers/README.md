@@ -6,7 +6,7 @@ The built-in `read_item@1.0` handles transport only; Dataset/Item plugins own ba
 
 For contributors implementing operators, dataset providers, formats, executors, SDKs, or the server. For connecting to a node, browsing data, configuring built-in providers, and running jobs, start with the user guide. Commands below run from the project root unless stated otherwise.
 
-For catalog-level extensions and application startup, see [DataCatalog](../dataset-catalogs.md) and the [embedded server](../embedded-server.md).
+For catalog-level extensions and application startup, see [DataCatalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md) and the [embedded server](../embedded-server.md).
 
 ## Architecture and extension points
 
@@ -31,73 +31,9 @@ Core owns contracts, discovery and lifecycle, transport, authorization, namespac
 
 Operator outputs are transient streams. There is no result-dataset registration, saved-result mode or output TTL. Bytes, records, arrays and sequences share Arrow streaming contracts; scientific dimensions remain explicit. General pipeline scheduling and fan-out are not implemented.
 
-## Extend datasets and formats
+## Integrate XStream data extensions
 
-See [plugin contribution requirements](../plugins.md), [dataset provider contracts](../dataset-providers.md), [format and container handlers](../format-handlers.md), and [records query semantics](../records-scans.md). The example below illustrates provider implementation, configuration ownership and service registration.
-
-### User-defined Dataset providers
-
-A user-defined provider is a server-side Scala/JVM plugin. `provider` selects the plugin; `source` supplies private parameters for this Dataset instance. Multiple Datasets can use the same provider with different parameters. The plugin validates its settings; clients see public paths and data.
-
-This complete provider example publishes one CSV file at the fixed public path `/records`:
-
-```scala
-package example
-
-import dacp._
-import java.nio.file.Path
-
-class CsvFileProvider extends DatasetProvider {
-  val id = "csv-file"
-
-  def create(d: DatasetDefinition, context: DatasetContext): PublishedDataset = {
-    require(d.source.keySet.subsetOf(Set("file")),
-      "unknown csv-file parameter")
-    require(d.source.contains("file"), "csv-file requires source.file")
-    require(d.items.isEmpty,
-      "csv-file does not accept item mappings")
-    val file = Path.of(d.source("file").toString)
-    context.createDataset(DatasetDefinition("mixed", items = Map(
-      "/records" -> Map[String,Object]("file" -> file.toString, "format" -> "csv")
-    )))
-  }
-}
-```
-
-Compile the code into a JAR against the standalone `xstream-execution-api`, using the matching API and Scala versions and a `Provided` dependency. Include this service registration file inside the JAR:
-
-```text
-META-INF/services/xstream.data.DatasetProvider
-```
-
-Its contents are the implementation class name:
-
-```text
-example.CsvFileProvider
-```
-
-Place the plugin and its required dependency JARs in `plugin_directory` (without duplicating the API or dependencies supplied by the server), then restart with this configuration fragment merged with listener and TLS settings:
-
-```yaml
-plugin_directory: /opt/dacp/plugins
-datasets:
-  measurements:
-    provider: csv-file
-    source:
-      file: /private/measurements.csv
-```
-
-Clients read `/records` without receiving `source.file`. Plugins needing per-item mappings receive them through `items` by default, or can override `DatasetProvider.itemSettingsKey` to declare their own configuration key; parsed mappings are always available as `definition.items`. `source` can contain nested plugin-specific parameters; the plugin must validate types, required values, and unknown parameters.
-
-Directory providers use `reader_overrides`, SQLDB uses `tables`, and mixed uses `items`. Directory and SQLDB reject `items`. Native backends such as a future MongoDB provider can implement `PublishedDataset` and `DatasetAccess` directly for listing, metadata, counting, and streaming without mapping to files or SQL. See the [provider development guide](../dataset-providers.md) for interfaces, cancellation, and resource cleanup requirements. MongoDB is not implemented yet.
-
-### File and structured-content plugins
-
-File plugins implement `FormatHandler` and register in `META-INF/services/xstream.data.FormatHandler`. Each handler validates its private `options` parameters; for example, Excel uses `options: {sheet: Orders, header_row: 2}`. Common `format` and `schema` remain at the top level of reader settings.
-
-To browse logical objects inside a file, implement `StructuredFileHandler` and register through the same format service file. Its `openStructure` returns `DatasetAccess` and can stream internal objects directly without extracting temporary files. The file root is a folder with original bytes; children explicitly advertise `records` or `bytes`. Archive readers can implement `ContainerReader` and register in `META-INF/services/xstream.data.ContainerReader`, without modifying core format registries.
-
-The standalone API lives in [xstream-execution-api](https://github.com/rdcn-link/xstream-codex/tree/main/xstream-execution-api). Runnable contributions and build/install instructions are in [examples/plugins](../../examples/plugins/README.md). `PluginChecks.listing` provides reusable metadata contract checks. The server closes request-scoped access handles and releases provider resources on shutdown. XStream data plugins implement NetCDF/FITS/FASTA parsing and arrays/sequences over standard Arrow streams. Contributors expose internal file objects through shared contracts, without silently flattening arrays into records.
+XStream owns Dataset providers, format and container handlers, and records query semantics. See [XStream extension development](http://xstream.conoai.cn/docs.html) for implementation and registration. DACP administrators install plugins and dependencies in `plugin_directory` and select providers in node configuration; see [plugin integration](../plugins.md).
 
 ## Development and validation
 
@@ -132,7 +68,7 @@ The protocol is defined in [proto/dacp.proto](../../proto/dacp.proto). Source co
 
 After staging the server, building the referenced runtimes and preparing example certificates, run `.venv/bin/python scripts/test-native-execution.py` with Docker access for native streaming, partial-failure and cancellation checks. `scripts/test-source-submission.py` requires the DEBUG server from `examples/source-debug.yaml`; it checks Python/Scala heredocs. See each script and the linked guides for prerequisites and test ports.
 
-The [technical reference](../reference.md) documents transport and configuration. Keep tests, examples, and Chinese/English documentation synchronized. This project is unreleased: replace superseded interfaces directly, without compatibility aliases or migration fallbacks.
+The [technical reference](../reference.md) documents transport and configuration. Keep tests, examples, and Chinese/English documentation synchronized. Public contracts, callers and examples must use consistent names and field definitions.
 
 ## Operator review evidence
 
@@ -155,3 +91,9 @@ Source-only operator publication: [submission, isolated builds, review and trust
 ## XStream integration tests
 
 The engine, data and operator SDKs, inference and runtime tools live in [xstream-codex](https://github.com/rdcn-link/xstream-codex). Repository service and source-review integration tests live in the independent [operator repository](https://github.com/rdcn-link/xstream-operator-repository). Build DACP against published XStream artifacts. Development integration fixtures requiring operator example sources accept an explicit `XSTREAM_SOURCE_ROOT=/path/to/xstream-codex`; this is a test-fixture path, not a production build dependency. Install `xstream-operator-sdk/python` into the test Python environment for climate operator examples.
+
+## Remote execution adaptation and protocol synchronization
+
+XStream defines protocol-independent execution and data-access contracts. The DACP connector implements computation and data access through `ExecutionTargetProvider` and `RemoteItemProvider`. Union converts member/data locations into public planning inputs and reuses `GraphPlacement` for step ranking. Designer only authors Jobs.
+
+`proto/dacp.proto` is the authoritative metadata specification. Export a connector snapshot with `python3 scripts/export-xstream-protocol.py /path/to/dacp.proto`; add `--check` to verify synchronization. This is an explicit integration check, not a prerequisite for standalone XStream builds.

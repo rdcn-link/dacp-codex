@@ -1,7 +1,7 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const sandbox={window:{}};vm.createContext(sandbox);vm.runInContext(fs.readFileSync('dacp-union-server/src/main/resources/web/dag.js','utf8'),sandbox);
-const tasks=['a','b','c'].map(id=>({id,node:'server A',node_identity:'A',operator:'example@1',state:'running',inputs:[]}));
-const job={job_id:'test',state:'running',tasks,outputs:{},nodes:{A:{execution_units:[{id:'shared',mode:'shared_process',steps:['a','b'],runtime_image:'sha256:runtime',runtime_name:'python-arrow',runtime_version:'1.0',runtime_dependencies:{python:'3.12'}},{id:'c',mode:'isolated_step',steps:['c'],reason:'boundary'}]}},placement_decisions:[{step:'a',reason:'data_locality'}]};
+const steps=['a','b','c'].map(id=>({id,node:'server A',node_identity:'A',operator:'example@1',state:'running',inputs:[]}));
+const job={job_id:'test',state:'running',steps,outputs:{},nodes:{A:{execution_units:[{id:'shared',mode:'shared_process',steps:['a','b'],runtime_image:'sha256:runtime',runtime_name:'python-arrow',runtime_version:'1.0',runtime_dependencies:{python:'3.12'}},{id:'c',mode:'isolated_step',steps:['c'],reason:'boundary'}]}},placement_decisions:[{step:'a',reason:'data_locality'}]};
 const fmt={bytes:String,time:String,labels:{},terminal:new Set()};
 const model=sandbox.window.DacpDag.buildData(job,new Map(),fmt);
 const a=model.data.nodes.find(n=>n.id==='task:a'),b=model.data.nodes.find(n=>n.id==='task:b'),c=model.data.nodes.find(n=>n.id==='task:c');

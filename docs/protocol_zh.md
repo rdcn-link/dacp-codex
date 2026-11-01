@@ -25,6 +25,8 @@ DACP（Data Access and Collaboration Protocol，数据访问与协作协议）�
 
 Union 的共享传输模块对 JSON 消息实施 1 MiB 上限。具体动作、ticket 和字段以 [Union 协议](union_zh.md)、[技术参考](reference_zh.md)、`proto/dacp.proto` 和 `dacp-union-protocol` 实现为准。算子进程的端口帧协议属于执行器接口，见[算子流契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams_zh.md)，不等同于客户端 Flight 接口。
 
+DACP 与其可选 XStream 连接器共用 `xstream-dacp-protocol` 中的 Flight 客户端连接、证书、流量统计和 Arrow 视图传输实现。`dacp-union-protocol` 补充 Union 服务消息与路由。XStream 的通用执行 API 和引擎不依赖这两个传输模块。
+
 ## 身份、信任和授权
 
 普通 Flight 客户端使用 TLS 和 Bearer Token。Union 访问成员使用双向 TLS 与节点签发的服务凭据。节点间流由精确执行计划授权，仅信任 CA 不授予访问权限。S3 使用独立的 SigV4 密钥。授权由服务器执行，与 SDK 类型无关。详见[安全方案](security_zh.md)。
@@ -50,3 +52,11 @@ Union 的共享传输模块对 JSON 消息实施 1 MiB 上限。具体动作、t
 ### 单机任务的执行策略
 
 Flight `DoExchange` 的 `OperatorRequest` 在任务 YAML 之外接收 `execution_policy_yaml`（YAML 字节）、`retry_aware`（布尔值）和 `replay_from`（原执行 ID）。重放时 `job_yaml` 置空，服务器恢复原任务与策略，校验原提交者及有效物化输出。工作步骤请求不接受这些作业级字段。结果流先发 `execution` 元数据帧公布执行 ID；重试前发送 `attempt_failed`，客户端回调清空暂定结果后接收新一轮 `start/data/end`。`complete` 后仍须确认 Flight 成功结束。断开或关闭流即取消执行。详见[执行策略](materialization_zh.md)。
+
+## 当前调用身份的能力查询
+
+空请求体的 `dacp.capabilities` action 返回 `service`（`job_execute`、`job_cancel`、`result_stream`）及 `permissions`（`catalog_read`、`item_metadata`、`item_read`、`job_submit`）。元数据匿名可查，提交权限按当前凭据计算。结果仅用于提示和规划，实际调用仍授权；不保证某个具体 Job 的算子、环境和容量可用。节点与 Union 提供同一查询。
+
+Python：`Source.capabilities("dacp://host:18861", token=token)`；Scala：`Source.capabilities("dacp://host:18861", TlsConfig(tokenFile=Some(tokenPath)))`。凭据不进入返回值。
+
+DACP 是 XStream 远程数据与执行能力的一种实现，公共接口和规划见 [XStream 执行目标](https://github.com/rdcn-link/xstream-codex/blob/main/docs/execution-targets_zh.md)。

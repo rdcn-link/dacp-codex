@@ -16,9 +16,9 @@ async function renderDag(j){
  if(planViews[activeSubjob?activePhysical:activePlan]!=='dag')return;
  const logical=activePlan==='logical';
  if(logical&&!j.logical_plan)return;
- const graph=activeSubjob?subjobGraph(j,activeSubjob):logical?{...j.logical_plan,job_id:j.job_id+':logical',logical:true,nodes:{},tasks:j.logical_plan.tasks.map(t=>({...t,node:'Logical plan'})),output_route:'Job result'}:j;
+ const graph=activeSubjob?subjobGraph(j,activeSubjob):logical?{...j.logical_plan,job_id:j.job_id+':logical',logical:true,nodes:{},steps:j.logical_plan.steps.map(t=>({...t,node:'Logical plan'})),output_route:'Job result'}:j;
  $('plan-dag-title').textContent=activeSubjob?'Dispatched sub-job · '+activeSubjob.node:logical?'Logical plan DAG':'Physical plan DAG';
- $('dag-overview').textContent=(logical?'':new Set(graph.tasks.map(t=>t.node)).size+' execution nodes · ')+graph.tasks.length+' steps · '+Object.keys(graph.outputs).length+' outputs';
+ $('dag-overview').textContent=(logical?'':new Set(graph.steps.map(t=>t.node)).size+' execution nodes · ')+graph.steps.length+' steps · '+Object.keys(graph.outputs).length+' outputs';
  try {await dagViewer.update(graph,logical?new Map():previous,{bytes,time,duration,labels,terminal});$('dag-error').hidden=true;}
  catch(e){$('dag-error').textContent='Graph rendering failed: '+e.message;$('dag-error').hidden=false;}
 }
@@ -56,23 +56,23 @@ document.querySelector('.plan-tabs').addEventListener('keydown',event=>{
 document.querySelector('.plan-panel').addEventListener('click',e=>{const b=e.target.closest('[data-plan-view]');if(!b)return;const [plan,view]=b.dataset.planView.split(':');activePlan=plan==='subjob'?'physical':plan;planViews[plan==='subjob'?activePhysical:plan]=view;showPlan();});
 // Keep external producers outside the dispatched member's execution group.
 function subjobGraph(j,subjob){
- const ids=new Set(subjob.steps||[]),all=new Map(j.tasks.map(t=>[t.id,t]));
- const tasks=j.tasks.filter(t=>ids.has(t.id)).map(t=>({...t,inputs:t.inputs.map(b=>{
+ const ids=new Set(subjob.steps||[]),all=new Map(j.steps.map(t=>[t.id,t]));
+ const steps=j.steps.filter(t=>ids.has(t.id)).map(t=>({...t,inputs:t.inputs.map(b=>{
   if(!b.task||ids.has(b.task))return b;
   const producer=all.get(b.task);
   return {...b,task:undefined,remote:true,upstream_task:b.task,upstream_port:b.output_port,upstream_origin:producer?.node,uri:producer?.node,view:b.view||'stream'};
  })}));
  const outputs={};
  for(const [label,b]of Object.entries(j.outputs))if(ids.has(b.task))outputs[label]=b;
- for(const t of j.tasks)if(!ids.has(t.id))for(const b of t.inputs)if(ids.has(b.task))outputs[b.task+':'+b.output_port]={task:b.task,port:b.output_port};
- return {...j,job_id:j.job_id+':subjob:'+subjob.node,tasks,outputs,output_route:'Downstream consumers / Union'};
+ for(const t of j.steps)if(!ids.has(t.id))for(const b of t.inputs)if(ids.has(b.task))outputs[b.task+':'+b.output_port]={task:b.task,port:b.output_port};
+ return {...j,job_id:j.job_id+':subjob:'+subjob.node,steps,outputs,output_route:'Downstream consumers / Union'};
 }
 // Topologically order member sub-jobs; break member-level cycles by logical step order.
 function orderSubjobs(j){
- const jobs=j.sub_jobs||[],owner=new Map(),position=new Map(j.tasks.map((t,i)=>[t.id,i]));
+ const jobs=j.sub_jobs||[],owner=new Map(),position=new Map(j.steps.map((t,i)=>[t.id,i]));
  jobs.forEach((job,i)=>(job.steps||[]).forEach(step=>owner.set(step,i)));
  const next=jobs.map(()=>new Set()),incoming=jobs.map(()=>0),remaining=new Set(jobs.map((_,i)=>i));
- for(const t of j.tasks)for(const b of t.inputs||[]){
+ for(const t of j.steps)for(const b of t.inputs||[]){
   const from=owner.get(b.task),to=owner.get(t.id);
   if(from!==undefined&&to!==undefined&&from!==to&&!next[from].has(to)){next[from].add(to);incoming[to]++;}
  }
@@ -88,7 +88,7 @@ function orderSubjobs(j){
 function renderPlanning(j){
  $('resolved-job-script').textContent=DacpJobScript.format(j.job_yaml);
  const tabs=$('physical-plan-tabs');tabs.querySelectorAll('[data-subjob-tab]').forEach(b=>b.remove());
- const complete=tabs.querySelector('[data-physical="overview"]'),locations=[...new Set(j.tasks.map(t=>t.node).filter(Boolean))].join(' · ');
+ const complete=tabs.querySelector('[data-physical="overview"]'),locations=[...new Set(j.steps.map(t=>t.node).filter(Boolean))].join(' · ');
  complete.replaceChildren(el('span','Complete plan','plan-tab-title'),el('span',locations||'Placement pending','plan-tab-subtitle'));complete.title=locations||'Placement pending';
  (j.sub_jobs||[]).forEach((sub,index)=>{
   const key='subjob-'+index;planViews[key]??='dag';

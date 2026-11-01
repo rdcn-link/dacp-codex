@@ -343,10 +343,10 @@ def test_run_heredoc_source_preserves_indentation(browser, monkeypatch):
     monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
     b.onecmd('run --runtime python@1.0 --input source=1 <<STOP')
     import json
-    task = yaml.safe_load(calls[0][1])['tasks'][-1]
+    task = yaml.safe_load(calls[0][1])['steps'][-1]
     assert task['operator'] == {'runtime':'python@1.0', 'source':"def process(inputs, params):\n    yield b'hi'\n"}
     assert task['inputs']['source'] == 'read_1'
-    reader = yaml.safe_load(calls[0][1])['tasks'][0]
+    reader = yaml.safe_load(calls[0][1])['steps'][0]
     assert reader == {'id':'read_1','operator':'read_item@1.0','inputs':{},'params':{'uri':'dacp://localhost/data1/orders','view':'bytes'}}
 
 
@@ -387,7 +387,7 @@ def test_run_repository_id(browser, monkeypatch):
     monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
     b.onecmd('run identity@1.1 --input source=1')
     import json
-    assert yaml.safe_load(calls[0][1])['tasks'][-1]['operator'] == 'identity@1.1'
+    assert yaml.safe_load(calls[0][1])['steps'][-1]['operator'] == 'identity@1.1'
 
 
 class JobEvents:
@@ -581,7 +581,7 @@ def test_run_zero_input_source(browser, monkeypatch):
     monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
     b.onecmd("run live_ticks@1.0 --params '{\"max_records\":3}'")
     import json
-    task = yaml.safe_load(calls[0][1])['tasks'][0]
+    task = yaml.safe_load(calls[0][1])['steps'][0]
     assert task['inputs'] == {}
     assert task['params'] == {'max_records': 3}
 
@@ -628,9 +628,9 @@ def test_run_builds_only_stream_references_with_explicit_item_sources(browser, m
     b.onecmd('run join@1 --input left=1 --input right=2 --view records')
     job = yaml.safe_load(calls[0][1])
     assert job['outputs'] == {'result': 'run'}
-    assert job['tasks'][-1]['inputs'] == {'left':'read_1','right':'read_2'}
-    assert [t['params']['view'] for t in job['tasks'][:-1]] == ['records','records']
-    assert all(t['inputs'] == {} and t['operator'] == 'read_item@1.0' for t in job['tasks'][:-1])
+    assert job['steps'][-1]['inputs'] == {'left':'read_1','right':'read_2'}
+    assert [t['params']['view'] for t in job['steps'][:-1]] == ['records','records']
+    assert all(t['inputs'] == {} and t['operator'] == 'read_item@1.0' for t in job['steps'][:-1])
 
 
 @pytest.mark.parametrize('options, expected', [
@@ -667,7 +667,7 @@ def test_submit_loads_variables_json_alongside_policy(browser, monkeypatch, tmp_
     workflow = tmp_path / 'job.yaml'
     variables = tmp_path / 'vars.yaml'
     policy = tmp_path / 'policy.yaml'
-    workflow.write_text('name: demo\ntasks: [{params: {limit: $LIMIT}}]')
+    workflow.write_text('name: demo\nsteps: [{params: {limit: $LIMIT}}]')
     variables.write_text('{"LIMIT":123}')
     policy.write_text('{"timeout_seconds":120}')
     calls = []

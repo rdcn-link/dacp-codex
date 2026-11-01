@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data.files.{ItemProperties}
+
 import _root_.xstream.data._
 
 import org.apache.arrow.memory.BufferAllocator

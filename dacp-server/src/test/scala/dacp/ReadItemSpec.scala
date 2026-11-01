@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.engine.{JobPlan,Jobs,Task}
+import _root_.xstream.execution.{ItemSql,ReadItemParameters}
+
 import _root_.xstream.data._
 
 import org.scalatest.funsuite.AnyFunSuite
@@ -12,11 +15,12 @@ class ReadItemSpec extends AnyFunSuite {
     val t=task(params("uri"->"context:/weather/observations"))
     Jobs.validate(t)
     val local=Jobs.resolveReads(JobPlan(Vector(t),Map("result"->("read","result"))),"dacp://localhost:8815/")
-    assert(Jobs.readBinding(local.tasks.head).get.uri.contains("dacp://localhost:8815/weather/observations"))
+    assert(Jobs.readBinding(local.steps.head).get.uri.contains("dacp://localhost:8815/weather/observations"))
     assert(t.params.get("uri")=="context:/weather/observations")
+    assert(ReadItemParameters.address(params("uri"->"custom://host/weather/a"))=="custom://host/weather/a")
     val remote=task(params("uri"->"dacp://remote:8815/weather/observations"))
-    assert(Jobs.resolveReads(JobPlan(Vector(remote),Map.empty),"dacp://local:8815").tasks.head==remote)
-    Seq(params(),params("path"->"/weather/observations","uri"->"dacp://remote/weather/a"),params("uri"->"context://host/a"),params("uri"->"context:/weather/../a"),params("uri"->"context:/weather"),params("uri"->"https://host/weather/a"),params("uri"->"dacp://token@host/weather/a"),params("uri"->"context:/weather/a?token=secret"),params("uri"->"context:/weather/a","sql"->"SELECT * FROM source","view"->"bytes")).foreach(p=>intercept[IllegalArgumentException](Jobs.validate(task(p))))
+    assert(Jobs.resolveReads(JobPlan(Vector(remote),Map.empty),"dacp://local:8815").steps.head==remote)
+    Seq(params(),params("path"->"/weather/observations","uri"->"dacp://remote/weather/a"),params("uri"->"context://host/a"),params("uri"->"context:/weather/../a"),params("uri"->"context:/weather"),params("uri"->"file:///weather/a"),params("uri"->"dacp://token@host/weather/a"),params("uri"->"context:/weather/a?token=secret"),params("uri"->"context:/weather/a","sql"->"SELECT * FROM source","view"->"bytes")).foreach(p=>intercept[IllegalArgumentException](Jobs.validate(task(p))))
   }
   test("readonly single Item SQL lowers to plugin scans and projects the inferred schema") {
     val scan=ItemSql.parse("SELECT name, id FROM source WHERE (id >= 2 AND name != 'O''Brien') OR id IN (4,5) LIMIT 10;")

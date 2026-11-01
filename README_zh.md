@@ -10,7 +10,7 @@ DACP 基于内嵌的 **XStream 流式执行引擎**，与独立 XStream 共享�
 
 DACP（Data Access and Collaboration Protocol，数据访问与协作协议）的数据模型、传输、信任和协作约定见[协议说明](docs/protocol_zh.md)。
 
-Dataset 列表可由 [DataCatalog 插件](docs/dataset-catalogs_zh.md)动态提供；Scala/JVM 应用可通过 [DacpServer API](docs/embedded-server_zh.md)直接启动节点。
+Dataset 列表可由 [DataCatalog 插件](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)动态提供；Scala/JVM 应用可通过 [DacpServer API](docs/embedded-server_zh.md)直接启动节点。
 
 节点默认提供 [S3 兼容只读服务](docs/s3-service_zh.md)，可使用 S3 客户端列举 dataset bucket 并下载 Item 字节流。
 

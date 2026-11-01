@@ -97,7 +97,7 @@ Excel uses Apache POI 5.5.1 event readers for both XLS and XLSX. Empty headers b
 
 Listings do not parse CSV, NDJSON, or Excel records; their counts remain unknown unless populated at publication. Opening records infers a schema from a bounded sample. Outside optional startup counting, only explicit `count` scans these files; Parquet can obtain its count cheaply from the footer. Excel parsers have a queue of at most 16 rows and stop on close/cancellation; schemas, current batches, individual cells, and POI shared-string dictionaries use additional memory. Large shared-string tables can still require substantial memory. No full worksheet is materialized.
 
-The server extension API is [`FormatHandler`](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/FormatHandler.scala). Providers implement detection, optional cheap metadata, schema, record reading, explicit counting, and cleanup; file bytes use the shared reader. Add a provider JAR and register its public no-argument class in `META-INF/services/xstream.data.FormatHandler`, then restart. Format IDs and extension registrations must be unique; `sql` is reserved for the SQL adapter. The core server and SDKs need no format-specific changes. See [handler development](format-handlers.md).
+The server extension API is [`FormatHandler`](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/xstream-data-core/src/main/scala/xstream/data/FormatHandler.scala). Providers implement detection, optional cheap metadata, schema, record reading, explicit counting, and cleanup; file bytes use the shared reader. Add a provider JAR and register its public no-argument class in `META-INF/services/xstream.data.FormatHandler`, then restart. Format IDs and extension registrations must be unique; `sql` is reserved for the SQL adapter. The core server and SDKs need no format-specific changes. See [handler development](https://github.com/rdcn-link/xstream-codex/blob/main/docs/format-handlers.md).
 
 ## Item properties
 
@@ -134,11 +134,11 @@ Built-in providers are `directory`, `sqldb`, and `mixed`. Each Dataset selects o
 
 Directory Datasets do not follow symlinks. Folder metadata and immediate-child listings do not recursively scan ordinary child directories; `list()` discovers all files and archive entries recursively. Optional startup counting scans initial files; later files are discovered without automatic counting. Reader overrides match public paths without renaming files. SQL bindings or absolute file mappings in a directory Dataset are rejected; use mixed for those combinations.
 
-Dataset providers construct datasets, container readers browse archives, and format handlers interpret content. Future providers such as MongoDB can implement their own listing, metadata, and streaming without pretending to be files or SQL tables, or changing the protocol or SDKs. See the [provider development guide](dataset-providers.md).
+Dataset providers construct datasets, container readers browse archives, and format handlers interpret content. Future providers such as MongoDB can implement their own listing, metadata, and streaming without pretending to be files or SQL tables, or changing the protocol or SDKs. See the [provider development guide](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers.md).
 
 ## Task execution and operators
 
-Task inputs reference only upstream outputs as `task[:port]`, defaulting to `result`. External Items enter through `read_item@1.0` with `params.uri/view`. See [Job format](jobs.md). Outputs are named streams, never saved datasets. The shell supports `run OP --input source=/item` and `submit job.yaml`, and prints results incrementally. Ordinary jobs use TLS and bearer-authenticated Flight DoExchange; pipeline tasks run concurrently with bounded queues. Each output port has at most one downstream consumer; consume multiple inputs in lexical port order.
+Task inputs reference only upstream outputs as `step[:port]`, defaulting to `result`. External Items enter through `read_item@1.0` with `params.uri/view`. See [Job format](jobs.md). Outputs are named streams, never saved datasets. The shell supports `run OP --input source=/item` and `submit job.yaml`, and prints results incrementally. Ordinary jobs use TLS and bearer-authenticated Flight DoExchange; pipeline steps run concurrently with bounded queues. Each output port has at most one downstream consumer; consume multiple inputs in lexical port order.
 
 Operator launch arguments are `operator /input /input/params.json`. Inputs are Arrow IPC FIFOs described by `/input/manifest.json`. Stdout carries framed start/data/end events; diagnostics go to stderr. No output directory, output registration, TTL, or result-dataset URI is used. Parquet conversion uses private ephemeral scratch to complete the footer, then streams bytes.
 
@@ -185,7 +185,7 @@ Configuration in `examples/server.yaml`:
 | `local_operator_library` | Local operator library |
 | `task_peers` | Node origins permitted for task dispatch; the local node is always allowed; no central discovery service |
 | `task_input_prefixes` | Optional execution-node input URI prefix restriction; omitted or empty means no additional prefix restriction |
-| `max_concurrent_tasks` | Concurrency limit for local tasks and control requests (default 2); returns UNAVAILABLE immediately when full |
+| `max_concurrent_tasks` | Concurrency limit for local steps and control requests (default 2); returns UNAVAILABLE immediately when full |
 
 Published node metadata is anonymous over TLS. Reading data requires a reader or runner subject; execution and inference require runner. Union collaboration uses node-issued service credentials and mutual TLS; peer streams must also match exact execution plans.
 
@@ -195,7 +195,7 @@ Server `mode` defaults to `NORMAL`. Inline source requires `DEBUG` at both coord
 
 ## DataCatalog
 
-`data_catalog` selects a catalog provider and passes private plugin settings through `source`; it cannot coexist with nonempty `datasets`. Omission selects the static catalog. See [dynamic catalogs](dataset-catalogs.md) for contracts, JDBC examples, discovery, and authorization. Standard Flight `ListFlights` returns public Dataset URIs and descriptions without additional data grants without Item contents.
+`data_catalog` selects a catalog provider and passes private plugin settings through `source`; it cannot coexist with nonempty `datasets`. Omission selects the static catalog. See [dynamic catalogs](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md) for contracts, JDBC examples, discovery, and authorization. Standard Flight `ListFlights` returns public Dataset URIs and descriptions without additional data grants without Item contents.
 
 ## S3-compatible endpoint
 

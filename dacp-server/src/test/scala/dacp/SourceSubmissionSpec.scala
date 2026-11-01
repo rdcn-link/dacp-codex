@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.engine.{TaskExecutor}
+import _root_.xstream.execution.{ExecutionStoreDefinition,StreamProtocol}
+
 import _root_.xstream.data._
 
 import java.nio.file.{Files,Path}
@@ -20,7 +23,7 @@ class SourceSubmissionSpec extends AnyFunSuite {
     val server=FlightServer.builder(allocator,Location.forGrpcInsecure("127.0.0.1",0),producer).build().start()
     val client=FlightClient.builder(allocator,server.getLocation).build()
     val source="""{"runtime":"python@1.0","source":"def process(inputs, params): yield b'x'"}"""
-    val job=s"""{"name":"source","tasks":[{"id":"read","operator":"read_item@1.0","inputs":{},"params":{"uri":"dacp://localhost:18816/data/item","view":"bytes"}},{"id":"run","operator":$source,"inputs":{"source":"read"}}],"outputs":{"result":"run"}}"""
+    val job=s"""{"name":"source","steps":[{"id":"read","operator":"read_item@1.0","inputs":{},"params":{"uri":"dacp://localhost:18816/data/item","view":"bytes"}},{"id":"run","operator":$source,"inputs":{"source":"read"}}],"outputs":{"result":"run"}}"""
     val worker=s"""{"id":"run","operator":$source,"params":{},"ports":["source"],"sources":["dacp://localhost:18816/data/item"]}"""
     val requests=Seq(Metadata.OperatorRequest.newBuilder().setJobYaml(job).build(),
       Metadata.OperatorRequest.newBuilder().setTaskYaml(com.google.protobuf.ByteString.copyFromUtf8(worker)).build())

@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data.formats.{DelimitedRows}
+
 import _root_.xstream.data._
 
 import java.nio.file.Path

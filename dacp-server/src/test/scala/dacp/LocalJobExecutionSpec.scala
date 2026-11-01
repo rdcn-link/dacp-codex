@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.engine.{ExecutionPolicy,InputBinding,Jobs,LocalJobExecution,Task,TaskExecutor}
+import _root_.xstream.execution.{ExecutionStore,ExecutionStoreDefinition,ExecutionStoreProvider,FrameSource,MaterializationStoreDefinition,OperatorFrame,StreamCancel,StreamProtocol}
+
 import _root_.xstream.operator.inference._
 
 import _root_.xstream.data._
@@ -13,7 +16,7 @@ import scala.jdk.CollectionConverters._
 
 class LocalJobExecutionSpec extends AnyFunSuite {
   private val yaml="""name: local
-    |tasks:
+    |steps:
     |- id: read_a_source
     |  operator: read_item@1.0
     |  inputs: {}
@@ -61,7 +64,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
   private def policy(text:String)=ExecutionPolicy.parse(Json.mapper.readTree(text),plan)
   test("zero-output sink consumes its input stream") {fixtureWithHistory(true){(c,a)=>
     val definition="""name: sink
-      |tasks:
+      |steps:
       | - {id: read, operator: read_item@1.0, inputs: {}, params: {uri: 'dacp://localhost:8815/data/item', view: bytes}}
       | - {id: sink, operator: sink@1, inputs: {source: read}}
       |outputs: {}
@@ -107,7 +110,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
     bytes.reset();val replay=record(c)
     engine.run(plan,p,"alice",replay,Some(r.id),receive,new StreamCancel())
     assert(bytes.toString=="weather\n");assert(upstream.get()==1 && downstream.get()==2)
-    assert(c.executionHistory.get(replay.id).get.path("skipped_tasks").elements.asScala.exists(_.asText=="a"))
+    assert(c.executionHistory.get(replay.id).get.path("skipped_steps").elements.asScala.exists(_.asText=="a"))
     val denied=record(c)
     intercept[IllegalArgumentException](engine.run(plan,p,"mallory",denied,Some(r.id),_=>(),new StreamCancel()))
     c.close();val restarted=c.copy()

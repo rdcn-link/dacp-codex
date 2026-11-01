@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.data.files.{DirectoryAdapter,FileDatasets,PublishedItem}
+import _root_.xstream.data.parquet.{Parquet}
+
 import _root_.xstream.data._
 import org.scalatest.funsuite.AnyFunSuite
 import java.nio.file.{Files, Path}

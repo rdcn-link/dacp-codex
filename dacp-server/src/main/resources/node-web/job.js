@@ -15,10 +15,10 @@ async function renderDag(j){
  if(planViews[activePlan]!=='dag')return;
  const logical=activePlan==='logical';
  if(logical&&!j.logical_plan)return;
- const graph=logical?{...j.logical_plan,job_id:j.job_id+':logical',logical:true,nodes:{},tasks:j.logical_plan.tasks.map(t=>({...t,node:'Logical plan'})),output_route:'Job result'}:j;
+ const graph=logical?{...j.logical_plan,job_id:j.job_id+':logical',logical:true,nodes:{},steps:j.logical_plan.steps.map(t=>({...t,node:'Logical plan'})),output_route:'Job result'}:j;
  const union=j.execution_source==='union';
  $('plan-dag-title').textContent=logical?(union?'Received sub-job DAG':'Logical plan DAG'):(union?'Local execution plan DAG':'Physical plan DAG');
- $('dag-overview').textContent=(logical?'':new Set(j.tasks.map(t=>t.node)).size+' execution nodes · ')+graph.tasks.length+' steps · '+Object.keys(graph.outputs).length+' outputs';
+ $('dag-overview').textContent=(logical?'':new Set(j.steps.map(t=>t.node)).size+' execution nodes · ')+graph.steps.length+' steps · '+Object.keys(graph.outputs).length+' outputs';
  try {await dagViewer.update(graph,logical?new Map():previous,{bytes,time,duration,labels,terminal});$('dag-error').hidden=true;}
  catch(e){$('dag-error').textContent='Graph rendering failed: '+e.message;$('dag-error').hidden=false;}
 }
@@ -63,7 +63,7 @@ async function detail(){const id=selected;if(!id)return;const r=await api('/api/
  document.querySelector('#logical-plan .plan-view-tabs').setAttribute('aria-label',union?'Received sub-job view':'Logical plan view');
  document.querySelector('#physical-plan .plan-view-tabs').setAttribute('aria-label',union?'Local execution plan view':'Physical plan view');
  $('physical-scope').textContent=union?'Local execution of the received Union sub-job, including status, external inputs and stream traffic. Global placement was determined by Union.':'The local execution plan, including execution status, external inputs and stream traffic.';
- const job={...r,logical_plan:union?null:r.logical_plan,tasks:r.graph_tasks,outputs:r.graph_outputs,nodes:r.graph_nodes};latestJob=job;DacpExecutionInfo.render($('execution-info'),job,{time,bytes,labels,terminal});$('logical-unavailable').textContent=union?'The global logical plan is recorded on Union, not on this member.':'Original logical plan was not recorded for this historical job.';if(union)$('job-script').textContent='The global logical plan is recorded on Union, not on this member.';
+ const job={...r,logical_plan:union?null:r.logical_plan,steps:r.graph_steps,outputs:r.graph_outputs,nodes:r.graph_nodes};latestJob=job;DacpExecutionInfo.render($('execution-info'),job,{time,bytes,labels,terminal});$('logical-unavailable').textContent=union?'The global logical plan is recorded on Union, not on this member.':'Original logical plan was not recorded for this historical job.';if(union)$('job-script').textContent='The global logical plan is recorded on Union, not on this member.';
  $('outputs').replaceChildren(...Object.entries(job.outputs||{}).map(([label,b])=>el('p',b.task+'.'+b.port+' → '+label,'mono')));
  await showPlan();
  const next=new Map();for(const [node,n]of Object.entries(job.nodes))for(const [key,m]of Object.entries(n.ports||{}))next.set(job.job_id+'/'+node+'/'+key,{at:n.observed_at_ms,value:m.payload_bytes});previous=next;

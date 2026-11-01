@@ -1,5 +1,5 @@
 name: Parameterized CSV stream export
-tasks:
+steps:
 - id: read
   operator: read_item@1.0
   inputs: {}

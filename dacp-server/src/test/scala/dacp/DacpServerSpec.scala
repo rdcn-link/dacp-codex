@@ -1,5 +1,11 @@
 package dacp
 
+import _root_.xstream.connector.dacp.wire.{ArrowViewWire,ClientTransport}
+
+import _root_.xstream.engine.{ExecutionHistory}
+import _root_.xstream.execution.{ExecutionStoreDefinition}
+import _root_.xstream.execution.file.{FileExecutionStore}
+
 import _root_.xstream.data._
 
 import java.nio.file.{Files,Path}
@@ -41,19 +47,19 @@ class DacpServerSpec extends AnyFunSuite {
     val allocator=new RootAllocator()
     c.credentials.setRoles("scientific-reader",Set("runner"))
     val token=c.credentials.create("scientific-reader")._2
-    val client=dacp.union.ClientTransport.open(allocator,c.uri(""),Some(cert),None,None,()=>Some(token))
+    val client=xstream.connector.dacp.wire.ClientTransport.open(allocator,c.uri(""),Some(cert),None,None,()=>Some(token))
     try {
       val request=dacp.protocol.Metadata.Ticket.newBuilder().setDataset("science").setItem("/sequences").setView("sequence")
         .setSelectionJson(com.google.protobuf.ByteString.copyFromUtf8("{\"offset\":2,\"length\":4}")).build()
       val reader=client.getStream(new Ticket(request.toByteArray))
       val chunks=scala.collection.mutable.ArrayBuffer.empty[SequenceChunk]
       val codec=new _root_.xstream.data.scientific.SequenceViewSupport()
-      try dacp.union.ArrowViewWire.consume(reader,"sequence",ArrowBlocks.consumer(new DataConsumer[SequenceChunk] {
+      try xstream.connector.dacp.wire.ArrowViewWire.consume(reader,"sequence",ArrowBlocks.consumer(new DataConsumer[SequenceChunk] {
         def start(d:DataDescriptor[SequenceChunk]):Unit=assert(d.isInstanceOf[SequenceDescriptor])
         def accept(b:SequenceChunk):Unit=chunks+=b
       }),()=>())finally reader.close()
       assert(chunks.map(_.symbols.toString).mkString=="GTAC" && chunks.head.offset==2 && chunks.last.last)
-      val yaml="name: Scientific Job\ntasks:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: 'context:/science/sequences', view: sequence, selection: {offset: 1, length: 3}}\noutputs: {result: read}\n"
+      val yaml="name: Scientific Job\nsteps:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: 'context:/science/sequences', view: sequence, selection: {offset: 1, length: 3}}\noutputs: {result: read}\n"
       val tls=dacp.client.TlsConfig(ca=Some(cert),token=Some(token))
       val inference=dacp.client.Job.infer(c.uri(""),yaml,tls)
       assert(inference.path("outputs").path("result").path("structure").path("view").asText=="sequence")
@@ -83,7 +89,7 @@ class DacpServerSpec extends AnyFunSuite {
     val allocator=new RootAllocator()
     val caIn=Files.newInputStream(cert);val certIn=Files.newInputStream(cert);val keyIn=Files.newInputStream(key)
     val token=c.credentials.create("alice")._2
-    val client=try dacp.union.ClientTransport.open(allocator,c.uri(""),Some(cert),None,None,()=>Some(token))
+    val client=try xstream.connector.dacp.wire.ClientTransport.open(allocator,c.uri(""),Some(cert),None,None,()=>Some(token))
       finally {caIn.close();certIn.close();keyIn.close()}
     try assert(client.listFlights(Criteria.ALL).asScala.map(_.getDescriptor.getPath.get(1)).toSeq==Seq("public"))
     finally {client.close();allocator.close();server.close()}
@@ -100,7 +106,7 @@ class DacpServerSpec extends AnyFunSuite {
       assert(server.location.getUri.getPort==28815)
       assert(c.uri("public","/observations")=="dacp://data.example.org:28815/public/observations")
       val allocator=new RootAllocator()
-      val client=dacp.union.ClientTransport.open(allocator,s"dacp://localhost:${c.port}",Some(cert),None,None,()=>Some(c.credentials.create("proxy-reader")._2))
+      val client=xstream.connector.dacp.wire.ClientTransport.open(allocator,s"dacp://localhost:${c.port}",Some(cert),None,None,()=>Some(c.credentials.create("proxy-reader")._2))
       try {
         val result=client.doAction(new Action("dacp.catalog",Array.emptyByteArray)).next()
         val directory=dacp.protocol.Metadata.Directory.parseFrom(result.getBody)
@@ -178,7 +184,7 @@ web: {host: localhost, port: 0}
       assert(info.path("started_at_ms").asLong>0 && info.path("uptime_ms").asLong>=0)
       val datasets=dacp.union.Json.mapper.readTree(http(port,"/api/datasets").body())
       val entry=datasets.path("datasets").get(0)
-      assert(entry.path("name").asText=="public" && entry.path("description").asText=="{}")
+      assert(entry.path("name").asText=="public" && entry.path("description").asText==DatasetDescriptions.default("public"))
       assert(!entry.has("title") && !entry.has("tags")) // Catalog.open deliberately throws.
       assert(http(port,"/api/overview","POST").statusCode()==405)
       assert(http(port,"/api/history?limit=0").statusCode()==400)
@@ -187,16 +193,16 @@ web: {host: localhost, port: 0}
       val definitions=dacp.union.Json.mapper.readTree("""[{"id":"copy","title":"复制记录","operator":"identity@1.0","inputs":{"source":{"uri":"dacp://localhost/data/source","view":"bytes"}},"materialize":[]},{"id":"finish","operator":"identity@1.0","inputs":{"source":"copy:result","remote":{"origin":"dacp://upstream:8815","producer_identity":"peer","task":"parse","port":"result"}},"output_routes":{"result":{"consumer_identity":"client"}}}]""")
       metadata.set[com.fasterxml.jackson.databind.JsonNode]("task_definitions",definitions)
       val record=c.executionHistory.begin("union_execution",metadata=metadata)
-      val state=dacp.union.Json.obj();state.putObject("tasks").put("copy","succeeded").put("finish","running")
+      val state=dacp.union.Json.obj();state.putObject("steps").put("copy","succeeded").put("finish","running")
       state.putObject("ports").putObject("copy/outputs/result").put("payload_bytes",1024)
       record.update("running",state)
       val response=http(port,"/api/executions/"+record.id)
       assert(response.headers().firstValue("Cache-Control").get()=="no-store")
       val graph=dacp.union.Json.mapper.readTree(response.body())
-      assert(graph.path("graph_tasks").get(0).path("title").asText=="复制记录")
-      assert(graph.path("graph_tasks").get(1).path("state").asText=="running")
-      assert(graph.path("graph_tasks").get(1).path("inputs").get(0).path("task").asText=="copy")
-      val external=graph.path("graph_tasks").get(1).path("inputs").get(1)
+      assert(graph.path("graph_steps").get(0).path("title").asText=="复制记录")
+      assert(graph.path("graph_steps").get(1).path("state").asText=="running")
+      assert(graph.path("graph_steps").get(1).path("inputs").get(0).path("task").asText=="copy")
+      val external=graph.path("graph_steps").get(1).path("inputs").get(1)
       assert(external.path("remote").asBoolean && external.path("upstream_origin").asText=="dacp://upstream:8815")
       assert(external.path("upstream_task").asText=="parse" && !external.has("task"))
       assert(graph.path("graph_nodes").path("local").path("ports").path("copy/outputs/result").path("payload_bytes").asLong==1024)

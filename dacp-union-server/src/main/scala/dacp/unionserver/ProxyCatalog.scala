@@ -1,10 +1,13 @@
 package dacp.unionserver
 
+import _root_.xstream.connector.dacp.wire.{ArrowViewWire}
+
 import _root_.xstream.data._
 
 import dacp._
 import dacp.protocol.Metadata
 import dacp.union.{Json,Rpc,UnionFailure}
+
 import org.apache.arrow.flight._
 import org.apache.arrow.memory.BufferAllocator
 import java.util.concurrent.{Executors,TimeUnit,Semaphore}
@@ -108,7 +111,7 @@ private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,
               reader=client.getStream(new Ticket(ticket.toByteArray),CallOptions.timeout(settings.timeout,TimeUnit.SECONDS),Rpc.hopOptions(path));readers.add(reader)
               val current=reader
               guard=monitor.scheduleWithFixedDelay(new Runnable{def run():Unit=try {ready();context.check()}catch{case NonFatal(_)=>current.cancel("proxy cancelled",null)}},0,50,TimeUnit.MILLISECONDS)
-              dacp.union.ArrowViewWire.consume(reader,kind.name,out,()=>{ready();context.check()})
+              xstream.connector.dacp.wire.ArrowViewWire.consume(reader,kind.name,out,()=>{ready();context.check()})
             }catch{case NonFatal(t)=>generic(t)}finally {if(guard!=null)guard.cancel(false);if(reader!=null){reader.cancel("proxy read ended",null);try reader.close()finally readers.remove(reader)};slots.release()}
           })
         }

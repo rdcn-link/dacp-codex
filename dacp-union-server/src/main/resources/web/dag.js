@@ -6,10 +6,10 @@ window.DacpDag=(()=>{
  const pending={color:'#94a3b8',fill:'#f8fafc',label:'○ Not started',dash:[5,4]};
  const compact=(text,max)=>Array.from(String(text||'')).length>max?Array.from(String(text)).slice(0,max-1).join('')+'…':String(text||'');
  function buildData(job,previous,fmt){
-  const nodes=[],edges=[],combos=[],details=new Map(),tasks=new Map(job.tasks.map(t=>[t.id,t])),groups=new Map();
-  for(const t of job.tasks)if(!groups.has(t.node)){
+  const nodes=[],edges=[],combos=[],details=new Map(),steps=new Map(job.steps.map(t=>[t.id,t])),groups=new Map();
+  for(const t of job.steps)if(!groups.has(t.node)){
    const index=groups.size,id='server:'+index,color=palette[index%palette.length];groups.set(t.node,id);
-   const count=job.tasks.filter(other=>other.node===t.node).length;
+   const count=job.steps.filter(other=>other.node===t.node).length;
    combos.push({id,data:{kind:'server',title:t.node,subtitle:count+' steps',...color},style:{labelText:t.node+'  ·  '+count+' steps',stroke:color.stroke,fill:color.fill}});
    details.set(id,{title:'Execution server',lines:[t.node,count+' steps','Double-click group backgrounds to collapse / expand']});
   }
@@ -26,13 +26,13 @@ window.DacpDag=(()=>{
    edges.push({id,source,target,data:{port:label,traffic:traffic.label},style:{targetPort:source.startsWith('task:')&&target.startsWith('task:')?'left':'in',labelText:label+'\n'+traffic.label,stroke:traffic.remote?'#5c7bb5':'#a3b2c5',lineWidth:traffic.remote?1.8:1.3}});
    details.set(id,{title:'Data flow · '+label,lines:traffic.lines});
   }
-  for(const t of job.tasks){
+  for(const t of job.steps){
    const state=states[t.state]||{...pending,label:pending.label+' · '+(fmt.labels[t.state]||t.state||'Waiting')};
    const incoming=aggregate(t,'inputs'),outgoing=aggregate(t,'outputs'),observed=job.nodes[t.node_identity]?.observed_at_ms;
   nodes.push({id:'task:'+t.id,combo:groups.get(t.node),data:{kind:'task',title:t.title||t.id,subtitle:t.operator,stateLabel:state.label,border:t.state==='running'?2:1.2,color:state.color,fill:state.fill,dash:state.dash||[],incoming,outgoing},style:{size:[268,150]}});
    details.set('task:'+t.id,{title:t.title||t.id,lines:['Task ID: '+t.id,'Operator: '+t.operator,'Server: '+t.node,'Status: '+(fmt.labels[t.state]||t.state),...(t.replayed?['Replaying from materialized results']:[]),'Input payload: '+incoming,'Output payload: '+outgoing,'Last observed: '+fmt.time(observed)]});
   }
-  for(const t of job.tasks)for(const binding of t.inputs){
+  for(const t of job.steps)for(const binding of t.inputs){
    let source='task:'+binding.task;
    if(!binding.task){
     source='input:'+t.id+':'+binding.port;
@@ -60,23 +60,24 @@ window.DacpDag=(()=>{
    const id='output:'+label;
   nodes.push({id,combo:'client',data:{kind:'output',title:label,subtitle:job.output_route||'Union → Client',color:'#6f8ba7',fill:'#fff',dash:[]},style:{size:[228,76]}});
    details.set(id,{title:'Output · '+label,lines:[binding.task+'.'+binding.port,job.output_route||'Forwarded through Union to the submitting client']});
-   edge('task:'+binding.task,id,binding.port,tasks.get(binding.task),'outputs',binding.port);
+   edge('task:'+binding.task,id,binding.port,steps.get(binding.task),'outputs',binding.port);
   }
   if(!job.logical){
    const modeNames={shared_process:'Shared process',isolated_step:'Separate execution',host_stream_source:'Host stream source',remote_subjob:'Remote sub-job'};
    for(const [identity,snapshot] of Object.entries(job.nodes||{})){
     for(const unit of snapshot.execution_units||[]){
-     const members=nodes.filter(n=>n.data.kind==='task'&&tasks.get(n.id.slice(5))?.node_identity===identity&&(unit.steps||[]).includes(n.id.slice(5)));
+     const members=nodes.filter(n=>n.data.kind==='task'&&steps.get(n.id.slice(5))?.node_identity===identity&&(unit.steps||[]).includes(n.id.slice(5)));
      if(!members.length)continue;
      const id='unit:'+identity+':'+unit.id,parent=members[0].combo;
      const label=modeNames[unit.mode]||unit.mode;
+     const environment=unit.dependency_environment?'Env '+unit.dependency_environment.slice(0,10):'';
      const runtime=unit.runtime_name?unit.runtime_name+(unit.runtime_version?'@'+unit.runtime_version:''):unit.mode==='host_stream_source'?'Host JVM':unit.runtime_image?unit.runtime_executor||'Container':'Runtime not recorded';
-     combos.push({id,combo:parent,data:{kind:'process',title:label,runtime,subtitle:members.length+' steps'},style:{labelText:label+' · '+members.length+' steps\n'+runtime,stroke:unit.mode==='shared_process'?'#0d9488':'#94a3b8',fill:unit.mode==='shared_process'?'#f0fdfa':'#f8fafc',lineDash:[5,4],radius:12,padding:[80,24,24,24],labelTextBaseline:'top',labelOffsetX:14,labelOffsetY:12,labelFontSize:11,labelLineHeight:16,labelBackground:true,labelBackgroundFill:unit.mode==='shared_process'?'#f0fdfa':'#f8fafc',labelPadding:[3,5]}});
-     details.set(id,{title:'Execution unit · '+label,lines:['Server: '+tasks.get(members[0].id.slice(5)).node,'Steps: '+unit.steps.join(', '),'Runtime: '+runtime,'Image: '+(unit.runtime_image||'Not applicable / not recorded'),...Object.entries(unit.runtime_dependencies||{}).map(([name,version])=>name+': '+version),'Status: '+(unit.state||snapshot.state||job.state||'Unknown'),...(unit.reason?['Planning reason: '+unit.reason]:[])]});
+     combos.push({id,combo:parent,data:{kind:'process',title:label,runtime,subtitle:members.length+' steps'},style:{labelText:label+' · '+members.length+' steps\n'+runtime+(environment?' · '+environment:''),stroke:unit.mode==='shared_process'?'#0d9488':'#94a3b8',fill:unit.mode==='shared_process'?'#f0fdfa':'#f8fafc',lineDash:[5,4],radius:12,padding:[80,24,24,24],labelTextBaseline:'top',labelOffsetX:14,labelOffsetY:12,labelFontSize:11,labelLineHeight:16,labelBackground:true,labelBackgroundFill:unit.mode==='shared_process'?'#f0fdfa':'#f8fafc',labelPadding:[3,5]}});
+     details.set(id,{title:'Execution unit · '+label,lines:['Server: '+steps.get(members[0].id.slice(5)).node,'Steps: '+unit.steps.join(', '),'Runtime: '+runtime,'Image: '+(unit.runtime_image||'Not applicable / not recorded'),'Dependency environment: '+(unit.dependency_environment||'Runtime only'),'Processes: '+(unit.process_count||1),...Object.entries(unit.runtime_dependencies||{}).map(([name,version])=>name+': '+version),'Status: '+(unit.state||snapshot.state||job.state||'Unknown'),...(unit.reason?['Planning reason: '+unit.reason]:[])]});
      for(const member of members){member.combo=id;const d=details.get(member.id);d.lines.push('Execution unit: '+label,...(unit.runtime_image?['Runtime: '+unit.runtime_image]:[]));}
     }
    }
-   for(const task of job.tasks){
+   for(const task of job.steps){
     const decision=(job.placement_decisions||[]).find(d=>d.step===task.id),detail=details.get('task:'+task.id);
     if(decision&&detail)detail.lines.push('Placement reason: '+decision.reason,...(decision.requested_source?['Source: '+decision.requested_source+' → '+decision.resolved_source]:[]));
     const node=nodes.find(n=>n.id==='task:'+task.id);
@@ -86,7 +87,7 @@ window.DacpDag=(()=>{
   if(job.logical){
    combos.length=0;
    for(const node of nodes){delete node.combo;node.data.logical=true;node.data.color='#5679a6';node.data.fill='#f4f8fd';node.data.dash=[];
-    if(node.data.kind==='task'){const task=tasks.get(node.id.slice(5));
+    if(node.data.kind==='task'){const task=steps.get(node.id.slice(5));
      node.data.stateLabel='Logical step';
      details.set(node.id,{title:task.title||task.id,lines:['Step: '+task.id,'Operator: '+task.operator,...Object.entries(task.params||{}).map(([key,value])=>key+': '+String(value))]});}
    }

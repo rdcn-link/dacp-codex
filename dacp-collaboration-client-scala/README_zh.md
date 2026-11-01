@@ -10,7 +10,7 @@ sbt test publishLocal
 
 ```scala
 import dacp.collaboration.CollaborationClient
-import dacp.union.Tls
+import xstream.connector.dacp.wire.Tls
 import java.nio.file.{Files, Path}
 
 val tls = new Tls(Path.of("union.crt"), Path.of("union.key"), Path.of("ca.crt"))

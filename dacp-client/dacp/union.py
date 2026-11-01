@@ -50,10 +50,10 @@ class Union(FlightControl):
         result = self._action('submit', body)
         return UnionExecution(self, result['job_id'])
 
-    def replay(self, job_id, *, tasks=None):
+    def replay(self, job_id, *, steps=None):
         body = {'job_id': job_id}
-        if tasks is not None:
-            body['tasks'] = list(tasks)
+        if steps is not None:
+            body['steps'] = list(steps)
         result = self._action('replay_job', body)
         return UnionExecution(self, result['job_id'])
 
@@ -88,8 +88,8 @@ class UnionExecution:
     def __exit__(self, *args):
         self.close()
 
-    def replay(self, *, tasks=None):
-        return self.union.replay(self.job_id, tasks=tasks)
+    def replay(self, *, steps=None):
+        return self.union.replay(self.job_id, steps=steps)
 
     def status(self):
         return self.union._action('job_status', {'job_id': self.job_id})

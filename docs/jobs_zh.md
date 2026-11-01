@@ -100,7 +100,7 @@ Union 下发的子作业保留全局作业的 `name`。节点与 Union 看板统
 
 ```yaml
 name: hot-weather-observations
-tasks:
+steps:
 - id: read
   operator: read_item@1.0
   inputs: {}
@@ -127,3 +127,5 @@ remote_item_credentials:
 ```
 
 [科学视图选择与样例](https://github.com/rdcn-link/xstream-codex/blob/main/docs/designer-scientific_zh.md)。
+
+步骤可选 `description` 为最多 8192 个字符的多行说明，保留在逻辑计划及下发的子 Job 中，不改变执行语义。设计器的 Step 属性页可直接编辑；完整 Job 语法见 XStream 的 Job 文档。

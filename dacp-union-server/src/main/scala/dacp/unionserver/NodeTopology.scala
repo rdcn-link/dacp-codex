@@ -13,9 +13,9 @@ private[unionserver] object NodeTopology {
     val known=members.map(_.path("identity").asText).toSet
     val edges=scala.collection.mutable.LinkedHashMap.empty[(String,String),com.fasterxml.jackson.databind.node.ObjectNode]
     jobs.foreach { job=>
-      val tasks=job.path("tasks").elements.asScala.map(t=>t.path("id").asText->t).toMap
-      tasks.values.foreach { t=>t.path("inputs").elements.asScala.foreach { input=>
-        tasks.get(input.path("task").asText).foreach { parent=>
+      val steps=job.path("steps").elements.asScala.map(t=>t.path("id").asText->t).toMap
+      steps.values.foreach { t=>t.path("inputs").elements.asScala.foreach { input=>
+        steps.get(input.path("task").asText).foreach { parent=>
           val from=parent.path("node_identity").asText;val to=t.path("node_identity").asText
           if(from!=to && known(from) && known(to)){
             val edge=edges.getOrElseUpdate(from->to,{

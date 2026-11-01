@@ -1,5 +1,7 @@
 package dacp.client
 
+import _root_.xstream.execution.{OperatorFrames}
+
 import _root_.xstream.data._
 
 
@@ -9,7 +11,7 @@ import java.io._
 class UnionSpec extends AnyFunSuite {
   private def source(bytes:Array[Byte]):dacp.union.BinarySource=new dacp.union.BinarySource {
     private val in=new DataInputStream(new ByteArrayInputStream(bytes))
-    def next():Option[Array[Byte]]=dacp.OperatorFrames.read(in).map(dacp.OperatorFrames.encode)
+    def next():Option[Array[Byte]]=xstream.execution.OperatorFrames.read(in).map(xstream.execution.OperatorFrames.encode)
     def close():Unit=in.close()
   }
   private def eventSource(value:String):dacp.union.BinarySource=new dacp.union.BinarySource {

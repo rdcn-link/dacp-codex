@@ -1,8 +1,8 @@
 # Starting DACP Server inside an application
 
-[中文](embedded-server_zh.md) · [Dynamic catalogs](dataset-catalogs.md)
+[中文](embedded-server_zh.md) · [Dynamic catalogs](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md)
 
-`dacp.DacpServer` is the embeddable Scala/JVM API. The `dacp.Main` CLI uses the same implementation, so both modes include Flight TLS / Token, ordinary tasks, optional Union workers, execution records, and identical authorization checks.
+`dacp.DacpServer` is the embeddable Scala/JVM API. The `dacp.Main` CLI uses the same implementation, so both modes include Flight TLS / Token, ordinary steps, optional Union workers, execution records, and identical authorization checks.
 
 ## Startup and shutdown
 
@@ -45,7 +45,7 @@ server.start()
 
 `MyDatabaseCatalog` is your implementation of `DataCatalog`. Direct injection needs no ServiceLoader registration. It replaces file-configured `datasets` or `data_catalog`, without creating the replaced provider. With `.config(config)`, inject before initializing that Config's catalog; do not call `Config.load` to initialize its default catalog and then replace it. Use `.configFile(...).catalog(...)` when loading a configuration file.
 
-Each `catalog.open` returns a caller-owned `PublishedDataset` lease. The server closes the access handle and lease, and closes the catalog on shutdown. Catalogs must not close a shared database pool owned by the host. See [dynamic catalogs](dataset-catalogs.md) for the full contract.
+Each `catalog.open` returns a caller-owned `PublishedDataset` lease. The server closes the access handle and lease, and closes the catalog on shutdown. Catalogs must not close a shared database pool owned by the host. See [dynamic catalogs](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md) for the full contract.
 
 ## Runnable example and project dependencies
 

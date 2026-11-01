@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.connector.dacp.wire.{ClientTransport,Tls}
+
 import _root_.xstream.data._
 
 import java.net.URI
@@ -61,9 +63,9 @@ class S3ServiceSpec extends AnyFunSuite {
   }
   test("DACP and S3 share subject roles while token and key lifecycles remain separate") {fixture{(c,s,closed,_)=>
     val a=new RootAllocator()
-    val flight=dacp.union.Rpc.secure(org.apache.arrow.flight.FlightServer.builder(a,org.apache.arrow.flight.Location.forGrpcTls("localhost",0),new Producer(c,a)),new dacp.union.Tls(c.cert,c.key,c.ca),Some(c.credentials)).build().start()
+    val flight=dacp.union.Rpc.secure(org.apache.arrow.flight.FlightServer.builder(a,org.apache.arrow.flight.Location.forGrpcTls("localhost",0),new Producer(c,a)),new xstream.connector.dacp.wire.Tls(c.cert,c.key,c.ca),Some(c.credentials)).build().start()
     val issued=c.credentials.create("s3-test")
-    val connection=dacp.union.ClientTransport.open(a,s"dacp://localhost:${flight.getPort}",Some(c.ca),None,None,()=>Some(issued._2))
+    val connection=xstream.connector.dacp.wire.ClientTransport.open(a,s"dacp://localhost:${flight.getPort}",Some(c.ca),None,None,()=>Some(issued._2))
     val info=connection.getInfo(org.apache.arrow.flight.FlightDescriptor.path("datasets","science","/folder/a +&.bin"))
     def read():Unit={val stream=connection.getStream(info.getEndpoints.get(0).getTicket);try assert(stream.next())finally stream.close()}
     def deniedRead():Unit={val stream=connection.getStream(info.getEndpoints.get(0).getTicket);try assert(intercept[org.apache.arrow.flight.FlightRuntimeException](stream.next()).status.code==org.apache.arrow.flight.FlightStatusCode.UNAUTHORIZED)finally stream.close()}

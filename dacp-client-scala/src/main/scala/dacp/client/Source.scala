@@ -1,5 +1,7 @@
 package dacp.client
 
+import _root_.xstream.connector.dacp.wire.{ArrowViewWire,ClientTransport}
+
 import _root_.xstream.data._
 
 import java.io.{InputStream, IOException}
@@ -88,6 +90,18 @@ object Source {
   }
 
   /** Public Union logical execution nodes, using ordinary client credentials. */
+  /** Service features and effective permissions for this authenticated caller. Advisory only. */
+  def capabilities(origin:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=30):com.fasterxml.jackson.databind.JsonNode={
+    val uri=new URI(origin)
+    require(uri.getScheme=="dacp" && uri.getHost!=null && Set("","/")(Option(uri.getPath).getOrElse("")),"expected DACP origin")
+    val (client,allocator)=connection(uri,tls)
+    try {
+      val results=client.doAction(new org.apache.arrow.flight.Action("dacp.capabilities",Array.emptyByteArray),org.apache.arrow.flight.CallOptions.timeout(timeoutSeconds,java.util.concurrent.TimeUnit.SECONDS)).asScala
+      require(results.hasNext,"missing capability response");val bytes=results.next().getBody
+      require(bytes.length<=1024*1024 && !results.hasNext,"invalid capability response")
+      _root_.xstream.util.Json.mapper.readTree(bytes)
+    }finally Resources.closeAll(Seq(client,allocator))
+  }
   def nodes(origin:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=30):com.fasterxml.jackson.databind.JsonNode={
     val canonical=dacp.union.Json.origin(origin)
     require(timeoutSeconds>0,"timeoutSeconds must be positive")
@@ -108,7 +122,7 @@ object Source {
     require(cert.isDefined == key.isDefined, "client certificate and key must be provided together")
     val allocator = new RootAllocator(Long.MaxValue)
     try {
-      val client=dacp.union.ClientTransport.open(allocator,new URI("dacp",null,u.getHost,if(u.getPort<0)8815 else u.getPort,null,null,null).toString,
+      val client=xstream.connector.dacp.wire.ClientTransport.open(allocator,new URI("dacp",null,u.getHost,if(u.getPort<0)8815 else u.getPort,null,null,null).toString,
         ca,cert,key,()=>tls.token.orElse(credential(tls.tokenFile,"DACP_TOKEN_FILE").map(p=>Files.readString(p).trim)),allowAnonymousWithoutCa=true)
       (client,allocator)
     }catch{case t:Throwable=>allocator.close();throw DacpErrors.translate(t)}
@@ -227,7 +241,7 @@ final class ItemStream private[client] (dataset: Dataset, ticket: Ticket, val vi
     val view=codec.remoteView(kind)((request,out,context)=>{
       val reader=flight(kind.name,Some(request))
       readers+=reader
-      try dacp.union.ArrowViewWire.consume(reader,kind.name,out,context.check) finally {reader.cancel("view closed",null);reader.close();readers-=reader}
+      try xstream.connector.dacp.wire.ArrowViewWire.consume(reader,kind.name,out,context.check) finally {reader.cancel("view closed",null);reader.close();readers-=reader}
     }).get
     // No allocator is used for decoded scientific blocks; the transport owns its allocator.
     val stream=view.open(selection,StreamContext(dataset.allocator))

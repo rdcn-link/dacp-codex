@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.data.files.{DatasetPublication,FileDatasets,FileRecordCounts,ItemProperties,NamespaceAdapter,PublishedItem}
+
 import _root_.xstream.data._
 
 import java.nio.file.{Files, Path}

@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.execution.{ItemFrameStreams,MaterializationStoreProvider,MaterializationWriter,StreamProtocol}
+import _root_.xstream.execution.file.{FileMaterializationStore}
+
 import _root_.xstream.data._
 import java.nio.file.{Files,Path}
 import org.scalatest.funsuite.AnyFunSuite

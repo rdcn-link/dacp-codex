@@ -505,7 +505,7 @@ class Browser(cmd.Cmd):
         ports = [] if options.no_output else (options.output or ['result'])
         if len(set(ports)) != len(ports) or any(not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]{0,127}', p) for p in ports):
             raise ValueError('output ports must be unique identifiers')
-        job = {'name':'shell', 'tasks':readers + [{'id':'run','operator':operator,'inputs':inputs,'params':params}],
+        job = {'name':'shell', 'steps':readers + [{'id':'run','operator':operator,'inputs':inputs,'params':params}],
                'outputs': {p: ('run' if p == 'result' else 'run:' + p) for p in ports}}
         u = urlsplit(self.uri)
         coordinator = urlunsplit((u.scheme,u.netloc,'','',''))
@@ -546,7 +546,7 @@ class Browser(cmd.Cmd):
         Without FILE, enter YAML and finish with END alone on a line:
           submit
           name: demo
-          tasks:
+          steps:
             - id: copy
               operator: read_item@1.0
               inputs: {}

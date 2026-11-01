@@ -4,7 +4,7 @@
 
 管理员负责部署 DACP 数据节点和 Union Server，配置与独立算子仓库的连接，维护证书、授权、数据发布及执行记录。协议与身份边界见 [DACP 协议](../protocol_zh.md)。
 
-数据集清单来自数据库或业务程序时，使用[动态目录插件](../dataset-catalogs_zh.md)；宿主应用直接运行节点时，参见[嵌入式启动](../embedded-server_zh.md)。
+数据集清单来自数据库或业务程序时，使用[动态目录插件](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)；宿主应用直接运行节点时，参见[嵌入式启动](../embedded-server_zh.md)。
 
 ## 单节点部署
 
@@ -27,7 +27,7 @@ sbt 'run ../examples/server.yaml'
 
 ## 数据发布与算子
 
-在节点配置中声明 Dataset provider 与参数。内置及外部 provider 使用相同的插件契约；文件目录、SQL 连接等配置见[技术参考](../reference_zh.md)、[Dataset provider](../dataset-providers_zh.md)和[SQL 示例](../../examples/sql/README_zh.md)。数据目录及凭据应按服务账号设置权限。
+在节点配置中声明 Dataset provider 与参数。内置及外部 provider 使用相同的插件契约；文件目录、SQL 连接等配置见[技术参考](../reference_zh.md)、[Dataset provider](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers_zh.md)和[SQL 示例](../../examples/sql/README_zh.md)。数据目录及凭据应按服务账号设置权限。
 
 节点通过 `local_operator_library` 读取本地算子，通过 `remote_operator_library_urls` 搜索远程仓库。远程配置顺序影响查找顺序。共享运行时与算子代码分别发布；执行环境和原生命令配置见[打包说明](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging_zh.md)和[执行器手册](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-operator-executors/README_zh.md)。数据节点直接执行源码仅在 DEBUG 模式开放；仓库源码提交是正常运行时独立认证的审核服务，配置见[源码运行时](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source_zh.md)。
 

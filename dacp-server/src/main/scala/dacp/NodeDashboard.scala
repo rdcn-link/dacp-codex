@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.engine.{RecordedJobGraph}
+import _root_.xstream.execution.{OperatorExecutor}
+
 
 import com.sun.net.httpserver.{HttpExchange,HttpServer}
 import com.fasterxml.jackson.databind.JsonNode
@@ -61,13 +64,13 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     val current=live().find(_.path("execution_id").asText==n.path("execution_id").asText).filter(_=>n.path("kind").asText=="union_execution")
     current.foreach(v=>v.fields.asScala.foreach(e=>n.set[JsonNode](e.getKey,e.getValue)))
     val children=config.executionHistory.store.records.filter(c=>c.path("parent_record_id").asText==id || c.path("parent_execution_id").asText==id)
-    val steps=n.putArray("step_records");children.sortBy(c=>(c.path("created_at_ms").asLong,c.path("record_id").asText)).foreach(c=>steps.add(withSource(c)))
-    val tasks=n.putArray("graph_tasks");val outputs=n.putObject("graph_outputs");val ports=Json.obj()
+    val stepRecords=n.putArray("step_records");children.sortBy(c=>(c.path("created_at_ms").asLong,c.path("record_id").asText)).foreach(c=>stepRecords.add(withSource(c)))
+    val steps=n.putArray("graph_steps");val outputs=n.putObject("graph_outputs");val ports=Json.obj()
     var definitions=values(record.path("task_definitions"))
     if(definitions.isEmpty && record.has("job_yaml")) {
       try {
         val graph=RecordedJobGraph(record.path("job_yaml").asText)
-        definitions=values(graph.path("tasks")).map { task=>
+        definitions=values(graph.path("steps")).map { task=>
           val d=task.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();d.put("node",origin)
           val bindings=task.path("inputs");val inputs=d.putObject("inputs")
           bindings.elements.asScala.foreach { b=>inputs.putObject(b.path("port").asText).put("task",b.path("task").asText).put("port",b.path("output_port").asText) };d
@@ -84,8 +87,8 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     val localIds=definitions.map(_.path("id").asText).toSet
     definitions.foreach { d=>
       val task=d.path("id").asText;val child=children.filter(_.path("task_id").asText==task).sortBy(c=>(c.path("created_at_ms").asLong,c.path("updated_at_ms").asLong)).lastOption
-      val state=if(n.path("skipped_tasks").elements.asScala.exists(_.asText==task))"skipped"else if(n.path("tasks").isObject)n.path("tasks").path(task).asText(n.path("state").asText)else child.map(_.path("state").asText).getOrElse(if(Set("running","accepted")(n.path("state").asText))"unknown"else n.path("state").asText)
-      val t=tasks.addObject().put("id",task).put("title",d.path("title").asText(task)).put("operator",d.path("operator").asText).put("node",d.path("node").asText(origin)).put("node_identity","local").put("state",state)
+      val state=if(n.path("skipped_steps").elements.asScala.exists(_.asText==task))"skipped"else if(n.path("steps").isObject)n.path("steps").path(task).asText(n.path("state").asText)else child.map(_.path("state").asText).getOrElse(if(Set("running","accepted")(n.path("state").asText))"unknown"else n.path("state").asText)
+      val t=steps.addObject().put("id",task).put("title",d.path("title").asText(task)).put("operator",d.path("operator").asText).put("node",d.path("node").asText(origin)).put("node_identity","local").put("state",state)
       val bindings=t.putArray("inputs")
       d.path("inputs").fields.asScala.foreach { e=>
         val raw=e.getValue;val b=if(raw.isTextual){val parts=raw.asText.split(":",2);Json.obj().put("task",parts(0)).put("port",if(parts.length==2)parts(1)else "result")}else raw;val v=bindings.addObject().put("port",e.getKey).put("view",b.path("view").asText("bytes"))
@@ -106,7 +109,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
       val parts=key.split("/",3)
       if(localIds(parts(0)) && !outputs.elements.asScala.exists(v=>v.path("task").asText==parts(0) && v.path("port").asText==parts(2)))outputs.putObject(parts(0)+"."+parts(2)).put("task",parts(0)).put("port",parts(2))
     }
-    val consumed=tasks.elements.asScala.flatMap(_.path("inputs").elements.asScala.filter(_.has("task")).map(b=>b.path("task").asText->b.path("output_port").asText)).toSet
+    val consumed=steps.elements.asScala.flatMap(_.path("inputs").elements.asScala.filter(_.has("task")).map(b=>b.path("task").asText->b.path("output_port").asText)).toSet
     outputs.fields.asScala.toVector.filter(e=>consumed(e.getValue.path("task").asText->e.getValue.path("port").asText)).foreach(e=>outputs.remove(e.getKey))
     val nodes=n.putObject("graph_nodes");val node=nodes.putObject("local").put("state",n.path("state").asText).put("created_at_ms",n.path("created_at_ms").asLong).put("finished_at_ms",n.path("finished_at_ms").asLong).put("observed_at_ms",current.map(_=>System.currentTimeMillis()).getOrElse(n.path("updated_at_ms").asLong));node.set[JsonNode]("ports",ports)
     values(n.path("execution_units")).foreach { unit=>
@@ -117,8 +120,8 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     node.set[JsonNode]("execution_units",n.path("execution_units"))
     if(record.has("job_yaml") || record.has("task_definitions")){
       n.put("logical_yaml",n.path("definition_yaml").asText)
-      val logical=n.putObject("logical_plan");val lt=logical.putArray("tasks")
-      tasks.elements.asScala.foreach { task=>
+      val logical=n.putObject("logical_plan");val lt=logical.putArray("steps")
+      steps.elements.asScala.foreach { task=>
         val copy=task.deepCopy[ObjectNode]();Seq("node","node_identity","state","replayed").foreach(copy.remove)
         definitions.find(_.path("id").asText==task.path("id").asText).foreach(d=>if(d.has("params"))copy.set[JsonNode]("params",d.path("params").deepCopy[JsonNode]()))
         lt.add(copy)

@@ -38,7 +38,7 @@ Shell 的启动参数绑定服务器地址。`datasets` 不接收地址参数。
 
 ```yaml
 name: climate-summary
-tasks:
+steps:
 - id: read_summarize_source
   operator: read_item@1.0
   inputs: {}

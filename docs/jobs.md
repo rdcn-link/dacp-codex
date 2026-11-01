@@ -100,7 +100,7 @@ When `read_item.view` is omitted, Item metadata selects records, then bytes, the
 
 ```yaml
 name: hot-weather-observations
-tasks:
+steps:
 - id: read
   operator: read_item@1.0
   inputs: {}
@@ -127,3 +127,5 @@ remote_item_credentials:
 ```
 
 [Scientific view selections and samples](https://github.com/rdcn-link/xstream-codex/blob/main/docs/designer-scientific.md).
+
+Steps support an optional multiline `description` of up to 8192 characters. It is retained in logical plans and dispatched sub-jobs without changing execution semantics. Edit it in the Designer Step tab; see the XStream Job guide for the full syntax.

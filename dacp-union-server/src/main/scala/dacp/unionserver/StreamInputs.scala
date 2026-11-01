@@ -1,9 +1,12 @@
 package dacp.unionserver
 
+import _root_.xstream.execution.{FrameSource,StreamProtocol}
+
 import _root_.xstream.data._
 
 import dacp._
 import dacp.union.{Rpc,Json}
+
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import _root_.xstream.data.BatchReceiver

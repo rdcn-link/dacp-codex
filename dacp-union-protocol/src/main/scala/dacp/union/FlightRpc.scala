@@ -1,8 +1,10 @@
 package dacp.union
 
+import _root_.xstream.connector.dacp.wire.{ClientTransport,FlightTraffic,Tls}
+
 
 import com.fasterxml.jackson.databind.JsonNode
-import dacp.{OperatorFrame,OperatorFrames}
+import _root_.xstream.execution.{OperatorFrame,OperatorFrames}
 
 import org.apache.arrow.flight._
 import org.apache.arrow.flight.FlightProducer.{CallContext,ServerStreamListener,StreamListener}

@@ -28,16 +28,16 @@ def main():
     policy = {'materialization': {'allowed': False, 'default': 'stream'}}
     variables = {'CONDITION': "quality = '0' AND CAST(temperature AS REAL) >= 30", 'HEADER': True}
     def workflow(distributed):
-        tasks = [
+        steps = [
             dict(id='read', title='Read weather observations', operator='read_item@1.0', inputs={},
                  params=dict(uri=a.union_uri if distributed else a.local_uri, view='bytes')),
             dict(id='parse', title='Parse weather CSV', operator='piflow_csv_parser@1.0', inputs=dict(source='read:result')),
             dict(id='filter', title='Select valid high temperatures', operator='piflow_filter@1.0', inputs=dict(source='parse:result'), params=dict(condition='$CONDITION')),
             dict(id='export', title='Stream selected records as CSV', operator='piflow_csv_save@1.0', inputs=dict(source='filter:result'), params=dict(header='$HEADER'))]
         if distributed:
-            for task, node in zip(tasks, [a.node_a, a.node_a, a.node_b, a.node_c]):
+            for task, node in zip(steps, [a.node_a, a.node_a, a.node_b, a.node_c]):
                 task['node'] = node
-        return yaml_document.dump(dict(name=('Cross-node' if distributed else 'Local') + ' weather streaming benchmark', tasks=tasks, outputs=dict(result='export:result')))
+        return yaml_document.dump(dict(name=('Cross-node' if distributed else 'Local') + ' weather streaming benchmark', steps=steps, outputs=dict(result='export:result')))
     scripts = {'local': workflow(False), 'cross_node': workflow(True)}
     for name, value in scripts.items():
         (directory / (name + '.yaml')).write_text(value)

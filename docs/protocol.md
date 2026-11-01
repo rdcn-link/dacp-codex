@@ -2,13 +2,13 @@
 
 [中文](protocol_zh.md) · [Documentation](README.md)
 
-DACP (Data Access and Collaboration Protocol) defines data access and computation collaboration between clients, data nodes, and coordination nodes. This implementation builds on Apache Arrow Flight: Flight supplies transport, while DACP specifies naming, metadata, read semantics, operator tasks, identity, authorization, and collaboration. DACP is this project's protocol design, rather than a separate Apache Arrow standard.
+DACP (Data Access and Collaboration Protocol) defines data access and computation collaboration between clients, data nodes, and coordination nodes. This implementation builds on Apache Arrow Flight: Flight supplies transport, while DACP specifies naming, metadata, read semantics, operator steps, identity, authorization, and collaboration. DACP is this project's protocol design, rather than a separate Apache Arrow standard.
 
 ## Data and computation model
 
 Servers organize data into Datasets and describe accessible objects as Items. Clients inspect metadata and advertised capabilities before selecting a view. `bytes` exposes byte content; `records` exposes batches with an Arrow schema. Format and view describe storage representation and access capability separately; clients must not infer supported reads solely from filename extensions. Plugins should explicitly describe scientific groups, tables, and multidimensional variables rather than silently flattening them into records.
 
-A job contains tasks. A task's `id` identifies dependency references; its `title` describes its purpose to users. Operators consume and produce streams through named ports. Inputs reference only upstream outputs; read_item source operators read external Items. Results are not automatically published as Datasets. Nodes and Union both accept standard Job submission. Union uses its public URIs and optional logical node IDs, and retains dedicated management APIs; see [Union proxy service](union-proxy.md).
+A job contains steps. A task's `id` identifies dependency references; its `title` describes its purpose to users. Operators consume and produce streams through named ports. Inputs reference only upstream outputs; read_item source operators read external Items. Results are not automatically published as Datasets. Nodes and Union both accept standard Job submission. Union uses its public URIs and optional logical node IDs, and retains dedicated management APIs; see [Union proxy service](union-proxy.md).
 
 ## Transport responsibilities
 
@@ -24,6 +24,8 @@ A job contains tasks. A task's `id` identifies dependency references; its `title
 | Read-only Union management dashboard | HTTP for status and history; it does not authorize computation submission |
 
 The shared Union transport module limits JSON messages to 1 MiB. For exact actions, tickets, and fields, see the [Union protocol](union.md), [technical reference](reference.md), `proto/dacp.proto`, and `dacp-union-protocol`. The operator process port framing protocol is an executor interface, described in the [operator stream contract](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams.md), rather than the client Flight interface.
+
+DACP and its optional XStream connector share `xstream-dacp-protocol` for Flight client connections, certificates, traffic accounting and Arrow view transport. `dacp-union-protocol` adds Union service messages and routing. XStream's generic execution API and engine do not depend on either transport module.
 
 ## Identity, trust, and authorization
 
@@ -50,3 +52,11 @@ Core owns public contracts, transport, authorization, namespaces, and resource m
 ### Single-node job execution policies
 
 Flight `DoExchange` accepts `execution_policy_yaml` (YAML bytes), `retry_aware` (boolean), and `replay_from` (original execution ID) alongside job YAML in `OperatorRequest`. For replay, leave `job_yaml` empty; the server restores the original job and policy and checks the submitting identity and valid materialized outputs. Worker-step requests reject these job-level fields. Result streams begin with `execution` metadata exposing the execution ID. Before retrying, `attempt_failed` lets the client callback clear provisional results before receiving fresh `start/data/end` events. A `complete` event must still be followed by successful Flight end-of-stream. Disconnecting or closing the stream cancels execution. See [execution policies](materialization.md).
+
+## Current-caller capabilities
+
+The `dacp.capabilities` action takes an empty body and returns `service` (`job_execute`, `job_cancel`, `result_stream`) and `permissions` (`catalog_read`, `item_metadata`, `item_read`, `job_submit`). Metadata is public; submission permission reflects the current credential. This is advisory: actual operations still authorize, and operator/environment/capacity compatibility for a particular Job is not guaranteed. Nodes and Union expose the same query.
+
+Python: `Source.capabilities("dacp://host:18861", token=token)`; Scala: `Source.capabilities("dacp://host:18861", TlsConfig(tokenFile=Some(tokenPath)))`. Responses contain no credentials.
+
+DACP implements XStream remote data and execution capabilities. See [XStream execution targets](https://github.com/rdcn-link/xstream-codex/blob/main/docs/execution-targets.md) for public contracts and planning.

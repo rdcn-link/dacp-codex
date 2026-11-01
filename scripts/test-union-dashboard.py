@@ -22,18 +22,18 @@ CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'sel
 
 def fixture():
     now = int(time.time() * 1000)
-    tasks = []
+    steps = []
     nodes = {}
     for region, identity, port in [('east', 'a', 18861), ('west', 'c', 18863)]:
-        tasks += [dict(id='sum_' + region, title=region + '：汇总商品销量', node=f'dacp://localhost:{port}', node_identity=identity, operator='quantity_sum@1.0', state='succeeded', inputs=[dict(port='source', uri=f'dacp://localhost:{port}/data/sales', view='bytes')]),
+        steps += [dict(id='sum_' + region, title=region + '：汇总商品销量', node=f'dacp://localhost:{port}', node_identity=identity, operator='quantity_sum@1.0', state='succeeded', inputs=[dict(port='source', uri=f'dacp://localhost:{port}/data/sales', view='bytes')]),
                   dict(id='revenue_' + region, title=region + '：融合价格计算收入', node='dacp://localhost:18862', node_identity='b', operator='revenue_join@1.0', state='succeeded', inputs=[dict(port='prices', uri='dacp://localhost:18862/data/prices', view='bytes'), dict(port='quantities', task='sum_' + region, output_port='result')])]
-    tasks.append(dict(id="prepare", title="准备目标表", node="dacp://localhost:18862", node_identity="b", operator="prepare@1.0", state="succeeded", inputs=[]))
-    for t in tasks:
+    steps.append(dict(id="prepare", title="准备目标表", node="dacp://localhost:18862", node_identity="b", operator="prepare@1.0", state="succeeded", inputs=[]))
+    for t in steps:
         node = nodes.setdefault(t['node_identity'], dict(observed_at_ms=now, ports={}))
         for direction, ports in [('inputs', [b['port'] for b in t['inputs']]), ('outputs', ['result'])]:
             for port in ports:
                 node['ports'][t['id'] + '/' + direction + '/' + port] = dict(payload_bytes=128, remote_payload_bytes=128 if port == 'quantities' else 0, last_activity_ms=now)
-    return dict(job_id='g6-browser-test', state='succeeded', owner='client', elapsed_ms=2400, created_at_ms=now-2400, finished_at_ms=now, tasks=tasks, nodes=nodes, events=[], job_yaml='name: g6-browser-test\ntasks: []', attempts=[dict(attempt_id='first',retry_index=0,state='failed',started_at_ms=now-3000,finished_at_ms=now-2500,message='<script>unsafe</script>'),dict(attempt_id='second',retry_index=1,state='succeeded',started_at_ms=now-2400,finished_at_ms=now,nodes=nodes)], outputs={region + '_revenue': dict(task='revenue_' + region, port='result') for region in ['east', 'west']})
+    return dict(job_id='g6-browser-test', state='succeeded', owner='client', elapsed_ms=2400, created_at_ms=now-2400, finished_at_ms=now, steps=steps, nodes=nodes, events=[], job_yaml='name: g6-browser-test\nsteps: []', attempts=[dict(attempt_id='first',retry_index=0,state='failed',started_at_ms=now-3000,finished_at_ms=now-2500,message='<script>unsafe</script>'),dict(attempt_id='second',retry_index=1,state='succeeded',started_at_ms=now-2400,finished_at_ms=now,nodes=nodes)], outputs={region + '_revenue': dict(task='revenue_' + region, port='result') for region in ['east', 'west']})
 
 
 class Site(BaseHTTPRequestHandler):
@@ -138,10 +138,10 @@ def main():
             before = page.evaluate('''() => {window.originalGraph=dagViewer.graph;return {zoom:dagViewer.graph.getZoom(),position:dagViewer.graph.getPosition(),nodes:dagViewer.graph.getNodeData().map(n=>[n.id,n.style.x,n.style.y])};}''')
             updated = deepcopy(Site.job)
             updated['state'] = 'running'
-            updated['tasks'][0]['state'] = 'running'
-            updated['tasks'][1]['state'] = 'waiting_inputs'
-            updated['tasks'][2]['state'] = 'unknown'
-            updated['tasks'][3]['state'] = 'failed'
+            updated['steps'][0]['state'] = 'running'
+            updated['steps'][1]['state'] = 'waiting_inputs'
+            updated['steps'][2]['state'] = 'unknown'
+            updated['steps'][3]['state'] = 'failed'
             updated['nodes']['a']['ports']['sum_east/outputs/result']['payload_bytes'] = 4096
             updated['nodes']['a']['observed_at_ms'] += 1000
             Site.job = updated
@@ -191,7 +191,7 @@ def main():
             assert not page.evaluate("dagViewer.graph.getComboData('server:0').style.collapsed")
             # Untrusted metadata must remain text in both canvas and DOM inspector.
             updated = deepcopy(Site.job)
-            updated['tasks'][0]['title'] = '<img src=x onerror="window.injected=true">'
+            updated['steps'][0]['title'] = '<img src=x onerror="window.injected=true">'
             Site.job = updated
             page.evaluate('refresh()')
             page.evaluate("dagViewer.inspect('task:sum_east')")

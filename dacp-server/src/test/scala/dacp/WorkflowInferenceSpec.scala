@@ -1,5 +1,8 @@
 package dacp
 
+import _root_.xstream.engine.{Jobs}
+import _root_.xstream.execution.{InferenceDiagnostic,InferenceResult,OperatorCommand,PortContract,StreamDescriptor}
+
 import _root_.xstream.operator.inference._
 
 import _root_.xstream.data._
@@ -11,7 +14,7 @@ import scala.jdk.CollectionConverters._
 class WorkflowInferenceSpec extends AnyFunSuite {
   val bytes=StreamDescriptor(Set("bytes"),Set("json"),certainty="known")
   def plan=Jobs.parse("""name: infer
-    |tasks:
+    |steps:
     |- {id: source, operator: source@1, inputs: {}}
     |- {id: copy, operator: copy@1, inputs: {source: source}}
     |- {id: sink, operator: sink@1, inputs: {source: copy}}
@@ -25,7 +28,7 @@ class WorkflowInferenceSpec extends AnyFunSuite {
       InferenceResult(if(task.id=="sink")Map.empty else Map("result"->bytes))
     }
     assert(called==Vector("source","copy","sink"))
-    assert(report.path("tasks").path("sink").path("outputs").isEmpty)
+    assert(report.path("steps").path("sink").path("outputs").isEmpty)
   }
   test("missing ports and error diagnostics fail before downstream scheduling") {
     intercept[IllegalArgumentException](WorkflowInference.propagate(plan){(_,_)=>InferenceResult(Map.empty)})
@@ -33,7 +36,7 @@ class WorkflowInferenceSpec extends AnyFunSuite {
   }
   test("unknown schemas propagate and do not imply a false known schema") {
     val report=WorkflowInference.propagate(plan){(task,_)=>InferenceResult(if(task.id=="sink")Map.empty else Map("result"->StreamDescriptor(Set("records"))))}
-    assert(report.path("tasks").path("source").path("outputs").path("result").path("certainty").asText=="unknown")
+    assert(report.path("steps").path("source").path("outputs").path("result").path("certainty").asText=="unknown")
   }
   test("input representation, format and known schema incompatibilities are rejected") {
     val op=ResolvedOperator("image",None,None,OperatorCommand(),Map("source"->PortContract(Set("records"),Set.empty,None)),Map.empty)

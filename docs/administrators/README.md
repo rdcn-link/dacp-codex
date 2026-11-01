@@ -4,7 +4,7 @@
 
 Administrators deploy DACP data nodes and Union Server, configure connections to independent operator repositories, and maintain certificates, authorization, published data, and execution records. See the [DACP protocol](../protocol.md) for protocol and identity boundaries.
 
-For Dataset identities supplied by a database or application, use a [dynamic catalog plugin](../dataset-catalogs.md). Applications hosting a node directly can use the [embedding API](../embedded-server.md).
+For Dataset identities supplied by a database or application, use a [dynamic catalog plugin](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md). Applications hosting a node directly can use the [embedding API](../embedded-server.md).
 
 ## Single-node deployment
 
@@ -27,7 +27,7 @@ sbt 'run ../examples/server.yaml'
 
 ## Publishing data and operators
 
-Declare Dataset providers and their parameters in node configuration. Built-in and external providers share the same plugin contracts. See the [technical reference](../reference.md), [Dataset providers](../dataset-providers.md), and [SQL example](../../examples/sql/README.md) for directory and SQL configuration. Restrict data directories and credentials to the service account.
+Declare Dataset providers and their parameters in node configuration. Built-in and external providers share the same plugin contracts. See the [technical reference](../reference.md), [Dataset providers](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers.md), and [SQL example](../../examples/sql/README.md) for directory and SQL configuration. Restrict data directories and credentials to the service account.
 
 Nodes read local operators through `local_operator_library` and search remote repositories through `remote_operator_library_urls`. Remote configuration order affects lookup order. Publish shared runtimes separately from operator code. See [packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md) and the [executor manual](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-operator-executors/README.md) for execution environments and native commands. Direct source execution on data nodes is available only in DEBUG mode; repository source submissions use their own authenticated review service in ordinary operation; see [source runtimes](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md).
 

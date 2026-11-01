@@ -13,14 +13,14 @@
 - `mounted` Dataset 提供者：通过嵌套 Dataset 定义组合任意后端命名空间；文件/JDBC 的 PublishedItem 和 SqlConfig 位于后端插件，核心 sources 仅保存 provider/settings。
 - `ExecutionStoreProvider`：核心维护执行状态与恢复，文件插件负责原子写入和单写者锁，节点及 Union 通过 execution_store 选择实现。
 
-注册、配置和资源契约见[插件指南](plugins_zh.md)及[Dataset 提供者](dataset-providers_zh.md)。MongoDB/S3 的具体后端尚未捆绑，不应从这些扩展契约推断其已实现。
+注册、配置和资源契约见[插件指南](plugins_zh.md)及[Dataset 提供者](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers_zh.md)。MongoDB/S3 的具体后端尚未捆绑，不应从这些扩展契约推断其已实现。
 
 ## 应优先处理的边界
 
 | 优先级 | 现有耦合与位置 | 建议与实际收益 |
 |---|---|---|
 | 中 | 核心验证 Token 主体、Union 服务凭据、任务所有权和精确节点间流计划 | 可扩展可发现的机构授权策略。插件必须保留核心认证、凭据撤销和执行计划边界 |
-| 中 | [TaskExecutor](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-engine/src/main/scala/dacp/TaskExecutor.scala) 直接创建 Docker 客户端和容器；[OperatorLibrary.resolve](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-inference/src/main/scala/xstream/operator/inference/OperatorLibrary.scala) 也接受 DockerClient | 将制品解析与运行环境分开，再定义完整 `ExecutionBackend` 生命周期。现有 `OperatorExecutor` 继续生成语言/入口启动命令；Docker、未来 Podman/Kubernetes 后端负责运行、取消、资源和清理。拆分不表示允许直接在宿主机执行不受约束的代码 |
+| 中 | [TaskExecutor](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-engine/src/main/scala/xstream/engine/TaskExecutor.scala) 直接创建 Docker 客户端和容器；[OperatorLibrary.resolve](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-inference/src/main/scala/xstream/operator/inference/OperatorLibrary.scala) 也接受 DockerClient | 将制品解析与运行环境分开，再定义完整 `ExecutionBackend` 生命周期。现有 `OperatorExecutor` 继续生成语言/入口启动命令；Docker、未来 Podman/Kubernetes 后端负责运行、取消、资源和清理。拆分不表示允许直接在宿主机执行不受约束的代码 |
 
 当前原生 Dataset Provider 已可直接提供 MongoDB/S3 风格的 Item 和流；格式字节源、通用挂载解决的是**复用格式插件和跨后端组合**，不是接入单一后端的前置条件。`mixed` 目前明确仍是文件/JDBC 的组合。
 

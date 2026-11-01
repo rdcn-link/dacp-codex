@@ -1,5 +1,9 @@
 package dacp.unionserver
 
+import _root_.xstream.connector.dacp.wire.{FlightTraffic,Tls}
+
+import _root_.xstream.execution.{ExecutionStoreDefinition,MaterializationStoreDefinition}
+
 
 import dacp.union._
 import com.fasterxml.jackson.databind.JsonNode
@@ -10,7 +14,7 @@ import scala.jdk.CollectionConverters._
 final case class WebSettings(host:String="127.0.0.1",port:Int=19880) {
   require(host.nonEmpty && port>0 && port<=65535,"invalid web listener")
 }
-final case class Settings(host:String,port:Int,publicUrl:String,cert:Path,key:Path,ca:Path,state:Path,pollMs:Long=1000,timeout:Long=1800,retention:Long=300,web:Option[WebSettings]=None,executionStore:Option[dacp.ExecutionStoreDefinition]=None,pluginDirectory:Option[Path]=None,memberSettings:Vector[MemberSettings]=Vector.empty,credentialDirectory:Option[Path]=None,s3:dacp.S3Settings=dacp.S3Settings(),materializationStore:Option[dacp.MaterializationStoreDefinition]=None) {
+final case class Settings(host:String,port:Int,publicUrl:String,cert:Path,key:Path,ca:Path,state:Path,pollMs:Long=1000,timeout:Long=1800,retention:Long=300,web:Option[WebSettings]=None,executionStore:Option[xstream.execution.ExecutionStoreDefinition]=None,pluginDirectory:Option[Path]=None,memberSettings:Vector[MemberSettings]=Vector.empty,credentialDirectory:Option[Path]=None,s3:dacp.S3Settings=dacp.S3Settings(),materializationStore:Option[xstream.execution.MaterializationStoreDefinition]=None) {
   require(port>0 && port<=65535 && pollMs>=100 && timeout>0 && retention>0)
   Json.origin(publicUrl)
   require(memberSettings.map(_.url).distinct.size==memberSettings.size,"duplicate configured member")
@@ -27,12 +31,12 @@ object Settings {
       Some(WebSettings(Json.text(w,"host"),Json.number(w,"port",1,65535).toInt))
     }else None,if(n.has("execution_store")){
       val e=n.path("execution_store");Json.fields(e,Set("provider","settings"))
-      Some(dacp.ExecutionStoreDefinition(Json.text(e,"provider"),Json.mapper.convertValue(e.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap))
+      Some(xstream.execution.ExecutionStoreDefinition(Json.text(e,"provider"),Json.mapper.convertValue(e.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap))
     }else None,if(n.has("plugin_directory"))Some(Path.of(Json.text(n,"plugin_directory")))else None,Option(n.get("members")).map { values=>
       require(values.isArray,"members must be a list")
       values.elements.asScala.map { v=>Json.fields(v,Set("url","credential_file"));MemberSettings(Json.origin(Json.text(v,"url")),Path.of(Json.text(v,"credential_file"))) }.toVector
     }.getOrElse(Vector.empty),Option(n.get("credential_directory")).map(v=>Path.of(v.asText)),dacp.S3Settings.read(Option(n.get("s3")).map(v=>Json.mapper.convertValue(v,classOf[java.util.LinkedHashMap[String,Object]]))),Option(n.get("materialization_store")).map { m=>
-      Json.fields(m,Set("provider","settings"));dacp.MaterializationStoreDefinition(Json.text(m,"provider"),Json.mapper.convertValue(m.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap)
+      Json.fields(m,Set("provider","settings"));xstream.execution.MaterializationStoreDefinition(Json.text(m,"provider"),Json.mapper.convertValue(m.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap)
     })
   }
 }

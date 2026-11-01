@@ -1,38 +1,47 @@
-# Paths are relative to dacp-server (sbt working directory).
 host: 0.0.0.0
 public_host: localhost
 port: 8815
-# Public anonymous read-only S3 endpoint; independent of Flight mTLS.
 s3:
   enabled: true
   host: 0.0.0.0
   port: 10815
-# Count directly published record files once; browsing does not scan records.
 count_file_records_on_startup: true
 datasets:
   data1:
     provider: mixed
-    description: '{"summary":"Example records, files and archives","owner":{"team":"DACP"}}'
+    description: '{"owner":{"team":"DACP"},"title":"data1","description":"Example records, files and archives"}'
     items:
-      /events: {file: ../examples/data/events.json, format: ndjson}
-      /reports/orders: {file: ../examples/data/nested/orders.csv}
-      /image: {file: ../examples/data/pixel.png}
-      /empty: {kind: folder}
-      /archive: {file: ../examples/data/reports.zip}
-      /images: {file: ../examples/data/images.ZIP}
-      /bundle: {file: ../examples/data/reports.tar}
-      /bundle_gzip: {file: ../examples/data/reports.tar.gz}
-      /orders.csv.gz: {file: ../examples/data/orders.csv.gz}
+      /events:
+        file: ../examples/data/events.json
+        format: ndjson
+      /reports/orders:
+        file: ../examples/data/nested/orders.csv
+      /image:
+        file: ../examples/data/pixel.png
+      /empty:
+        kind: folder
+      /archive:
+        file: ../examples/data/reports.zip
+      /images:
+        file: ../examples/data/images.ZIP
+      /bundle:
+        file: ../examples/data/reports.tar
+      /bundle_gzip:
+        file: ../examples/data/reports.tar.gz
+      /orders.csv.gz:
+        file: ../examples/data/orders.csv.gz
   csv_data:
     provider: mixed
     items:
-      /orders: {file: ../examples/data/nested/orders.csv}
+      /orders:
+        file: ../examples/data/nested/orders.csv
   documents:
     provider: directory
     source:
       root: ../examples/data
     reader_overrides:
-      /events.json: {format: ndjson}
+      /events.json:
+        format: ndjson
 tls_cert: ../examples/certs/server.crt
 tls_key: ../examples/certs/server.key
 tls_ca: ../examples/certs/ca.crt
@@ -40,5 +49,4 @@ batch_size: 1024
 byte_chunk: 65536
 infer_sample: 4
 local_operator_library: ../operators
-# Remote libraries are searched in order when the operator is unavailable locally.
 remote_operator_library_urls: []

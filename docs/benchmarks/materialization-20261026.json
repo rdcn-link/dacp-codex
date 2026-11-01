@@ -3,7 +3,7 @@
   "input_bytes": 18500050,
   "workflow": {
     "job": "Stream versus every-step materialization benchmark: 500000 weather observations",
-    "tasks": [
+    "steps": [
       {
         "id": "read",
         "node": "nd-t8nx-jkw4",

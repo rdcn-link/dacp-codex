@@ -6,7 +6,7 @@
 
 面向实现算子、Dataset provider、格式处理器、执行器、SDK 或服务端的贡献者。连接节点、浏览数据、配置内置 provider 和运行作业请先阅读用户指南。除非另有说明，命令均从项目根目录执行。
 
-目录级扩展和程序内启动见 [DataCatalog](../dataset-catalogs_zh.md)与[嵌入式服务器](../embedded-server_zh.md)。
+目录级扩展和程序内启动见 [DataCatalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)与[嵌入式服务器](../embedded-server_zh.md)。
 
 ## 架构与扩展点
 
@@ -31,73 +31,9 @@
 
 算子输出为临时流，不注册结果 Dataset，不提供保存结果模式或输出 TTL。bytes、records、array 和 sequence 采用统一 Arrow 流契约，科学维度保持显式表达。通用流水线调度与 fan-out 尚未实现。
 
-## 扩展 Dataset 与格式
+## 接入 XStream 数据扩展
 
-参见[插件贡献要求](../plugins_zh.md)、[Dataset provider 契约](../dataset-providers_zh.md)、[格式及容器处理器](../format-handlers_zh.md)和[记录查询语义](../records-scans_zh.md)。下面的示例说明 provider 实现、配置责任与服务注册。
-
-### 自定义 Dataset provider
-
-用户定义的 provider 是服务端 Scala/JVM 插件。`provider` 选择插件，`source` 传入该 Dataset 实例的私有参数；同一个 provider 可用不同参数构建多个 Dataset。插件负责校验参数，客户端只看到公开路径和数据。
-
-下面是一个可发布单个 CSV 文件的完整 provider 示例，固定公开路径为 `/records`：
-
-```scala
-package example
-
-import dacp._
-import java.nio.file.Path
-
-class CsvFileProvider extends DatasetProvider {
-  val id = "csv-file"
-
-  def create(d: DatasetDefinition, context: DatasetContext): PublishedDataset = {
-    require(d.source.keySet.subsetOf(Set("file")),
-      "unknown csv-file parameter")
-    require(d.source.contains("file"), "csv-file requires source.file")
-    require(d.items.isEmpty,
-      "csv-file does not accept item mappings")
-    val file = Path.of(d.source("file").toString)
-    context.createDataset(DatasetDefinition("mixed", items = Map(
-      "/records" -> Map[String,Object]("file" -> file.toString, "format" -> "csv")
-    )))
-  }
-}
-```
-
-将代码编译为 JAR，仅依赖独立的 `xstream-execution-api`（使用与服务器匹配的版本和 Scala 版本，以 `Provided` 方式依赖）。在 JAR 内创建以下服务注册文件：
-
-```text
-META-INF/services/xstream.data.DatasetProvider
-```
-
-文件内容为实现类全名：
-
-```text
-example.CsvFileProvider
-```
-
-将插件及其所需依赖 JAR 放入 `plugin_directory`（不要复制服务器已提供的 API 和依赖），重启时使用以下配置片段，并合并监听地址和 TLS：
-
-```yaml
-plugin_directory: /opt/dacp/plugins
-datasets:
-  measurements:
-    provider: csv-file
-    source:
-      file: /private/measurements.csv
-```
-
-客户端读取 `/records`，不会获得 `source.file`。需要逐项映射的插件默认通过 `items` 接收参数，也可覆盖 `DatasetProvider.itemSettingsKey` 声明自己的配置键；解析后的映射统一由 `definition.items` 提供。`source` 可包含插件自定义的嵌套参数，插件必须自行校验类型、必填项和未知参数。
-
-目录 provider 使用 `reader_overrides`，SQLDB 使用 `tables`，mixed 使用 `items`。目录和 SQLDB 不接受 `items`。原生后端（例如未来的 MongoDB provider）可直接实现 `PublishedDataset` 和 `DatasetAccess`，提供列举、元数据、计数与流式读取，无需映射成文件或 SQL。完整接口和取消、资源释放要求见 [provider 开发指南](../dataset-providers_zh.md)。MongoDB 尚未实现。
-
-### 文件与结构化内容插件
-
-文件插件实现 `FormatHandler`，在 `META-INF/services/xstream.data.FormatHandler` 注册。处理器自行校验私有 `options` 参数；例如 Excel 的设置为 `options: {sheet: Orders, header_row: 2}`。通用 `format` 和 `schema` 保持在读取配置顶层。
-
-需要浏览文件内部逻辑对象时，实现 `StructuredFileHandler`，通过同一个格式服务文件注册。其 `openStructure` 返回 `DatasetAccess`，可直接流式读取内部对象，不要求提取为临时文件。文件根表现为带原始 bytes 视图的 folder，子对象显式声明 `records` 或 `bytes`。归档读取器可实现 `ContainerReader` 并在 `META-INF/services/xstream.data.ContainerReader` 注册，无需再修改核心格式注册表。
-
-独立插件 API 位于 [xstream-execution-api](https://github.com/rdcn-link/xstream-codex/tree/main/xstream-execution-api)，可运行的贡献示例和构建、安装步骤位于 [examples/plugins](../../examples/plugins/README_zh.md)。`PluginChecks.listing` 提供可复用的元数据契约检查。服务端会关闭每次请求的访问句柄，并在关闭服务时释放 provider 资源。XStream 数据插件已实现 NetCDF/FITS/FASTA 解析及通过标准 Arrow 流传输的数组和序列视图。贡献者通过共享契约暴露文件内部对象，不能静默把数组展开为记录。
+Dataset provider、格式与容器处理器、记录查询语义由 XStream 定义。开发与注册请阅读 [XStream 扩展开发文档](http://xstream.conoai.cn/docs.html)。DACP 管理员负责将插件及依赖安装到 `plugin_directory`，并在节点配置中选择 provider；详见[插件接入](../plugins_zh.md)。
 
 ## 开发与验证
 
@@ -132,7 +68,7 @@ DACP 优先采用插件机制扩展。新的数据集后端、文件格式和处
 
 stage 服务端、构建所需运行时并准备示例证书后，使用 Docker 权限运行 `.venv/bin/python scripts/test-native-execution.py`，验证原生流、部分失败和取消。`scripts/test-source-submission.py` 需要启动 `examples/source-debug.yaml` 中的 DEBUG 服务，验证 Python/Scala heredoc。前置条件与测试端口见脚本及对应指南。
 
-[技术参考](../reference_zh.md)说明传输及配置。测试、示例与中英文文档须同步。本项目尚未发布，直接替换被废弃接口，不保留兼容别名或迁移回退。
+[技术参考](../reference_zh.md)说明传输及配置。测试、示例与中英文文档须同步。公共契约、调用方与示例须使用一致的名称和字段定义。
 
 ## 算子审查材料
 
@@ -155,3 +91,9 @@ Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名�
 ## XStream 集成测试
 
 引擎、数据和算子 SDK、推导与运行环境工具位于 [xstream-codex](https://github.com/rdcn-link/xstream-codex)，仓库服务及源码审核集成测试位于独立[算子仓库](https://github.com/rdcn-link/xstream-operator-repository)。DACP 构建依赖已发布的 XStream 制品。需要算子示例源码的开发集成测试通过显式 `XSTREAM_SOURCE_ROOT=/path/to/xstream-codex` 选择测试素材；该路径不是生产构建依赖。气象算子示例需要在测试 Python 环境安装 `xstream-operator-sdk/python`。
+
+## 远程执行适配与协议同步
+
+XStream 定义协议无关的执行与数据访问契约。DACP 连接器通过 `ExecutionTargetProvider` 和 `RemoteItemProvider` 提供计算与数据访问。Union 将成员和数据位置转换为公共规划输入，通用步骤排名复用 `GraphPlacement`。Designer 仅编制 Job。
+
+`proto/dacp.proto` 是元数据协议的权威来源。导出连接器快照：`python3 scripts/export-xstream-protocol.py /path/to/dacp.proto`；加 `--check` 检查一致性。该命令用于显式集成验证，不是 XStream 独立构建的前提。

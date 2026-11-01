@@ -18,7 +18,7 @@ with sync_playwright() as pw:
  page.wait_for_function('dagViewer.ready && dagViewer.job.endsWith(":logical") && dagViewer.graph.getData().combos.length === 0')
  assert page.evaluate('dagViewer.graph.getData().nodes.length')==physical_count
  page.locator('[data-plan-view="logical:script"]').click();expect(page.locator('#job-script')).to_be_visible();expect(page.locator('#dag')).to_be_hidden()
- text=page.locator('#job-script').inner_text();assert 'tasks:' in text and 'node:' not in text
+ text=page.locator('#job-script').inner_text();assert 'steps:' in text and 'node:' not in text
  page.locator('#refresh').click();page.wait_for_timeout(500);expect(page.locator('#job-script')).to_be_visible();expect(page.locator('#logical-plan-tab')).to_have_attribute('aria-selected','true')
  page.locator('#physical-plan-tab').click();expect(page.locator('#dag')).to_be_visible()
  page.wait_for_function('dagViewer.ready && !dagViewer.job.endsWith(":logical") && dagViewer.graph.getData().combos.length > 0')

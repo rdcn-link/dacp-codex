@@ -11,7 +11,7 @@ window.DacpExecutionInfo=(()=>{
  function render(container,job,fmt){
   container.replaceChildren();
   const members=new Map();
-  for(const task of job.tasks||[]){const key=task.node_identity||task.node;if(!members.has(key))members.set(key,{address:task.node,tasks:[]});members.get(key).tasks.push(task);}
+  for(const task of job.steps||[]){const key=task.node_identity||task.node;if(!members.has(key))members.set(key,{address:task.node,steps:[]});members.get(key).steps.push(task);}
   for(const [identity,member] of members){
    const snapshot=job.nodes?.[identity]||{},card=node('section',undefined,'execution-member'),head=node('div',undefined,'section-head');
    head.append(node('h4',member.address||'Local execution'));card.append(head);
@@ -27,7 +27,7 @@ window.DacpExecutionInfo=(()=>{
    const scroll=node('div',undefined,'table-scroll'),table=node('table'),header=node('tr');
    for(const label of ['Step','Status','Execution unit / runtime','Input payload','Output payload'])header.append(node('th',label));
    const thead=node('thead');thead.append(header);table.append(thead);const body=node('tbody');
-   for(const task of member.tasks){
+   for(const task of member.steps){
     const row=node('tr'),unit=(snapshot.execution_units||[]).find(u=>(u.steps||[]).includes(task.id));
     const runtime=unit?.runtime_name?unit.runtime_name+(unit.runtime_version?'@'+unit.runtime_version:''):unit?.mode==='host_stream_source'?'Host JVM':unit?.runtime_executor||'Not recorded';
     const value=direction=>{const metrics=Object.entries(snapshot.ports||{}).filter(([key])=>key.startsWith(task.id+'/'+direction+'/'));return metrics.length?fmt.bytes(metrics.reduce((sum,[,m])=>sum+(m.payload_bytes||0),0)):'—';};

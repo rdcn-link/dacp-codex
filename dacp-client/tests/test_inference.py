@@ -13,11 +13,11 @@ def test_job_inference_sends_resolved_workflow_without_stream_exchange(monkeypat
         closed = False
         def do_action(self, action, options):
             calls.append((action.type, json.loads(action.body.to_pybytes())))
-            return iter([SimpleNamespace(body=pa.py_buffer(b'{"tasks":{},"outputs":{}}'))])
+            return iter([SimpleNamespace(body=pa.py_buffer(b'{"steps":{},"outputs":{}}'))])
         def close(self): self.closed = True
     client = Client()
     monkeypatch.setattr(inference, '_flight_client', lambda *args: client)
-    assert Job.infer('dacp://localhost', 'params: {limit: $LIMIT}', variables={'LIMIT': 123}) == {'tasks': {}, 'outputs': {}}
+    assert Job.infer('dacp://localhost', 'params: {limit: $LIMIT}', variables={'LIMIT': 123}) == {'steps': {}, 'outputs': {}}
     assert calls[0][0] == 'dacp.infer_job'
     assert yaml.safe_load(calls[0][1]['job_yaml'])['params']['limit'] == 123
     assert client.closed

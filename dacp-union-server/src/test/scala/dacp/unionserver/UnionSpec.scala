@@ -1,5 +1,11 @@
 package dacp.unionserver
 
+import _root_.xstream.connector.dacp.wire.{ArrowViewWire,ClientTransport,Tls}
+
+import _root_.xstream.data.files.{FileDatasets,PublishedItem}
+import _root_.xstream.engine.{Jobs,Task}
+import _root_.xstream.execution.{ExecutionStoreDefinition,FrameSource,InferenceResult,MaterializationStoreDefinition,OperatorFrame,OperatorFrames,StreamCancel,StreamDescriptor,StreamProtocol}
+
 import _root_.xstream.data._
 
 import dacp._
@@ -51,7 +57,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     @volatile var controlFinished=false
     def count(task:String):Int=Option(invocations.get(task)).map(_.get).getOrElse(0)
     def config(name:String):Config={
-      val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin"))))++(if(withRecords)Seq(PublishedItem("/observations",file=Some(dir.resolve("observations.csv"))))else Seq.empty)++(if(scientific)Seq(PublishedItem("/genome",file=Some(dir.resolve("genome.fa"))))else Seq.empty)).copy(description="""{"summary":"公开数据说明","html":"<script>alert(1)</script>"}""")
+      val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin"))))++(if(withRecords)Seq(PublishedItem("/observations",file=Some(dir.resolve("observations.csv"))))else Seq.empty)++(if(scientific)Seq(PublishedItem("/genome",file=Some(dir.resolve("genome.fa"))))else Seq.empty)).copy(description=""" { "title": "公开数据", "description": "公开数据说明", "html": "<script>alert(1)</script>" } """)
       val c=Config("localhost",port(),"localhost",if(dynamicCatalog)Map.empty else Map("data"->definition),root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,accessLogDirectory=Some(dir.resolve(name+"-access")),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve(s"$name-executions")).toString))))
       if(dynamicCatalog)c.installCatalog(new DataCatalog {
         def list():Seq[DatasetInfo]={if(catalogFailure)throw new IllegalStateException("catalog unavailable");if(catalogVisible)Seq(DatasetInfo("data",definition.description))else Seq.empty}
@@ -122,7 +128,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       }
     }
     val yaml=s"""name: union-example
-    |tasks:
+    |steps:
     |- id: read_ta_source
     |  operator: read_item@1.0
     |  inputs: {}
@@ -155,8 +161,8 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     |""".stripMargin
     def submit(text:String=yaml):String=client.action(settings.publicUrl,"submit",Json.obj().put("job_yaml",publicYaml(text))).path("job_id").asText
     def submitPolicy(policy:JsonNode):String=client.action(settings.publicUrl,"submit",Json.obj().put("job_yaml",publicYaml(yaml)).put("execution_policy_yaml",dacp.union.YamlDocument.dump(policy))).path("job_id").asText
-    def replay(id:String,tasks:Option[Seq[String]]=None):String={
-      val n=Json.obj().put("job_id",id);tasks.foreach(ts=>{val a=n.putArray("tasks");ts.foreach(a.add)})
+    def replay(id:String,steps:Option[Seq[String]]=None):String={
+      val n=Json.obj().put("job_id",id);steps.foreach(ts=>{val a=n.putArray("steps");ts.foreach(a.add)})
       client.action(settings.publicUrl,"replay_job",n).path("job_id").asText
     }
     var retryNotices=0
@@ -168,12 +174,12 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     def status(id:String)=client.action(settings.publicUrl,"job_status",Json.obj().put("job_id",id))
     def close():Unit={x.close();a.close();b.close();af.close();bf.close();client.close();stranger.close();Thread.sleep(100);ca.close();cb.close();allocator.close()}
   }
-  private def policy(all:Boolean=false):JsonNode=if(all)Json.parse("""{"materialization":{"default":"materialize"}}""")else Json.parse("""{"materialization":{"tasks":{"ta":{"outputs":{"result":"materialize"}}}}}""")
+  private def policy(all:Boolean=false):JsonNode=if(all)Json.parse("""{"materialization":{"default":"materialize"}}""")else Json.parse("""{"materialization":{"steps":{"ta":{"outputs":{"result":"materialize"}}}}}""")
   test("Union rejects local source directories before dispatch") {
     val f=new Fixture
     try {
       f.approved()
-      val text="name: Local attempt\ntasks:\n- id: run\n  operator: {local: /tmp/private-operator}\n  inputs: {}\noutputs: {result: run}\n"
+      val text="name: Local attempt\nsteps:\n- id: run\n  operator: {local: /tmp/private-operator}\n  inputs: {}\noutputs: {result: run}\n"
       val error=intercept[UnionFailure](f.submit(text))
       assert(error.code==org.apache.arrow.flight.FlightStatusCode.INVALID_ARGUMENT)
     }finally f.close()
@@ -235,7 +241,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
         def accept(b:SequenceChunk):Unit=parts+=b
       }),()=>())finally reader.close()
       assert(parts.map(_.symbols.toString).mkString=="GTAC" && parts.head.offset==2)
-      val yaml=s"name: Union scientific selection\ntasks:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: '${f.ca.uri("data","/genome/sequences")}', view: sequence, selection: {offset: 1, length: 3}}\noutputs: {result: read}\n"
+      val yaml=s"name: Union scientific selection\nsteps:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: '${f.ca.uri("data","/genome/sequences")}', view: sequence, selection: {offset: 1, length: 3}}\noutputs: {result: read}\n"
       val id=f.submit(yaml)
       val allocator=new org.apache.arrow.memory.RootAllocator()
       try {
@@ -265,8 +271,8 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val remoteInput=downstream.path("inputs").path("left")
       assert(remoteInput.path("producer_identity").asText==tls("a").identity && !remoteInput.has("identity"))
       val invalidInput=Json.obj().put("name","Invalid producer test").put("union_id",f.unionId).put("execution_id","superseded-producer")
-      invalidInput.set[JsonNode]("tasks",b.path("task_definitions").deepCopy[JsonNode]())
-      val oldBinding=invalidInput.path("tasks").elements.asScala.find(_.path("id").asText=="tb").get.path("inputs").path("left").asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
+      invalidInput.set[JsonNode]("steps",b.path("task_definitions").deepCopy[JsonNode]())
+      val oldBinding=invalidInput.path("steps").elements.asScala.find(_.path("id").asText=="tb").get.path("inputs").path("left").asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
       oldBinding.set[JsonNode]("identity",oldBinding.remove("producer_identity"))
       assert(intercept[UnionFailure](f.x.members.remote.action(DacpUri.origin(f.cb.uri("")),"prepare",Json.obj().put("job_yaml",dacp.union.YamlDocument.dump(invalidInput)),Some(tls("b").identity))).code==INVALID_ARGUMENT)
       val reader=task(a,"read_ta_source")
@@ -275,9 +281,9 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(task(b,"read_tb_right").path("output_routes").isMissingNode)
       assert(downstream.path("inputs").path("right").asText=="read_tb_right:result")
       val body=Json.obj().put("name","Invalid routing test").put("union_id",f.unionId).put("execution_id","invalid-routes")
-      body.set[JsonNode]("tasks",a.path("task_definitions").deepCopy[JsonNode]())
-      val first=body.path("tasks").elements.asScala.find(_.path("id").asText=="ta").get.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
-      val localReader=body.path("tasks").elements.asScala.find(_.path("id").asText=="read_ta_source").get.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
+      body.set[JsonNode]("steps",a.path("task_definitions").deepCopy[JsonNode]())
+      val first=body.path("steps").elements.asScala.find(_.path("id").asText=="ta").get.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
+      val localReader=body.path("steps").elements.asScala.find(_.path("id").asText=="read_ta_source").get.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
       localReader.putObject("output_routes").putObject("result").put("consumer_identity",tls("a").identity)
       assert(intercept[UnionFailure](f.x.members.remote.action(DacpUri.origin(f.ca.uri("")),"prepare",Json.obj().put("job_yaml",dacp.union.YamlDocument.dump(body)),Some(tls("a").identity))).code==INVALID_ARGUMENT)
       localReader.remove("output_routes")
@@ -307,7 +313,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val f=new Fixture(materialize=true)
     try {
       f.approved()
-      Seq("""{"unexpected":true}""","""{"materialization":{"allowed":false,"default":"materialize"}}""","""{"materialization":{"allowed":false,"tasks":{"ta":{"outputs":{"result":"materialize"}}}}}""","""{"materialization":{"tasks":{"absent":{"outputs":{"result":"materialize"}}}}}""","""{"materialization":{"tasks":{"ta":{"outputs":{"absent":"stream"}}}}}""","""{"materialization":{"default":"auto"}}""","""{"materialization":{"allowed":"false"}}""").foreach(p=>assert(intercept[UnionFailure](f.submitPolicy(Json.parse(p))).code==INVALID_ARGUMENT))
+      Seq("""{"unexpected":true}""","""{"materialization":{"allowed":false,"default":"materialize"}}""","""{"materialization":{"allowed":false,"steps":{"ta":{"outputs":{"result":"materialize"}}}}}""","""{"materialization":{"steps":{"absent":{"outputs":{"result":"materialize"}}}}}""","""{"materialization":{"steps":{"ta":{"outputs":{"absent":"stream"}}}}}""","""{"materialization":{"default":"auto"}}""","""{"materialization":{"allowed":"false"}}""").foreach(p=>assert(intercept[UnionFailure](f.submitPolicy(Json.parse(p))).code==INVALID_ARGUMENT))
       assert(f.count("ta")==0 && f.x.history.list(0,100).isEmpty)
       val id=f.submitPolicy(Json.parse("""{"materialization":{"allowed":false,"default":"stream"}}"""));assert(f.bytes(id).sameElements(f.inputA++f.inputB));eventually(f.status(id).path("state").asText=="succeeded")
       assert(intercept[UnionFailure](f.replay(id)).code==INVALID_ARGUMENT)
@@ -329,7 +335,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(f.count("ta")==1 && f.count("tb")==2)
       val record=f.x.jobSnapshot(replay).get
       assert(record.path("replay_of").asText==original && record.path("execution_policy")==policy())
-      assert(record.path("effective_execution_policy").path("materialization").path("tasks").path("tb").path("outputs").path("result").asText=="stream")
+      assert(record.path("effective_execution_policy").path("materialization").path("steps").path("tb").path("outputs").path("result").asText=="stream")
       val again=f.replay(replay);assert(f.bytes(again).sameElements(f.inputA++f.inputB));assert(f.count("ta")==1 && f.count("tb")==3)
     }finally f.close()
   }
@@ -426,7 +432,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val replay=f.replay(original);assert(f.bytes(replay).sameElements(f.inputA++f.inputB));eventually(f.status(replay).path("state").asText=="succeeded")
       assert(f.count("ta")==1 && f.count("tb")==1)
       val record=restored.jobSnapshot(replay).get
-      assert(record.path("tasks").elements.asScala.find(_.path("id").asText=="ta").get.path("state").asText=="skipped")
+      assert(record.path("steps").elements.asScala.find(_.path("id").asText=="ta").get.path("state").asText=="skipped")
     }finally {if(restored!=null)restored.close();if(nextA!=null)nextA.close();if(nextB!=null)nextB.close();if(nextAF!=null)nextAF.close();if(nextBF!=null)nextBF.close();f.close()}
   }
   private def http(port:Int,path:String,method:String="GET"):java.net.http.HttpResponse[String]={
@@ -453,11 +459,14 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       f.approved()
       val publicEntries=f.stranger.catalog(f.settings.publicUrl)
       assert(publicEntries.size==2 && publicEntries.forall(i=>dacp.protocol.Metadata.DataSet.parseFrom(i.getAppMetadata).getName.startsWith("ds-")))
+      val originalDescription=f.ca.datasetInfos().head.description
+      assert(publicEntries.forall(i=>dacp.protocol.Metadata.DataSet.parseFrom(i.getAppMetadata).getDescription==originalDescription))
       val id=f.x.members.all.head.path("identity").asText
       val path=s"/members/$id/datasets"
       val first=http(webPort,path)
       assert(first.statusCode()==200 && first.body().contains("公开数据说明"))
       assert(Json.parse(first.body()).path("datasets").get(0).path("description").asText.contains("<script>alert(1)</script>"))
+      assert(Json.parse(first.body()).path("datasets").get(0).path("description").asText==originalDescription)
       assert(http(webPort,"/nodes").body().contains("directory-nodes"))
       assert(first.headers().firstValue("Cache-Control").get()=="no-store")
       val sources=Json.parse(http(webPort,"/datasets/sources").body()).path("sources")
@@ -498,18 +507,18 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       eventually(Json.parse(http(webPort,"/api/overview").body()).path("members").elements.asScala.count(_.path("state").asText=="approved")==2)
       val id=f.submit()
       val details=Json.parse(http(webPort,s"/api/jobs/$id").body())
-      assert(details.path("tasks").size()==4)
-      assert(details.path("tasks").elements.asScala.find(_.path("id").asText=="ta").get.path("title").asText=="汇总本地数据")
-      assert(details.path("tasks").elements.asScala.find(_.path("id").asText=="tb").get.path("inputs").elements.asScala.exists(_.path("task").asText=="ta"))
-      assert(details.path("job_yaml").asText.contains("tasks:"))
-      assert(details.path("submitted_job_yaml").asText.contains("tasks:"))
-      assert(details.path("logical_plan").path("tasks").size()==4)
-      assert(details.path("logical_plan").path("tasks").elements.asScala.forall(t=> !t.has("node")))
+      assert(details.path("steps").size()==4)
+      assert(details.path("steps").elements.asScala.find(_.path("id").asText=="ta").get.path("title").asText=="汇总本地数据")
+      assert(details.path("steps").elements.asScala.find(_.path("id").asText=="tb").get.path("inputs").elements.asScala.exists(_.path("task").asText=="ta"))
+      assert(details.path("job_yaml").asText.contains("steps:"))
+      assert(details.path("submitted_job_yaml").asText.contains("steps:"))
+      assert(details.path("logical_plan").path("steps").size()==4)
+      assert(details.path("logical_plan").path("steps").elements.asScala.forall(t=> !t.has("node")))
       assert(details.path("placement_decisions").size()==4)
       assert(details.path("placement_decisions").elements.asScala.exists(_.path("requested_source").asText.contains("ds-")))
       assert(details.path("sub_jobs").size()==2)
       assert(http(webPort,s"/job?id=$id").body.contains("Logical plan"))
-      eventually(Json.parse(http(webPort,s"/api/jobs/$id").body()).path("sub_jobs").elements.asScala.forall(_.path("definition_yaml").asText.contains("tasks:")))
+      eventually(Json.parse(http(webPort,s"/api/jobs/$id").body()).path("sub_jobs").elements.asScala.forall(_.path("definition_yaml").asText.contains("steps:")))
       val statuses=Json.parse(http(webPort,"/api/overview").body()).path("members").elements.asScala.map(_.path("status")).toVector
       assert(statuses.forall(s=>s.path("started_at_ms").asLong>0 && s.path("uptime_ms").asLong>=0))
       val stream=f.client.stream(f.settings.publicUrl,"results",Json.obj().put("job_id",id))
@@ -548,7 +557,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val page=Json.parse(http(webPort,"/api/history?offset=0&limit=10").body())
       assert(page.path("jobs").get(0).path("job_id").asText==id)
       assert(Json.parse(http(webPort,s"/api/jobs/$id").body()).path("state").asText=="succeeded")
-      assert(Json.parse(http(webPort,s"/api/jobs/$id").body()).path("job_yaml").asText.contains("tasks:"))
+      assert(Json.parse(http(webPort,s"/api/jobs/$id").body()).path("job_yaml").asText.contains("steps:"))
       assert(http(webPort,"/api/history?limit=1001").statusCode()==400)
       assert(http(webPort,"/api/history?limit=1&limit=2").statusCode()==400)
       assert(http(webPort,"/api/history?unknown=bad").statusCode()==400)
@@ -626,7 +635,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     try {
       f.approved()
       val text=f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {wait: true}")
-      assert(f.ca.taskSlots.tryAcquire(4)) // The same slots are used by ordinary Flight tasks.
+      assert(f.ca.taskSlots.tryAcquire(4)) // The same slots are used by ordinary Flight steps.
       val first=try {val id=f.submit(text);eventually(f.status(id).path("state").asText=="waiting_resources");id}finally f.ca.taskSlots.release(4)
       eventually(f.status(first).path("state").asText=="running")
       val second=f.submit(text);eventually(f.status(second).path("state").asText=="waiting_resources")
@@ -766,7 +775,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val httpBytes=java.net.http.HttpClient.newBuilder().sslContext(ssl).build().send(java.net.http.HttpRequest.newBuilder(uri).build(),java.net.http.HttpResponse.BodyHandlers.ofByteArray())
       assert(httpBytes.statusCode()==200 && httpBytes.body.sameElements(f.inputA))
       val job=s"""name: public-example
-    |tasks:
+    |steps:
     |- id: read_copied_source
     |  operator: read_item@1.0
     |  inputs: {}
@@ -811,10 +820,10 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val entries=catalog(client).getDatasetsList.asScala.toVector
       val inputs=entries.zipWithIndex.map{case(e,i)=>s"p$i: read$i"}.mkString(", ")
       val readers=entries.zipWithIndex.map{case(e,i)=>s" - {id: read$i, operator: read_item@1.0, inputs: {}, params: {uri: '${e.getUri}/input', view: bytes}}"}.mkString("\n")
-      val job=s"name: joined\ntasks:\n$readers\n - id: join\n   operator: identity@1.3\n   inputs: {$inputs}\noutputs: {result: join}\n"
+      val job=s"name: joined\nsteps:\n$readers\n - id: join\n   operator: identity@1.3\n   inputs: {$inputs}\noutputs: {result: join}\n"
       val expected=entries.flatMap(e=>{val info=client.getInfo(FlightDescriptor.path("datasets",e.getName,"/input"));if(dacp.protocol.Metadata.Item.parseFrom(info.getAppMetadata).getTotalSizeBytes==f.inputA.length)f.inputA.toVector else f.inputB.toVector}).toArray
       assert(publicJob(client,job).sameElements(expected))
-      val records=f.x.history.list(0,100);assert(records.head.path("tasks").elements.asScala.find(_.path("id").asText=="join").get.path("node").asText==DacpUri.origin(f.ca.uri("")))
+      val records=f.x.history.list(0,100);assert(records.head.path("steps").elements.asScala.find(_.path("id").asText=="join").get.path("node").asText==DacpUri.origin(f.ca.uri("")))
       val status=f.stranger.action(f.settings.publicUrl,"job_status",Json.obj().put("job_id",records.head.path("job_id").asText))
       assert(!status.toString.contains(f.ca.port.toString) && !status.has("nodes") && status.has("attempts"))
     }finally {client.close();f.close()}

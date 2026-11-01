@@ -122,8 +122,8 @@ def main():
             nonlocal sequence
             sequence += 1
             origin = nodes[mode]
-            tasks = [dict(id=f'step{i}', operator=language + '@1', inputs={'source':'read' if i == 0 else f'step{i-1}'}, params={'upper':i % 2 == 0}) for i in range(3)]
-            job = dict(name=f'benchmark-{sequence}', tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/'+str(rows),view='bytes'))]+tasks, outputs={'result':'step2'})
+            steps = [dict(id=f'step{i}', operator=language + '@1', inputs={'source':'read' if i == 0 else f'step{i-1}'}, params={'upper':i % 2 == 0}) for i in range(3)]
+            job = dict(name=f'benchmark-{sequence}', steps=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/'+str(rows),view='bytes'))]+steps, outputs={'result':'step2'})
             (d / f'job-{sequence}.json').write_text(json.dumps(job, indent=2))
             since = datetime.now(timezone.utc).isoformat()
             start = time.perf_counter()
@@ -145,9 +145,9 @@ def main():
             jobs = [r for r in history if r.get('request_type') == 'job']
             assert jobs and all(r.get('execution_mode') == expected_mode and r['state'] == 'succeeded' for r in jobs), jobs
             until = datetime.now(timezone.utc).isoformat()
-            events = subprocess.check_output(docker_prefix + ['docker', 'events', '--since', since, '--until', until, '--filter', 'type=container', '--filter', 'event=create', '--filter', 'label=dacp.execution_mode', '--format', '{{json .}}'], text=True)
+            events = subprocess.check_output(docker_prefix + ['docker', 'events', '--since', since, '--until', until, '--filter', 'type=container', '--filter', 'event=create', '--filter', 'label=xstream.execution_mode', '--format', '{{json .}}'], text=True)
             events = [json.loads(line) for line in events.splitlines()]
-            containers = [e for e in events if e.get('Actor', {}).get('Attributes', {}).get('dacp.task') in ['group','step0','step1','step2']]
+            containers = [e for e in events if e.get('Actor', {}).get('Attributes', {}).get('xstream.step') in ['group','step0','step1','step2']]
             assert len(containers) == (1 if mode == 'fused' else 3), containers
             sample = dict(language=language, rows=rows, input_bytes=size, mode=mode, repeat=repeat, wall_seconds=elapsed, first_data_seconds=first, mib_per_second=size / 1048576 / elapsed, containers=len(containers), output_sha256=sha.hexdigest(), started_at=since)
             result['warmups' if warmup else 'samples'].append(sample); save()

@@ -1,5 +1,7 @@
 package dacp.client
 
+import _root_.xstream.util.WorkflowVariables
+
 import _root_.xstream.data._
 
 

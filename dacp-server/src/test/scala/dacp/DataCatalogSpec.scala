@@ -37,7 +37,7 @@ class DataCatalogSpec extends AnyFunSuite {
       try {assert(stream.next());assert(!stream.next())}finally stream.close()
       assert(dacp.protocol.Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets","private")).getAppMetadata).getItemsCount==0)
       val dataset=dacp.protocol.Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets","public")).getAppMetadata)
-      assert(dataset.getName=="public" && dataset.getDescription=="{}")
+      assert(dataset.getName=="public" && dataset.getDescription==DatasetDescriptions.default("public"))
       val lease=c.openDataset("public")
       sql.execute("DELETE FROM dacp_datasets WHERE name='public'")
       assert(names()==Seq("private"))
@@ -50,7 +50,7 @@ class DataCatalogSpec extends AnyFunSuite {
   }
   test("public descriptions are discoverable without opening the backend") {
     val dir=Files.createTempDirectory("public-catalog-")
-    var entries=Seq(DatasetInfo("restricted","""{"summary":"公开数据说明","owner":{"team":"sales"},"fields":["id","amount"]}"""))
+    var entries=Seq(DatasetInfo("restricted","""{"title":"公开数据","description":"公开数据说明","owner":{"team":"sales"},"fields":["id","amount"]}"""))
     val cat=new DataCatalog {
       def list():Seq[DatasetInfo]=entries
       def open(name:String):PublishedDataset=throw new AssertionError("discovery must not open data")
@@ -72,19 +72,19 @@ class DataCatalogSpec extends AnyFunSuite {
   test("static descriptions are JSON object strings; removed fields and invalid descriptions fail configuration") {
     val dir=Files.createTempDirectory("static-description-");val path=dir.resolve("node.yaml")
     val base="host: localhost\npublic_host: localhost\ntls_cert: cert\ntls_key: key\ntls_ca: ca\n"
-    val description="""{"summary":"Orders","owner":{"team":"sales"},"fields":["id","amount"],"public":true}"""
+    val description="""{"title":"Orders","description":"Order records","owner":{"team":"sales"},"fields":["id","amount"],"public":true}"""
     try {
       Files.writeString(path,base+"datasets:\n  orders:\n    provider: mixed\n    description: '"+description+"'\n    items: {}\n")
       val c=Config.load(path)
       try assert(c.datasetInfos()==Seq(DatasetInfo("orders",description)))finally c.close()
-      for(setting<-Seq("metadata: {}","title: Orders","tags: [sales]","description: {}","description: ''","description: 'plain text'","description: '[]'","description: 'null'","description: '{} {}'")) {
+      for(setting<-Seq("metadata: {}","title: Orders","tags: [sales]","description: {}","description: ''","description: 'plain text'","description: '[]'","description: '{}'","description: '{\"title\":\"Only title\"}'","description: 'null'","description: '{} {}'")) {
         Files.writeString(path,base+"datasets:\n  orders:\n    provider: mixed\n    "+setting+"\n    items: {}\n")
         intercept[IllegalArgumentException](Config.load(path))
       }
       for(invalid<-Seq(null,"", "not JSON","[]","null","1","{} {}","{\"a\":\""+("x"*32768)+"\"}")) {
         intercept[IllegalArgumentException](DatasetInfo("invalid",invalid))
       }
-      assert(DatasetInfo("default").description=="{}")
+      assert(DatasetInfo("default").description==DatasetDescriptions.default("default"))
       intercept[IllegalArgumentException](DatasetDefinition("mixed",description="[]"))
     }finally Data.deleteTree(dir)
   }

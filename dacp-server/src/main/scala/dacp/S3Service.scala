@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.connector.dacp.wire.{Tls}
+
 import _root_.xstream.data._
 
 import com.sun.net.httpserver.{HttpExchange,HttpsServer,HttpsConfigurator}
@@ -60,7 +62,7 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
     n
   }
   private val server=HttpsServer.create(new InetSocketAddress(config.s3.host,config.s3.bindPort(flightPort)),32)
-  server.setHttpsConfigurator(new HttpsConfigurator(new dacp.union.Tls(config.cert,config.key,config.ca).sslContext))
+  server.setHttpsConfigurator(new HttpsConfigurator(new xstream.connector.dacp.wire.Tls(config.cert,config.key,config.ca).sslContext))
   private val threads=new ThreadPoolExecutor(8,8,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue[Runnable](64),new ThreadPoolExecutor.AbortPolicy())
   private val active=java.util.concurrent.ConcurrentHashMap.newKeySet[HttpExchange]()
   server.setExecutor(threads)

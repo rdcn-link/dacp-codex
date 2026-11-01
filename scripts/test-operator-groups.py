@@ -56,8 +56,8 @@ def main():
             else:raise RuntimeError('server startup timeout')
             tls=dict(token=token,tls_root_certs=(cert/'ca.crt').read_bytes(),cert_chain=(cert/'client.crt').read_bytes(),private_key=(cert/'client.key').read_bytes())
             for language,ops,expected in [('jvm',['upper@1','strip@1'],b'HELLO DACP'),('python',['python@1','python@1'],b'HELLO DACP\n'),('mixed',['upper@1','legacy@1'],b'HELLO DACP\n')]:
-                tasks=[dict(id='a',operator=ops[0],inputs={'source':'read'},params={'upper':True} if language=='python' else {}),dict(id='b',operator=ops[1],inputs={'source':'a'},params={})]
-                job=dict(name='fusion-'+language,tasks=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/message',view='bytes'))]+tasks,outputs={'result':'b'})
+                steps=[dict(id='a',operator=ops[0],inputs={'source':'read'},params={'upper':True} if language=='python' else {}),dict(id='b',operator=ops[1],inputs={'source':'a'},params={})]
+                job=dict(name='fusion-'+language,steps=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=origin+'/data/message',view='bytes'))]+steps,outputs={'result':'b'})
                 started=time.monotonic()
                 with Job.run(origin,yaml.safe_dump(job,sort_keys=False),timeout=180,**tls) as stream:
                     frames=list(stream)
@@ -71,7 +71,7 @@ def main():
             assert len(shared)==2 and all(r['state']=='succeeded' for r in shared),records
             children=[r for r in records if r.get('kind')=='job_task'];assert len(children)==6 and all(r['state']=='succeeded' for r in children),records
             until=datetime.now(timezone.utc).isoformat()
-            events=subprocess.run(prefix+['docker','events','--since',since,'--until',until,'--filter','type=container','--filter','event=create','--filter','label=dacp.execution_mode=shared_process','--format','{{json .}}'],capture_output=True,text=True,check=True)
+            events=subprocess.run(prefix+['docker','events','--since',since,'--until',until,'--filter','type=container','--filter','event=create','--filter','label=xstream.execution_mode=shared_process','--format','{{json .}}'],capture_output=True,text=True,check=True)
             assert len(events.stdout.splitlines())==2,events.stdout
             isolated=[r for r in records if r.get('request_type')=='job' and r.get('execution_mode')=='isolated_steps']
             assert len(isolated)==1 and isolated[0]['fusion_reason']=='different_runtime_images',records

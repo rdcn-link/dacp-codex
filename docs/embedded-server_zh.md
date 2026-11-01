@@ -1,6 +1,6 @@
 # 在用户程序中启动 DACP Server
 
-[English](embedded-server.md) · [动态目录](dataset-catalogs_zh.md)
+[English](embedded-server.md) · [动态目录](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)
 
 `dacp.DacpServer` 是可嵌入的 Scala/JVM API。命令行入口 `dacp.Main` 也使用同一实现，因此两种方式都包含 Flight TLS / Token、普通任务、可选 Union worker、执行记录和相同的授权检查。
 
@@ -45,7 +45,7 @@ server.start()
 
 这里的 `MyDatabaseCatalog` 是用户实现的 `DataCatalog`。直接传入实例时无需 ServiceLoader 注册；它替代文件中的 `datasets` 或 `data_catalog`，不会创建被替代的 provider。使用 `.config(config)` 时必须在该 Config 的目录初始化之前注入，不能先调用 `Config.load` 初始化默认目录，再替换它；需要配置文件时使用 `.configFile(...).catalog(...)`。
 
-每次 `catalog.open` 返回调用方拥有的 `PublishedDataset` 租约，服务器负责关闭访问句柄和租约。服务器停机关闭目录实例；目录不能关闭由宿主程序管理的共享数据库连接池。完整契约见[动态目录](dataset-catalogs_zh.md)。
+每次 `catalog.open` 返回调用方拥有的 `PublishedDataset` 租约，服务器负责关闭访问句柄和租约。服务器停机关闭目录实例；目录不能关闭由宿主程序管理的共享数据库连接池。完整契约见[动态目录](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)。
 
 ## 可运行示例与工程依赖
 

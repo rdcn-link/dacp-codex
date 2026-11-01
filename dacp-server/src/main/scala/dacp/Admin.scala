@@ -1,5 +1,7 @@
 package dacp
 
+import _root_.xstream.engine.{ExecutionHistoryAdmin}
+
 object Admin {
   val commands=dacp.union.CredentialAdmin.commands ++ Set("list-history","get-history")
   def main(args:Array[String]):Unit=run("dacp-admin",args)

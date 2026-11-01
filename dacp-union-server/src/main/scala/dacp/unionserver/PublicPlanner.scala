@@ -1,8 +1,11 @@
 package dacp.unionserver
 
+import _root_.xstream.engine.{JobPlan,Jobs,PlacementDecision}
+
 
 import dacp._
 import dacp.union.{Json,Rpc}
+
 import scala.jdk.CollectionConverters._
 
 private[unionserver] final class PublicPlanner(members:Members,settings:Settings,catalog:ProxyCatalog,routes:DatasetRoutes) {
@@ -21,11 +24,10 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
   }
   def plan(input:JobPlan,check:()=>Unit):JobPlan={
     val candidates=members.all.map(m=>members.inspect(m)).filter(_.path("state").asText=="approved")
-    val placements=scala.collection.mutable.Map.empty[String,String]
-    val used=scala.collection.mutable.Map.empty[String,Int].withDefaultValue(0)
-    val readSizes=scala.collection.mutable.Map.empty[String,(String,Option[Long])]
+    val sourceLocations=scala.collection.mutable.Map.empty[String,(String,String,Option[Long])]
     val decisions=scala.collection.mutable.ArrayBuffer.empty[PlacementDecision]
-    val tasks=Jobs.resolveReads(input,origin).tasks.map { t=>
+    val resolved=Jobs.resolveReads(input,origin)
+    resolved.steps.foreach { t=>
       require(t.source.isEmpty && t.localOperator.isEmpty,"Union requires versioned operators")
       val sources=Jobs.readBinding(t).toVector.flatMap { b=>b.uri.filter(uri=>DacpUri.origin(uri)==origin).map { uri=>
         val port="result"
@@ -39,33 +41,28 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
       }} ++ Jobs.readBinding(t).toVector.flatMap(_.uri).filter(uri=>DacpUri.origin(uri)!=origin).flatMap { uri=>
         candidates.find(m=>m.path("data_origin").asText==DacpUri.origin(uri)).map(m=>("result",m.path("identity").asText,uri,None:Option[Long]))
       }
-      sources.headOption.foreach(s=>readSizes(t.id)=s._2->s._4)
-      val rawInputs=t.inputs.values.toVector.flatMap(_.task.flatMap(readSizes.get))
-      val preference=(sources.map(_._2)++Jobs.dependencies(t).flatMap(placements.get)).distinct
-      val eligible=candidates.filter { m=>
-        val id=m.path("identity").asText;val status=m.path("status");val grant=m.path("grant")
-        val capacity=math.min(status.path("capacity").asInt,status.path("union_capacity").asInt)
-        (sources.isEmpty || sources.forall(_._2==id)) && capacity>used(id)
-      }
-      val selected=t.node match {
-        case Some(id)=>eligible.find(m=>logicalNode(m.path("identity").asText)==id).getOrElse(throw new IllegalArgumentException("requested logical node unavailable"))
-        case None=>
-          val local=eligible.filter(m=>preference.contains(m.path("identity").asText))
-          val pool=if(local.nonEmpty)local else eligible
-          require(pool.nonEmpty,"no eligible execution node")
-          if(rawInputs.nonEmpty && rawInputs.size==t.inputs.size && rawInputs.forall(_._2.isDefined))
-            pool.minBy(m=>(rawInputs.filter(_._1!=m.path("identity").asText).map(s=>BigInt(s._2.get)).sum,m.path("identity").asText))
-          else preference.iterator.flatMap(id=>pool.find(_.path("identity").asText==id)).take(1).toVector.headOption.getOrElse(pool.sortBy(_.path("identity").asText).head)
-      }
-      val id=selected.path("identity").asText;used(id)+=1;placements(t.id)=id
-      val original=input.tasks.find(_.id==t.id).get
+      sources.headOption.foreach(s=>sourceLocations(t.id)=(s._2,s._3,s._4))
+    }
+    val targets=candidates.map { m=>
+      val status=m.path("status")
+      _root_.xstream.execution.PlanningTarget(m.path("identity").asText,math.min(status.path("capacity").asInt,status.path("union_capacity").asInt))
+    }.toVector
+    val graph=resolved.steps.map { t=>
+      val requested=t.node.map { name=>candidates.find(m=>logicalNode(m.path("identity").asText)==name).getOrElse(throw new IllegalArgumentException("requested logical node unavailable")).path("identity").asText }
+      _root_.xstream.execution.PlanningStep(t.id,Jobs.dependencies(t),sourceLocations.get(t.id).map(s=>s._1->s._3),requested)
+    }
+    val placements=_root_.xstream.execution.GraphPlacement.plan(graph,targets)
+    val steps=resolved.steps.map { t=>
+      val placement=placements(t.id)
+      val selected=candidates.find(_.path("identity").asText==placement.target).get
+      val source=sourceLocations.get(t.id)
+      val original=input.steps.find(_.id==t.id).get
       val requested=Jobs.readBinding(original).flatMap(_.uri)
-      val reason=if(t.node.nonEmpty)"explicit_placement"else if(sources.nonEmpty)"data_locality"else if(requested.nonEmpty)"remote_read_capacity"else if(rawInputs.nonEmpty && rawInputs.size==t.inputs.size && rawInputs.forall(_._2.isDefined))"minimize_transfer"else if(preference.contains(id))"upstream_locality"else"available_capacity"
-      decisions+=PlacementDecision(t.id,selected.path("url").asText,reason,requested,sources.headOption.map(_._3).orElse(Jobs.readBinding(t).flatMap(_.uri)))
+      decisions+=PlacementDecision(t.id,selected.path("url").asText,placement.reason,requested,source.map(_._2).orElse(Jobs.readBinding(t).flatMap(_.uri)))
       val params=new java.util.LinkedHashMap[String,Object](t.params)
-      sources.headOption.foreach(s=>params.put("uri",s._3))
+      source.foreach(s=>params.put("uri",s._2))
       t.copy(node=Some(selected.path("data_origin").asText),params=params)
     }
-    JobPlan(tasks,input.outputs,input.name,decisions.toVector)
+    JobPlan(steps,input.outputs,input.name,decisions.toVector)
   }
 }

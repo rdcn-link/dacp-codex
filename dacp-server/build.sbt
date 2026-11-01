@@ -83,3 +83,9 @@ libraryDependencies += "io.github.rdcn-link" %% "xstream-data-core" % "0.1.0-SNA
 // Exercise the public SDK against embedded service fixtures without adding it to runtime libraries.
 lazy val publicClientTests = RootProject(file("../dacp-client-scala"))
 dependsOn(publicClientTests % "test->compile")
+
+// Connector integration is a test fixture, not a server runtime dependency.
+libraryDependencies += "io.github.rdcn-link" %% "xstream-dacp-client" % "0.1.0-SNAPSHOT" % Test
+
+// Shared Flight, TLS and view-stream transport.
+libraryDependencies += "io.github.rdcn-link" %% "xstream-dacp-protocol" % "0.1.0-SNAPSHOT"

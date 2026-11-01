@@ -23,13 +23,13 @@ datasets:
   orders:
     provider: mixed
     description: |-
-      {"summary":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}
+      {"title":"Orders","description":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}
     items:
       /records:
         file: /srv/data/orders.csv
 ```
 
-`description` is a string containing one valid JSON object. Its internal keys and nested structures are user-defined; DACP imposes no description schema. It is separate from provider `source` and `items` settings. Omission publishes `"{}"`. The string is limited to 32768 characters. Plain text, arrays, scalars, malformed JSON, multiple JSON values and YAML mappings are rejected. Public descriptions must not contain credentials or private storage settings. A complete node configuration still requires TLS and other fields.
+`description` is a string containing one valid JSON object. It requires a nonempty string `title` and a string `description` (which may be empty); other fields and nested structures are user-defined. It is separate from provider `source` and `items` settings. When omitted from static configuration, it defaults to `{"title":"dataset-name","description":""}`. Duplicate JSON keys are rejected. The string is limited to 32768 characters. Plain text, arrays, scalars, malformed JSON, multiple JSON values and YAML mappings are rejected. Public descriptions must not contain credentials or private storage settings. A complete node configuration still requires TLS and other fields.
 
 ## Developers: dynamic descriptions
 
@@ -40,12 +40,12 @@ import xstream.data.DatasetInfo
 
 override def list(): Seq[DatasetInfo] = Seq(
   DatasetInfo("orders", description =
-    """{"summary":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}"""
+    """{"title":"Orders","description":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}"""
   )
 )
 ```
 
-The string is validated at the shared plugin contract and preserved through Flight, SDKs, the shell and web views. Directory reads do not call `open()` or scan data contents. Backend discovery failures must throw rather than return empty lists. See [dynamic catalog plugins](dataset-catalogs.md) for registration, configuration and lease implementation.
+The string is validated at the shared plugin contract and preserved through Flight, SDKs, the shell and web views. Directory reads do not call `open()` or scan data contents. Backend discovery failures must throw rather than return empty lists. See [dynamic catalog plugins](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md) for registration, configuration and lease implementation.
 
 ## Shell
 
@@ -93,3 +93,5 @@ The Scala client uses `Source.datasets(origin, tls)` to query nodes directly. No
 (cd dacp-client-scala && sbt test)
 PYTHONPATH=dacp-client .venv/bin/python -m pytest dacp-client/tests
 ```
+
+Union rewrites only the public `name` and URI. It retains the member’s original description JSON string exactly, including title, description, custom fields and whitespace, without generating a new title or reserializing the object.

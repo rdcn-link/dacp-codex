@@ -1,5 +1,10 @@
 package dacp
 
+import _root_.xstream.connector.dacp.wire.{ArrowViewWire}
+
+import _root_.xstream.engine.{CatalogItemSource,InputBinding}
+import _root_.xstream.execution.{FrameSource,ItemFrameStreams,OperatorFrame,StreamCancel,StreamProtocol}
+
 import _root_.xstream.data._
 
 import org.apache.arrow.flight._
@@ -29,7 +34,7 @@ object ItemSource {
     val ticket=ticketBuilder.build()
     val stream=c.add(client.getStream(new Ticket(ticket.toByteArray)))
     if(!Set("records","bytes")(view))return ItemFrameStreams.remote(meta.getFormat,c){out=>
-      try dacp.union.ArrowViewWire.consume(stream,view,out,()=>c.active())finally {stream.close();client.close()}
+      try xstream.connector.dacp.wire.ArrowViewWire.consume(stream,view,out,()=>c.active())finally {stream.close();client.close()}
     }
     new FrameSource {
       private var began=false;private var ended=false;private var pending=Iterator.empty[Array[Byte]]

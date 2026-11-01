@@ -10,7 +10,7 @@
 
 ## 执行与流
 
-客户端提交使用 Union 公开 URI、可选逻辑 task.node 和明确 outputs 的标准 Job；管理员也可通过专用异步 API 指定内部位置。X 复用 DAG 验证，按节点组织子 Job。Union 只接受版本化算子，不接受内嵌源码。输入统一为上游 `task[:port]`，外部 Item 通过 `read_item@1.0` 的 `params.uri/view` 接入；本地读取使用 DatasetAccess，不通过 X 或 Flight 下载。每条输出连接只有一个消费者。
+客户端提交使用 Union 公开 URI、可选逻辑 task.node 和明确 outputs 的标准 Job；管理员也可通过专用异步 API 指定内部位置。X 复用 DAG 验证，按节点组织子 Job。Union 只接受版本化算子，不接受内嵌源码。输入统一为上游 `step[:port]`，外部 Item 通过 `read_item@1.0` 的 `params.uri/view` 接入；本地读取使用 DatasetAccess，不通过 X 或 Flight 下载。每条输出连接只有一个消费者。
 
 X 先 prepare 所有子 Job，得到接收确认后再 start。节点检查自身容量与授权，拒绝无法执行的计划。A 输出连接绑定本次 execution/task/port 与 B 的证书身份；B 通过 mTLS 主动拉取。相同节点内使用有界队列，跨节点使用带背压的 Flight `DoGet` 流。复用 OperatorFrames：start/data/end 后，成功退出才发送 complete；失败以 Flight 错误状态结束。接收 complete 后仍须验证 Flight 正常结束。输出不创建 Dataset，默认直接流传递；显式策略可在产出节点物化选定输出供重放。
 
@@ -20,13 +20,13 @@ X 先 prepare 所有子 Job，得到接收确认后再 start。节点检查自�
 
 全局 Job、节点子 Job、执行策略及变量文件统一使用 YAML。U 保存收到的工作流原文 `submitted_job_yaml`，并将规划后的执行定义保存为 YAML；通过 Flight 控制消息的 `job_yaml` 文本字段下发子作业。策略使用 `execution_policy_yaml` 文本字段，变量由客户端替换后按 YAML 提交。状态和流量等元数据仍为结构化消息。
 
-用户 Job 的 `inputs` 只接受 `task[:port]`，顶层 `outputs` 选择返回流。U 分解后下发给 C 的内部任务示例如下；身份占位符需替换为实际的 64 位十六进制证书摘要：
+用户 Job 的 `inputs` 只接受 `step[:port]`，顶层 `outputs` 选择返回流。U 分解后下发给 C 的内部任务示例如下；身份占位符需替换为实际的 64 位十六进制证书摘要：
 
 ```yaml
 name: Weather screening
 union_id: union-U
 execution_id: job-001
-tasks:
+steps:
   - id: export
     operator: piflow_csv_save@1.0
     params: {header: true}
@@ -43,7 +43,7 @@ tasks:
 
 本地输入使用 `source: read:result`，只由 `inputs` 建立连接，不附加本地身份摘要。跨节点输入使用包含 `origin`、`producer_identity`、`task`、`port` 的定位对象；不接受本地输入的对象形式。
 
-`output_routes` 只声明通过 Flight 供远端读取的输出（包括返回 U 的最终输出）；没有远端输出时省略。每个值必须且只能包含 `consumer_identity`。不接受旧的 `outputs` 路由字段或标量身份值，同一输出端口不能同时连接本地与远端消费者。节点从本地 `inputs` 和远端 `output_routes` 的并集推导连接端口，用于执行、物化及重放；本地流只在节点内部连接，无法通过 Flight 读取。实际表示形式来自算子的输出流头，不在路由中声明。
+`output_routes` 只声明通过 Flight 供远端读取的输出（包括返回 U 的最终输出）；没有远端输出时省略。每个值必须且只能包含 `consumer_identity`。同一输出端口不能同时连接本地与远端消费者。节点从本地 `inputs` 和远端 `output_routes` 的并集推导连接端口，用于执行、物化及重放；本地流只在节点内部连接，无法通过 Flight 读取。实际表示形式来自算子的输出流头，不在路由中声明。
 
 例如，A 上的读取步骤没有 `output_routes`；解析步骤通过 `inputs: {source: read:result}` 消费它，并为发往 B 的 `result` 输出声明 B 的身份。
 
@@ -69,11 +69,11 @@ Union 在 `job_yaml` 之外接收独立的 `execution_policy` JSON。默认仍�
 
 U 可通过独立 HTTP 监听提供只读运行看板；这不改变上述 Flight 协作协议。运行状态页面使用 U 的缓存状态，不因浏览触发节点 RPC 或领取结果；节点列表页面在展开节点时在线读取该节点目录。看板公开只读，跨提交者显示运行元数据，无需登录或 token。配置与 HTTP 只读接口见 [Union 服务器](../dacp-union-server/README_zh.md#执行与接口)。
 
-任务的 `id` 是 Job 内唯一的依赖标识，供输入的 `task[:port]`、最终输出、调度、状态与流量关联使用，必须保留。可选 `title` 是用途说明，支持中文，长度为 1–256 个字符且不可包含控制字符；不参与依赖解析，不要求唯一。看板任务卡片和 DAG 优先显示标题，同时保留 ID；标题随执行历史保存。
+任务的 `id` 是 Job 内唯一的依赖标识，供输入的 `step[:port]`、最终输出、调度、状态与流量关联使用，必须保留。可选 `title` 是用途说明，支持中文，长度为 1–256 个字符且不可包含控制字符；不参与依赖解析，不要求唯一。看板任务卡片和 DAG 优先显示标题，同时保留 ID；标题随执行历史保存。
 
 ```yaml
 name: daily-temperature
-tasks:
+steps:
   - id: read_observations
     operator: read_item@1.0
     inputs: {}
@@ -120,7 +120,7 @@ G6 支持依赖图与泳道图，每种均可选择横向（从左向右）或�
 
 节点与 Union 看板的 DAG 默认锁定鼠标滚轮缩放。点击 🔒 Mouse zoom 解锁，点击 🔓 Mouse zoom 重新锁定；工具栏缩放按钮始终可用。
 
-输入定位（包括 `read_source`）使用 `producer_identity` 校验数据提供者，与输出的 `consumer_identity` 对应。旧输入字段 `identity` 不再接受；成员信息中的 `identity` 含义不同，保持不变。
+输入定位（包括 `read_source`）使用 `producer_identity` 校验数据提供者，与输出的 `consumer_identity` 对应。成员信息中的 `identity` 表示成员身份。
 
 Union 和节点看板中的作业名称均链接到独立的 `/job?id=...` 页面。该页面支持收藏和直接按 ID 加载当前或历史执行详情，集中展示 DAG、脚本、策略、尝试和流量，仅在打开页面或点击 Refresh 时加载。点击 **Back to jobs** 返回任务列表。
 
