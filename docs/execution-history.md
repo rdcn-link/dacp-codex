@@ -46,7 +46,7 @@ The Union dashboard displays the submitted Job YAML and a DAG of datasets, tasks
 
 ## Storage extension
 
-Both nodes and Union accept the `execution_store` mapping above. `provider` selects a ServiceLoader-registered `ExecutionStoreProvider`; the implementation validates private `settings`. The default `file` implementation is in `plugins/dacp-plugin-execution-file`; `ExecutionHistory` retains state transitions, interrupted-execution recovery and pagination. Applications can construct `new ExecutionHistory(store, ownsStore = false)` to retain ownership. See [plugin registration](plugins.md#instance-environments-and-execution-storage).
+Both nodes and Union accept the `execution_store` mapping above. `provider` selects a ServiceLoader-registered `ExecutionStoreProvider`; the implementation validates private `settings`. The default `file` implementation is in `plugins/xstream-plugin-execution-file`; `ExecutionHistory` retains state transitions, interrupted-execution recovery and pagination. Applications can construct `new ExecutionHistory(store, ownsStore = false)` to retain ownership. See [plugin registration](plugins.md#instance-environments-and-execution-storage).
 
 ## Jobs and steps in the dashboard
 

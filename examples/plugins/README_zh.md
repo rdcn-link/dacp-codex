@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-本项目仅依赖 `dacp-plugin-api` 编译，不依赖服务器实现，提供两个已注册的插件：
+本项目仅依赖 `xstream-execution-api` 编译，不依赖服务器实现，提供两个已注册的插件：
 
 - `example-message`：原生 Dataset，提供 `/message` 和 `/summary`，通过 `source.message` 配置。
 - `example-message-file`：处理 `.message` 文件的结构化文件处理器，直接提供 `/message` 和 `/summary` 子项，并支持私有配置 `options.prefix`。子项字节为包含所配前缀的 UTF-8 文本；文件根节点字节保持不变。
@@ -14,7 +14,7 @@
 在项目根目录运行：
 
 ```bash
-(cd dacp-plugin-api && sbt publishLocal)
+(cd xstream-execution-api && sbt publishLocal)
 (cd examples/plugins && sbt package)
 (cd dacp-server && sbt stage)
 mkdir -p plugins

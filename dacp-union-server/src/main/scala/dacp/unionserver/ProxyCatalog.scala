@@ -91,7 +91,7 @@ private[unionserver] final class ProxyCatalog(members:Members,settings:Settings,
         private def item(m:Metadata.Item):Item={
           LogicalPath.validate(m.getPath)
           Item(m.getPath,m.getFormat,if(m.getArrowSchema.isEmpty)None else Some(org.apache.arrow.vector.types.pojo.Schema.deserializeMessage(java.nio.ByteBuffer.wrap(m.getArrowSchema.toByteArray))),m.getKind,
-            if(m.hasLastModifiedTimeMs)Some(m.getLastModifiedTimeMs)else None,if(m.hasTotalSizeBytes)Some(m.getTotalSizeBytes)else None,if(m.hasRecordCount)Some(m.getRecordCount)else None,Some(m.getViewsList.asScala.toVector))
+            if(m.hasLastModifiedTimeMs)Some(m.getLastModifiedTimeMs)else None,if(m.hasTotalSizeBytes)Some(m.getTotalSizeBytes)else None,if(m.hasRecordCount)Some(m.getRecordCount)else None,Some(m.getViewsList.asScala.toVector),if(m.hasCreationTimeMs)Some(m.getCreationTimeMs)else None)
         }
         def list():Seq[Item]=Metadata.DataSet.parseFrom(info("datasets",local).getAppMetadata).getItemsList.asScala.map(item).toVector
         def list(p:String):Seq[Item]={LogicalPath.validate(p);Metadata.DataSet.parseFrom(info("datasets",local,"list",p).getAppMetadata).getItemsList.asScala.map(item).toVector}

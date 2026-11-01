@@ -47,7 +47,7 @@ class ContainerSpec extends AnyFunSuite {
         val c = config(dir,file); val ns = new NamespaceAdapter(DatasetPublication.mixedBindings(c.datasets("public")),c)
         val root = ns.list("/").head
         assert(root.kind == "folder" && root.format == format && plugins.views(root) == Seq("bytes"))
-        assert(root.totalSizeBytes.isEmpty && root.recordCount.isEmpty && root.lastModifiedTimeMs.isEmpty)
+        assert(root.totalSizeBytes.isEmpty && root.recordCount.isEmpty && root.lastModifiedTimeMs.isDefined && root.creationTimeMs.isDefined)
         assert(ns.list("/archive").map(_.path) == Seq("/archive/empty","/archive/nested.tar","/archive/reports"))
         assert(ns.list("/archive/reports").head.format == "csv")
         assert(ns.describe("/archive/nested.tar").format == "bin")

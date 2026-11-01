@@ -13,7 +13,7 @@ run piflow_filter@1.0 --input source=/observations --view records --params '{"co
 run piflow_csv_parser@1.0 --input source=/observations --view bytes
 ```
 
-Shell 将 Item 输入转换为 `read_item` 步骤，逐块打印结果。连接节点或 Union 使用 [TLS 与 Token](security_zh.md)。多输出可重复指定 `--output PORT`，无输出步骤使用 `--no-output`。源码 heredoc 仅允许 DEBUG 模式，见[源码提交](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source_zh.md)。
+Shell 将 Item 输入转换为 `read_item` 步骤，逐块打印结果。连接节点或 Union 使用 [TLS 与 Token](security_zh.md)。多输出可重复指定 `--output PORT`，无输出步骤使用 `--no-output`。源码 heredoc 仅允许 DEBUG 模式，见[源码提交](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source_zh.md)。
 
 ## 工作流变量
 

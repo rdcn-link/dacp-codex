@@ -389,6 +389,10 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       val subjobs=n.putArray("sub_jobs")
       nodes.sortBy(url).foreach { member=>
         val sub=subjobs.addObject().put("node",url(member)).put("state",Option(nodeStates.get(identity(member))).map(_.path("state").asText).getOrElse(if(prepared.containsKey(identity(member)))"prepared"else"not_dispatched"))
+        memberSnapshots.find(_.path("identity").asText==identity(member)).foreach { m=>
+          val web=m.path("status").path("web_url").asText
+          if(web.nonEmpty)sub.put("web_url",web)
+        }
         val steps=sub.putArray("steps");activeTasks.filter(t=>identity(placements(t.id))==identity(member)).foreach(t=>steps.add(t.id))
         Option(dispatchedDefinitions.get(identity(member))).foreach(d=>sub.put("definition_yaml",dacp.union.YamlDocument.dump(d)))
       }
@@ -514,7 +518,11 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
                 if(Set("failed","cancelled","expired")(value.path("state").asText))throw UnionFailure(ALREADY_EXISTS,"node execution failed")
               }catch{
                 case f:UnionFailure=>throw f
-                case scala.util.control.NonFatal(_) if polling.get()=>nodeStates.put(identity(n),Json.obj().put("state","unknown").put("observed_at_ms",Json.now))
+                case scala.util.control.NonFatal(_) if polling.get()=>
+                  nodeStates.compute(identity(n),(_,last)=>{
+                    val retained=Option(last).map(_.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()).getOrElse(Json.obj().put("state","unknown").put("observed_at_ms",0))
+                    retained.put("observation_error",true).put("observation_failed_at_ms",Json.now)
+                  })
                 case scala.util.control.NonFatal(_)=>()
               }
             }

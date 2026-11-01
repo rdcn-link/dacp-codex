@@ -28,14 +28,14 @@ The [collaboration operator catalog](https://github.com/rdcn-link/xstream-codex/
 | DACP Server | [Administrator guide](administrators/README.md), [configuration and protocol reference](reference.md) |
 | Union Server and web dashboard | [Union manual](../dacp-union-server/README.md), [collaboration protocol](union.md), [two-node example](../examples/union/README.md) |
 | Operator repository CLI and website | [Repository manual](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README.md) |
-| Plugin API and Union transport utilities | [Plugin API](../dacp-plugin-api/README.md), [Union protocol module](../dacp-union-protocol/README.md) |
+| Plugin API and Union transport utilities | [Plugin API](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-execution-api/README.md), [Union protocol module](../dacp-union-protocol/README.md) |
 
 ## Topic references
 
 | Topic | Documentation |
 |---|---|
 | Writing, publishing, and example code | [Scala / Java / Python operators](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md), [native commands](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands.md) |
-| DEBUG source submission | [Source runtimes and heredocs](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md) |
+| DEBUG source submission | [Source runtimes and heredocs](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md) |
 | Runtimes, artifacts, caches, and frame protocol | [Operator packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md), [stream contract](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams.md) |
 | Source, licenses, build instructions, and SBOM | [Operator review material](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance.md) |
 | Execution records, history queries, and restart semantics | [Execution history](execution-history.md) |
@@ -59,7 +59,7 @@ Commands run from the project root unless a document specifies otherwise. Relati
 
 [Node web dashboard](node-web.md): default HTTP service, configuration, and G6 execution DAGs.
 
-Official website builds, deployment and software download publication: [dacp-website](https://github.com/rdcn-link/dacp-website). Website content is English-only.
+Official website builds, deployment and software download publication: [dacp-website](https://github.com/rdcn-link/dacp-website). The website supports English and Chinese.
 
 [S3-compatible reads](s3-service.md): dataset buckets and Item objects exposed at node startup, with SigV4-authenticated read-only downloads.
 

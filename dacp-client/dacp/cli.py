@@ -208,15 +208,17 @@ class Browser(cmd.Cmd):
         if len(args) > 1:
             raise ValueError("usage: ls [absolute-logical-path]")
         self.items = self.dataset.list(args[0]) if args else self.dataset.list()
-        headers = ('#', 'Path', 'Format', 'Views', 'Bytes', 'Records', 'Modified (UTC)')
+        headers = ('#', 'Path', 'Format', 'Views', 'Bytes', 'Records', 'Created (UTC)', 'Modified (UTC)')
         rows = []
         for number, item in enumerate(self.items, start=1):
             size = item.total_size_bytes if item.total_size_bytes is not None else '-'
             records = item.record_count if item.record_count is not None else '-'
+            created = (item.creation_time.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+                       if item.creation_time is not None else '-')
             modified = (item.last_modified_time.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
                         if item.last_modified_time is not None else '-')
             rows.append(tuple(safe(value).replace('\n', r'\n') for value in
-                              (number, item.path, item.format or '-', ', '.join(item.views) or '-', size, records, modified)))
+                              (number, item.path, item.format or '-', ', '.join(item.views) or '-', size, records, created, modified)))
         self.table(headers, rows, numeric=(0, 4, 5), path_column=1,
                    folders={index for index, item in enumerate(self.items) if item.kind == 'folder'})
         self.write(f'{len(self.items)} items')

@@ -13,7 +13,7 @@ run piflow_filter@1.0 --input source=/observations --view records --params '{"co
 run piflow_csv_parser@1.0 --input source=/observations --view bytes
 ```
 
-The shell converts Item inputs into `read_item` steps and prints results incrementally. It connects to either a node or Union using [TLS and a token](security.md). Repeat `--output PORT` to select multiple ports, or use `--no-output` for a sink. Inline heredoc source is DEBUG-only; see [source submission](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md).
+The shell converts Item inputs into `read_item` steps and prints results incrementally. It connects to either a node or Union using [TLS and a token](security.md). Repeat `--output PORT` to select multiple ports, or use `--no-output` for a sink. Inline heredoc source is DEBUG-only; see [source submission](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md).
 
 ## Workflow variables
 

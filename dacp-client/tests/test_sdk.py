@@ -86,12 +86,14 @@ def test_item_statistics_preserve_unknown_and_zero(monkeypatch):
     from dacp.source import DataSet
     class Client:
         def get_flight_info(self, descriptor):
-            meta = pb.DataSet(items=[pb.Item(path='/known', kind='data', last_modified_time_ms=0,
+            meta = pb.DataSet(items=[pb.Item(path='/known', kind='data', last_modified_time_ms=0, creation_time_ms=0,
                                              total_size_bytes=0, record_count=0),
                                      pb.Item(path='/unknown', kind='data')])
             return type('Info', (), {'app_metadata': meta.SerializeToString()})()
     known, unknown = DataSet(Client(), 'public', 'dacp://host/public').list()
     assert known.last_modified_time == datetime(1970, 1, 1, tzinfo=timezone.utc)
+    assert known.creation_time == datetime(1970, 1, 1, tzinfo=timezone.utc)
+    assert unknown.creation_time is None
     assert known.total_size_bytes == 0 and known.record_count == 0
     assert unknown.last_modified_time is None
     assert unknown.total_size_bytes is None and unknown.record_count is None
@@ -157,3 +159,12 @@ def test_dataset_discovery_completeness_names_and_cleanup(monkeypatch):
     assert not partial.complete and partial.unavailable_sources == 1
     assert calls == ['dacp.catalog', 'dacp.catalog']
     assert all(client.closed for client in clients)
+
+
+def test_item_creation_time_preserves_unknown_and_epoch():
+    from dacp.source import Item
+    from datetime import datetime, timezone
+    assert Item('/unknown', 'bin').creation_time is None
+    item = Item('/epoch', 'bin', creation_time_ms=0, last_modified_time_ms=1000)
+    assert item.creation_time == datetime(1970, 1, 1, tzinfo=timezone.utc)
+    assert item.last_modified_time == datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc)

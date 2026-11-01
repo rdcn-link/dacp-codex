@@ -11,6 +11,7 @@ message Item {
   repeated string views = 5; // Registered representation names; empty for unreadable folders.
   optional int64 last_modified_time_ms = 6; // UTC Unix epoch milliseconds; absent if unknown.
   optional int64 total_size_bytes = 7; // Content bytes; absent if unknown, zero is known empty.
+  optional int64 creation_time_ms = 9; // Source-reported UTC Unix epoch milliseconds; absent if unknown.
   optional int64 record_count = 8; // Exact logical record count; absent if unknown/not applicable.
 }
 message DataSet {

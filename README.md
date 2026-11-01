@@ -1,6 +1,6 @@
 # DACP
 
-<img src="assets/dacp-logo.png" alt="DACP logo: connected nodes form the C in Collaborative" width="240">
+<img src="assets/dacp-logo.png" alt="DACP: data access and collaboration through a connected grid" width="240">
 
 [中文](README_zh.md)
 
@@ -14,7 +14,7 @@ For the data model, transport, trust, and collaboration contracts of DACP (Data 
 
 Nodes also expose an [S3-compatible read-only service](docs/s3-service.md) by default, allowing S3 clients to list dataset buckets and download Item byte streams.
 
-Independent official website project: [dacp-website](https://github.com/rdcn-link/dacp-website), providing an English project overview, online documentation by role, and software downloads.
+Independent official website project: [dacp-website](https://github.com/rdcn-link/dacp-website), providing English and Chinese project overviews, online documentation by role, and software downloads.
 
 Job definitions, node subjobs, execution policies and variable files use YAML. Every Job requires a readable `name`, separate from its system-generated execution ID. Node and Union dashboards share job names and execution fields. In the shell, submit them together with `submit workflow.yaml --policy policy.yaml --vars variables.yaml`. See [writing jobs](docs/jobs.md).
 
@@ -38,7 +38,7 @@ Job definitions, node subjobs, execution policies and variable files use YAML. E
 | `dacp-client` / `dacp-client-scala` | Python / Scala applications access data, execute Jobs, and submit Union jobs |
 | [dacp-union-server](dacp-union-server/README.md) | Manages one Union, connects configured nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
 | [Union web dashboard](dacp-union-server/README.md#execution-and-interfaces) | Management view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
-| `dacp-plugin-api` / `dacp-union-protocol` | Public plugin contracts and shared Union transport utilities |
+| `xstream-execution-api` / `dacp-union-protocol` | Public plugin contracts and shared Union transport utilities |
 | [plugins](plugins/README.md) | Bundled Dataset, file-format, archive, catalog, and operator launch plugins |
 
 Servers use JDK 17 and Scala 2.13; the Python SDK requires Python 3.10+. Browsing data needs no Docker. Operator execution requires Linux and an accessible Docker Engine. Builds use sbt 1.10.x.

@@ -201,6 +201,7 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
     val headers=e.getResponseHeaders
     headers.set("Content-Type","application/octet-stream")
     size.foreach(_=>headers.set("Accept-Ranges","bytes"))
+    item.creationTimeMs.foreach(t=>headers.set("x-amz-meta-creation-time",java.time.Instant.ofEpochMilli(t).toString))
     item.lastModifiedTimeMs.foreach(t=>headers.set("Last-Modified",java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(java.time.Instant.ofEpochMilli(t).atZone(java.time.ZoneOffset.UTC))))
     if(range.nonEmpty)headers.set("Content-Range",s"bytes $offset-${offset+length.get-1}/${size.get}")
     length.foreach(n=>headers.set("Content-Length",n.toString))

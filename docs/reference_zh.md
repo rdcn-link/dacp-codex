@@ -68,7 +68,7 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 TAR 列举顺序扫描归档；压缩 TAR 需要解压扫描。为验证整个目录及校验和，读取选定条目也会扫描完整归档，再只暂存所需文件供现有读取器使用。GZIP 列举不解压数据正文，读取时解压到临时文件。完成、异常或取消均清理临时文件；扫描及解压过程检查取消。归档大小没有跨请求索引缓存。
 
-与 ZIP 一样，最多 10,000 个条目、单条目解压最多 512 MiB、声明总大小最多 2 GiB；TAR 的解压流另外最多允许 16 MiB 的头、填充和尾部开销。TAR 支持普通文件及目录，拒绝符号链接、硬链接、稀疏文件、设备及其他特殊条目，校验头与 GZIP CRC。常见的条目前缀 `./` 及根目录条目会被规范化，其余路径穿越、重复名称及文件/父目录冲突均被拒绝。所有 folder 属性仍为未知；嵌套归档保持二进制 data，不递归展开。BZ2、XZ 和 Zstandard 解压尚未实现。
+与 ZIP 一样，最多 10,000 个条目、单条目解压最多 512 MiB、声明总大小最多 2 GiB；TAR 的解压流另外最多允许 16 MiB 的头、填充和尾部开销。TAR 支持普通文件及目录，拒绝符号链接、硬链接、稀疏文件、设备及其他特殊条目，校验头与 GZIP CRC。常见的条目前缀 `./` 及根目录条目会被规范化，其余路径穿越、重复名称及文件/父目录冲突均被拒绝。folder 的大小和记录数仍未知，时间属性仅在源提供时公开；嵌套归档保持二进制 data，不递归展开。BZ2、XZ 和 Zstandard 解压尚未实现。
 
 ### 读取选项与 Excel
 
@@ -101,10 +101,11 @@ Excel 使用 Apache POI 5.5.1 的 XLS/XLSX 事件读取接口。空表头生成 
 
 ## Item 属性
 
-Item 元数据新增以下可选属性；未知值与已知的 `0` 明确区分：
+Item 元数据包含以下可选属性；未知值与已知的 `0` 明确区分：
 
 | 属性（Python / Scala） | 含义 |
 |---|---|
+| `creation_time_ms` / `creationTimeMs` | 存储源报告的 UTC Unix 毫秒时间戳。Python `creation_time` 返回 UTC datetime；Scala `creationTime` 返回 `Option[Instant]`。 |
 | `last_modified_time_ms` / `lastModifiedTimeMs` | UTC Unix 毫秒时间戳。Python 的 `last_modified_time` 返回带 UTC 时区的 datetime；Scala 的 `lastModifiedTime` 返回 `Option[Instant]`。 |
 | `total_size_bytes` / `totalSizeBytes` | 内容的总字节数；文件映射使用原始文件大小。 |
 | `record_count` / `recordCount` | 精确的逻辑记录数。CSV 不包含表头，NDJSON 忽略空行，Excel 统计所选工作表的数据行。这些文件可使用发布时保存的数量；未填充时及 SQL 在普通浏览时数量为未知，使用显式 `ds.count(path)`；Parquet 从 footer 读取。 |
@@ -116,7 +117,7 @@ Python 未知值为 `None`，Scala 为 `None`（已知值为 `Some`），protobu
 ```python
 with Source.open("dacp://localhost:8815/data1") as ds:
     for item in ds.list("/"):
-        print(item.path, item.last_modified_time, item.total_size_bytes, item.record_count)
+        print(item.path, item.creation_time, item.last_modified_time, item.total_size_bytes, item.record_count)
 ```
 
 ### 发布时填充记录数
@@ -141,7 +142,7 @@ Dataset provider、容器 reader、格式 handler 分别负责构建数据集、
 
 算子启动参数为 `operator /input /input/params.json`。输入为 Arrow IPC FIFO，由 `/input/manifest.json` 描述。stdout 写 start/data/end 协议帧，stderr 写诊断。无输出目录、输出注册、TTL 或结果数据集 URI。Parquet 转换使用私有临时空间完成 footer 后流式发送字节。
 
-源码示例、端口、帧格式、运行时白名单、取消与限制见[编写契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)、[流契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams_zh.md)与 [DEBUG heredoc 源码](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source_zh.md)。
+源码示例、端口、帧格式、运行时白名单、取消与限制见[编写契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)、[流契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams_zh.md)与 [DEBUG heredoc 源码](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source_zh.md)。
 
 算子首先从本地目录及已安装镜像解析，然后检查已完成的下载缓存，最后按配置顺序查询远程 URL。清单返回 HTTP 404 时继续查询下一个库；其他下载或验证错误会终止执行。配置示例：`remote_operator_library_urls: [http://library-a:8820, https://library-b:8820]`；空列表仅使用本地算子。
 

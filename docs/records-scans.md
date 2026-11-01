@@ -113,7 +113,7 @@ Authorization still applies to the public Item path. Scan requests contain publi
 
 ## Plugin implementation contract
 
-The standalone `dacp-plugin-api` module provides `Literal`, `Predicate`, `Scan`, `BoundScan`, and `ScanStreams`.
+The standalone `xstream-execution-api` module provides `Literal`, `Predicate`, `Scan`, `BoundScan`, and `ScanStreams`.
 
 - `access.requireView(path, DataViews.Records).open(request, context)` accepts a typed `Scan`; `BatchDatasetAccess.readScan` supplies bounded Arrow batch filtering through `ScanStreams`.
 - `FormatHandler.scan(path, options, request, allocator, batch, sample, receiver, demand)` defaults to the same streaming transformation around its records reader. It is used for directory-backed and mixed file Items, including staged archive children.

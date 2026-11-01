@@ -14,7 +14,7 @@
 
 | 模块 | 职责 |
 |---|---|
-| `dacp-plugin-api` | 服务集成、执行及执行器公开契约；数据契约来自 XStream |
+| `xstream-execution-api` | 服务集成、执行及执行器公开契约；数据契约来自 XStream |
 | `dacp-server` | Flight 服务、命名空间、协调与资源生命周期 |
 | `dacp-client`、`dacp-client-scala` | 客户端 API 与 shell |
 | XStream 的 `plugins/xstream-plugin-operator-executors` | 独立维护的容器启动器与原生命令桥接器 |
@@ -27,7 +27,7 @@
 - [原生命令](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands_zh.md)：stdin/stdout 适配、可执行制品与插件配置。
 - [打包与执行器](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging_zh.md)：共享依赖、不可变制品、仓库 schema 与注册。
 - [流契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams_zh.md)：命名端口、帧、背压、取消和调度边界。
-- [DEBUG 源码](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source_zh.md)：Python/Scala 编译启动契约；不支持 Java 原始源码。
+- [DEBUG 源码](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source_zh.md)：Python/Scala 编译启动契约；不支持 Java 原始源码。
 
 算子输出为临时流，不注册结果 Dataset，不提供保存结果模式或输出 TTL。bytes、records、array 和 sequence 采用统一 Arrow 流契约，科学维度保持显式表达。通用流水线调度与 fan-out 尚未实现。
 
@@ -64,7 +64,7 @@ class CsvFileProvider extends DatasetProvider {
 }
 ```
 
-将代码编译为 JAR，仅依赖独立的 `dacp-plugin-api`（使用与服务器匹配的版本和 Scala 版本，以 `Provided` 方式依赖）。在 JAR 内创建以下服务注册文件：
+将代码编译为 JAR，仅依赖独立的 `xstream-execution-api`（使用与服务器匹配的版本和 Scala 版本，以 `Provided` 方式依赖）。在 JAR 内创建以下服务注册文件：
 
 ```text
 META-INF/services/xstream.data.DatasetProvider
@@ -97,7 +97,7 @@ datasets:
 
 需要浏览文件内部逻辑对象时，实现 `StructuredFileHandler`，通过同一个格式服务文件注册。其 `openStructure` 返回 `DatasetAccess`，可直接流式读取内部对象，不要求提取为临时文件。文件根表现为带原始 bytes 视图的 folder，子对象显式声明 `records` 或 `bytes`。归档读取器可实现 `ContainerReader` 并在 `META-INF/services/xstream.data.ContainerReader` 注册，无需再修改核心格式注册表。
 
-独立插件 API 位于 [dacp-plugin-api](../../dacp-plugin-api)，可运行的贡献示例和构建、安装步骤位于 [examples/plugins](../../examples/plugins/README_zh.md)。`PluginChecks.listing` 提供可复用的元数据契约检查。服务端会关闭每次请求的访问句柄，并在关闭服务时释放 provider 资源。XStream 数据插件已实现 NetCDF/FITS/FASTA 解析及通过标准 Arrow 流传输的数组和序列视图。贡献者通过共享契约暴露文件内部对象，不能静默把数组展开为记录。
+独立插件 API 位于 [xstream-execution-api](https://github.com/rdcn-link/xstream-codex/tree/main/xstream-execution-api)，可运行的贡献示例和构建、安装步骤位于 [examples/plugins](../../examples/plugins/README_zh.md)。`PluginChecks.listing` 提供可复用的元数据契约检查。服务端会关闭每次请求的访问句柄，并在关闭服务时释放 provider 资源。XStream 数据插件已实现 NetCDF/FITS/FASTA 解析及通过标准 Arrow 流传输的数组和序列视图。贡献者通过共享契约暴露文件内部对象，不能静默把数组展开为记录。
 
 ## 开发与验证
 

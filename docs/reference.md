@@ -26,7 +26,7 @@ The registry uses an explicit `format` override first, then compound container s
 
 ### Browsing ZIP archives
 
-Map a ZIP file using an ordinary file alias. The server publishes it as `kind=folder`, `format=zip`, with a `bytes` view returning the original archive. `list("/archive")` returns immediate children, while `list()` includes all archive entries; missing parent folders are inferred. Entry formats are selected by extension in listings and detected by existing readers when opened. ZIPs inside ZIPs remain `bin` data Items without recursive expansion. Modification time, size, and record count remain unknown for every folder.
+Map a ZIP file using an ordinary file alias. The server publishes it as `kind=folder`, `format=zip`, with a `bytes` view returning the original archive. `list("/archive")` returns immediate children, while `list()` includes all archive entries; missing parent folders are inferred. Entry formats are selected by extension in listings and detected by existing readers when opened. ZIPs inside ZIPs remain `bin` data Items without recursive expansion. Creation and modification times are reported when the storage source provides them; folder sizes and record counts remain unknown.
 
 ```yaml
 datasets:
@@ -68,7 +68,7 @@ with Source.open("dacp://localhost:8815/data1") as ds:
 
 TAR listings scan sequentially; compressed TAR listings also decompress. Reading a selected entry scans the entire archive to validate its directory and checksums, staging only the requested file for existing readers. GZIP listings do not decompress the payload; reading stages its decompressed content. Temporary files are cleaned on completion, failure, or cancellation, and scans and decompression check cancellation. Indexes are not cached across requests.
 
-As with ZIP, limits are 10,000 entries, 512 MiB decompressed per entry, and 2 GiB total declared size. TAR's decompressed stream allows an additional 16 MiB for headers, padding, and trailers. TAR accepts regular files and directories, rejects symbolic links, hard links, sparse files, devices, and other special entries, and checks headers and GZIP CRCs. Conventional leading `./` prefixes and root directory entries are normalized; other traversal, duplicate names, and file/parent conflicts are rejected. All folder properties remain unknown. Nested containers remain binary data without recursive expansion. BZ2, XZ, and Zstandard decompression are not implemented.
+As with ZIP, limits are 10,000 entries, 512 MiB decompressed per entry, and 2 GiB total declared size. TAR's decompressed stream allows an additional 16 MiB for headers, padding, and trailers. TAR accepts regular files and directories, rejects symbolic links, hard links, sparse files, devices, and other special entries, and checks headers and GZIP CRCs. Conventional leading `./` prefixes and root directory entries are normalized; other traversal, duplicate names, and file/parent conflicts are rejected. Folder sizes and record counts remain unknown; available timestamps are preserved. Nested containers remain binary data without recursive expansion. BZ2, XZ, and Zstandard decompression are not implemented.
 
 ### Reader options and Excel
 
@@ -105,18 +105,19 @@ Item metadata includes the following optional properties, with unknown values di
 
 | Property (Python / Scala) | Meaning |
 |---|---|
+| `creation_time_ms` / `creationTimeMs` | Source-reported UTC Unix epoch milliseconds. Python `creation_time` returns a UTC datetime; Scala `creationTime` returns `Option[Instant]`. |
 | `last_modified_time_ms` / `lastModifiedTimeMs` | UTC Unix epoch milliseconds. Python's `last_modified_time` returns a timezone-aware UTC datetime; Scala's `lastModifiedTime` returns `Option[Instant]`. |
 | `total_size_bytes` / `totalSizeBytes` | Total content bytes; file mappings use original file size. |
 | `record_count` / `recordCount` | Exact logical record count. CSV excludes the header, NDJSON skips blank lines, and Excel counts data rows in the selected sheet. These files expose saved publication counts when enabled; otherwise their counts, and SQL counts, remain unknown during browsing. Use explicit `ds.count(path)`. Parquet uses footer metadata. |
 
-Unknown values are `None` in Python and Scala (known Scala values use `Some`), with absent protobuf fields. SQL mappings do not estimate modification time or byte size. Non-record data such as PNG images has an unknown record count. All three folder properties are always unknown, including for empty folders; computing folder properties never visits child Items.
+Unknown values are `None` in Python and Scala (known Scala values use `Some`), with absent protobuf fields. SQL mappings do not estimate modification time or byte size. Non-record data such as PNG images has an unknown record count. Folder size and record count are unknown. Physical folders and readable archive roots expose source timestamps; virtual folders expose timestamps only when supplied by their provider. Metadata reads never visit descendants to calculate folder timestamps. Filesystem creation time reflects the storage system’s report; unsupported backend times are absent, not synthesized from the current time.
 
 Properties are returned by `list()`, `list(path)`, and Item FlightInfo, and displayed by the interactive client's `ls`. Explicit CSV/NDJSON/Excel counts scan files and SQL counts execute queries; ordinary listing does not perform those counts. SQL counts respect the source query timeout. Folder metadata does not trigger descendant scans; size and modification time are read per request, while publication counts are retained until restart. Properties are observations rather than an atomic snapshot with subsequent reads, and can change when source data changes.
 
 ```python
 with Source.open("dacp://localhost:8815/data1") as ds:
     for item in ds.list("/"):
-        print(item.path, item.last_modified_time, item.total_size_bytes, item.record_count)
+        print(item.path, item.creation_time, item.last_modified_time, item.total_size_bytes, item.record_count)
 ```
 
 ### Populating counts at publication
@@ -141,7 +142,7 @@ Task inputs reference only upstream outputs as `task[:port]`, defaulting to `res
 
 Operator launch arguments are `operator /input /input/params.json`. Inputs are Arrow IPC FIFOs described by `/input/manifest.json`. Stdout carries framed start/data/end events; diagnostics go to stderr. No output directory, output registration, TTL, or result-dataset URI is used. Parquet conversion uses private ephemeral scratch to complete the footer, then streams bytes.
 
-See the [authoring contract](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md), [stream contracts](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams.md), and [DEBUG-only heredoc source](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md) for source examples, ports, framing, runtime allowlists, cancellation, and limits.
+See the [authoring contract](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md), [stream contracts](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams.md), and [DEBUG-only heredoc source](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md) for source examples, ports, framing, runtime allowlists, cancellation, and limits.
 
 Operators resolve from the local directory and installed image first, then completed cached downloads, then remote URLs in configured order. A manifest HTTP 404 tries the next library; other download or validation failures stop execution. Configure `remote_operator_library_urls: [http://library-a:8820, https://library-b:8820]`; an empty list uses only local operators.
 

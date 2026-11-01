@@ -40,7 +40,7 @@ Dataset 提供者构建逻辑命名空间，实现列表、元数据、计数和
 
 ## 插件基础设施
 
-独立的 [dacp-plugin-api](../dacp-plugin-api/README_zh.md) 包含共享契约，不依赖服务器实现。[示例项目](../examples/plugins/README_zh.md) 展示独立编译、服务注册、原生 Dataset 构建和结构化文件子对象访问。`PluginChecks.listing` 提供可复用的元数据契约检查；服务器测试覆盖 Flight 集成、取消和清理。
+独立的 [xstream-execution-api](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-execution-api/README_zh.md) 包含共享契约，不依赖服务器实现。[示例项目](../examples/plugins/README_zh.md) 展示独立编译、服务注册、原生 Dataset 构建和结构化文件子对象访问。`PluginChecks.listing` 提供可复用的元数据契约检查；服务器测试覆盖 Flight 集成、取消和清理。
 
 配置 `plugin_directory`，在注册表初始化前加载插件及私有依赖 JAR。内置与外部实现使用相同接口。Dataset 提供者接收 `DatasetContext`，不依赖服务器的 `Config`。每个处理器自行校验私有 YAML `options`；`format` 和 `schema` 是通用读取设置。每次请求结束关闭访问句柄，服务器关闭时释放提供者资源。插件是可信服务器代码，不支持热加载。
 
@@ -62,7 +62,7 @@ Dataset 提供者和格式处理器可通过 `Scan` 优化过滤、投影和限�
 
 [算子编写指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md) 提供完整 Scala/Python 实现、精简 JAR 和 wheel 构建、管理员发布、远程传输及任务提交。公共仓库支持浏览下载；认证发布通过 API 和管理员 CLI 提供。
 
-算子启动插件可实现 `OperatorExecutor.sourceCommand`，用于仅 DEBUG 模式允许的内联源码。默认拒绝源码执行。管理员在 `source_runtimes` 中将运行环境映射到已安装镜像和执行器 ID；协调端和工作端都要求 `mode: DEBUG`。编译在隔离容器中执行。注册、配置和示例见 [源码算子](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source_zh.md)。
+算子启动插件可实现 `OperatorExecutor.sourceCommand`，用于仅 DEBUG 模式允许的内联源码。默认拒绝源码执行。管理员在 `source_runtimes` 中将运行环境映射到已安装镜像和执行器 ID；协调端和工作端都要求 `mode: DEBUG`。编译在隔离容器中执行。注册、配置和示例见 [源码算子](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source_zh.md)。
 
 `command` 执行器将原生 stdin/stdout 程序适配到一对 bytes 输入输出。配置来自本地 `executor_config` 或仓库 `execution.config`，通过 `OperatorProgram.configuration` 传入；程序同时暴露声明的端口表示供插件校验。见 [原生命令注册、配置和契约测试](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands_zh.md)。
 
@@ -72,7 +72,7 @@ Dataset 提供者和格式处理器可通过 `Scan` 优化过滤、投影和限�
 
 ## 实例环境和执行存储
 
-`PluginEnvironment` 按服务器管理发现和生命周期。通过 `DacpServer.builder().plugins(environment, owned = false)` 注入；应用拥有的环境不会随服务器关闭。插件可覆盖 `initialize(environment)` 和 `close()`。`ExecutionStoreProvider` 在 `META-INF/services/dacp.ExecutionStoreProvider` 注册，配置为 `execution_store: {provider: file, settings: {directory: /var/lib/dacp/executions}}`。存储必须提供原子唯一 `create`、原子替换 `put`、独立副本的 `get`/`records` 及关闭。核心保留状态转换、恢复和稳定的按所有者过滤分页。内置 file 位于 `plugins/dacp-plugin-execution-file`；其他实现不需要修改核心注册表。
+`PluginEnvironment` 按服务器管理发现和生命周期。通过 `DacpServer.builder().plugins(environment, owned = false)` 注入；应用拥有的环境不会随服务器关闭。插件可覆盖 `initialize(environment)` 和 `close()`。`ExecutionStoreProvider` 在 `META-INF/services/dacp.ExecutionStoreProvider` 注册，配置为 `execution_store: {provider: file, settings: {directory: /var/lib/dacp/executions}}`。存储必须提供原子唯一 `create`、原子替换 `put`、独立副本的 `get`/`records` 及关闭。核心保留状态转换、恢复和稳定的按所有者过滤分页。内置 file 位于 `plugins/xstream-plugin-execution-file`；其他实现不需要修改核心注册表。
 
 ## 同进程算子合并
 

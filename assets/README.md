@@ -2,7 +2,7 @@
 
 [中文](README_zh.md)
 
-`dacp-mark.svg` is the canonical text-free symbol. Separate white A and C letters represent access and collaboration; four colored nodes linked around them represent cooperating data nodes. Its `96 × 96` viewBox, rounded background (`x=2`, `y=2`, `width=92`, `height=92`, `rx=25`) and `#10243c` background match XStream. Website header symbols render at `37 × 37` CSS pixels.
+`dacp-mark.svg` is the canonical text-free symbol. Connected points in a fine background grid form A and C, representing data access and collaboration. A small star with a soft glow highlights the grid point one column left and one row down from the upper-right corner. Its `96 × 96` viewBox, rounded background (`x=2`, `y=2`, `width=92`, `height=92`, `rx=25`) and `#10243c` background match XStream. Website header symbols render at `80 × 80` CSS pixels on desktop and `64 × 64` on narrow screens.
 
 Node and Union dashboards package this asset through their resource generators. The independent DACP website vendors a copy in `src/main/resources/web/assets/`; synchronize it on changes. The website has no runtime dependency on this checkout. PNG/ICO derivatives support Markdown, posters and browser favicons. Historical screenshots remain captures of their original interface.
 

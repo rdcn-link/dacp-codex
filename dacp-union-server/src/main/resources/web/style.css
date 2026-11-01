@@ -50,3 +50,15 @@
 .plan-panel>[role=tabpanel]{background:#fff}
 .plan-tab-title{font-size:13px;font-weight:650}.plan-tab-subtitle{font-size:11px;font-weight:400;color:#718096;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .placement-toggle{display:flex;align-items:center;gap:7px;margin:12px 0;color:#45617e;font-size:13px;cursor:pointer}.placement-toggle input{accent-color:#397bbd}
+
+/* Physical sub-plans belong to the physical plan, below the job-level tabs. */
+.subplan-tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid #ced8e3;margin:12px 0 18px;padding:0 0 1px}
+.subplan-tabs button{flex:0 0 auto;border:0;border-bottom:3px solid transparent;border-radius:7px 7px 0 0;background:transparent;color:#63748a;padding:8px 12px;text-align:left;box-shadow:none}
+.subplan-tabs button:hover{background:#edf3f9;color:#244a76}
+.subplan-tabs button[aria-selected="true"]{border-bottom-color:#3576be;background:#edf4fc;color:#214f85}
+.subplan-tabs .plan-tab-title,.subplan-tabs .plan-tab-subtitle{display:block}
+.subplan-tabs .plan-tab-subtitle{font-size:11px;font-weight:400;margin-top:3px}
+.execution-member{border:1px solid #dbe4ee;border-radius:12px;padding:14px 16px;margin:12px 0;background:#fbfdff}
+.execution-member h4{margin:0;font-size:14px}.execution-member td{font-size:12px}
+
+.plan-tab-label{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}.plan-tab-icon{width:17px;height:17px;flex:none;opacity:.85}.plan-tabs button[aria-selected=true] .plan-tab-icon{opacity:1}

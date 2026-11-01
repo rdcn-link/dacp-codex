@@ -9,42 +9,43 @@ const time=ms=>ms?new Date(ms).toLocaleString('en-US',{hour12:false}):'Not obser
 const duration=window.DacpDuration;
 function bytes(v){if(v===undefined||v===null)return '—';const units=['B','KiB','MiB','GiB','TiB'];let i=0;while(v>=1024&&i<units.length-1){v/=1024;i++;}return v.toLocaleString('en-US',{maximumFractionDigits:i?1:0})+' '+units[i];}
 async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error('Status request failed ('+r.status+')');return r.json();}
-let activeSubjob=null;
+let activeSubjob=null,activePhysical='overview';
 let activePlan='physical',planViews={logical:'dag',physical:'dag'},latestJob=null;
 const dagViewer=new DacpDag.Viewer($('dag'));
 async function renderDag(j){
- if(planViews[activePlan]!=='dag')return;
+ if(planViews[activeSubjob?activePhysical:activePlan]!=='dag')return;
  const logical=activePlan==='logical';
  if(logical&&!j.logical_plan)return;
- const graph=activeSubjob?subjobGraph(j,activeSubjob):logical?{...j.logical_plan,job_id:j.job_id+':logical',logical:true,nodes:{},tasks:j.logical_plan.tasks.map(t=>({...t,node:'Logical plan',placement:$('show-placements').checked?(j.placement_decisions||[]).find(d=>d.step===t.id):null})),output_route:'Job result'}:j;
+ const graph=activeSubjob?subjobGraph(j,activeSubjob):logical?{...j.logical_plan,job_id:j.job_id+':logical',logical:true,nodes:{},tasks:j.logical_plan.tasks.map(t=>({...t,node:'Logical plan'})),output_route:'Job result'}:j;
  $('plan-dag-title').textContent=activeSubjob?'Dispatched sub-job · '+activeSubjob.node:logical?'Logical plan DAG':'Physical plan DAG';
  $('dag-overview').textContent=(logical?'':new Set(graph.tasks.map(t=>t.node)).size+' execution nodes · ')+graph.tasks.length+' steps · '+Object.keys(graph.outputs).length+' outputs';
  try {await dagViewer.update(graph,logical?new Map():previous,{bytes,time,duration,labels,terminal});$('dag-error').hidden=true;}
  catch(e){$('dag-error').textContent='Graph rendering failed: '+e.message;$('dag-error').hidden=false;}
 }
 async function showPlan(){
- activeSubjob=activePlan.startsWith('subjob-')?latestJob?.sub_jobs?.[Number(activePlan.slice(7))]:null;
+ activeSubjob=activePlan==='physical'&&activePhysical.startsWith('subjob-')?latestJob?.sub_jobs?.[Number(activePhysical.slice(7))]:null;
  const sub=!!activeSubjob;
-
- for(const name of ['logical','physical']){
+ for(const name of ['submission','logical','physical','execution']){
   $(name+'-plan').hidden=name!==activePlan;
   $(name+'-plan-tab').setAttribute('aria-selected',String(name===activePlan));
-  $(name==='logical'?'job-script':'resolved-job-script').hidden=planViews[name]!=='script';
  }
- $('subjob-plan').hidden=!sub;
- document.querySelector('.placement-toggle').hidden=planViews.logical!=='dag';
- document.querySelectorAll('[data-plan]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.plan===activePlan)));
- if(sub){$('subjob-script').textContent=DacpJobScript.format(activeSubjob.definition_yaml);$('subjob-script').hidden=planViews[activePlan]!=='script';$('subjob-heading').textContent=activeSubjob.node;}
- document.querySelectorAll('[data-plan-view]').forEach(b=>{const [plan,view]=b.dataset.planView.split(':');b.setAttribute('aria-pressed',String(planViews[plan==='subjob'?activePlan:plan]===view));});
+ $('physical-overview').hidden=sub;$('subjob-plan').hidden=!sub;
+ document.querySelectorAll('[data-physical]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.physical===activePhysical)));
+ const viewKey=sub?activePhysical:activePlan;
+ for(const name of ['logical','physical'])$(name==='logical'?'job-script':'resolved-job-script').hidden=planViews[name]!=='script';
+ if(sub){$('subjob-plan').setAttribute('aria-labelledby','physical-'+activePhysical);$('subjob-script').textContent=DacpJobScript.format(activeSubjob.definition_yaml);$('subjob-script').hidden=planViews[viewKey]!=='script';$('subjob-heading').textContent=activeSubjob.node;}
+ document.querySelectorAll('[data-plan-view]').forEach(b=>{const [plan,view]=b.dataset.planView.split(':');b.setAttribute('aria-pressed',String(planViews[plan==='subjob'?activePhysical:plan]===view));});
  const available=activePlan!=='logical'||!!latestJob?.logical_plan;
  $('logical-unavailable').hidden=!!latestJob?.logical_plan;
- $('plan-dag-workspace').hidden=planViews[activePlan]!=='dag'||!available;
+ $('plan-dag-workspace').hidden=!['logical','physical'].includes(activePlan)||planViews[viewKey]!=='dag'||!available;
+ if(!['logical','physical'].includes(activePlan))return;
  $(sub?'subjob-dag-slot':activePlan+'-dag-slot').append($('plan-dag-workspace'));
  document.querySelector('[data-dag-layout="swimlane"]').disabled=activePlan==='logical';
  if(activePlan==='logical'&&dagViewer.layoutMode==='swimlane')dagViewer.setLayout('layout','dependency');
  if(latestJob)await renderDag(latestJob);
 }
-$('show-placements').addEventListener('change',()=>{if(latestJob)renderDag(latestJob);});
+$('physical-plan-tabs').addEventListener('click',e=>{const b=e.target.closest('[data-physical]');if(b){activePhysical=b.dataset.physical;showPlan();}});
+$('physical-plan-tabs').addEventListener('keydown',e=>DacpExecutionInfo.tabKeys(e,'[data-physical]'));
 document.querySelector('.plan-tabs').addEventListener('click',e=>{const b=e.target.closest('[data-plan]');if(b){activePlan=b.dataset.plan;showPlan();}});
 document.querySelector('.plan-tabs').addEventListener('keydown',event=>{
  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
@@ -52,7 +53,7 @@ document.querySelector('.plan-tabs').addEventListener('keydown',event=>{
  event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length;
  buttons[next].focus();buttons[next].click();
 });
-document.querySelector('.plan-panel').addEventListener('click',e=>{const b=e.target.closest('[data-plan-view]');if(!b)return;const [plan,view]=b.dataset.planView.split(':');activePlan=plan==='subjob'?activePlan:plan;planViews[activePlan]=view;showPlan();});
+document.querySelector('.plan-panel').addEventListener('click',e=>{const b=e.target.closest('[data-plan-view]');if(!b)return;const [plan,view]=b.dataset.planView.split(':');activePlan=plan==='subjob'?'physical':plan;planViews[plan==='subjob'?activePhysical:plan]=view;showPlan();});
 // Keep external producers outside the dispatched member's execution group.
 function subjobGraph(j,subjob){
  const ids=new Set(subjob.steps||[]),all=new Map(j.tasks.map(t=>[t.id,t]));
@@ -86,16 +87,18 @@ function orderSubjobs(j){
 }
 function renderPlanning(j){
  $('resolved-job-script').textContent=DacpJobScript.format(j.job_yaml);
- const tabs=document.querySelector('.plan-tabs');tabs.querySelectorAll('[data-subjob-tab]').forEach(b=>b.remove());
+ const tabs=$('physical-plan-tabs');tabs.querySelectorAll('[data-subjob-tab]').forEach(b=>b.remove());
+ const complete=tabs.querySelector('[data-physical="overview"]'),locations=[...new Set(j.tasks.map(t=>t.node).filter(Boolean))].join(' · ');
+ complete.replaceChildren(el('span','Complete plan','plan-tab-title'),el('span',locations||'Placement pending','plan-tab-subtitle'));complete.title=locations||'Placement pending';
  (j.sub_jobs||[]).forEach((sub,index)=>{
   const key='subjob-'+index;planViews[key]??='dag';
-  const button=el('button');button.dataset.plan=key;button.dataset.subjobTab='';button.setAttribute('role','tab');button.setAttribute('aria-controls','subjob-plan');
+  const button=el('button');button.id='physical-'+key;button.dataset.physical=key;button.dataset.subjobTab='';button.setAttribute('role','tab');button.setAttribute('aria-controls','subjob-plan');
   button.append(el('span','Sub-job '+(index+1),'plan-tab-title'),el('span',sub.node,'plan-tab-subtitle'));button.title=sub.node;tabs.append(button);
  });
- if(activePlan.startsWith('subjob-')&&!j.sub_jobs?.[Number(activePlan.slice(7))])activePlan='physical';
+ if(activePhysical.startsWith('subjob-')&&!j.sub_jobs?.[Number(activePhysical.slice(7))])activePhysical='overview';
 }
 async function renderDetail(j){
- $('detail').hidden=false;j={...j,sub_jobs:orderSubjobs(j)};latestJob=j;$('job-script').textContent=j.submitted_job_yaml?DacpJobScript.format(j.submitted_job_yaml):'Original logical plan unavailable.';renderPlanning(j);$('job-policy').textContent=j.policy_yaml||'{}\n';DacpAttempts.render($('job-attempts'),j);await showPlan();if(selected!==j.job_id)return;
+ $('detail').hidden=false;j={...j,sub_jobs:orderSubjobs(j)};latestJob=j;$('job-script').textContent=j.submitted_job_yaml?DacpJobScript.format(j.submitted_job_yaml):'Original logical plan unavailable.';renderPlanning(j);$('job-policy').textContent=j.effective_execution_policy_yaml||'{}\n';$('submitted-policy').textContent=j.execution_policy_yaml||'{}\n';$('submitted-script').textContent=j.submitted_job_yaml?DacpJobScript.format(j.submitted_job_yaml):'Submitted document was not recorded.';$('submission-meta').textContent='Received at '+time(j.created_at_ms);DacpExecutionInfo.render($('execution-info'),j,{time,bytes,labels,terminal});DacpAttempts.render($('job-attempts'),j);await showPlan();if(selected!==j.job_id)return;
  $('detail').hidden=false;$('job-title').textContent=j.name||'Unnamed job';$('job-meta').textContent='Job ID: '+j.job_id+' · '+(labels[j.state]||j.state)+' · Retry '+(j.retry_count||0)+' / '+(j.max_retries||0)+' · used '+duration(j.elapsed_ms)+' · Submitted at '+time(j.created_at_ms)+(j.finished_at_ms?' · Finished at '+time(j.finished_at_ms):'');
  $('job-message').hidden=!j.message;$('job-message').textContent=j.message||'';$('events').replaceChildren(...(j.events||[]).map(e=>el('span',(labels[e.state]||e.state)+' · '+time(e.at_ms)+'  →  ')));
  const nextPrevious=new Map();

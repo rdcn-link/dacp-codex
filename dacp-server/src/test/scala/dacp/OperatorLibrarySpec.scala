@@ -119,14 +119,14 @@ class OperatorLibrarySpec extends AnyFunSuite {
       assert(first.artifact == second.artifact)
       assert(first.command.entrypoint.get.contains("example.Main"))
       assert(requests.count(_.contains("/blobs/")) == 2 && loads == 1)
-      assert(requests.size == 4)
+      assert(requests.count(!_.endsWith("/v1/runtimes")) == 4)
       // A second repository URL has separate metadata but shares verified content.
       val mirror = c.copy(remoteOperatorLibraryUrls=Seq(c.remoteOperatorLibraryUrls.head + "/mirror"))
       assert(OperatorLibrary.resolve(mirror,"second@1",docker).artifact == first.artifact)
-      assert(requests.size == 5 && requests.count(_.contains("/blobs/")) == 2)
+      assert(requests.count(!_.endsWith("/v1/runtimes")) == 5 && requests.count(_.contains("/blobs/")) == 2)
       server.stop(0)
       assert(OperatorLibrary.resolve(c,"second@1",docker).artifact == first.artifact)
-      assert(requests.size == 5)
+      assert(requests.count(!_.endsWith("/v1/runtimes")) == 5)
       // Completed caches remain verified, even offline.
       Files.writeString(first.artifact.get,"corrupt")
       assert(intercept[IllegalArgumentException](OperatorLibrary.resolve(c,"first@1",docker)).getMessage.contains("checksum"))

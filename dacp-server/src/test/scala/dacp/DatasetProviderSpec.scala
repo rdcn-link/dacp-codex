@@ -54,7 +54,7 @@ class DatasetProviderSpec extends AnyFunSuite {
       Files.createSymbolicLink(dir.resolve("internal"),dir.resolve("folder"))
       val ds = config(dir,Map("files" -> directory(dir))).openDataset("files")
       val item = ds.describe("/folder")
-      assert(item.kind == "folder" && item.lastModifiedTimeMs.isEmpty && item.totalSizeBytes.isEmpty && item.recordCount.isEmpty)
+      assert(item.kind == "folder" && item.lastModifiedTimeMs.isDefined && item.creationTimeMs.isDefined && item.totalSizeBytes.isEmpty && item.recordCount.isEmpty)
       assert(ds.list("/").map(_.path) == Seq("/folder"))
       for(path <- Seq("/outside/secret.csv","/secret.csv","/internal")) intercept[java.io.FileNotFoundException](ds.describe(path))
       for(path <- Seq("relative","/../secret.csv","/a//b")) intercept[IllegalArgumentException](ds.describe(path))

@@ -33,7 +33,8 @@ private[client] object Resources {
 final case class TlsConfig(ca: Option[Path] = None, cert: Option[Path] = None, key: Option[Path] = None, token:Option[String]=None,tokenFile:Option[Path]=None)
 final case class Item(path: String, format: String, schema: Option[Schema], kind: String, views: Seq[String],
                       lastModifiedTimeMs: Option[Long] = None, totalSizeBytes: Option[Long] = None,
-                      recordCount: Option[Long] = None) {
+                      recordCount: Option[Long] = None, creationTimeMs: Option[Long] = None) {
+  def creationTime: Option[Instant] = creationTimeMs.map(Instant.ofEpochMilli)
   def lastModifiedTime: Option[Instant] = lastModifiedTimeMs.map(Instant.ofEpochMilli)
 }
 
@@ -150,7 +151,8 @@ final class Dataset private[client] (
       Item(i.getPath, i.getFormat, schema, i.getKind, i.getViewsList.asScala.toVector,
         if (i.hasLastModifiedTimeMs) Some(i.getLastModifiedTimeMs) else None,
         if (i.hasTotalSizeBytes) Some(i.getTotalSizeBytes) else None,
-        if (i.hasRecordCount) Some(i.getRecordCount) else None)
+        if (i.hasRecordCount) Some(i.getRecordCount) else None,
+        if (i.hasCreationTimeMs) Some(i.getCreationTimeMs) else None)
     }.toVector
   }
   /** Item metadata only; never opens a content stream or requests an exact row count. */
@@ -162,7 +164,8 @@ final class Dataset private[client] (
     Item(i.getPath,i.getFormat,schema,i.getKind,i.getViewsList.asScala.toVector,
       if(i.hasLastModifiedTimeMs)Some(i.getLastModifiedTimeMs)else None,
       if(i.hasTotalSizeBytes)Some(i.getTotalSizeBytes)else None,
-      if(i.hasRecordCount)Some(i.getRecordCount)else None)
+      if(i.hasRecordCount)Some(i.getRecordCount)else None,
+      if(i.hasCreationTimeMs)Some(i.getCreationTimeMs)else None)
   }
   /** Explicit exact record count; absent for non-record data. */
   def count(path: String): Option[Long] = {

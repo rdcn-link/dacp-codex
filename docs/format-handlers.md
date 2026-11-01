@@ -2,7 +2,7 @@
 
 The server resolves file mappings through each plugin environment’s `Formats`. `SqlAdapter` handles SQL separately. Detection precedence is an explicit configuration override, compound container suffixes, provider signature matches (at most eight bytes), provider extension matches, then binary fallback. Extensions are lowercase and case-insensitive on filenames. IDs match `[a-z][a-z0-9-]*`; `sql` is reserved. Duplicate IDs or extensions fail registry initialization.
 
-Implement `xstream.data.FormatHandler` in a JAR compiled against the standalone `dacp-plugin-api` with a `Provided` dependency. Scala providers use its trait directly; Java implementations can implement the generated JVM interface. Scala trait defaults are easiest to reuse from Scala. A complete independently built plugin project is in [examples/plugins](../examples/plugins/README.md). Providers must have a public no-argument constructor.
+Implement `xstream.data.FormatHandler` in a JAR compiled against the standalone `xstream-execution-api` with a `Provided` dependency. Scala providers use its trait directly; Java implementations can implement the generated JVM interface. Scala trait defaults are easiest to reuse from Scala. A complete independently built plugin project is in [examples/plugins](../examples/plugins/README.md). Providers must have a public no-argument constructor.
 
 ```scala
 package example

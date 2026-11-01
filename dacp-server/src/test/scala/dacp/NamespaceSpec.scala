@@ -96,6 +96,7 @@ class NamespaceSpec extends AnyFunSuite {
     val all = list(p,"datasets","public").map(i => i.getPath -> i).toMap
     val item = all("/events")
     assert(item.hasLastModifiedTimeMs && item.getLastModifiedTimeMs == 0L)
+    assert(item.hasCreationTimeMs && item.getCreationTimeMs == Files.readAttributes(file,classOf[java.nio.file.attribute.BasicFileAttributes]).creationTime.toMillis)
     assert(item.hasTotalSizeBytes && item.getTotalSizeBytes == Files.size(file))
     assert(!item.hasRecordCount)
     Seq("/nested", "/empty").foreach { path =>

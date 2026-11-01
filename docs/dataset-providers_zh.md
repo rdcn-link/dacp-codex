@@ -65,7 +65,7 @@ Directory 和 SQLDB 拒绝 `items`，应使用各自映射键。
 META-INF/services/xstream.data.DatasetProvider
 ```
 
-文件每行填写一个提供者完整类名。将 JAR 和私有依赖放入 `plugin_directory` 并重启。针对 `dacp-plugin-api` 编译，依赖范围为 `Provided`，不依赖服务器实现。重复或未知 ID 导致配置加载失败。插件自行解释私有 `source` 和映射设置，核心不增加硬编码的 Dataset 类型。
+文件每行填写一个提供者完整类名。将 JAR 和私有依赖放入 `plugin_directory` 并重启。针对 `xstream-execution-api` 编译，依赖范围为 `Provided`，不依赖服务器实现。重复或未知 ID 导致配置加载失败。插件自行解释私有 `source` 和映射设置，核心不增加硬编码的 Dataset 类型。
 
 提供者级参数放在 `source`，嵌套 YAML 映射和列表保持 Java 集合表示。插件必须校验必需值、类型和未知设置。按逻辑路径配置默认使用 `items`；可覆盖 `DatasetProvider.itemSettingsKey` 指定其他键，名称以字母开头，只含小写字母、数字和下划线，`provider`、`source` 保留。解析器把内容传给 `DatasetDefinition.items`，拒绝其他 Dataset 级键。完整实现、注册和参数配置见 [CSV 提供者示例](developers/README_zh.md#自定义-dataset-provider)。
 

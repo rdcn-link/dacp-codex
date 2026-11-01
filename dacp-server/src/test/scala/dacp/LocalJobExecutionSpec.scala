@@ -67,7 +67,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
       |outputs: {}
       |""".stripMargin
     val p=Jobs.parse(definition);val consumed=new AtomicInteger
-    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={
+    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit],onRuntime:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={
       var f=in("source").next();while(f.nonEmpty){if(StreamProtocol.header(f.get).path("type").asText=="data")consumed.addAndGet(f.get.data.length);f=if(StreamProtocol.header(f.get).path("type").asText=="end")None else in("source").next()}
     }}
     new LocalJobExecution(c,executor,input,a).run(p,ExecutionPolicy.parse(Json.obj(),p),"alice",record(c),None,_=>fail("sink must not emit data"),new StreamCancel())
@@ -88,7 +88,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
   }
   test("failed downstream retries from committed upstream and resets partial result; explicit replay skips both steps") {fixture{(c,a)=>
     val upstream=new AtomicInteger;val downstream=new AtomicInteger
-    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={
+    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit],onRuntime:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={
       val count=if(t.id=="a")upstream.incrementAndGet()else downstream.incrementAndGet()
       var f=in("source").next();while(f.nonEmpty){emit(StreamProtocol.rename(f.get,"result"));f=if(StreamProtocol.header(f.get).path("type").asText=="end")None else in("source").next()}
       if(t.id=="b" && count==1){Thread.sleep(100);throw new RuntimeException("transient failure")}
@@ -127,7 +127,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
   }}
   test("all-streaming retry obeys retry bound without materialization") {for(_<-1 to 5)fixtureWithHistory(true){(c,a)=>
     val calls=new AtomicInteger
-    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={calls.incrementAndGet();throw new RuntimeException("unavailable")}}
+    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit],onRuntime:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={calls.incrementAndGet();throw new RuntimeException("unavailable")}}
     val p=policy("""{"max_retries":2,"materialization":{"allowed":false}}""")
     val r=record(c);var notices=0
     val failure=intercept[RuntimeException](new LocalJobExecution(c,executor,input,a).run(plan,p,"alice",r,None,f=>{if(StreamProtocol.header(f).path("type").asText=="attempt_failed")notices+=1},new StreamCancel()))
@@ -135,7 +135,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
   }}
   test("whole-job timeout and explicit cancellation stop steps without retry") {fixtureWithHistory(true){(c,a)=>
     val started=new java.util.concurrent.CountDownLatch(1);val stopped=new AtomicInteger
-    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={started.countDown();try {while(true){cancel.active();Thread.sleep(10)}}finally stopped.incrementAndGet()}}
+    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit],onRuntime:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={started.countDown();try {while(true){cancel.active();Thread.sleep(10)}}finally stopped.incrementAndGet()}}
     val engine=new LocalJobExecution(c,executor,input,a);val p=policy("""{"max_retries":2,"timeout_seconds":1}""")
     var notices=0;val before=System.nanoTime()
     intercept[java.util.concurrent.TimeoutException](engine.run(plan,p,"alice",record(c),None,_=>notices+=1,new StreamCancel(timeoutSeconds=1)))
@@ -147,7 +147,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
   }}
   test("Flight Job exchange skips operator inference, validates policy, and replays original definition") {fixture{(c,a)=>
     val calls=new AtomicInteger
-    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={
+    val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit],onRuntime:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]):Unit={
       calls.incrementAndGet();var f=in("source").next()
       while(f.nonEmpty){emit(StreamProtocol.rename(f.get,"result"));f=if(StreamProtocol.header(f.get).path("type").asText=="end")None else in("source").next()}
     }}

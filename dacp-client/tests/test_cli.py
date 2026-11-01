@@ -42,8 +42,8 @@ class FakeDataset:
         self.listed_path = path
         if self.broken:
             raise RuntimeError('connection refused')
-        return [SimpleNamespace(path='/orders', format='csv', kind='data', views=('records', 'bytes'), total_size_bytes=0, record_count=0, last_modified_time=None),
-                SimpleNamespace(path='/file name', format='txt', kind='data', views=('bytes',), total_size_bytes=None, record_count=None, last_modified_time=None)]
+        return [SimpleNamespace(path='/orders', format='csv', kind='data', views=('records', 'bytes'), total_size_bytes=0, record_count=0, last_modified_time=None, creation_time=None),
+                SimpleNamespace(path='/file name', format='txt', kind='data', views=('bytes',), total_size_bytes=None, record_count=None, last_modified_time=None, creation_time=None)]
 
     def open(self, path, **options):
         self.opened, self.options = path, options
@@ -162,9 +162,9 @@ def test_listing_table_headers_utc_time_and_unknown_values(browser, monkeypatch)
     out.truncate()
     b.onecmd('ls')
     lines = out.getvalue().splitlines()
-    assert [cell.strip() for cell in lines[1].split('|')[1:-1]] == ['#', 'Path', 'Format', 'Views', 'Bytes', 'Records', 'Modified (UTC)']
-    assert [cell.strip() for cell in lines[3].split('|')[1:-1]] == ['1', '/orders', 'csv', 'records, bytes', '0', '0', '2026-10-16 06:22:02']
-    assert [cell.strip() for cell in lines[4].split('|')[1:-1]] == ['2', r'/file\nname', 'txt', 'bytes', '-', '-', '-']
+    assert [cell.strip() for cell in lines[1].split('|')[1:-1]] == ['#', 'Path', 'Format', 'Views', 'Bytes', 'Records', 'Created (UTC)', 'Modified (UTC)']
+    assert [cell.strip() for cell in lines[3].split('|')[1:-1]] == ['1', '/orders', 'csv', 'records, bytes', '0', '0', '-', '2026-10-16 06:22:02']
+    assert [cell.strip() for cell in lines[4].split('|')[1:-1]] == ['2', r'/file\nname', 'txt', 'bytes', '-', '-', '-', '-']
     assert len(lines) == 7
 
 
@@ -217,7 +217,7 @@ def test_folder_highlighting_preserves_table_and_escapes_paths(browser, monkeypa
     rows = rendered.splitlines()
     plain = rows[4].replace('\x1b[1;36m', '').replace('\x1b[0m', '')
     assert len(plain) == len(rows[0])
-    assert [cell.strip() for cell in plain.split('|')[1:-1]][2:] == ['-', '-', '-', '-', '-']
+    assert [cell.strip() for cell in plain.split('|')[1:-1]][2:] == ['-', '-', '-', '-', '-', '-']
 
 
 @pytest.mark.parametrize('command,headers', [('cat 1', ['id'])])

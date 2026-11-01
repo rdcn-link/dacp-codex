@@ -17,7 +17,7 @@ Authorization takes place on the server. Ordinary and collaboration SDKs are sep
 
 ## Ordinary clients
 
-Catalogs, Dataset Item lists, Folder child lists and Item metadata (Views, Schema, size, modification time and already available record counts) are anonymous over TLS. Metadata access never requests an explicit count scan. Data streams, queries, computed counts and Job operations require a token. Individual client certificates are not required. Anonymous clients can connect using only the server address: when no CA, token or client certificate is configured, the SDK keeps TLS encryption but skips server certificate verification. An explicit CA enables certificate verification. Authenticated connections retain certificate verification; Union mutual TLS and certificate bindings are unchanged.
+Catalogs, Dataset Item lists, Folder child lists and Item metadata (Views, Schema, size, creation and modification times and already available record counts) are anonymous over TLS. Metadata access never requests an explicit count scan. Data streams, queries, computed counts and Job operations require a token. Individual client certificates are not required. Anonymous clients can connect using only the server address: when no CA, token or client certificate is configured, the SDK keeps TLS encryption but skips server certificate verification. An explicit CA enables certificate verification. Authenticated connections retain certificate verification; Union mutual TLS and certificate bindings are unchanged.
 
 Tokens belong to a stable subject, which can hold multiple tokens. Jobs, status, results, cancellation and replay are authorized by job ownership. Token replacement or rotation must preserve the subject and historical job ownership.
 
@@ -129,3 +129,20 @@ The authentication layer also writes `authentication-audit.jsonl`, recording RPC
 ## Local source operator boundary
 
 Standalone XStream supports `operator: {local: ./directory}` for trusted local development and later source publication. DACP and Union remote Job interfaces reject this reference, including in DEBUG mode; they do not expose host paths or build commands. Server execution continues to use repository operators and the separately configured DEBUG inline-source mechanism.
+
+## Authorization boundaries
+
+Public metadata does not require an account. Protected operations are checked by the receiving service against subject roles and Job ownership.
+
+```mermaid
+flowchart TD
+  Request["Client request"] --> Kind{"Operation"}
+  Kind -->|"Catalog / Item metadata"| Public["Anonymous metadata"]
+  Kind -->|"Data / Job"| Token["Validate token and subject roles"]
+  Token --> Reader["reader: data reads"]
+  Token --> Runner["runner: data + own Jobs"]
+  S3["S3 request"] --> SigV4["SigV4 / presigned GET"] --> Roles["Shared subject read roles"]
+  Admin["Local administrator"] --> Files["Protected credential directory"]
+  Files -.-> Token
+  Files -.-> SigV4
+```

@@ -2,7 +2,7 @@
 
 服务器通过每个插件环境的 `Formats` 解析文件映射，`SqlAdapter` 单独处理 SQL。识别优先级为显式配置、复合归档后缀、签名匹配（最多八字节）、扩展名匹配、二进制回退。扩展名声明为小写，文件名匹配不区分大小写。ID 符合 `[a-z][a-z0-9-]*`，`sql` 保留。重复 ID 或扩展名导致注册表初始化失败。
 
-在独立 JAR 中实现 `xstream.data.FormatHandler`，编译依赖独立的 `dacp-plugin-api`，范围为 `Provided`。Scala 直接实现 trait，Java 实现对应 JVM 接口；Scala trait 默认方法更适合通过 Scala 适配器复用。完整独立项目见 [examples/plugins](../examples/plugins/README_zh.md)。实现需要公开无参构造器。
+在独立 JAR 中实现 `xstream.data.FormatHandler`，编译依赖独立的 `xstream-execution-api`，范围为 `Provided`。Scala 直接实现 trait，Java 实现对应 JVM 接口；Scala trait 默认方法更适合通过 Scala 适配器复用。完整独立项目见 [examples/plugins](../examples/plugins/README_zh.md)。实现需要公开无参构造器。
 
 ```scala
 package example

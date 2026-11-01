@@ -46,7 +46,7 @@ Union 看板展示提交的 Job YAML 和数据集、任务、端口依赖及最�
 
 ## 存储扩展
 
-节点和 Union 都支持上述 `execution_store` 映射。`provider` 选择通过 ServiceLoader 注册的 `ExecutionStoreProvider`，实现自行校验私有 `settings`。默认 file 位于 `plugins/dacp-plugin-execution-file`，`ExecutionHistory` 保留状态转换、中断恢复和分页。应用可用 `new ExecutionHistory(store, ownsStore = false)` 保留存储所有权。见[插件注册](plugins_zh.md#实例环境和执行存储)。
+节点和 Union 都支持上述 `execution_store` 映射。`provider` 选择通过 ServiceLoader 注册的 `ExecutionStoreProvider`，实现自行校验私有 `settings`。默认 file 位于 `plugins/xstream-plugin-execution-file`，`ExecutionHistory` 保留状态转换、中断恢复和分页。应用可用 `new ExecutionHistory(store, ownsStore = false)` 保留存储所有权。见[插件注册](plugins_zh.md#实例环境和执行存储)。
 
 ## 看板中的作业与步骤
 

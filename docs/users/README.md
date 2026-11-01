@@ -297,7 +297,7 @@ DACP metadata is anonymous over TLS. Data reads require a token whose subject ha
 
 Unpublished physical files and database tables are not automatically exposed. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and tasks are not restored after restart. See the [technical reference](../reference.md#protocol-and-configuration) for full configuration and protocol details.
 
-In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`; `--source` and `--code` are unsupported. Servers default to NORMAL and reject source tasks at both coordinator and execution nodes. See [source operators](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md) for configuration, Python/Scala examples, and the plugin contract.
+In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`; `--source` and `--code` are unsupported. Servers default to NORMAL and reject source tasks at both coordinator and execution nodes. See [source operators](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md) for configuration, Python/Scala examples, and the plugin contract.
 
 Native executables can use stdin/stdout through the `command` executor without implementing the DACP protocol in the program. It supports one bytes input and output, with execution isolated inside a container. See [configuration and publication](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands.md) and the [C example](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/native/README.md).
 

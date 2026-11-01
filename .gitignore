@@ -45,3 +45,6 @@ node_modules/
 # Standalone XStream runtime state
 .xstream-executions/
 .xstream-operators/
+
+# Python distribution build output
+dacp-client/build/

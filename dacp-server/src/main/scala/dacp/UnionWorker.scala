@@ -306,6 +306,8 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       def finish():Unit={require(ended,"input not fully consumed");require(source.next().isEmpty,"events after input end")}
       def close():Unit=source.close()
     }
+    private val unitRuntimes=new ConcurrentHashMap[String,JsonNode]()
+    @volatile private var runtimeImage=""
     @volatile private var runtimePid=0L
     @volatile private var executionMode="isolated_steps"
     @volatile private var fusionReason="not_planned"
@@ -339,7 +341,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       val connected=definitions.filterNot(t=>readers.contains(t.path("id").asText)).flatMap(t=>t.path("output_routes").fields.asScala.filter(_.getValue.path("consumer_identity").asText.nonEmpty).map(e=>(t.path("id").asText,e.getKey))).zipWithIndex.map{case(pair,i)=>s"p$i"->pair}.toMap
       OperatorGroups.prepare(config,JobPlan(tasks,connected)) match {
         case Left(reason)=>fusionReason=reason;None
-        case Right(group)=>executionMode="shared_process";fusionReason="compatible";Some((group,external.toMap,connected))
+        case Right(group)=>executionMode="shared_process";unitRuntimes.put("shared",_root_.xstream.operator.inference.OperatorLibrary.runtimeDescriptor(group.operator));runtimeImage=group.operator.image;fusionReason="compatible";Some((group,external.toMap,connected))
       }
     }
     private def startGrouped(group:PreparedOperatorGroup,external:Map[String,(String,String,JsonNode)],selected:Map[String,(String,String)]):Unit={
@@ -455,7 +457,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
                   datasetInput(descriptor)
                 }else if(DacpUri.origin(binding.uri.get)!=DacpUri.origin(config.uri("")))ItemSource.open(config,allocator,binding,cancel)else localInput(descriptor)
                 try {var f=source.next();while(f.nonEmpty){emit(StreamProtocol.rename(f.get,"result"));f=source.next()}}finally source.close()
-              case None=>runner match {case Some(run)=>run(task,inputs,emit,cancel);case None=>executor.execute(task,inputs,emit,cancel)}
+              case None=>runner match {case Some(run)=>run(task,inputs,emit,cancel);case None=>executor.execute(task,inputs,emit,cancel,onRuntime=Some(runtime=>unitRuntimes.put(taskId,runtime)))}
             }
             // Worker transports must validate upstream success, not only an end frame.
             inputs.values.foreach { s=>
@@ -478,7 +480,18 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       }
     }
     def snapshot:JsonNode={
-      val n=Json.obj().put("execution_id",id).put("name",jobName).put("union_id",union).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished).put("execution_mode",executionMode).put("fusion_reason",fusionReason).put("runtime_pid",runtimePid)
+      val n=Json.obj().put("history_record_id",historyRecord.id).put("execution_id",id).put("name",jobName).put("union_id",union).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished).put("execution_mode",executionMode).put("fusion_reason",fusionReason).put("runtime_pid",runtimePid)
+      val units=n.putArray("execution_units")
+      if(executionMode=="shared_process"){
+        val unit=units.addObject().put("id","shared").put("mode","shared_process").put("runtime_image",runtimeImage).put("state",state).put("reason",fusionReason)
+        val steps=unit.putArray("steps");definitions.filterNot(_.path("operator").asText==Jobs.ReadItem).foreach(t=>steps.add(t.path("id").asText))
+        definitions.filter(_.path("operator").asText==Jobs.ReadItem).foreach { t=>
+          val u=units.addObject().put("id",t.path("id").asText).put("mode","host_stream_source").put("state",Option(states.get(t.path("id").asText)).getOrElse(state));u.putArray("steps").add(t.path("id").asText)
+        }
+      }else if(fusionReason!="not_planned")definitions.foreach { t=>
+        val id=t.path("id").asText;val u=units.addObject().put("id",id).put("mode",if(t.path("operator").asText==Jobs.ReadItem)"host_stream_source"else "isolated_step").put("reason",fusionReason).put("state",Option(states.get(id)).getOrElse(state));u.putArray("steps").add(id)
+      }
+      units.elements.asScala.foreach { u=>Option(unitRuntimes.get(u.path("id").asText)).foreach(r=>r.fields.asScala.foreach(e=>u.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].set[JsonNode](e.getKey,e.getValue))) }
       val ts=n.putObject("tasks");states.asScala.toSeq.sortBy(_._1).foreach{case(k,v)=>ts.put(k,v)}
       val artifacts=n.putObject("materialized_tasks")
       definitions.filter(t=>t.has("replay_from") || t.path("materialize").size()>0).foreach { t=>

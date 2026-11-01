@@ -17,7 +17,7 @@
 
 ## 普通客户端
 
-目录、Dataset 的 Item 列表、Folder 子项列表及 Item 元数据（Views、Schema、大小、修改时间和已有记录数）允许通过 TLS 匿名访问，不触发显式计数扫描。数据流、查询、计算记录数及 Job 操作需要 Token，不要求每个客户端都申请证书。匿名客户端只需服务器地址：未配置 CA、Token 或客户端证书时，SDK 保留 TLS 加密，但不校验服务器证书。显式指定 CA 时启用证书校验。携带凭据的连接仍校验证书，Union 双向 TLS 与证书绑定保持不变。
+目录、Dataset 的 Item 列表、Folder 子项列表及 Item 元数据（Views、Schema、大小、创建时间和修改时间和已有记录数）允许通过 TLS 匿名访问，不触发显式计数扫描。数据流、查询、计算记录数及 Job 操作需要 Token，不要求每个客户端都申请证书。匿名客户端只需服务器地址：未配置 CA、Token 或客户端证书时，SDK 保留 TLS 加密，但不校验服务器证书。显式指定 CA 时启用证书校验。携带凭据的连接仍校验证书，Union 双向 TLS 与证书绑定保持不变。
 
 Token 归属于稳定的主体，一个主体可以持有多个 Token。任务、状态、结果、取消和重放按任务所有者授权。更新或轮换 Token 不应改变主体及其历史任务归属。
 
@@ -131,3 +131,20 @@ S3 对每个新请求检查当前角色，包括预签名 GET 和 Range 请求�
 ## 本地源码算子边界
 
 独立 XStream 支持 `operator: {local: ./directory}`，用于可信本地开发并可提交源码到仓库。DACP 和 Union 的远程 Job 接口不接受此引用，DEBUG 模式也不会开放本机路径或构建命令。服务端继续使用仓库算子及已配置的 DEBUG 内联源码机制。
+
+## 授权边界
+
+公开元数据不需要账号，受保护操作由接收服务检查主体角色及 Job 所有权。
+
+```mermaid
+flowchart TD
+  Request["客户端请求"] --> Kind{"操作类型"}
+  Kind -->|"目录 / Item 元数据"| Public["匿名元数据访问"]
+  Kind -->|"数据 / Job"| Token["验证 Token 与主体角色"]
+  Token --> Reader["reader：读取数据"]
+  Token --> Runner["runner：读取数据与自己的 Job"]
+  S3["S3 请求"] --> SigV4["SigV4 / 预签名 GET"] --> Roles["共享主体的读取角色"]
+  Admin["本地管理员"] --> Files["受保护凭据目录"]
+  Files -.-> Token
+  Files -.-> SigV4
+```

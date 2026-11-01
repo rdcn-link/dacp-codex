@@ -63,7 +63,7 @@ class SourceSpec extends AnyFunSuite {
         val parts = desc.getPath.asScala
         if (parts(1) == "missing") throw CallStatus.NOT_FOUND.withDescription("missing dataset").toRuntimeException
         val meta = Metadata.DataSet.newBuilder().setUri("dacp://localhost/data1")
-          .addItems(Metadata.Item.newBuilder().setPath("/records").setLastModifiedTimeMs(0L).setTotalSizeBytes(0L).setRecordCount(0L).setFormat("csv").setKind("data").addViews("records").addViews("bytes")
+          .addItems(Metadata.Item.newBuilder().setPath("/records").setCreationTimeMs(0L).setLastModifiedTimeMs(0L).setTotalSizeBytes(0L).setRecordCount(0L).setFormat("csv").setKind("data").addViews("records").addViews("bytes")
             .setArrowSchema(com.google.protobuf.ByteString.copyFrom(recordsSchema.serializeAsMessage())))
           .addItems(Metadata.Item.newBuilder().setPath("/unknown").setKind("data")).build()
         val ticket = Metadata.Ticket.newBuilder().setDataset(parts(1)).setItem(if(parts.size == 3) parts(2) else "/records").build()
@@ -122,10 +122,11 @@ class SourceSpec extends AnyFunSuite {
     assert(item.path == "/records" && item.format == "csv" && item.kind == "data")
     assert(ds.list("/").map(_.path) == Seq("/records","/unknown"))
     val unknown = ds.list().last
-    assert(unknown.lastModifiedTime.isEmpty && unknown.totalSizeBytes.isEmpty && unknown.recordCount.isEmpty)
+    assert(unknown.lastModifiedTime.isEmpty && unknown.creationTime.isEmpty && unknown.totalSizeBytes.isEmpty && unknown.recordCount.isEmpty)
     assert(item.schema.contains(recordsSchema))
     assert(item.totalSizeBytes.contains(0L) && item.recordCount.contains(0L))
     assert(item.lastModifiedTime.contains(java.time.Instant.EPOCH))
+    assert(item.creationTime.contains(java.time.Instant.EPOCH))
   }}
   test("records expose schema and borrowed batches; EOF remains terminal") { server { ds =>
     Using.resource(ds.open("/records")) { item =>
@@ -221,7 +222,7 @@ class SourceSpec extends AnyFunSuite {
             sources.foreach { case (alias,filename) =>
               val metadata = ds.list("/").find(_.path == alias).get
               assert(metadata.kind == "folder" && metadata.views == Seq("bytes"))
-              assert(metadata.totalSizeBytes.isEmpty && metadata.recordCount.isEmpty && metadata.lastModifiedTimeMs.isEmpty)
+              assert(metadata.totalSizeBytes.isEmpty && metadata.recordCount.isEmpty && metadata.lastModifiedTimeMs.isDefined && metadata.creationTimeMs.isDefined)
               Using.resource(ds.open(alias)) { item =>
                 Using.resource(item.asBytes()) { reader =>
                   assert(reader.readAllBytes().sameElements(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(directory,filename))))

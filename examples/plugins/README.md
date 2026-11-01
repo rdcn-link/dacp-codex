@@ -2,7 +2,7 @@
 
 [中文](README_zh.md)
 
-This project compiles against `dacp-plugin-api` only. It does not depend on the server implementation. It supplies two registered plugins:
+This project compiles against `xstream-execution-api` only. It does not depend on the server implementation. It supplies two registered plugins:
 
 - `example-message`: a native Dataset with `/message` and `/summary`, configured by `source.message`.
 - `example-message-file`: a `.message` structured-file handler with direct `/message` and `/summary` children and optional private `options.prefix`. Child bytes are UTF-8 text including the configured prefix; file-root bytes are unchanged.
@@ -14,7 +14,7 @@ The small example reads its text in memory; production handlers should use bound
 From the repository root:
 
 ```bash
-(cd dacp-plugin-api && sbt publishLocal)
+(cd xstream-execution-api && sbt publishLocal)
 (cd examples/plugins && sbt package)
 (cd dacp-server && sbt stage)
 mkdir -p plugins

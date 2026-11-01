@@ -113,7 +113,7 @@ SQLGlot 在本地把语句解析为类型化扫描表达式，服务器不接收
 
 ## 插件实现契约
 
-独立 `dacp-plugin-api` 提供 `Literal`、`Predicate`、`Scan`、`BoundScan`、`ScanStreams`。
+独立 `xstream-execution-api` 提供 `Literal`、`Predicate`、`Scan`、`BoundScan`、`ScanStreams`。
 
 - `access.requireView(path, DataViews.Records).open(request, context)` 使用类型化 `Scan`；`BatchDatasetAccess.readScan` 默认使用 `ScanStreams` 对 Arrow 批次作有界变换。
 - `FormatHandler.scan(source, options, request, allocator, batch, sample, receiver, demand)` 默认包装 records 读取器，适用于 directory、mixed 和暂存归档条目。

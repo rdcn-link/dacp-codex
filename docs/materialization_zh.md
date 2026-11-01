@@ -24,7 +24,7 @@ union:
       retention_seconds: 86400
 ```
 
-`directory` 是节点私有路径，不能由任务提交者指定。文件存储插件随标准发行包提供，位于 `plugins/dacp-plugin-execution-file`。省略 `materialization_store` 时，该节点拒绝需要物化或重放的任务。Union 先 prepare 全部节点，再启动任何步骤，因此不支持存储会导致准备失败，而非静默降级。
+`directory` 是节点私有路径，不能由任务提交者指定。文件存储插件随标准发行包提供，位于 `plugins/xstream-plugin-execution-file`。省略 `materialization_store` 时，该节点拒绝需要物化或重放的任务。Union 先 prepare 全部节点，再启动任何步骤，因此不支持存储会导致准备失败，而非静默降级。
 
 文件插件必须提供 `directory`；其余三个设置默认为上述值，且须为正整数。`max_bytes` 限制整个目录的受管理数据，`max_task_bytes` 限制单个任务的所有选定输出，两者包含 Arrow 文件和清单开销；配额不足使执行失败，清理未提交数据。物化保留时间与内存会话的 `union.retention_seconds` 相互独立。到期数据不能被新执行获取；正在使用的租约关闭后才删除文件。存储目录只允许一个写入服务，启动时清理未提交临时目录。
 
@@ -214,7 +214,7 @@ Shell 显示执行 ID，重试前明确标记上一轮输出作废并重置显�
 
 节点 `prepare` 的各任务增加 `materialize: ["result"]` 以及可选 `replay_from: "源执行 ID"`。准备阶段验证所有重放输出存在，并持有租约；重放数据继续使用新的执行 ID 与原消费者证书绑定，不直接向客户端暴露磁盘路径。
 
-公共契约在 `dacp-plugin-api`：`MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask` 和 `MaterializedFrames`。外部实现通过 `META-INF/services/dacp.MaterializationStoreProvider` 注册提供者类，将 JAR 与依赖安装到节点 `plugin_directory`，并将 `provider` 设置为其 `id`，无须修改核心注册表。
+公共契约在 `xstream-execution-api`：`MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask` 和 `MaterializedFrames`。外部实现通过 `META-INF/services/dacp.MaterializationStoreProvider` 注册提供者类，将 JAR 与依赖安装到节点 `plugin_directory`，并将 `provider` 设置为其 `id`，无须修改核心注册表。
 
 插件负责私有配置、配额、过期清理、原子任务提交、持久化、租约与读取完整性；核心负责授权、策略校验、帧协议、取消及运行资源。`append(port, OperatorFrame)` 接收类型化帧，重放返回 `MaterializedFrames`。帧头上限 64 KiB，载荷上限 8 MiB；插件不得缓存整个任务。文件插件先写零行 Arrow File 分段，再写独立的数据分段，清单记录有序文件名、大小及校验和。append 失败后禁止提交。关闭未提交 writer 必须中止，提交后才可 `get`，到期后不可新建租约；清理不得破坏现有租约。新实现应通过发现、提交/中止、重启读取、配额、过期/租约、截断/损坏和关闭清理契约测试；参考 `MaterializationSpec` 及跨节点 `UnionSpec`。
 

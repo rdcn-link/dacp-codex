@@ -25,6 +25,11 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
                   sources: Map[String, SourceDefinition] = Map.empty, countFileRecordsOnStartup: Boolean = false, debug: Boolean = false, sourceRuntimes: Map[String, SourceRuntime] = Map.empty, union: Option[NodeUnionSettings] = None, executionStore: Option[ExecutionStoreDefinition] = None,
                   dataCatalog: Option[DataCatalogDefinition] = None, catalogOverride: Option[DataCatalog] = None, pluginEnvironment: Option[PluginEnvironment] = None, pluginDirectory: Option[Path] = None, ownsPluginEnvironment:Boolean=false, accessLogDirectory:Option[Path]=None, accessLogMaxBytes:Long=64L*1024*1024, operatorFusionEnabled:Boolean=true, web:NodeWebSettings=NodeWebSettings(), materializationStore:Option[MaterializationStoreDefinition]=None, executionTimeoutSeconds:Long=1800, s3:S3Settings=S3Settings(),credentialDirectory:Option[Path]=None,providedCredentials:Option[dacp.union.Credentials]=None,inferenceWorkers:InferenceWorkerSettings=InferenceWorkerSettings(),publicPort:Option[Int]=None,remoteItemCredentials:Map[String,Path]=Map.empty) extends CatalogContext with EngineEnvironment with AutoCloseable {
+  override def inferenceScope:String = if(dacp.union.Rpc.isAuthenticatedCall){
+    val p=dacp.union.Rpc.principal
+    dacp.union.Json.obj().put("kind",p.kind).put("subject",p.subject).put("union",p.unionId.getOrElse("")).put("certificate",p.certificate.getOrElse("")).toString
+  }else "embedded"
+
   require(publicPort.forall(p=>p>=1 && p<=65535),"public_port must be 1..65535")
   require(executionTimeoutSeconds>0 && executionTimeoutSeconds<=86400,"invalid execution_timeout_seconds")
   lazy val credentials=providedCredentials.getOrElse(new dacp.union.Credentials(credentialDirectory.getOrElse(Path.of(".dacp-security",port.toString))))
@@ -232,6 +237,7 @@ class Producer(config: Config, allocator: BufferAllocator, tasks: Option[TaskSer
     val b = Metadata.Item.newBuilder().setPath(i.path).setFormat(i.format).setKind(i.kind)
       .addAllViews(config.plugins.views(i).asJava)
     i.schema.foreach(s => b.setArrowSchema(com.google.protobuf.ByteString.copyFrom(s.serializeAsMessage())))
+    i.creationTimeMs.foreach(n => b.setCreationTimeMs(n))
     i.lastModifiedTimeMs.foreach(n => b.setLastModifiedTimeMs(n))
     i.totalSizeBytes.foreach(n => b.setTotalSizeBytes(n))
     i.recordCount.foreach(n => b.setRecordCount(n))

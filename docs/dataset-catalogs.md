@@ -39,7 +39,7 @@ Clients access `dacp://host:8815/reports`. `/orders` is public; `file_path` is p
 
 ## Contracts and registration
 
-Public types reside in `dacp-plugin-api`:
+Public types reside in `xstream-execution-api`:
 
 ```scala
 trait DataCatalog extends AutoCloseable {

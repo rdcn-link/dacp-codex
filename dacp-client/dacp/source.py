@@ -59,6 +59,12 @@ class Item:
     last_modified_time_ms: int | None = None
     total_size_bytes: int | None = None
     record_count: int | None = None
+    creation_time_ms: int | None = None
+
+    @property
+    def creation_time(self):
+        return (datetime.fromtimestamp(self.creation_time_ms / 1000, timezone.utc)
+                if self.creation_time_ms is not None else None)
 
     @property
     def last_modified_time(self):
@@ -140,7 +146,8 @@ class DataSet:
                      x.kind, tuple(x.views),
                      x.last_modified_time_ms if x.HasField("last_modified_time_ms") else None,
                      x.total_size_bytes if x.HasField("total_size_bytes") else None,
-                     x.record_count if x.HasField("record_count") else None) for x in meta.items]
+                     x.record_count if x.HasField("record_count") else None,
+                     x.creation_time_ms if x.HasField("creation_time_ms") else None) for x in meta.items]
     @public_errors
     def count(self, path):
         """Request an exact record count explicitly; None for non-record data."""

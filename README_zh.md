@@ -14,7 +14,7 @@ Dataset 列表可由 [DataCatalog 插件](docs/dataset-catalogs_zh.md)动态提�
 
 节点默认提供 [S3 兼容只读服务](docs/s3-service_zh.md)，可使用 S3 客户端列举 dataset bucket 并下载 Item 字节流。
 
-独立官方网站项目：[dacp-website](https://github.com/rdcn-link/dacp-website/blob/main/README_zh.md)，提供英文项目介绍、按角色分类的在线文档和软件下载。
+独立官方网站项目：[dacp-website](https://github.com/rdcn-link/dacp-website)，提供中英文项目介绍、按角色分类的在线文档和软件下载。
 
 作业定义、节点子作业、执行策略和变量文件统一采用 YAML。每个 Job 必须提供可读的 `name`，系统另行生成执行 ID；节点与 Union 看板统一展示名称和执行信息。Shell 可同时提交：`submit workflow.yaml --policy policy.yaml --vars variables.yaml`。详见[作业编写](docs/jobs_zh.md)。
 
@@ -38,7 +38,7 @@ Dataset 列表可由 [DataCatalog 插件](docs/dataset-catalogs_zh.md)动态提�
 | `dacp-client` / `dacp-client-scala` | Python / Scala 应用访问数据、执行 Job 和提交 Union 作业 |
 | [dacp-union-server](dacp-union-server/README_zh.md) | 管理一个 Union，按配置连接节点、轮询健康与容量、调度跨节点 DAG、转发最终结果流 |
 | [Union Web 看板](dacp-union-server/README_zh.md#执行与接口) | 管理界面展示节点、任务脚本、可缩放 DAG、流量与执行历史 |
-| `dacp-plugin-api` / `dacp-union-protocol` | 插件公开契约和 Union 共享传输工具 |
+| `xstream-execution-api` / `dacp-union-protocol` | 插件公开契约和 Union 共享传输工具 |
 | [plugins](plugins/README_zh.md) | 内置 Dataset、文件格式、归档、Catalog 和算子启动插件 |
 
 服务端使用 JDK 17 和 Scala 2.13；Python SDK 要求 Python 3.10+。数据浏览不需要 Docker；算子执行需要 Linux 和可访问的 Docker Engine。构建使用 sbt 1.10.x。

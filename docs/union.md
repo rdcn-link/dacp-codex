@@ -124,8 +124,34 @@ Input locations, including `read_source`, use `producer_identity` to verify the 
 
 Job names in both the Union and node dashboards open a dedicated `/job?id=...` page. This page can be bookmarked and loads current or historical execution details directly by ID. It keeps the DAG, script, policy, attempts and traffic together and loads on opening or clicking Refresh. Use **Back to jobs** to return to the list.
 
-Job details distinguish **Logical plan** and **Physical plan**, each with **DAG** and **YAML script** views. The logical plan preserves submitted steps, parameters and stream dependencies without member groups, execution state or traffic. The physical plan shows actual member placement, cross-node connections, state and traffic, with expandable placement decisions and node sub-jobs. The Logical plan DAG has a Placement decisions checkbox. Enabling it annotates steps with their assigned execution nodes; clicking a step shows the full node address, placement reason and source mapping. Dispatched sub-jobs appear as peer tabs alongside these plans. Each tab offers DAG / YAML script views; sub-job tabs show their execution node, local steps, external producer interfaces and downstream outlets. Manual refresh preserves the selected plan and view. Historical records without the original script explicitly report an unavailable logical plan rather than substituting the physical plan.
+The logical plan shows only the submitted steps and stream dependencies. The physical plan groups steps in server panels with rack icons and, within each server, in dashed execution-unit windows with dedicated title bars. These groups come from execution records reported by the engine. Swimlane spacing includes nested unit frames and header areas in both flow directions. Shared-process groups, separate executions and host stream sources remain distinct. Click a step to inspect placement reasons and source mappings; click an execution unit to inspect its runtime, state and fusion reason. Missing execution records are shown as pending or not recorded, never inferred from matching runtimes. Sub-job tabs retain DAG and YAML script views.
 
 Dedicated Union and node Job detail pages do not poll automatically. Use the header **Refresh** button for current status; job list pages retain automatic refresh.
 
-DACP node Job details use the same browser-style plan tabs, YAML/DAG views, execution policy and attempt timeline. Their logical DAG also supports placement annotations; final output bindings appear in the physical plan. The page offers manual refresh without a connection-status label. Direct client jobs use Logical plan / Physical plan tabs. Union-origin records use Received sub-job / Local execution plan: the received definition is the executable portion already placed by Union, while the local execution view adds status and traffic. Global logical and physical plans remain on Union. Placement annotations are offered only for direct client jobs.
+Union and node job details have four top-level tabs: **Submitted job**, **Logical plan**, **Physical plan**, and **Execution information**. Submitted job shows the immutable YAML received by the service, receipt time and submitted execution policy. Variables are resolved by the client before submission, so the original variable file cannot be reconstructed from server history. Logical plan shows resolved steps and stream dependencies with DAG/YAML views. Physical plan contains the complete execution DAG/YAML and nested member sub-job views ordered upstream to downstream. Execution information groups step status, execution units, runtimes and payload totals by member, followed by the effective policy and attempt timeline. Union links to node details when a node web address and history record are available. Failed observations preserve the last successful snapshot and its timestamp, with an explicit warning. Node records originating from Union show the received executable sub-job under Submitted job and its local execution under Physical plan; they explicitly report that the global logical plan is on Union.
+
+Execution-unit labels include the runtime model and version (for example `python-arrow@1.0`). Unit details also show the pinned image digest and catalog dependency versions when available. Built-in item readers use the host JVM. Runtime metadata comes from the repository catalog for the exact execution image; missing catalog metadata is reported explicitly.
+
+## Collaboration data path
+
+Union coordinates execution. Intermediate task data flows directly between members; the final stream is relayed to the client through Union.
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant U as Union
+  participant A as Node A
+  participant B as Node B
+  participant C as Node C
+  Client->>U: submit Job
+  U->>A: prepare sub-job
+  U->>B: prepare sub-job
+  U->>C: prepare sub-job
+  U->>C: consume final output
+  C->>B: consume upstream output
+  B->>A: consume upstream output
+  A-->>B: Arrow batches
+  B-->>C: transformed batches
+  C-->>U: final result stream
+  U-->>Client: result stream
+```

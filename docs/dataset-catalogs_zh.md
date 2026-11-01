@@ -39,7 +39,7 @@ INSERT INTO dacp_items VALUES ('reports', '/orders', '/srv/data/orders.csv');
 
 ## 插件契约与注册
 
-公开类型位于 `dacp-plugin-api`：
+公开类型位于 `xstream-execution-api`：
 
 ```scala
 trait DataCatalog extends AutoCloseable {

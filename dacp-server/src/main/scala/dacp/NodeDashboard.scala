@@ -36,7 +36,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
   private val threads=new ThreadPoolExecutor(4,4,0L,java.util.concurrent.TimeUnit.MILLISECONDS,new ArrayBlockingQueue[Runnable](64),new ThreadPoolExecutor.AbortPolicy())
   private val closed=new AtomicBoolean()
   private val origin=new java.net.URI("dacp",null,config.publicHost,flightPort,null,null,null).toASCIIString
-  private val files=Map("/s3"->("s3.html","text/html"),"/s3.js"->("s3.js","text/javascript"),"/datasets"->("datasets.html","text/html"),"/datasets.js"->("datasets.js","text/javascript"),"/job"->("job.html","text/html; charset=utf-8"),"/job.js"->("job.js","text/javascript; charset=utf-8"),"/job-script.js"->("job-script.js","text/javascript"),"/attempts.js"->("attempts.js","text/javascript"),"/"->("index.html","text/html"),"/duration.js"->("duration.js","text/javascript"),"/app.js"->("app.js","text/javascript"),"/dag.js"->("dag.js","text/javascript"),"/style.css"->("style.css","text/css"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"),"/assets/dacp-mark.svg"->("dacp-mark.svg","image/svg+xml"))
+  private val files=Map("/execution-info.js"->("execution-info.js","text/javascript; charset=utf-8"),"/s3"->("s3.html","text/html"),"/s3.js"->("s3.js","text/javascript"),"/datasets"->("datasets.html","text/html"),"/datasets.js"->("datasets.js","text/javascript"),"/job"->("job.html","text/html; charset=utf-8"),"/job.js"->("job.js","text/javascript; charset=utf-8"),"/job-script.js"->("job-script.js","text/javascript"),"/attempts.js"->("attempts.js","text/javascript"),"/"->("index.html","text/html"),"/duration.js"->("duration.js","text/javascript"),"/app.js"->("app.js","text/javascript"),"/dag.js"->("dag.js","text/javascript"),"/style.css"->("style.css","text/css"),"/vendor/g6-5.1.1.min.js"->("vendor/g6-5.1.1.min.js","text/javascript"),"/vendor/G6-LICENSE.txt"->("vendor/G6-LICENSE.txt","text/plain"),"/assets/dacp-favicon.png"->("dacp-favicon.png","image/png"),"/favicon.ico"->("dacp-favicon.ico","image/x-icon"),"/assets/dacp-logo.png"->("dacp-logo.png","image/png"),"/assets/dacp-mark.svg"->("dacp-mark.svg","image/svg+xml"))
   server.setExecutor(threads)
   server.createContext("/",(e:HttpExchange)=>handle(e))
   def port:Int=server.getAddress.getPort
@@ -108,7 +108,13 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     }
     val consumed=tasks.elements.asScala.flatMap(_.path("inputs").elements.asScala.filter(_.has("task")).map(b=>b.path("task").asText->b.path("output_port").asText)).toSet
     outputs.fields.asScala.toVector.filter(e=>consumed(e.getValue.path("task").asText->e.getValue.path("port").asText)).foreach(e=>outputs.remove(e.getKey))
-    val nodes=n.putObject("graph_nodes");val node=nodes.putObject("local").put("observed_at_ms",current.map(_=>System.currentTimeMillis()).getOrElse(n.path("updated_at_ms").asLong));node.set[JsonNode]("ports",ports)
+    val nodes=n.putObject("graph_nodes");val node=nodes.putObject("local").put("state",n.path("state").asText).put("created_at_ms",n.path("created_at_ms").asLong).put("finished_at_ms",n.path("finished_at_ms").asLong).put("observed_at_ms",current.map(_=>System.currentTimeMillis()).getOrElse(n.path("updated_at_ms").asLong));node.set[JsonNode]("ports",ports)
+    values(n.path("execution_units")).foreach { unit=>
+      if(unit.path("mode").asText=="isolated_step")children.filter(_.path("task_id").asText==unit.path("id").asText).sortBy(_.path("created_at_ms").asLong).lastOption.foreach { child=>
+        child.fields.asScala.filter(_.getKey.startsWith("runtime_")).foreach(e=>unit.asInstanceOf[ObjectNode].set[JsonNode](e.getKey,e.getValue))
+      }
+    }
+    node.set[JsonNode]("execution_units",n.path("execution_units"))
     if(record.has("job_yaml") || record.has("task_definitions")){
       n.put("logical_yaml",n.path("definition_yaml").asText)
       val logical=n.putObject("logical_plan");val lt=logical.putArray("tasks")

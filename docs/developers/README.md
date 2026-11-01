@@ -14,7 +14,7 @@ Core owns contracts, discovery and lifecycle, transport, authorization, namespac
 
 | Module | Responsibility |
 |---|---|
-| `dacp-plugin-api` | Public service integration, execution and executor contracts; data contracts come from XStream |
+| `xstream-execution-api` | Public service integration, execution and executor contracts; data contracts come from XStream |
 | `dacp-server` | Flight service, namespace, coordination and resource lifecycle |
 | `dacp-client`, `dacp-client-scala` | Public client APIs and shell |
 | XStream `plugins/xstream-plugin-operator-executors` | Independently maintained container launchers and native-command bridge |
@@ -27,7 +27,7 @@ Core owns contracts, discovery and lifecycle, transport, authorization, namespac
 - [Native commands](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands.md): stdin/stdout adapter, executable artifacts and plugin configuration.
 - [Packaging and executors](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md): shared dependencies, immutable artifacts, repository schema and registration.
 - [Stream contract](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams.md): named ports, frames, backpressure, cancellation and current scheduling limits.
-- [DEBUG source](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source.md): Python/Scala compilation and launch contracts; raw Java source is unsupported.
+- [DEBUG source](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md): Python/Scala compilation and launch contracts; raw Java source is unsupported.
 
 Operator outputs are transient streams. There is no result-dataset registration, saved-result mode or output TTL. Bytes, records, arrays and sequences share Arrow streaming contracts; scientific dimensions remain explicit. General pipeline scheduling and fan-out are not implemented.
 
@@ -64,7 +64,7 @@ class CsvFileProvider extends DatasetProvider {
 }
 ```
 
-Compile the code into a JAR against the standalone `dacp-plugin-api`, using the matching API and Scala versions and a `Provided` dependency. Include this service registration file inside the JAR:
+Compile the code into a JAR against the standalone `xstream-execution-api`, using the matching API and Scala versions and a `Provided` dependency. Include this service registration file inside the JAR:
 
 ```text
 META-INF/services/xstream.data.DatasetProvider
@@ -97,7 +97,7 @@ File plugins implement `FormatHandler` and register in `META-INF/services/xstrea
 
 To browse logical objects inside a file, implement `StructuredFileHandler` and register through the same format service file. Its `openStructure` returns `DatasetAccess` and can stream internal objects directly without extracting temporary files. The file root is a folder with original bytes; children explicitly advertise `records` or `bytes`. Archive readers can implement `ContainerReader` and register in `META-INF/services/xstream.data.ContainerReader`, without modifying core format registries.
 
-The standalone API lives in [dacp-plugin-api](../../dacp-plugin-api). Runnable contributions and build/install instructions are in [examples/plugins](../../examples/plugins/README.md). `PluginChecks.listing` provides reusable metadata contract checks. The server closes request-scoped access handles and releases provider resources on shutdown. XStream data plugins implement NetCDF/FITS/FASTA parsing and arrays/sequences over standard Arrow streams. Contributors expose internal file objects through shared contracts, without silently flattening arrays into records.
+The standalone API lives in [xstream-execution-api](https://github.com/rdcn-link/xstream-codex/tree/main/xstream-execution-api). Runnable contributions and build/install instructions are in [examples/plugins](../../examples/plugins/README.md). `PluginChecks.listing` provides reusable metadata contract checks. The server closes request-scoped access handles and releases provider resources on shutdown. XStream data plugins implement NetCDF/FITS/FASTA parsing and arrays/sequences over standard Arrow streams. Contributors expose internal file objects through shared contracts, without silently flattening arrays into records.
 
 ## Development and validation
 

@@ -28,14 +28,14 @@
 | DACP Server | [管理员指南](administrators/README_zh.md)、[配置和协议参考](reference_zh.md) |
 | Union Server 与 Web 看板 | [Union 手册](../dacp-union-server/README_zh.md)、[协作协议](union_zh.md)、[双节点示例](../examples/union/README_zh.md) |
 | 算子仓库 CLI 与网站 | [仓库手册](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README_zh.md) |
-| 插件 API 与 Union 传输工具 | [插件 API](../dacp-plugin-api/README_zh.md)、[Union 协议模块](../dacp-union-protocol/README_zh.md) |
+| 插件 API 与 Union 传输工具 | [插件 API](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-execution-api/README_zh.md)、[Union 协议模块](../dacp-union-protocol/README_zh.md) |
 
 ## 专题参考
 
 | 主题 | 文档 |
 |---|---|
 | 算子编写、发布、代码示例 | [Scala / Java / Python 算子](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)、[原生命令](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands_zh.md) |
-| DEBUG 源码提交 | [源码运行时与 heredoc](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-source_zh.md) |
+| DEBUG 源码提交 | [源码运行时与 heredoc](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source_zh.md) |
 | 运行时、制品、缓存和帧协议 | [算子打包](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging_zh.md)、[流契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams_zh.md)（英文） |
 | 源码、许可证、构建说明和 SBOM | [算子审查材料](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance_zh.md) |
 | 执行记录、历史查询和重启语义 | [执行记录](execution-history_zh.md) |
@@ -59,7 +59,7 @@
 
 [节点 Web 看板](node-web_zh.md)：默认 HTTP 服务、配置开关及 G6 任务 DAG。
 
-官方网站的构建、部署和软件下载发布：[dacp-website](https://github.com/rdcn-link/dacp-website/blob/main/README_zh.md)。网站仅提供英文内容。
+官方网站的构建、部署和软件下载发布：[dacp-website](https://github.com/rdcn-link/dacp-website)。网站支持中英文切换。
 
 [S3 兼容读取](s3-service_zh.md)：节点启动时公开 dataset bucket 与 Item object，支持 SigV4 认证的只读下载。
 

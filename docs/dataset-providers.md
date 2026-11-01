@@ -65,7 +65,7 @@ Implement `xstream.data.DatasetProvider` with a unique lowercase `id` and a publ
 META-INF/services/xstream.data.DatasetProvider
 ```
 
-The file contains the provider's fully qualified class name, one per line. Put the JAR and its private dependencies in the configured `plugin_directory` and restart. Compile against `dacp-plugin-api` with a `Provided` dependency, not against the server implementation. Duplicate or unknown provider IDs fail configuration loading. New providers own their private `source` and provider-specific mapping settings; the server does not need a new hardcoded Dataset kind.
+The file contains the provider's fully qualified class name, one per line. Put the JAR and its private dependencies in the configured `plugin_directory` and restart. Compile against `xstream-execution-api` with a `Provided` dependency, not against the server implementation. Duplicate or unknown provider IDs fail configuration loading. New providers own their private `source` and provider-specific mapping settings; the server does not need a new hardcoded Dataset kind.
 
 Provider-wide parameters belong in `source`; nested YAML maps and lists retain their Java collection representation. The provider must validate required values, types, and unknown settings. Per-logical-path settings use `items` by default. Override `DatasetProvider.itemSettingsKey` to declare a different mapping key (lowercase letters, digits, and underscores, starting with a letter; `provider` and `source` are reserved). The parser passes that key's contents as `DatasetDefinition.items`; arbitrary dataset-level keys are rejected. See the [complete CSV provider example](developers/README.md#user-defined-dataset-providers) for implementation, registration, and parameter configuration.
 

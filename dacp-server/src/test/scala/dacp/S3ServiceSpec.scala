@@ -27,7 +27,7 @@ class S3ServiceSpec extends AnyFunSuite {
             def describe(path:String):Item={
               if(path=="/records")return Item(path,"custom",Some(new org.apache.arrow.vector.types.pojo.Schema(Seq(Records.field("station","utf8"),Records.field("temp","float64")).asJava)),totalSizeBytes=Some(999),views=Some(Seq("records")))
               if(!objects.contains(path))throw new java.io.FileNotFoundException()
-              Item(path,"custom",None,totalSizeBytes=if(path=="/z.bin")None else Some(10L),views=Some(Seq("bytes")))
+              Item(path,"custom",None,creationTimeMs=Some(0L),lastModifiedTimeMs=Some(1000L),totalSizeBytes=if(path=="/z.bin")None else Some(10L),views=Some(Seq("bytes")))
             }
             def count(path:String):Option[Long]=None
             def read(path:String,view:String,a:org.apache.arrow.memory.BufferAllocator,l: BatchReceiver,ready:()=>Unit):Unit={
@@ -134,6 +134,9 @@ class S3ServiceSpec extends AnyFunSuite {
     assert(request(s,url).body=="0123456789")
     val head=request(s,url,"HEAD")
     assert(head.statusCode()==200 && head.body.isEmpty && head.headers.firstValue("content-length").get=="10")
+    assert(head.headers.firstValue("x-amz-meta-creation-time").get=="1970-01-01T00:00:00Z")
+    assert(head.headers.firstValue("Last-Modified").isPresent)
+    assert(!request(s,"/science/records","HEAD").headers.firstValue("x-amz-meta-creation-time").isPresent)
     val middle=request(s,url,headers=Map("Range"->"bytes=3-6"))
     assert(middle.statusCode()==206 && middle.body=="3456")
     assert(middle.headers.firstValue("Content-Range").get=="bytes 3-6/10")
@@ -142,7 +145,7 @@ class S3ServiceSpec extends AnyFunSuite {
     assert(request(s,url,headers=Map("Range"->"bytes=10-")).statusCode()==416)
     assert(request(s,url,headers=Map("Range"->"bytes=0-1,3-4")).statusCode()==416)
     assert(request(s,"/science/missing").statusCode()==404)
-    assert(closed.get()==8)
+    assert(closed.get()==9)
     assert(request(s,"/science/z.bin").body=="0123456789")
     assert(request(s,"/science/z.bin",headers=Map("Range"->"bytes=0-2")).statusCode()==501)
   }}
