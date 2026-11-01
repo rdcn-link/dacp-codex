@@ -33,15 +33,15 @@ Nodes read local operators through `local_operator_library` and search remote re
 
 ## Certificates and authorization
 
-Ordinary DACP clients use TLS and tokens without requiring client certificates. Union uses mutual TLS and node-issued service credentials bound to its Union ID and certificate fingerprint. Peer task streams are authorized by exact execution plans. Credentials are created, rotated and revoked locally and reload automatically. See [authentication and access control](../security.md).
+Ordinary DACP clients use TLS and tokens without requiring client certificates. Union uses mutual TLS and node-issued service credentials bound to its Union ID and certificate fingerprint. Peer step streams are authorized by exact execution plans. Credentials are created, rotated and revoked locally and reload automatically. See [authentication and access control](../security.md).
 
 ## Union and repository
 
 - [Union manual](../../dacp-union-server/README.md): configuration, service credentials, polling, job submission, and management dashboard.
 - [Two-node example](../../examples/union/README.md): complete certificate, node, Union, and client demonstration.
-- [Repository manual](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README.md): initialization, publication, source materials, HTTP service, and downloads.
+- [Repository manual](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing.md): initialization, publication, source materials, HTTP service, and downloads.
 
-Union builds one Union from configuration, connects independent members using node-issued credentials and polls their status. Its public read-only HTTP dashboard exposes job scripts and execution metadata without login or tokens. Review task parameters for information unsuitable for public viewing. Computation remains protected by authorization on DACP interfaces.
+Union builds one Union from configuration, connects independent members using node-issued credentials and polls their status. Its public read-only HTTP dashboard exposes job scripts and execution metadata without login or tokens. Review step parameters for information unsuitable for public viewing. Computation remains protected by authorization on DACP interfaces.
 
 ## Monitoring, records, and shutdown
 
@@ -56,5 +56,3 @@ Nodes also enable the [S3-compatible read service](../s3-service.md) by default,
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy.md).
 
 Source-only operator publication: [submission, isolated builds, review and trust scores](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
-
-The engine, data SDK, Designer, repository service and websites have distinct source/build roots. See [project boundaries](../ecosystem.md) before building related tools; they are not modules under this checkout.

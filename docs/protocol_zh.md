@@ -59,4 +59,4 @@ Flight `DoExchange` 的 `OperatorRequest` 在任务 YAML 之外接收 `execution
 
 Python：`Source.capabilities("dacp://host:18861", token=token)`；Scala：`Source.capabilities("dacp://host:18861", TlsConfig(tokenFile=Some(tokenPath)))`。凭据不进入返回值。
 
-DACP 是 XStream 远程数据与执行能力的一种实现，公共接口和规划见 [XStream 执行目标](https://github.com/rdcn-link/xstream-codex/blob/main/docs/execution-targets_zh.md)。
+DACP 提供远程 Item 访问及 Job 提交。服务内嵌本地 XStream 引擎，Union 负责自动成员放置。参见[执行职责](https://github.com/rdcn-link/xstream-codex/blob/main/docs/execution-targets_zh.md)。

@@ -268,7 +268,7 @@ Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Save
 
 DACP executes YAML Jobs through the embedded XStream engine. Users describe logical stream dependencies without assigning execution nodes. Union resolves Item locations and plans node-local subjobs automatically; member collaboration uses mutual TLS and node-issued service credentials. Eligible node subjobs [share one container and process](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-fusion.md), while other steps execute independently; named ports consume data-item streams and send output directly to clients or downstream steps, without saving output datasets.
 
-Tasks also require Linux, `mkfifo`, and access to Docker Engine. From the project root, configure an operator repository containing approved operators and start the server. Stop the quick-start server first if it is still running:
+Steps also require Linux, `mkfifo`, and access to Docker Engine. From the project root, configure an operator repository containing approved operators and start the server. Stop the quick-start server first if it is still running:
 
 ```bash
 cd dacp-server
@@ -279,25 +279,25 @@ In a connected shell started from the project root, run the complete weather wor
 
 Further reading:
 
-- [Two-node example](../../examples/multi-node/README.md): task placement, remote inputs, and consuming outputs.
-- [Scala operator repository and website](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README.md): public search, version details, downloads, and immutable operator publication.
+- [Two-node example](../../examples/multi-node/README.md): step placement, remote inputs, and consuming outputs.
+- [Scala operator repository and website](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing.md): public search, version details, downloads, and immutable operator publication.
 - [Write and upload custom operators](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md): complete Scala/Python source, packaging, publication, remote transfer, and execution.
-- [Task and operator reference](../reference.md#task-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
+- [Step and operator reference](../reference.md#step-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
 
 From the independent operator repository checkout, start the service using `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820`, publish operators through source submission and approval, then open `http://localhost:8820/` to search, view, and download operators without signing in. See the repository guide for HTTPS deployment.
 
 Operators share dependency environments and small code packages. The independent repository accepts source only, builds JVM JARs or Python bytecode ZIPs, and publishes after review. Runtime and package artifacts are verified and cached by SHA-256. Operator development and deployment belong to the XStream documentation; DACP users configure repository URLs and consume approved versions.
 
 
-`run` and `submit` print `Execution time: 1.234 s` after completion, failure or cancellation. This is elapsed time measured by the shell from submission through closing the result stream, including connection, runtime preparation, execution, transfer, display and client cleanup. It excludes heredoc entry time and is not server task CPU time. Multi-task jobs print one total for the whole job.
+`run` and `submit` print `Execution time: 1.234 s` after completion, failure or cancellation. This is elapsed time measured by the shell from submission through closing the result stream, including connection, runtime preparation, execution, transfer, display and client cleanup. It excludes heredoc entry time and is not server step CPU time. Multi-step jobs print one total for the whole job.
 
 ## Security and operating limits
 
 DACP metadata is anonymous over TLS. Data reads require a token whose subject has reader or runner; execution and inference require runner. Union collaboration uses mutual TLS and service credentials. No Dataset/Item ACL is configured. Public metadata, tickets, and data-service errors hide private storage bindings; data content still contains the source's own fields and values. Python's `DacpError` and Scala's `DacpException` provide error codes and readable messages, while the shell displays concise prompts.
 
-Unpublished physical files and database tables are not automatically exposed. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Task outputs are live streams that clients must consume or cancel. There are no saved result URIs, and steps are not restored after restart. See the [technical reference](../reference.md#protocol-and-configuration) for full configuration and protocol details.
+Unpublished physical files and database tables are not automatically exposed. Failed reads restart from the beginning, with no in-stream retries, checkpoints, or resume support. Step outputs are live streams that clients must consume or cancel. There are no saved result URIs, and steps are not restored after restart. See the [technical reference](../reference.md#protocol-and-configuration) for full configuration and protocol details.
 
-In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`; `--source` and `--code` are unsupported. Servers default to NORMAL and reject source steps at both coordinator and execution nodes. See [source operators](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md) for configuration, Python/Scala examples, and the plugin contract.
+In DEBUG mode, enter heredoc source with `run --runtime python@1.0 --input source=/orders <<END`. Servers default to NORMAL and reject source steps at both coordinator and execution nodes. See [source operators](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md) for configuration, Python/Scala examples, and the plugin contract.
 
 Native executables can use stdin/stdout through the `command` executor without implementing the DACP protocol in the program. It supports one bytes input and output, with execution isolated inside a container. See [configuration and publication](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands.md) and the [C example](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/native/README.md).
 

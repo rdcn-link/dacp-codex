@@ -42,6 +42,16 @@ with sync_playwright() as p:
    for kind in ('server','process'):
     sizes=page.evaluate("kind => dagViewer.graph.getComboData().filter(c=>c.data?.kind===kind).map(c=>{const b=dagViewer.graph.getElementRenderBounds(c.id);return b.max["+str(0 if direction=='vertical' else 1)+"]-b.min["+str(0 if direction=='vertical' else 1)+"];})",kind)
     assert not sizes or max(sizes)-min(sizes)<1,(mode,kind,sizes)
+   if layout=='dependency':
+    # Visible servers and sibling execution units share the cross-axis origin.
+    alignment=page.evaluate("""() => {const graph=dagViewer.graph,groups={};for(const c of graph.getComboData()){if(!['server','process'].includes(c.data?.kind))continue;const key=c.data.kind+':'+(c.combo||''),b=graph.getElementRenderBounds(c.id);(groups[key]??=[]).push(b);}return Object.values(groups);}""")
+    cross=0 if direction=='vertical' else 1
+    along=1-cross
+    for group in alignment:
+     origins=[b['min'][cross] for b in group]
+     assert max(origins)-min(origins)<1,(mode,origins)
+     intervals=sorted((b['min'][along],b['max'][along]) for b in group)
+     assert all(a[1]<b[0] for a,b in zip(intervals,intervals[1:])),(mode,intervals)
    original=page.evaluate('dagViewer.graph.getNodeData().map(n=>[n.id,n.style.x,n.style.y])')
    page.wait_for_timeout(2500);page.evaluate('dagViewer.pending');assert page.evaluate('dagViewer.renderedLayout')==mode
    assert page.evaluate('dagViewer.graph.getNodeData().map(n=>[n.id,n.style.x,n.style.y])')==original

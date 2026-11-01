@@ -1,12 +1,15 @@
 package dacp.unionserver
 
-import _root_.xstream.engine.{JobPlan,Jobs,PlacementDecision}
+import _root_.xstream.engine.{JobPlan,Jobs}
 
 
 import dacp._
 import dacp.union.{Json,Rpc}
 
 import scala.jdk.CollectionConverters._
+
+private[unionserver] final case class PlacementDecision(step:String,node:String,reason:String,requestedSource:Option[String]=None,resolvedSource:Option[String]=None)
+private[unionserver] final case class UnionPlan(job:JobPlan,decisions:Vector[PlacementDecision])
 
 private[unionserver] final class PublicPlanner(members:Members,settings:Settings,catalog:ProxyCatalog,routes:DatasetRoutes) {
   private def origin=settings.publicUrl.stripSuffix("/")
@@ -22,7 +25,7 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
       }
     };n
   }
-  def plan(input:JobPlan,check:()=>Unit):JobPlan={
+  def plan(input:JobPlan,check:()=>Unit):UnionPlan={
     val candidates=members.all.map(m=>members.inspect(m)).filter(_.path("state").asText=="approved")
     val sourceLocations=scala.collection.mutable.Map.empty[String,(String,String,Option[Long])]
     val decisions=scala.collection.mutable.ArrayBuffer.empty[PlacementDecision]
@@ -45,13 +48,13 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
     }
     val targets=candidates.map { m=>
       val status=m.path("status")
-      _root_.xstream.execution.PlanningTarget(m.path("identity").asText,math.min(status.path("capacity").asInt,status.path("union_capacity").asInt))
+      PlanningTarget(m.path("identity").asText,math.min(status.path("capacity").asInt,status.path("union_capacity").asInt))
     }.toVector
     val graph=resolved.steps.map { t=>
       val requested=t.node.map { name=>candidates.find(m=>logicalNode(m.path("identity").asText)==name).getOrElse(throw new IllegalArgumentException("requested logical node unavailable")).path("identity").asText }
-      _root_.xstream.execution.PlanningStep(t.id,Jobs.dependencies(t),sourceLocations.get(t.id).map(s=>s._1->s._3),requested)
+      PlanningStep(t.id,Jobs.dependencies(t),sourceLocations.get(t.id).map(s=>s._1->s._3),requested)
     }
-    val placements=_root_.xstream.execution.GraphPlacement.plan(graph,targets)
+    val placements=GraphPlacement.plan(graph,targets)
     val steps=resolved.steps.map { t=>
       val placement=placements(t.id)
       val selected=candidates.find(_.path("identity").asText==placement.target).get
@@ -63,6 +66,6 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
       source.foreach(s=>params.put("uri",s._2))
       t.copy(node=Some(selected.path("data_origin").asText),params=params)
     }
-    JobPlan(steps,input.outputs,input.name,decisions.toVector)
+    UnionPlan(JobPlan(steps,input.outputs,input.name),decisions.toVector)
   }
 }

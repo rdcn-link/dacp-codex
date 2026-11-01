@@ -25,7 +25,7 @@ def process(inputs, params):
 END
 ```
 
-源码始终通过 heredoc 输入，结束标记必须单独占一行。不支持 `--source FILE` 或 `--code`。源码限制为 512 KiB，完整作业请求限制为 1 MiB。`--view records` 选择记录输入，此时 Python 输入迭代器产生 PyArrow 记录批次而非字节块。通过 `result` 端口产生相应的输出块，诊断信息写入标准错误。
+源码始终通过 heredoc 输入，结束标记必须单独占一行。源码限制为 512 KiB，完整作业请求限制为 1 MiB。`--view records` 选择记录输入，此时 Python 输入迭代器产生 PyArrow 记录批次而非字节块。通过 `result` 端口产生相应的输出块，诊断信息写入标准错误。
 
 Scala 源码是完整编译单元，通过 `--entrypoint` 选择主类，参考 [Scala 示例](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/inline/Uppercase.scala)。启动器传入 `operator /input /input/params.json`。使用 XStream 算子 SDK 管理流帧和生命周期，不手工构造传输帧。编译依赖必须预先安装在选定镜像中。
 

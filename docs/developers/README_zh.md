@@ -14,11 +14,8 @@
 
 | 模块 | 职责 |
 |---|---|
-| `xstream-execution-api` | 服务集成、执行及执行器公开契约；数据契约来自 XStream |
 | `dacp-server` | Flight 服务、命名空间、协调与资源生命周期 |
 | `dacp-client`、`dacp-client-scala` | 客户端 API 与 shell |
-| XStream 的 `plugins/xstream-plugin-operator-executors` | 独立维护的容器启动器与原生命令桥接器 |
-| 独立项目 `xstream-operator-repository` | 源码提交、隔离构建、审核、公开目录与下载 |
 | `proto/dacp.proto` | 共享线协议消息 |
 
 ## 编写与发布算子
@@ -80,20 +77,7 @@ stage 服务端、构建所需运行时并准备示例证书后，使用 Docker 
 
 普通 Flight 请求、Union 节点子任务和全局作业共用持久化执行记录。生命周期、原子写入及测试见 [执行记录](../execution-history_zh.md)。
 
-## 中英文文档检查
-
-在仓库根运行 `python3 scripts/check-doc-translations.py`。发布的 Markdown 以 `README.md`/`name.md` 为中文，`README.md`/`name.md` 为英文。完整译文、命令、配置和链接应一起更新。脚本检查配对、基础语言内容和本地文件/章节链接，不能替代翻译语义审查。工具指令与构建产物不计入发布文档。
 
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy_zh.md)。
 
 算子仅源码发布：[提交、隔离构建、审核和可信度](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
-
-## XStream 集成测试
-
-引擎、数据和算子 SDK、推导与运行环境工具位于 [xstream-codex](https://github.com/rdcn-link/xstream-codex)，仓库服务及源码审核集成测试位于独立[算子仓库](https://github.com/rdcn-link/xstream-operator-repository)。DACP 构建依赖已发布的 XStream 制品。需要算子示例源码的开发集成测试通过显式 `XSTREAM_SOURCE_ROOT=/path/to/xstream-codex` 选择测试素材；该路径不是生产构建依赖。气象算子示例需要在测试 Python 环境安装 `xstream-operator-sdk/python`。
-
-## 远程执行适配与协议同步
-
-XStream 定义协议无关的执行与数据访问契约。DACP 连接器通过 `ExecutionTargetProvider` 和 `RemoteItemProvider` 提供计算与数据访问。Union 将成员和数据位置转换为公共规划输入，通用步骤排名复用 `GraphPlacement`。Designer 仅编制 Job。
-
-`proto/dacp.proto` 是元数据协议的权威来源。导出连接器快照：`python3 scripts/export-xstream-protocol.py /path/to/dacp.proto`；加 `--check` 检查一致性。该命令用于显式集成验证，不是 XStream 独立构建的前提。

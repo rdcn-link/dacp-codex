@@ -21,19 +21,19 @@ web:
 
 `enabled` must be a boolean and `port` an integer from 0 to 65535. Port 0 requests an ephemeral port, available to embedded applications through `server.webPort`. An HTTP bind failure fails node startup and releases the DACP service port and resources already acquired. Closing the node also closes HTTP.
 
-The homepage displays the DACP service address, startup time, uptime, task capacity, available executors, dataset directory, and paginated execution history. Select a record to view a G6 DAG with horizontal layout, server grouping, step titles, states, observed traffic, click details, zoom, and pan. Node and Union dashboards reuse the same renderer, styles, and offline G6 resources; both use the project DACP logo.
+The homepage displays the DACP service address, startup time, uptime, step capacity, available executors, dataset directory, and paginated execution history. Select a record to view a G6 DAG with horizontal layout, server grouping, step titles, states, observed traffic, click details, zoom, and pan. Node and Union dashboards reuse the same renderer, styles, and offline G6 resources; both use the project DACP logo.
 
-Union subjobs display the definitions and steps assigned to this node. External inputs are marked as cross-node inputs; dependencies between local steps retain their edges. Use the Union dashboard for the global workflow and scheduling state. Ordinary Jobs retain their scripts; the page displays dependencies from those definitions and reads step states from execution records. Unobserved traffic shows `—`. Running Union subjobs read current in-memory states and counters on demand; completed executions use persistent records. Historical records without task definitions do not receive invented DAGs.
+Union subjobs display the definitions and steps assigned to this node. External inputs are marked as cross-node inputs; dependencies between local steps retain their edges. Use the Union dashboard for the global workflow and scheduling state. Ordinary Jobs retain their scripts; the page displays dependencies from those definitions and reads step states from execution records. Unobserved traffic shows `—`. Running Union subjobs read current in-memory states and counters on demand; completed executions use persistent records. Historical records without step definitions do not receive invented DAGs.
 
 Node status and the selected execution refresh every 2 seconds. Dataset directories are read on page load or manual refresh. The dashboard does not open Items, run operators, cancel jobs, or consume result streams.
 
-The page publicly exposes execution metadata and stored scripts and task parameters. Use it where this information may be public, configure its bind address, or disable it. Flight uses TLS and tokens; published metadata is anonymous, reading requires reader or runner, and execution requires runner. Responses use `Cache-Control: no-store`; static resources require no external network access.
+The page publicly exposes execution metadata and stored scripts and step parameters. Use it where this information may be public, configure its bind address, or disable it. Flight uses TLS and tokens; published metadata is anonymous, reading requires reader or runner, and execution requires runner. Responses use `Cache-Control: no-store`; static resources require no external network access.
 
 Union provides public DACP proxy catalogs and per-member dataset pages on its management website; see [dataset directories](dataset-directory.md).
 
 `web.public_host` is the browser-facing dashboard hostname and defaults to the node `public_host`; it is separate from the bind address `web.host`. Only after HTTP starts successfully does the node report `web_enabled: true` and `web_url`, including its actual port, through DACP `node_status`. The Union member table links to that address, shows “未启用” when Web is disabled, and an unknown state when node status is unavailable.
 
-The dashboard interface uses English. Task titles, dataset names, JSON descriptions and user scripts retain their original content; dates and numbers use English locale formatting.
+The dashboard interface uses English. Step titles, dataset names, JSON descriptions and user scripts retain their original content; dates and numbers use English locale formatting.
 
 ## Execution sources and internal routing
 
@@ -60,3 +60,5 @@ Open **Data catalog** in the navigation, or visit /datasets, to browse this node
 ## S3 operations overview
 
 Open /s3 for runtime information and aggregate request/transfer statistics. It offers no bucket browsing, object downloads or credential controls. See [S3 monitoring and counter semantics](s3-service.md#s3-operations-overview) for fields, reset behavior and byte-count scope.
+
+Execution policies recorded for local Jobs appear in Execution information. Union sub-jobs without an independently recorded complete policy identify Union as the policy owner and refer to its Job details; local materialization and replay settings are shown in the sub-job definition. Missing historical policies are explicitly marked as not recorded.

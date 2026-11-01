@@ -45,7 +45,7 @@ datasets:
 
 ## Architecture and extensions
 
-XStream data modules supply data contracts, parsing, typed views, codecs and plugin discovery; `xstream-execution-api` supplies service integration and execution contracts. `dacp-server` retains Flight, authorization, and request/task lifecycles. Core `sources` entries contain only provider/settings; the Dataset plugin validates JDBC settings and implements connections, queries and type mapping. NetCDF, FITS and FASTA parsing and scientific view codecs are implemented by XStream data plugins; do not confuse file-format support with planned remote-backend integrations such as MongoDB or S3-backed catalogs.
+XStream data modules supply data contracts, parsing, typed views, codecs and plugin discovery; `xstream-execution-api` supplies service integration and execution contracts. `dacp-server` retains Flight, authorization, and request/step lifecycles. Core `sources` entries contain only provider/settings; the Dataset plugin validates JDBC settings and implements connections, queries and type mapping. NetCDF, FITS and FASTA parsing and scientific view codecs are implemented by XStream data plugins; do not confuse file-format support with planned remote-backend integrations such as MongoDB or S3-backed catalogs.
 
 Adding a plugin for an existing extension point requires only registration, installation, and configuration, without core or client changes. See [the plugin guide](../docs/plugins.md), [Dataset/Item access](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access.md), [independent contributor examples](../examples/plugins/README.md), and [executor documentation](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-operator-executors/README.md).
 

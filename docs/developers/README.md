@@ -2,7 +2,7 @@
 
 [中文](README_zh.md) · [Documentation](../README.md) · [User guide](../users/README.md)
 
-The built-in `read_item@1.0` handles transport only; Dataset/Item plugins own backends and formats. See [Jobs] for stream and control dependency contracts(../jobs.md).
+The built-in `read_item@1.0` handles transport only; Dataset/Item plugins own backends and formats. See [Jobs](../jobs.md) for stream dependency contracts.
 
 For contributors implementing operators, dataset providers, formats, executors, SDKs, or the server. For connecting to a node, browsing data, configuring built-in providers, and running jobs, start with the user guide. Commands below run from the project root unless stated otherwise.
 
@@ -14,11 +14,8 @@ Core owns contracts, discovery and lifecycle, transport, authorization, namespac
 
 | Module | Responsibility |
 |---|---|
-| `xstream-execution-api` | Public service integration, execution and executor contracts; data contracts come from XStream |
 | `dacp-server` | Flight service, namespace, coordination and resource lifecycle |
 | `dacp-client`, `dacp-client-scala` | Public client APIs and shell |
-| XStream `plugins/xstream-plugin-operator-executors` | Independently maintained container launchers and native-command bridge |
-| Independent `xstream-operator-repository` project | Source submission, isolated build, review, public catalog and downloads |
 | `proto/dacp.proto` | Shared wire messages |
 
 ## Write and publish operators
@@ -33,7 +30,7 @@ Operator outputs are transient streams. There is no result-dataset registration,
 
 ## Integrate XStream data extensions
 
-XStream owns Dataset providers, format and container handlers, and records query semantics. See [XStream extension development](http://xstream.conoai.cn/docs.html) for implementation and registration. DACP administrators install plugins and dependencies in `plugin_directory` and select providers in node configuration; see [plugin integration](../plugins.md).
+To add Dataset providers, format or container handlers, or records queries, see [XStream extension development](http://xstream.conoai.cn/docs.html) for implementation and registration. DACP administrators install plugins and dependencies in `plugin_directory` and select providers in node configuration; see [plugin integration](../plugins.md).
 
 ## Development and validation
 
@@ -54,7 +51,7 @@ After starting the server and setting the certificate environment variables, run
 .venv/bin/python examples/check_security.py
 ```
 
-Use `bash scripts/test-collaboration.sh` for cross-node container integration; it requires Docker. Tests cover namespaces, format readers, archive browsing, SQL streams, schema validation, authorization, stream lifetimes, and task collaboration.
+Use `bash scripts/test-collaboration.sh` for cross-node container integration; it requires Docker. Tests cover namespaces, format readers, archive browsing, SQL streams, schema validation, authorization, stream lifetimes, and step collaboration.
 
 The protocol is defined in [proto/dacp.proto](../../proto/dacp.proto). Source code lives in [dacp-server](../../dacp-server), [dacp-client](../../dacp-client) for Python, and [dacp-client-scala](../../dacp-client-scala) for Scala.
 
@@ -80,20 +77,7 @@ The [Union protocol](../union.md) defines certificate identity, compute authoriz
 
 Ordinary Flight requests, Union node subtasks, and global jobs share persistent execution records. For lifecycle, atomic writes, and tests, see [execution history](../execution-history.md).
 
-## Bilingual documentation checks
-
-Run `python3 scripts/check-doc-translations.py` from the repository root. Published Markdown defaults to English in `README.md`/`name.md`, with complete Chinese translations in `README_zh.md`/`name_zh.md`. Update complete translations, commands, configuration and links together. The check validates pairing, basic language presence and local document/heading links; it does not replace semantic translation review. Agent instructions and generated build output are excluded.
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy.md).
 
 Source-only operator publication: [submission, isolated builds, review and trust scores](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
-
-## XStream integration tests
-
-The engine, data and operator SDKs, inference and runtime tools live in [xstream-codex](https://github.com/rdcn-link/xstream-codex). Repository service and source-review integration tests live in the independent [operator repository](https://github.com/rdcn-link/xstream-operator-repository). Build DACP against published XStream artifacts. Development integration fixtures requiring operator example sources accept an explicit `XSTREAM_SOURCE_ROOT=/path/to/xstream-codex`; this is a test-fixture path, not a production build dependency. Install `xstream-operator-sdk/python` into the test Python environment for climate operator examples.
-
-## Remote execution adaptation and protocol synchronization
-
-XStream defines protocol-independent execution and data-access contracts. The DACP connector implements computation and data access through `ExecutionTargetProvider` and `RemoteItemProvider`. Union converts member/data locations into public planning inputs and reuses `GraphPlacement` for step ranking. Designer only authors Jobs.
-
-`proto/dacp.proto` is the authoritative metadata specification. Export a connector snapshot with `python3 scripts/export-xstream-protocol.py /path/to/dacp.proto`; add `--check` to verify synchronization. This is an explicit integration check, not a prerequisite for standalone XStream builds.

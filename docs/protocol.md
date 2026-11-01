@@ -8,7 +8,7 @@ DACP (Data Access and Collaboration Protocol) defines data access and computatio
 
 Servers organize data into Datasets and describe accessible objects as Items. Clients inspect metadata and advertised capabilities before selecting a view. `bytes` exposes byte content; `records` exposes batches with an Arrow schema. Format and view describe storage representation and access capability separately; clients must not infer supported reads solely from filename extensions. Plugins should explicitly describe scientific groups, tables, and multidimensional variables rather than silently flattening them into records.
 
-A job contains steps. A task's `id` identifies dependency references; its `title` describes its purpose to users. Operators consume and produce streams through named ports. Inputs reference only upstream outputs; read_item source operators read external Items. Results are not automatically published as Datasets. Nodes and Union both accept standard Job submission. Union uses its public URIs and optional logical node IDs, and retains dedicated management APIs; see [Union proxy service](union-proxy.md).
+A job contains steps. A step's `id` identifies dependency references; its `title` describes its purpose to users. Operators consume and produce streams through named ports. Inputs reference only upstream outputs; read_item source operators read external Items. Results are not automatically published as Datasets. Nodes and Union both accept standard Job submission. Union uses its public URIs and optional logical node IDs, and retains dedicated management APIs; see [Union proxy service](union-proxy.md).
 
 ## Transport responsibilities
 
@@ -35,9 +35,9 @@ Ordinary Flight clients use TLS and bearer tokens. Union members use mutual TLS 
 
 One Union Server maintains one Union. Data nodes run independently. Union connects members configured with node-issued credentials. Union actively polls their status and schedules steps according to declared dependencies.
 
-For example, a task on A produces `oa`, and B combines `oa` with local data to produce `ob`. Union schedules A and B; the intermediate stream travels directly between nodes, and Union relays the final `ob` stream to the client. The client need not connect directly to B. Participating nodes still require certificate verification and the corresponding business authorization.
+For example, a step on A produces `oa`, and B combines `oa` with local data to produce `ob`. Union schedules A and B; the intermediate stream travels directly between nodes, and Union relays the final `ob` stream to the client. The client need not connect directly to B. Participating nodes still require certificate verification and the corresponding business authorization.
 
-The implementation supports explicitly declared collaboration DAGs. It supports configured materialization boundaries and replay; automatic recovery requires an execution policy and retry-aware clients. It does not promise arbitrary general pipeline optimization. The dashboard and execution records expose status, traffic, and task titles.
+The implementation supports explicitly declared collaboration DAGs. It supports configured materialization boundaries and replay; automatic recovery requires an execution policy and retry-aware clients. It does not promise arbitrary general pipeline optimization. The dashboard and execution records expose status, traffic, and step titles.
 
 ## Streaming and persistence
 
@@ -59,4 +59,4 @@ The `dacp.capabilities` action takes an empty body and returns `service` (`job_e
 
 Python: `Source.capabilities("dacp://host:18861", token=token)`; Scala: `Source.capabilities("dacp://host:18861", TlsConfig(tokenFile=Some(tokenPath)))`. Responses contain no credentials.
 
-DACP implements XStream remote data and execution capabilities. See [XStream execution targets](https://github.com/rdcn-link/xstream-codex/blob/main/docs/execution-targets.md) for public contracts and planning.
+DACP provides remote Item access and Job submission. Servers embed a local XStream engine; Union owns automatic member placement. See [execution responsibilities](https://github.com/rdcn-link/xstream-codex/blob/main/docs/execution-targets.md) for public contracts and planning.

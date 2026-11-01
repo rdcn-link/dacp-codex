@@ -39,7 +39,7 @@ sbt 'run ../examples/server.yaml'
 
 - [Union 手册](../../dacp-union-server/README_zh.md)：配置、服务凭据、状态轮询、作业提交和管理看板。
 - [双节点示例](../../examples/union/README_zh.md)：证书、节点、Union 和客户端的完整演示。
-- [算子仓库手册](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README_zh.md)：初始化、发布、源码材料、HTTP 服务和下载。
+- [算子仓库手册](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing_zh.md)：初始化、发布、源码材料、HTTP 服务和下载。
 
 Union 从配置构建唯一的 Union，使用节点签发的凭据连接独立节点并轮询状态。HTTP 管理看板展示任务脚本和执行元数据；公开只读，无需登录或 token。计算操作仍通过受授权保护的 DACP 接口进行。
 
@@ -56,5 +56,3 @@ Union 从配置构建唯一的 Union，使用节点签发的凭据连接独立�
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy_zh.md)。
 
 算子仅源码发布：[提交、隔离构建、审核和可信度](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
-
-引擎、数据 SDK、Designer、仓库服务和官网各有明确的源码与构建目录。构建关联工具前请参见[项目边界](../ecosystem_zh.md)，它们不是本源码目录下的模块。

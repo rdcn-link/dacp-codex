@@ -136,9 +136,9 @@ Directory Datasets do not follow symlinks. Folder metadata and immediate-child l
 
 Dataset providers construct datasets, container readers browse archives, and format handlers interpret content. Future providers such as MongoDB can implement their own listing, metadata, and streaming without pretending to be files or SQL tables, or changing the protocol or SDKs. See the [provider development guide](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers.md).
 
-## Task execution and operators
+## Step execution and operators
 
-Task inputs reference only upstream outputs as `step[:port]`, defaulting to `result`. External Items enter through `read_item@1.0` with `params.uri/view`. See [Job format](jobs.md). Outputs are named streams, never saved datasets. The shell supports `run OP --input source=/item` and `submit job.yaml`, and prints results incrementally. Ordinary jobs use TLS and bearer-authenticated Flight DoExchange; pipeline steps run concurrently with bounded queues. Each output port has at most one downstream consumer; consume multiple inputs in lexical port order.
+Step inputs reference only upstream outputs as `step[:port]`, defaulting to `result`. External Items enter through `read_item@1.0` with `params.uri/view`. See [Job format](jobs.md). Outputs are named streams, never saved datasets. The shell supports `run OP --input source=/item` and `submit job.yaml`, and prints results incrementally. Ordinary jobs use TLS and bearer-authenticated Flight DoExchange; pipeline steps run concurrently with bounded queues. Each output port has at most one downstream consumer; consume multiple inputs in lexical port order.
 
 Operator launch arguments are `operator /input /input/params.json`. Inputs are Arrow IPC FIFOs described by `/input/manifest.json`. Stdout carries framed start/data/end events; diagnostics go to stderr. No output directory, output registration, TTL, or result-dataset URI is used. Parquet conversion uses private ephemeral scratch to complete the footer, then streams bytes.
 
@@ -183,7 +183,7 @@ Configuration in `examples/server.yaml`:
 | `sources` | Private JDBC sources (tables are not automatically published): url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
 | `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | Ordered remote operator library URLs / local immutable version cache / maximum size per artifact in bytes (default 8 GiB) |
 | `local_operator_library` | Local operator library |
-| `task_peers` | Node origins permitted for task dispatch; the local node is always allowed; no central discovery service |
+| `task_peers` | Node origins permitted for step dispatch; the local node is always allowed; no central discovery service |
 | `task_input_prefixes` | Optional execution-node input URI prefix restriction; omitted or empty means no additional prefix restriction |
 | `max_concurrent_tasks` | Concurrency limit for local steps and control requests (default 2); returns UNAVAILABLE immediately when full |
 

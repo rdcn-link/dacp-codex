@@ -27,7 +27,7 @@
 | Scala SDK | [Scala 客户端](../dacp-client-scala/README_zh.md) |
 | DACP Server | [管理员指南](administrators/README_zh.md)、[配置和协议参考](reference_zh.md) |
 | Union Server 与 Web 看板 | [Union 手册](../dacp-union-server/README_zh.md)、[协作协议](union_zh.md)、[双节点示例](../examples/union/README_zh.md) |
-| 算子仓库 CLI 与网站 | [仓库手册](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README_zh.md) |
+| 算子仓库 CLI 与网站 | [仓库手册](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing_zh.md) |
 | 插件 API 与 Union 传输工具 | [插件 API](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-execution-api/README_zh.md)、[Union 协议模块](../dacp-union-protocol/README_zh.md) |
 
 ## 专题参考
@@ -71,12 +71,9 @@ Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名�
 
 本地与跨节点流式作业的[效率对比实测](local-vs-union-benchmark_zh.md)。
 
-项目交流材料：[英文会议海报与 A4 PDF](../assets/posters/README_zh.md)。
 
 [在线 Job 设计器](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README_zh.md)：从浏览器设计单机与跨节点作业，导出 YAML 供 Shell / SDK 提交。
 
 - [算子参数类型及设计器表单](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-parameters_zh.md)
 
 算子仅源码发布：[提交、隔离构建、审核和可信度](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
-
-项目边界：[基于 XStream 的 DACP 服务](ecosystem_zh.md)。可视化设计器、SDK/引擎及算子仓库由独立项目维护。

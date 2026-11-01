@@ -25,7 +25,7 @@ def process(inputs, params):
 END
 ```
 
-Source entry always uses a heredoc. The delimiter must appear alone on its closing line. There is no `--source FILE` or `--code` option. Source is limited to 512 KiB and the complete job request to 1 MiB. `--view records` selects record inputs; Python input iterators yield PyArrow record batches instead of byte chunks. Yield the corresponding output chunks through the `result` port. Send diagnostics to stderr.
+Source entry always uses a heredoc. The delimiter must appear alone on its closing line. Source is limited to 512 KiB and the complete job request to 1 MiB. `--view records` selects record inputs; Python input iterators yield PyArrow record batches instead of byte chunks. Yield the corresponding output chunks through the `result` port. Send diagnostics to stderr.
 
 Scala source is a complete compilation unit. Select its main class with `--entrypoint`; use the [Scala example](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/inline/Uppercase.scala). The launcher supplies `operator /input /input/params.json`. Use the XStream operator SDK for stream framing and lifetime management rather than constructing transport frames manually. Compilation dependencies must already exist in the selected image.
 

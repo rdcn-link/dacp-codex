@@ -39,5 +39,9 @@ window.DacpExecutionInfo=(()=>{
   }
   if(!members.size)container.append(node('p','No physical execution records available.','muted'));
  }
- return {render,tabKeys};
+ function effectivePolicyYaml(value,fromUnion=false){
+  if(typeof value==='string'&&value.trim()&&!/^(?:null|~)(?:\s*\.\.\.)?$/.test(value.trim()))return value;
+  return fromUnion?'Execution policy is managed by Union. See the Union job for the complete policy; local materialization and replay settings are included in the sub-job definition.':'Effective execution policy was not recorded for this execution.';
+ }
+ return {render,tabKeys,effectivePolicyYaml};
 })();

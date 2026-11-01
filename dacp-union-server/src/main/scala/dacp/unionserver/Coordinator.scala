@@ -70,11 +70,11 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         val result=if(a.getType=="dacp.infer_job") {
           require(n.isObject && n.size==1 && n.path("job_yaml").isTextual,"expected job_yaml")
           val input=Jobs.parse(n.path("job_yaml").asText)
-          inferPlan(planner.plan(input,()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()))
+          inferPlan(planner.plan(input,()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()).job)
         }else {
           val task=WorkflowInference.parseTask(n)
           require(task.source.isEmpty && task.localOperator.isEmpty,"Union requires versioned operators")
-          val planned=planner.plan(JobPlan(Vector(task),Map.empty),()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()).steps.head
+          val planned=planner.plan(JobPlan(Vector(task),Map.empty),()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()).job.steps.head
           StructureInference.json(inferTask(planned,StructureInference.ports(n.path("inputs"))))
         }
         val bytes=Json.mapper.writeValueAsBytes(result);require(bytes.length<=StructureInference.MaxBytes,"inference result exceeds 1 MiB")
@@ -153,10 +153,11 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         Option(body.get("execution_policy")).foreach(p=>replay.put("execution_policy_yaml",dacp.union.YamlDocument.dump(p)))
         action("replay_job",replay,owner)
       }else {
-        val plan=planner.plan(Jobs.parse(request.getJobYaml),()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException())
+        val planned=planner.plan(Jobs.parse(request.getJobYaml),()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException())
+        val plan=planned.job
         val policy=ExecutionPolicy.parse(Option(body.get("execution_policy")).getOrElse(Json.obj()),plan)
         require(policy.maxRetries==0 || request.getRetryAware,"automatic retries require a retry-aware client")
-        submit(plan,owner,render(plan),policy,path=Rpc.proxyHops,submittedScript=Some(request.getJobYaml)).snapshot
+        submit(plan,owner,render(plan),policy,path=Rpc.proxyHops,submittedScript=Some(request.getJobYaml),decisions=planned.decisions).snapshot
       }
       job=owned(result.path("job_id").asText,owner)
       require(!job.requiresRetryAwareness || request.getRetryAware,"retry-aware client required")
@@ -237,8 +238,8 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     val result=op match {
       case "submit"=>
         Json.fields(n,Set("job_yaml"),Set("execution_policy_yaml"));val script=Json.text(n,"job_yaml");val plan=Jobs.parse(script)
-        val executionPlan=planner.plan(plan,()=>())
-        submit(executionPlan,who,render(executionPlan),ExecutionPolicy.parse(Option(n.get("execution_policy_yaml")).map(v=>{require(v.isTextual,"execution_policy_yaml must be text");dacp.union.YamlDocument.parse(v.asText)}).getOrElse(Json.obj()),executionPlan),path=Rpc.proxyHops,submittedScript=Some(script)).snapshot
+        val planned=planner.plan(plan,()=>());val executionPlan=planned.job
+        submit(executionPlan,who,render(executionPlan),ExecutionPolicy.parse(Option(n.get("execution_policy_yaml")).map(v=>{require(v.isTextual,"execution_policy_yaml must be text");dacp.union.YamlDocument.parse(v.asText)}).getOrElse(Json.obj()),executionPlan),path=Rpc.proxyHops,submittedScript=Some(script),decisions=planned.decisions).snapshot
       case "replay_job"=>
         Json.fields(n,Set("job_id"),Set("steps","execution_policy_yaml"));val source=history.get(Json.id(Json.text(n,"job_id"))).getOrElse(throw UnionFailure(NOT_FOUND,"source execution unavailable"))
         if(source.path("owner").asText!=who)denied()
@@ -304,15 +305,15 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       case _=>throw UnionFailure(UNIMPLEMENTED,"unknown Union ticket")
     }
   }
-  private def submit(plan:JobPlan,owner:String,script:String,policy:ExecutionPolicy,replaySources:Map[String,String]=Map.empty,replayOf:Option[String]=None,path:Vector[String]=Vector.empty,submittedScript:Option[String]=None):Execution=synchronized {
+  private def submit(plan:JobPlan,owner:String,script:String,policy:ExecutionPolicy,replaySources:Map[String,String]=Map.empty,replayOf:Option[String]=None,path:Vector[String]=Vector.empty,submittedScript:Option[String]=None,decisions:Vector[PlacementDecision]=Vector.empty):Execution=synchronized {
     if(jobs.size>=4096 || jobs.values.asScala.count(!_.terminal)>=64)throw UnionFailure(RESOURCE_EXHAUSTED,"union job capacity unavailable")
     val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     require(timeout<=settings.timeout,"timeout_seconds exceeds Union server limit")
     val effective=policy.effective.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]().put("timeout_seconds",timeout)
-    val j=new Execution(Json.uuid(),owner,plan,script,policy.copy(effective=effective),replaySources,replayOf,path,submittedScript)
+    val j=new Execution(Json.uuid(),owner,plan,script,policy.copy(effective=effective),replaySources,replayOf,path,submittedScript,decisions)
     jobs.put(j.id,j);j.start();j
   }
-  private[unionserver] final class Execution(val id:String,val owner:String,plan:JobPlan,script:String,policy:ExecutionPolicy,initialReplaySources:Map[String,String],replayOf:Option[String],incomingPath:Vector[String],submittedScript:Option[String]) {
+  private[unionserver] final class Execution(val id:String,val owner:String,plan:JobPlan,script:String,policy:ExecutionPolicy,initialReplaySources:Map[String,String],replayOf:Option[String],incomingPath:Vector[String],submittedScript:Option[String],placementDecisions:Vector[PlacementDecision]) {
     private val proxyPath={require(!incomingPath.contains(members.unionId) && incomingPath.size<8,"proxy cycle or depth limit");incomingPath:+members.unionId}
     private val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     def requiresRetryAwareness:Boolean=policy.maxRetries>0
@@ -385,7 +386,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       n.put("job_yaml",script);submittedScript.foreach(n.put("submitted_job_yaml",_))
       addLogicalPlan(n)
       val decisions=n.putArray("placement_decisions")
-      plan.placements.foreach { d=>
+      placementDecisions.foreach { d=>
         val decision=decisions.addObject().put("step",d.step).put("node",d.node).put("reason",d.reason)
         d.requestedSource.foreach(decision.put("requested_source",_));d.resolvedSource.foreach(decision.put("resolved_source",_))
       }

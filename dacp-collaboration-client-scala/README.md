@@ -22,6 +22,6 @@ try println(member.membership("dacp://localhost:18861", "YOUR_UNION_ID"))
 finally member.close()
 ```
 
-The target node must issue the credential, bound to the Union ID and certificate fingerprint. Exactly authorized peer task streams carry no Union credential and do not read ordinary client token environment variables. Interfaces cover member status, prepare/start, execution status, cancellation, materialization status and output streams. Outputs are BinarySource instances that must be closed.
+The target node must issue the credential, bound to the Union ID and certificate fingerprint. Exactly authorized peer step streams carry no Union credential and do not read ordinary client token environment variables. Interfaces cover member status, prepare/start, execution status, cancellation, materialization status and output streams. Outputs are BinarySource instances that must be closed.
 
 See [authentication and access control](../docs/security.md).

@@ -6,7 +6,7 @@
 
 DACP provides data access and collaborative computation across nodes. Servers publish files, SQL tables, and structured-file contents as Datasets and Items. Clients browse data, read record or byte streams, and submit steps composed of operators. Computation runs near the data and returns live output streams.
 
-DACP is powered by the embedded **XStream streaming engine**: typed data views, stream-connected operators, cancellation and execution policies are shared with standalone XStream. DACP adds authenticated data services and Union planning across independent nodes. See [project responsibilities](docs/ecosystem.md).
+DACP is powered by the **XStream streaming engine**. Publish datasets, access typed data streams and execute stream-connected processing steps on a single node. Use Union to combine data and computation across nodes, with authentication, cancellation and configurable execution policies.
 
 For the data model, transport, trust, and collaboration contracts of DACP (Data Access and Collaboration Protocol), see the [protocol overview](docs/protocol.md).
 
@@ -37,7 +37,7 @@ Job definitions, node subjobs, execution policies and variable files use YAML. E
 | `dacp-shell` | Interactive browsing, SQL queries, operator execution, and job-file submission; installed with the Python SDK |
 | `dacp-client` / `dacp-client-scala` | Python / Scala applications access data, execute Jobs, and submit Union jobs |
 | [dacp-union-server](dacp-union-server/README.md) | Manages one Union, connects configured nodes, polls health and capacity, schedules distributed DAGs, and relays final result streams |
-| [Union web dashboard](dacp-union-server/README.md#execution-and-interfaces) | Management view of nodes, task scripts, zoomable DAGs, traffic, and execution history |
+| [Union web dashboard](dacp-union-server/README.md#execution-and-interfaces) | Management view of nodes, step scripts, zoomable DAGs, traffic, and execution history |
 | `xstream-execution-api` / `dacp-union-protocol` | Public plugin contracts and shared Union transport utilities |
 | [plugins](plugins/README.md) | Bundled Dataset, file-format, archive, catalog, and operator launch plugins |
 
@@ -62,7 +62,7 @@ The independent [XStream engine](https://github.com/rdcn-link/xstream-codex/blob
 
 ## XStream integration
 
-XStream data, engine and designer live in the separate [xstream-codex repository](https://github.com/rdcn-link/xstream-codex). DACP depends on versioned XStream artifacts rather than sibling source directories. For an unreleased development checkout, initialize local artifacts using `scripts/bootstrap-local.sh /path/to/dacp-codex` from the XStream checkout before building DACP. See [build boundaries](https://github.com/rdcn-link/xstream-codex/blob/main/docs/repositories.md).
+To build from source, use JDK 17 and sbt. In a development checkout, run `scripts/bootstrap-local.sh /path/to/dacp-codex` from the XStream checkout to install the required artifacts, then build DACP. See [build instructions](https://github.com/rdcn-link/xstream-codex/blob/main/docs/repositories.md).
 
 ## Independent related projects
 
@@ -70,7 +70,5 @@ XStream data, engine and designer live in the separate [xstream-codex repository
 |---|---|
 | [xstream-engine](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-engine/README.md) | Standalone and embeddable streaming Job engine, including the xstream-runner program |
 | [xstream-designer](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README.md) | Browser visual editing, catalog browsing, schema previews and YAML import / export |
-| [xstream-operator-repository](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; source-only submissions are built and published after administrator review |
+| [xstream-operator-repository](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing.md) | HTTP/HTTPS repository with public search, version browsing, and downloads; source-only submissions are built and published after administrator review |
 | [xstream-operator-sdk](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-sdk/README.md) | Lightweight metadata contracts (`contract`), JVM templates (`jvm`) and Python templates (`python`) |
-
-Documentation ownership and website publishing: [maintenance policy](docs/documentation.md).

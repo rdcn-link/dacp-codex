@@ -53,7 +53,7 @@ async function detail(){const id=selected;if(!id)return;const r=await api('/api/
  for(const step of r.step_records||[]){const row=el('tr');row.title=step.record_id;for(const value of [step.title||step.task_id||step.record_id,step.operator||'—',labels[step.state]||step.state,time(step.started_at_ms||step.created_at_ms),duration(terminal.has(step.state)?step.elapsed_ms:Date.now()-step.created_at_ms),step.attempt_id||'—'])cell(row,value);steps.append(row);}
  if(!steps.children.length){const row=el('tr');cell(row,'No operator step records').colSpan=6;steps.append(row);}
  DacpAttempts.render($('execution-attempts'),r);
- $('policy').textContent=r.effective_execution_policy_yaml||'{}\n';$('submitted-policy').textContent=r.execution_policy_yaml||'{}\n';$('submitted-script').textContent=DacpJobScript.format(r.definition_yaml);$('submission-meta').textContent='Received at '+time(r.created_at_ms);
+ $('policy').textContent=DacpExecutionInfo.effectivePolicyYaml(r.effective_execution_policy_yaml,r.execution_source==='union'||r.kind?.startsWith('union_'));$('submitted-policy').textContent=r.execution_policy_yaml||'{}\n';$('submitted-script').textContent=DacpJobScript.format(r.definition_yaml);$('submission-meta').textContent='Received at '+time(r.created_at_ms);
  $('job-script').textContent=r.logical_yaml?DacpJobScript.format(r.logical_yaml):'Original logical plan unavailable.';
  $('resolved-job-script').textContent=DacpJobScript.format(r.definition_yaml);
  $('logical-scope').textContent=r.execution_source==='union'?'The executable sub-job received from Union: local steps and external input interfaces. Global logical and physical plans are available on Union.':'Submitted operators and stream dependencies, independent of execution placement.';

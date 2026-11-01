@@ -50,7 +50,7 @@ submit examples/convert-variables.yaml --vars examples/convert-variables-values.
 
 示例路径相对于 shell 工作目录；请将变量文件的 `INPUT_URI` 改为目标服务器可访问的 Item URI，并确保所引用的算子可用。
 
-变量名区分大小写，匹配 `[A-Za-z_][A-Za-z0-9_]*`。提供变量对象后，客户端解析 YAML，递归替换完整的字符串值，保留数字、布尔、字符串、列表、映射和 `null` 类型，随后将解析后的工作流提交给服务器。字典键不替换；`prefix-$VAR_NAME` 不进行局部拼接；变量值中的 `$OTHER` 不再次展开。不会读取环境变量或执行 Shell 命令。缺失变量或无效变量文件会在提交前报错，多余变量允许存在。不提供 `--vars` / SDK `variables` 参数时保持原有提交行为。
+变量名区分大小写，匹配 `[A-Za-z_][A-Za-z0-9_]*`。提供变量对象后，客户端解析 YAML，递归替换完整的字符串值，保留数字、布尔、字符串、列表、映射和 `null` 类型，随后将解析后的工作流提交给服务器。字典键不替换；`prefix-$VAR_NAME` 不进行局部拼接；变量值中的 `$OTHER` 不再次展开。不会读取环境变量或执行 Shell 命令。缺失变量或无效变量文件会在提交前报错，多余变量允许存在。Job 包含变量引用时，通过 `--vars` 或 SDK 的 `variables` 参数提供变量值。
 
 Python SDK 对单机和 Union 提交均接受变量字典：
 

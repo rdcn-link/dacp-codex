@@ -6,7 +6,7 @@
 
 DACP 提供数据访问与跨节点协作计算。服务器以 Dataset / Item 发布文件、SQL 表和结构化文件内容；客户端浏览数据、读取记录或字节流，并提交由算子组成的任务。计算在数据所在节点执行，输出以实时流返回。
 
-DACP 基于内嵌的 **XStream 流式执行引擎**，与独立 XStream 共享类型化数据视图、流连接算子、取消和执行策略。DACP 提供认证数据服务，以及由 Union 协调的独立节点协作。参见[项目职责](docs/ecosystem_zh.md)。
+DACP 基于 **XStream 流式执行引擎**，支持在单个节点发布数据集、访问类型化数据流及执行流连接的处理步骤，也可通过 Union 跨节点组织数据与计算，并提供认证、取消和可配置的执行策略。
 
 DACP（Data Access and Collaboration Protocol，数据访问与协作协议）的数据模型、传输、信任和协作约定见[协议说明](docs/protocol_zh.md)。
 
@@ -62,7 +62,7 @@ Dataset 列表可由 [DataCatalog 插件](https://github.com/rdcn-link/xstream-c
 
 ## XStream 集成
 
-XStream 数据、引擎和设计器位于独立的 [xstream-codex 仓库](https://github.com/rdcn-link/xstream-codex)。DACP 依赖版本化 XStream 制品，不直接依赖相邻源码目录。尚未发布的开发环境应先在 XStream 项目执行 `scripts/bootstrap-local.sh /path/to/dacp-codex` 初始化本地制品，再构建 DACP。详见[构建边界](https://github.com/rdcn-link/xstream-codex/blob/main/docs/repositories_zh.md)。
+从源码构建需要 JDK 17 和 sbt。开发环境中，先在 XStream 源码目录执行 `scripts/bootstrap-local.sh /path/to/dacp-codex` 安装所需制品，再构建 DACP。参见[构建说明](https://github.com/rdcn-link/xstream-codex/blob/main/docs/repositories_zh.md)。
 
 ## 独立关联项目
 
@@ -70,7 +70,5 @@ XStream 数据、引擎和设计器位于独立的 [xstream-codex 仓库](https:
 |---|---|
 | [xstream-engine](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-engine/README_zh.md) | 可独立运行或嵌入的流式作业引擎，提供 xstream-runner 程序 |
 | [xstream-designer](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README_zh.md) | 浏览器拖拽设计、目录浏览、schema 预览与 YAML 导入导出 |
-| [xstream-operator-repository](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README_zh.md) | HTTP/HTTPS 算子仓库；公开搜索、版本浏览和下载，源码提交经构建和管理员审核后公开 |
+| [xstream-operator-repository](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing_zh.md) | HTTP/HTTPS 算子仓库；公开搜索、版本浏览和下载，源码提交经构建和管理员审核后公开 |
 | [xstream-operator-sdk](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-operator-sdk/README_zh.md) | 轻量元数据契约（`contract`）、JVM 模板（`jvm`）与 Python 模板（`python`） |
-
-文档归属与官网发布方式：[维护规则](docs/documentation_zh.md)。

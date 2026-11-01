@@ -2,7 +2,7 @@
 
 [中文](materialization_zh.md)
 
-Execution policies apply to both single-node DACP Server jobs and collaborative Union workflows submitted through Python or Scala clients. The business task file defines operators, inputs and outputs, dependencies, and placement. A separate execution-policy YAML controls materialization of **connected output ports**.
+Execution policies apply to both single-node DACP Server jobs and collaborative Union workflows submitted through Python or Scala clients. The business step file defines operators, inputs and outputs, dependencies, and placement. A separate execution-policy YAML controls materialization of **connected output ports**.
 
 Direct streaming without output retention remains the default. `materialize` saves typed Arrow IPC File segments on the producing node while forwarding output, preserving bytes, records and scientific schemas, dictionaries and batch boundaries. It creates no Dataset, does not route intermediate data through Union, and does not checkpoint internal operator state.
 
@@ -26,9 +26,9 @@ union:
 
 `directory` is private node configuration, not a submitter-selected path. The file plugin ships with the standard distribution in `plugins/xstream-plugin-execution-file`. Without `materialization_store`, the node rejects steps requiring materialization or replay. Union prepares every node before starting any step, so unsupported storage causes preparation failure rather than silent fallback.
 
-The file plugin requires `directory`; the other three settings default to the values above and must be positive integers. `max_bytes` limits managed data across the directory; `max_task_bytes` limits all selected outputs of one task, including Arrow file and manifest overhead. Exceeding quota fails execution and removes uncommitted data. Materialization retention is independent of in-memory `union.retention_seconds`. Expired artifacts cannot be acquired by new executions; files remain until active leases close. Only one writer service may open a storage directory. Startup removes uncommitted temporary directories.
+The file plugin requires `directory`; the other three settings default to the values above and must be positive integers. `max_bytes` limits managed data across the directory; `max_task_bytes` limits all selected outputs of one step, including Arrow file and manifest overhead. Exceeding quota fails execution and removes uncommitted data. Materialization retention is independent of in-memory `union.retention_seconds`. Expired artifacts cannot be acquired by new executions; files remain until active leases close. Only one writer service may open a storage directory. Startup removes uncommitted temporary directories.
 
-All selected ports of a task commit atomically only after the operator succeeds, its inputs are fully consumed, and the selected outputs are complete. Uncommitted data cannot be replayed; cancellation, failure, and quota errors discard it. A downstream failure does not delete previously committed upstream outputs. The file plugin syncs files, publishes a manifest atomically, and validates lengths and SHA-256 to reject truncated or corrupt replay data.
+All selected ports of a step commit atomically only after the operator succeeds, its inputs are fully consumed, and the selected outputs are complete. Uncommitted data cannot be replayed; cancellation, failure, and quota errors discard it. A downstream failure does not delete previously committed upstream outputs. The file plugin syncs files, publishes a manifest atomically, and validates lengths and SHA-256 to reject truncated or corrupt replay data.
 
 ## Users: separate policy YAML
 
@@ -47,7 +47,7 @@ materialization:
 
 - `allowed` defaults to `true`: permission alone does not enable materialization.
 - `default` defaults to `stream`; use `materialize` to select all connected outputs.
-- `steps.<task id>.outputs.<port>` overrides the default with `stream` or `materialize`. The task ID identifies a step, not a server.
+- `steps.<task id>.outputs.<port>` overrides the default with `stream` or `materialize`. The step ID identifies a step, not a server.
 - Omitting policy means direct streaming. The engine never enables materialization based on risk estimates.
 - Unknown fields, incorrect types, missing steps, unconnected ports, invalid modes, and conflicts are rejected at submission. The engine does not create consumers for otherwise unconnected operator ports.
 
@@ -59,7 +59,7 @@ materialization:
   default: stream
 ```
 
-Any materializing default or task override then produces an error, even if that override would not ultimately execute. This does not prohibit operator file writes, format-processing temporary files, logs, or execution metadata. Policy cannot expand a node's operator, input-prefix, capacity, or identity authorization.
+Any materializing default or step override then produces an error, even if that override would not ultimately execute. This does not prohibit operator file writes, format-processing temporary files, logs, or execution metadata. Policy cannot expand a node's operator, input-prefix, capacity, or identity authorization.
 
 Python:
 
@@ -109,7 +109,7 @@ with union.replay(job_id, steps=['ta']) as replay:
 - **Retrieve successful results again**: if every connected output of the final-output steps was materialized, replay those steps directly. Their raw inputs and upstream operators are unnecessary; pruned steps are recorded as `skipped`.
 - Without `steps`, inspect policy-eligible steps whose connected outputs all require materialization, select those with complete, unexpired artifacts, then prune the required workflow from its final outputs. With explicit `steps`, every requested step must be available or the request fails. At least one replayable step is required.
 - Skipping an operator requires **all of its connected outputs** to be materialized. Partial-output materialization can save data but cannot skip a multi-output step. Replay reads ports concurrently with backpressure to avoid waits caused by port ordering.
-- Replay uses the original task file and policy; operators, parameters, and inputs cannot be changed through this operation. Nodes revalidate task definitions against stored manifests. The client must still own the source execution, the Union must remain approved, and operator/input authorization is rechecked.
+- Replay uses the original step file and policy; operators, parameters, and inputs cannot be changed through this operation. Nodes revalidate step definitions against stored manifests. The client must still own the source execution, the Union must remain approved, and operator/input authorization is rechecked.
 - New replay executions work after Union/node restart while source history and node storage remain available. This is neither automatic restoration of an old process or execution plan nor byte-offset resume.
 
 Expired, incomplete, corrupt, offline, or unauthorized sources produce errors rather than false replay success. Steps not selected for reuse may reread current raw data. This feature provides neither cross-node snapshot consistency nor exactly-once execution of operators with side effects.
@@ -198,7 +198,7 @@ run piflow_csv_parser@1.0 --input source=/observations --view bytes --policy pol
 replay EXECUTION_ID
 ```
 
-The shell displays the execution ID, explicitly invalidates preceding attempt output before retry, and resets its display state. Previously printed terminal text remains as attempt history; do not treat the entire terminal transcript as a final result file. To materialize final output, declare its ports in the task file's `outputs` and use `submit`.
+The shell displays the execution ID, explicitly invalidates preceding attempt output before retry, and resets its display state. Previously printed terminal text remains as attempt history; do not treat the entire terminal transcript as a final result file. To materialize final output, declare its ports in the step file's `outputs` and use `submit`.
 
 ## Developers: Flight protocol and storage plugins
 
@@ -212,10 +212,10 @@ Use the existing Arrow Flight TLS / Token transport; there is no HTTP write inte
 
 Results still use the existing `results` Flight stream, requiring `start/data/end/complete` and successful Flight termination. Ordinary result streams remain single-claim; use `replay_job` for a new execution instead of claiming them twice.
 
-Each node `prepare` task adds `materialize: ["result"]` and optional `replay_from: "source execution ID"`. Preparation checks every replay output and acquires leases. Replayed data binds the new execution ID to the intended consumer certificate; disk paths are never exposed directly to clients.
+Each node `prepare` step adds `materialize: ["result"]` and optional `replay_from: "source execution ID"`. Preparation checks every replay output and acquires leases. Replayed data binds the new execution ID to the intended consumer certificate; disk paths are never exposed directly to clients.
 
 Public contracts live in `xstream-execution-api`: `MaterializationStoreProvider`, `MaterializationStore`, `MaterializationWriter`, `MaterializedTask`, and `MaterializedFrames`. Register an external provider class through `META-INF/services/xstream.execution.MaterializationStoreProvider`, install its JAR and dependencies in the node `plugin_directory`, and configure `provider` to its `id`. No core registry edits are needed.
 
-Plugins own private configuration, quotas, expiration, atomic task commit, durability, leases, and read integrity. Core owns authorization, policy validation, frame protocol, cancellation, and execution resources. `append(port, OperatorFrame)` accepts typed frames; replay returns `MaterializedFrames`. Frame headers are bounded by 64 KiB and payloads by 8 MiB. Plugins must not buffer a whole task. The file plugin stores an initial zero-row Arrow File segment and independent data segments, with ordered names, sizes and checksums in a manifest. A failed append prevents commit. Closing an uncommitted writer must abort it, `get` may expose committed artifacts only, and expired artifacts cannot receive new leases. Cleanup must preserve existing leases. New implementations should test discovery, commit/abort, restart reads, quota, expiration/leases, truncation/corruption, and close cleanup. See `MaterializationSpec` and cross-node `UnionSpec`.
+Plugins own private configuration, quotas, expiration, atomic step commit, durability, leases, and read integrity. Core owns authorization, policy validation, frame protocol, cancellation, and execution resources. `append(port, OperatorFrame)` accepts typed frames; replay returns `MaterializedFrames`. Frame headers are bounded by 64 KiB and payloads by 8 MiB. Plugins must not buffer a whole step. The file plugin stores an initial zero-row Arrow File segment and independent data segments, with ordered names, sizes and checksums in a manifest. A failed append prevents commit. Closing an uncommitted writer must abort it, `get` may expose committed artifacts only, and expired artifacts cannot receive new leases. Cleanup must preserve existing leases. New implementations should test discovery, commit/abort, restart reads, quota, expiration/leases, truncation/corruption, and close cleanup. See `MaterializationSpec` and cross-node `UnionSpec`.
 
 Single-node Flight DoExchange extends `OperatorRequest` with `execution_policy_yaml` (YAML bytes), `retry_aware` (boolean), and `replay_from` (original execution ID; `job_yaml` must then be empty). The result stream begins with an `execution` metadata frame containing `execution_id`; subsequent output frames include the same ID. Both transports send `attempt_failed` metadata with `attempt_id`, `next_attempt_id`, `retry_count`, and `message` before a new attempt. Union results tickets declare `retry_aware: true`.

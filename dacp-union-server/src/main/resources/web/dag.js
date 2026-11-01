@@ -30,7 +30,7 @@ window.DacpDag=(()=>{
    const state=states[t.state]||{...pending,label:pending.label+' · '+(fmt.labels[t.state]||t.state||'Waiting')};
    const incoming=aggregate(t,'inputs'),outgoing=aggregate(t,'outputs'),observed=job.nodes[t.node_identity]?.observed_at_ms;
   nodes.push({id:'task:'+t.id,combo:groups.get(t.node),data:{kind:'task',title:t.title||t.id,subtitle:t.operator,stateLabel:state.label,border:t.state==='running'?2:1.2,color:state.color,fill:state.fill,dash:state.dash||[],incoming,outgoing},style:{size:[268,150]}});
-   details.set('task:'+t.id,{title:t.title||t.id,lines:['Task ID: '+t.id,'Operator: '+t.operator,'Server: '+t.node,'Status: '+(fmt.labels[t.state]||t.state),...(t.replayed?['Replaying from materialized results']:[]),'Input payload: '+incoming,'Output payload: '+outgoing,'Last observed: '+fmt.time(observed)]});
+   details.set('task:'+t.id,{title:t.title||t.id,lines:['Step ID: '+t.id,'Operator: '+t.operator,'Server: '+t.node,'Status: '+(fmt.labels[t.state]||t.state),...(t.replayed?['Replaying from materialized results']:[]),'Input payload: '+incoming,'Output payload: '+outgoing,'Last observed: '+fmt.time(observed)]});
   }
   for(const t of job.steps)for(const binding of t.inputs){
    let source='task:'+binding.task;
@@ -99,10 +99,12 @@ window.DacpDag=(()=>{
  }
  // Equalize the cross-flow dimension within each physical region type.
  function equalizeRegions(data,bounds,vertical,kind){
-  const groups=data.combos.filter(c=>c.data?.kind===kind&&!c.style?.collapsed);
-  if(groups.length<2)return [];
+  const byId=new Map(data.combos.map(c=>[c.id,c]));
+  const visible=c=>{for(let current=c;current;current=byId.get(current.combo))if(current.style?.collapsed)return false;return true;};
+  const groups=data.combos.filter(c=>c.data?.kind===kind&&visible(c));
+  if(!groups.length)return [];
   const span=c=>{const b=bounds(c.id);return vertical?b.right-b.left:b.bottom-b.top;};
-  const target=Math.max(...groups.map(span)),changed=[];
+  const target=Math.ceil((Math.max(...groups.map(span))-.01)/16)*16,changed=[];
   for(const c of groups){const delta=target-span(c);if(delta<.5)continue;
    const padding=[...(c.style?.padding||[64,24,24,24])];
    // Keep headers anchored and add breathing room equally at either side.
@@ -217,7 +219,7 @@ window.DacpDag=(()=>{
    button('dag-zoom-out',async()=>{this.mode='manual';await this.graph.zoomTo(Math.max(.15,this.graph.getZoom()/1.2),false);});
    button('dag-fit',()=>this.fit());
    button('dag-reset',async()=>{this.mode='manual';await this.graph.zoomTo(1,false);});
-   button('dag-expand',async()=>{for(const combo of this.graph.getComboData())if(combo.style?.collapsed)await this.graph.expandElement(combo.id,{animation:false});await this.fit();});
+   button('dag-expand',async()=>{for(const combo of this.graph.getComboData())if(combo.style?.collapsed)await this.graph.expandElement(combo.id,{animation:false});await this.normalizeRegions();await this.fit();});
    this.resize=new ResizeObserver(()=>{if(this.graph&&this.host.clientWidth&&this.host.clientHeight)this.action(async()=>{this.graph.resize(this.host.clientWidth,this.host.clientHeight);if(this.mode==='fit')await this.fit();});});
    this.resize.observe(host);
   }
@@ -251,7 +253,7 @@ window.DacpDag=(()=>{
   }
   inspect(id){
    this.inspected=id;const info=this.details.get(id),box=document.getElementById('dag-inspect');box.replaceChildren();
-   if(!info){box.textContent='Click a task, input or edge for full details.';return;}
+   if(!info){box.textContent='Click a step, input or edge for full details.';return;}
    const title=document.createElement('strong');title.textContent=info.title;box.append(title);
    for(const line of info.lines){const row=document.createElement('span');row.textContent=line;box.append(row);}
   }
@@ -273,21 +275,15 @@ window.DacpDag=(()=>{
       container:this.host,width:this.host.clientWidth,height:this.host.clientHeight,animation:false,padding:36,zoomRange:[.15,2.5],data:model.data,
       layout:layout==='swimlane'?undefined:{type:'combo-combined',comboPadding:[64,24,24,24],comboSpacing:64,layout:comboId=>({type:'dagre',rankdir:vertical?'TB':'LR',nodesep:comboId?36:70,ranksep:comboId?70:90})},
       node:{type:'dacp-task-card',state:{selected:{stroke:'#2563eb',lineWidth:3.5,shadowColor:'#2563eb66',shadowBlur:20,shadowOffsetY:0}},style:{card:d=>d.data,fill:d=>d.data.fill,stroke:d=>d.data.color,lineDash:d=>d.data.dash,lineWidth:d=>d.data.border||1.2,radius:12,shadowColor:'#1e3a5f0c',shadowBlur:10,shadowOffsetY:4,label:false,ports:[{key:'in',placement:vertical?'top':'left'},{key:'out',placement:vertical?'bottom':'right'},{key:'left',placement:'left'},{key:'right',placement:'right'}],portR:3,portFill:'#fff',portStroke:'#b5c4d6'}},
-      edge:{type:'polyline',state:{selected:{stroke:'#2563eb',lineWidth:4,shadowColor:'#2563eb55',shadowBlur:10,labelFill:'#1d4ed8',labelFontWeight:700,labelBackgroundFill:'#dbeafe'}},style:{sourcePort:'out',targetPort:d=>d.style?.targetPort||'in',router:d=>({type:'shortest-path',enableObstacleAvoidance:true,offset:16,gridSize:10,startDirections:[vertical?'bottom':'right'],endDirections:[vertical?'top':'left']}),radius:10,endArrow:true,endArrowSize:7,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#6e829b',labelBackground:true,labelBackgroundFill:'#fff',labelBackgroundRadius:5,labelPadding:[4,7],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
+      edge:{type:vertical?'cubic-vertical':'cubic-horizontal',state:{selected:{stroke:'#2563eb',lineWidth:4,shadowColor:'#2563eb55',shadowBlur:10,labelFill:'#1d4ed8',labelFontWeight:700,labelBackgroundFill:'#dbeafe'}},style:{sourcePort:'out',targetPort:d=>d.style?.targetPort||'in',endArrow:true,endArrowSize:7,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#6e829b',labelBackground:true,labelBackgroundFill:'#fff',labelBackgroundRadius:5,labelPadding:[4,7],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
       combo:{type:d=>d.data?.kind?'dacp-execution-region':'rect',state:{selected:{stroke:'#2563eb',lineWidth:3.5,shadowColor:'#2563eb44',shadowBlur:16}},style:{region:d=>d.data,label:d=>!d.data?.kind,radius:18,padding:d=>d.style?.padding||[64,24,24,24],lineWidth:2,fillOpacity:1,labelPlacement:'top-left',labelTextAlign:'left',labelTextBaseline:'top',labelOffsetX:16,labelOffsetY:14,labelFontSize:12,labelFontWeight:600,labelFill:'#526b88',collapsedSize:[268,76]}},
-      behaviors:[{type:'drag-canvas',onFinish:()=>{this.mode='manual';}},{type:'zoom-canvas',enable:()=>this.mouseZoom,preventDefault:false,sensitivity:.5,onFinish:()=>{this.mode='manual';this.zoomLabel();}},{type:'collapse-expand',enable:event=>layout!=='swimlane'&&event.targetType==='combo',animation:false}],
+      behaviors:[{type:'drag-canvas',onFinish:()=>{this.mode='manual';}},{type:'zoom-canvas',enable:()=>this.mouseZoom,preventDefault:false,sensitivity:.5,onFinish:()=>{this.mode='manual';this.zoomLabel();}},{type:'collapse-expand',enable:event=>layout!=='swimlane'&&event.targetType==='combo',animation:false,onCollapse:()=>this.action(()=>this.normalizeRegions()),onExpand:()=>this.action(()=>this.normalizeRegions())}],
      });
      for(const type of ['node','edge','combo'])this.graph.on(type+':click',event=>this.select(event.target.id));
      this.graph.on('canvas:click',()=>this.select(null));
      this.graph.on('aftertransform',()=>this.zoomLabel());
      await this.graph.render();
-     if(layout!=='swimlane'){
-      for(const kind of ['process','server']){
-       const data=this.graph.getData(),bounds=id=>{const b=this.graph.getElementRenderBounds(id);return {left:b.min[0],top:b.min[1],right:b.max[0],bottom:b.max[1]};};
-       const changes=equalizeRegions(data,bounds,vertical,kind);
-       if(changes.length){this.graph.updateComboData(changes);await this.graph.draw();await this.graph.layout();}
-      }
-     }
+     if(layout!=='swimlane')await this.normalizeRegions();
      if(selected)await this.graph.setElementState({[selected]:['selected']},false);this.ready=true;await this.fit();
     }else{
      // Retain G6-computed coordinates, edge routing, collapsed groups and viewport.
@@ -297,6 +293,44 @@ window.DacpDag=(()=>{
     this.zoomLabel();
    });
    this.pending=work;return work;
+  }
+  async alignRegions(kind){
+   const data=this.graph.getData(),vertical=this.direction==='vertical',groups=new Map();
+   const byId=new Map(data.combos.map(c=>[c.id,c]));
+   const visible=c=>{for(let p=c;p;p=byId.get(p.combo))if(p.style?.collapsed)return false;return true;};
+   for(const c of data.combos){
+    if(!visible(c))continue;
+    if(kind==='process'?c.data?.kind!=='process':!!c.combo)continue;
+    const key=c.combo||'',group=groups.get(key)||[];group.push(c);groups.set(key,group);
+   }
+   for(const [parent,combos] of groups){
+    const blocks=[...combos,...(kind==='process'?data.nodes.filter(n=>n.combo===parent):[])].map(c=>{const b=this.graph.getElementRenderBounds(c.id);return {id:c.id,start:b.min[vertical?1:0],end:b.max[vertical?1:0],cross:b.min[vertical?0:1]};});
+    if(blocks.length<2)continue;
+    blocks.sort((a,b)=>a.start-b.start||a.cross-b.cross||a.id.localeCompare(b.id));
+    const baseline=Math.min(...blocks.map(b=>b.cross));let cursor=Math.min(...blocks.map(b=>b.start));
+    const translations={};
+    for(const b of blocks){const along=Math.max(cursor,b.start)-b.start,across=baseline-b.cross;if(Math.abs(along)>.5||Math.abs(across)>.5)translations[b.id]=vertical?[across,along]:[along,across];cursor=b.end+along+(kind==='process'?70:90);}
+    if(Object.keys(translations).length)await this.graph.translateElementBy(translations,false);
+   }
+  }
+  async normalizeRegions(){
+   if(!this.graph||this.layoutMode==='swimlane')return;
+   const vertical=this.direction==='vertical';
+   // Inner frames affect outer frames; remeasure after each layout settles.
+   for(let pass=0;pass<3;pass++){
+    let changed=false;
+    for(const kind of ['process','server']){
+     const data=this.graph.getData(),bounds=id=>{const b=this.graph.getElementRenderBounds(id);return {left:b.min[0],top:b.min[1],right:b.max[0],bottom:b.max[1]};};
+     const changes=equalizeRegions(data,bounds,vertical,kind);
+     if(changes.length){changed=true;this.graph.updateComboData(changes);await this.graph.draw();await this.graph.layout();}
+    }
+    if(!changed)break;
+   }
+   await this.alignRegions('process');
+   const data=this.graph.getData(),bounds=id=>{const b=this.graph.getElementRenderBounds(id);return {left:b.min[0],top:b.min[1],right:b.max[0],bottom:b.max[1]};};
+   const outer=equalizeRegions(data,bounds,vertical,'server');
+   if(outer.length){this.graph.updateComboData(outer);await this.graph.draw();}
+   await this.alignRegions('server');
   }
   destroyGraph(){this.ready=false;if(this.graph){this.graph.destroy();this.graph=null;}}
   destroy(){this.resize.disconnect();this.destroyGraph();}

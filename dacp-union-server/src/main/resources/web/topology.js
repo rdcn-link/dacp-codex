@@ -11,7 +11,7 @@ window.DacpTopology=(()=>{
   const focused=document.activeElement?.closest('.network-node')?.dataset.identity;
   const members=data.members||[],count=members.length,now=data.at_ms,windowMs=data.stale_after_ms||10000,height=count>8?230+Math.ceil(count/5)*145:560;
   let overlay=stage.querySelector('.network-labels');
-  if(!overlay){overlay=svg('svg',{class:'network-labels',role:'group','aria-label':'Task traffic totals and rates'});stage.append(overlay);}
+  if(!overlay){overlay=svg('svg',{class:'network-labels',role:'group','aria-label':'Step traffic totals and rates'});stage.append(overlay);}
   stage.style.height=height+'px';
   for(const layer of [lines,overlay]){layer.setAttribute('viewBox','0 0 1000 '+height);layer.replaceChildren();}
   nodes.replaceChildren();
@@ -50,7 +50,7 @@ window.DacpTopology=(()=>{
    const title=svg('title');title.textContent=(edge.observed?bytes(edge.payload_bytes):'Not observed')+' · '+(knownRate?bytes(rate)+'/s':'Rate unavailable');path.append(title);lines.append(path);
    const source=edge.source==='@union'?{url:'Union'}:members.find(m=>m.identity===edge.source),target=edge.target==='@union'?{url:'Union'}:members.find(m=>m.identity===edge.target);
    const totalLabel=edge.observed?bytes(edge.payload_bytes):'Not observed',rateLabel=knownRate?bytes(rate)+'/s':'Rate —';
-   const description=source.url+' → '+target.url+' · '+totalLabel+' · '+rateLabel+' · Receiver-side task payload';
+   const description=source.url+' → '+target.url+' · '+totalLabel+' · '+rateLabel+' · Receiver-side step payload';
    title.textContent=description;
    const x=(start.x+2*control.x+end.x)/4,y=(start.y+2*control.y+end.y)/4;
    const group=svg('g',{class:'flow-label',role:'img','aria-label':description});
@@ -65,7 +65,7 @@ window.DacpTopology=(()=>{
    const p=positions.get(m.identity),healthy=health.get(m.identity),button=el('button',undefined,'network-node '+(healthy?'is-healthy':'is-unknown'));button.type='button';button.dataset.identity=m.identity;button.style.left=p.x/10+'%';button.style.top=p.y/height*100+'%';button.style.setProperty('--signal',healthy?colors[i%colors.length]:'#fb7185');
    let address=m.url;try{const u=new URL(m.url);address=u.hostname+':'+u.port;}catch(_){}
    const badge=el('span',undefined,'network-node-badge');badge.append(el('span',String(i+1).padStart(2,'0'),'network-node-number'),el('span','MEMBER NODE','network-node-kind'));button.append(badge);
-   button.append(el('span',healthy?'● Healthy':m.state==='approved'?'● Observation stale':'● Unknown / not approved','network-health'),el('strong',address),el('span','Tasks '+(m.status?m.status.reserved_tasks+' / '+m.status.capacity:'—')+' · Jobs '+(data.participation?.[m.identity]??'—'),'network-capacity'));
+   button.append(el('span',healthy?'● Healthy':m.state==='approved'?'● Observation stale':'● Unknown / not approved','network-health'),el('strong',address),el('span','Steps '+(m.status?m.status.reserved_tasks+' / '+m.status.capacity:'—')+' · Jobs '+(data.participation?.[m.identity]??'—'),'network-capacity'));
    const resource=m.status?.resources,percent=v=>v===undefined?'—':(v*100).toFixed(0)+'%';button.append(el('span','CPU '+percent(resource?.cpu_load)+' · Memory '+(resource?.memory_total_bytes?percent(resource.memory_used_bytes/resource.memory_total_bytes):'—'),'network-capacity'));const bars=el('div',undefined,'network-resource-bars');for(const [label,value]of [['CPU',resource?.cpu_load],['MEM',resource?.memory_total_bytes?resource.memory_used_bytes/resource.memory_total_bytes:undefined]]){const track=el('span',undefined,'network-resource-track');track.title=label+' '+percent(value);const fill=el('i');fill.style.width=Math.max(0,Math.min(100,(value||0)*100))+'%';track.append(fill);bars.append(track);}button.append(bars);button.title=m.url+' · '+m.identity;button.addEventListener('click',()=>select(m.identity));nodes.append(button);
   });
   // Labels have their own top layer. Slide only along the curve; never detach
@@ -96,9 +96,9 @@ window.DacpTopology=(()=>{
   if(focused)[...nodes.querySelectorAll('.network-node')].find(n=>n.dataset.identity===focused)?.focus({preventScroll:true});
   const healthy=[...health.values()].filter(Boolean).length;
   document.getElementById('topology-summary').textContent=healthy+' / '+count+' nodes healthy · refreshed every 5s';
-  const stats=document.getElementById('network-stats');stats.replaceChildren();for(const [value,label]of [[healthy+'/'+count,'Healthy nodes'],[moving,'Active data links'],[bytes(total),'Inter-member task payload']]){const card=el('div');card.append(el('strong',String(value)),el('span',label));stats.append(card);}
-  document.getElementById('traffic-scope').textContent='Recent '+(data.job_count||0)+' / 100 jobs · latest attempts only · receiver-side task payload · excludes protocol overhead, heartbeats, status queries, catalog access and other applications · rates require consecutive observations; — means unknown';
-  if(!edges.length){const empty=svg('text',{x:500,y:height-15,class:'wire-label'});empty.textContent='No task traffic observed yet';lines.append(empty);}
+  const stats=document.getElementById('network-stats');stats.replaceChildren();for(const [value,label]of [[healthy+'/'+count,'Healthy nodes'],[moving,'Active data links'],[bytes(total),'Inter-member step payload']]){const card=el('div');card.append(el('strong',String(value)),el('span',label));stats.append(card);}
+  document.getElementById('traffic-scope').textContent='Recent '+(data.job_count||0)+' / 100 jobs · latest attempts only · receiver-side step payload · excludes protocol overhead, heartbeats, status queries, catalog access and other applications · rates require consecutive observations; — means unknown';
+  if(!edges.length){const empty=svg('text',{x:500,y:height-15,class:'wire-label'});empty.textContent='No step traffic observed yet';lines.append(empty);}
  }
  return {render,stale(){document.getElementById('topology-summary').textContent='Observation connection lost · showing the last snapshot';document.querySelectorAll('.wire-rate').forEach(n=>n.textContent='Rate —');document.querySelectorAll('.flow-active').forEach(n=>n.classList.remove('flow-active'));document.querySelectorAll('.network-node').forEach(n=>{n.classList.remove('is-healthy');n.classList.add('is-unknown');n.style.setProperty('--signal','#fb7185');n.querySelector('.network-health').textContent='● Observation interrupted';});document.querySelectorAll('.node-health').forEach(n=>n.textContent='● Observation connection lost');}};
 })();

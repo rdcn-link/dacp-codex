@@ -24,7 +24,7 @@ This read-only HTTPS endpoint uses the node TLS certificate and shares DACP subj
 
 ## Representations and plugins
 
-- Items supporting the `bytes` view are listed and readable. For a records-only plugin Item, the node's common Item adapter automatically exposes UTF-8 JSONL bytes, making it downloadable through S3 too. This conversion also applies to Flight and task inputs. Existing plugin-provided bytes take priority and retain their content.
+- Items supporting the `bytes` view are listed and readable. For a records-only plugin Item, the node's common Item adapter automatically exposes UTF-8 JSONL bytes, making it downloadable through S3 too. This conversion also applies to Flight and step inputs. Existing plugin-provided bytes take priority and retain their content.
 - Files stream their original bytes, including CSV, images, archives, and NetCDF. Scientific files retain dimensions, groups, and variables. A structured root advertising `bytes` is also downloadable as a complete object.
 - Ordinary logical folders are not objects. Use `prefix` and `delimiter` for hierarchical browsing.
 - Every request reads the live catalog and metadata without a persistent cache. Request-scoped Dataset leases are released after completion, failure, or cancellation.

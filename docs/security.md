@@ -8,7 +8,7 @@ This document describes implemented DACP authentication, authorization boundarie
 | --- | --- |
 | Ordinary node and Union Flight services | Public metadata over TLS; bearer tokens and subject roles for data and execution |
 | Union collaboration calls to members | Mutual TLS and a node-issued Union service credential |
-| Task streams between nodes | Mutual TLS and execution plans bound to steps, ports and consumers |
+| Step streams between nodes | Mutual TLS and execution plans bound to steps, ports and consumers |
 | S3 service | Shared DACP subjects and read roles; separate access keys, HTTPS, SigV4 and presigned GET |
 | Node and Union dashboards | Public read-only access inside the internal network; no login or access control |
 | Operator repository | Public approved operators and runtimes; per-submitter Tokens for sources; authenticated administrator review |
@@ -58,7 +58,7 @@ Accepting the credential grants trust in Union collaboration operations. Nodes c
 
 Each collaboration call checks the service credential. Unlike ordinary tokens, revocation or expiration of a Union service credential must stop the associated active collaboration steps and streams.
 
-Members of the same Union need no additional peer grants. However, certificates issued by the same CA alone do not grant arbitrary access to another member's data. Execution plans must constrain the execution instance, task, output port and consumer. Union service secrets must never be forwarded to downstream nodes.
+Members of the same Union need no additional peer grants. However, certificates issued by the same CA alone do not grant arbitrary access to another member's data. Execution plans must constrain the execution instance, step, output port and consumer. Union service secrets must never be forwarded to downstream nodes.
 
 ## S3
 
@@ -82,7 +82,7 @@ Credential files should be accessible only to the service account. Ordinary toke
 
 Implemented features include local credential management and hot reload, anonymous metadata, subject roles and ordinary Flight token authentication, certificate-bound Union service credentials, job ownership isolation, exact peer plan authorization, separate collaboration SDKs, S3 SigV4 and presigned GET. Automated tests cover admitted streams continuing after ordinary token revocation while subsequent calls fail, active collaboration stopping after service credential revocation, ownership surviving token rotation, and audit records for rejected requests. Live integration verifies authentication on three member nodes, Union collaboration calls, and boto3 signed listing, metadata, content, Range and presigned GET requests.
 
-Related documentation: [access logs](access-logs.md), [data access](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access.md), [operator repository](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README.md). Data-read and execution examples require a token file with the appropriate subject role; Union member configuration requires a node-issued service credential file.
+Related documentation: [access logs](access-logs.md), [data access](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access.md), [operator repository](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing.md). Data-read and execution examples require a token file with the appropriate subject role; Union member configuration requires a node-issued service credential file.
 
 ## Local credential operations
 

@@ -18,6 +18,6 @@ with CollaborationClient('dacp://localhost:18861',
     print(member.node_status('YOUR_UNION_ID'))
 ```
 
-The target node must issue the credential, bound to the Union ID and certificate fingerprint. Exactly authorized peer task streams carry no Union credential and do not read ordinary client token environment variables. Interfaces cover member status, prepare/start, execution status, cancellation, materialization status and output streams. Outputs are raw Flight readers that must be closed.
+The target node must issue the credential, bound to the Union ID and certificate fingerprint. Exactly authorized peer step streams carry no Union credential and do not read ordinary client token environment variables. Interfaces cover member status, prepare/start, execution status, cancellation, materialization status and output streams. Outputs are raw Flight readers that must be closed.
 
 See [authentication and access control](../docs/security.md).

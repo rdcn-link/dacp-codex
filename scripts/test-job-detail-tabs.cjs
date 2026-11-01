@@ -8,11 +8,16 @@ async function check(union,fromUnion=false){
  const dir=union?'dacp-union-server/src/main/resources/web':'dacp-server/src/main/resources/node-web',errors=[],vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e));
  const dom=new JSDOM(fs.readFileSync(root+'/'+dir+'/job.html','utf8'),{url:'http://example/job?id=job-test',runScripts:'outside-only',virtualConsole:vc});const w=dom.window,d=w.document,graphs=[];
  w.DacpDag={Viewer:class{constructor(){this.layoutMode='dependency';}async update(j){graphs.push(j);}setLayout(){}}};w.DacpDuration=n=>String(n);w.DacpJobScript={format:s=>s||''};w.DacpAttempts={render(){}};
- const record={...job,record_id:'job-test',kind:fromUnion?'union_execution':'dacp_exchange',execution_source:fromUnion?'union':'client',definition_yaml:'name: received',logical_yaml:'name: logical',graph_steps:steps,graph_outputs:job.outputs,graph_nodes:job.nodes,step_records:[]};
+ const record={...job,effective_execution_policy_yaml:'null\n',record_id:'job-test',kind:fromUnion?'union_execution':'dacp_exchange',execution_source:fromUnion?'union':'client',definition_yaml:'name: received',logical_yaml:'name: logical',graph_steps:steps,graph_outputs:job.outputs,graph_nodes:job.nodes,step_records:[]};
  w.fetch=async()=>({ok:true,json:async()=>structuredClone(union?job:record)});
  w.eval(fs.readFileSync(root+'/dacp-union-server/src/main/resources/web/execution-info.js','utf8'));w.eval(fs.readFileSync(root+'/'+dir+'/job.js','utf8'));await tick();await tick();
  const click=selector=>{const e=d.querySelector(selector);assert(e,selector);e.click();};
  assert(d.querySelector('#error').hidden,d.querySelector('#error').textContent);
+ assert(w.DacpExecutionInfo.effectivePolicyYaml('null\n',true).includes('managed by Union'));
+ assert(w.DacpExecutionInfo.effectivePolicyYaml('',false).includes('not recorded'));
+ assert.equal(w.DacpExecutionInfo.effectivePolicyYaml('max_retries: 2\n'), 'max_retries: 2\n');
+ if(!union)assert(d.querySelector('#policy').textContent.includes(fromUnion?'managed by Union':'not recorded'));
+
  assert.deepEqual([...d.querySelectorAll('.plan-tabs [data-plan]')].map(e=>e.dataset.plan),['submission','logical','physical','execution']);
  assert.equal(d.querySelectorAll('.plan-tabs .plan-tab-icon').length,4);
  for(const key of ['submission','logical','execution','physical']){click('[data-plan="'+key+'"]');await tick();assert(!d.querySelector('#'+key+'-plan').hidden);}

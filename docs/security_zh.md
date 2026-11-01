@@ -82,7 +82,7 @@ DACP 及其 S3 端点共享本实例的 `subjects.json` 和角色。同一主体
 
 已实现本地凭据管理与热加载、普通 Flight Token 认证、Union 服务凭据与证书绑定、任务所有者隔离、节点间精确计划授权、独立协作 SDK、S3 SigV4 和预签名 GET。自动化测试覆盖普通 Token 撤销后已有流继续、后续调用拒绝，服务凭据撤销后运行中任务与流终止，Token 轮换后保留任务归属，以及拒绝请求的审计。真实服务联调验证了三个成员节点的认证、Union 协作调用和 boto3 的签名列表、元数据、内容、Range 及预签名 GET。
 
-相关说明：[访问日志](access-logs_zh.md)、[数据访问](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access_zh.md)、[算子仓库](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README_zh.md)。普通客户端示例应提供 Token 文件；Union 成员配置应提供节点签发的服务凭据文件。
+相关说明：[访问日志](access-logs_zh.md)、[数据访问](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access_zh.md)、[算子仓库](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing_zh.md)。普通客户端示例应提供 Token 文件；Union 成员配置应提供节点签发的服务凭据文件。
 
 ## 本地凭据操作
 

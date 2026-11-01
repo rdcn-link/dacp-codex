@@ -280,7 +280,7 @@ sbt 'run ../examples/server.yaml'
 更多说明：
 
 - [双节点示例](../../examples/multi-node/README_zh.md)：任务放置、远端输入及输出消费。
-- [Scala 算子仓库与网站](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README_zh.md)：公共搜索、版本详情、下载与不可变算子发布。
+- [Scala 算子仓库与网站](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing_zh.md)：公共搜索、版本详情、下载与不可变算子发布。
 - [自定义算子编写与上传](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)：Scala/Python 完整源码、构建、发布、远程上传和任务执行。
 - [任务与算子参考](../reference_zh.md#任务执行与算子)：DAG、容器输入输出契约和转换参数。
 
@@ -297,7 +297,7 @@ DACP 元信息允许通过 TLS 匿名查看；数据读取需要 Token 对应主
 
 未发布的物理文件和数据库表不会自动公开。读取失败后从头重开，不支持流内重试、checkpoint 或恢复。任务输出仅为实时流，客户端须消费或取消；不提供保存的结果 URI，重启不恢复任务。完整配置和协议说明见 [技术参考](../reference_zh.md#协议与配置)。
 
-DEBUG 模式下可通过 `run --runtime python@1.0 --input source=/orders <<END` 输入 heredoc 源码；不支持 `--source` 或 `--code`。服务端默认为 NORMAL，并在协调与执行节点拒绝源码任务。配置、Python/Scala 示例与插件契约见[源码算子](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source_zh.md)。
+DEBUG 模式下可通过 `run --runtime python@1.0 --input source=/orders <<END` 输入 heredoc 源码。服务端默认为 NORMAL，并在协调与执行节点拒绝源码任务。配置、Python/Scala 示例与插件契约见[源码算子](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source_zh.md)。
 
 原生可执行程序可通过 `command` 执行器使用 stdin/stdout，无需在程序内实现 DACP 协议。支持单 bytes 输入和输出，仍在容器内隔离执行。见[配置及发布指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands_zh.md)和 [C 示例](https://github.com/rdcn-link/xstream-codex/blob/main/examples/operators/native/README_zh.md)。
 

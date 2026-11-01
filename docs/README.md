@@ -27,7 +27,7 @@ The [collaboration operator catalog](https://github.com/rdcn-link/xstream-codex/
 | Scala SDK | [Scala client](../dacp-client-scala/README.md) |
 | DACP Server | [Administrator guide](administrators/README.md), [configuration and protocol reference](reference.md) |
 | Union Server and web dashboard | [Union manual](../dacp-union-server/README.md), [collaboration protocol](union.md), [two-node example](../examples/union/README.md) |
-| Operator repository CLI and website | [Repository manual](https://github.com/rdcn-link/xstream-operator-repository/blob/main/README.md) |
+| Operator repository CLI and website | [Repository manual](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing.md) |
 | Plugin API and Union transport utilities | [Plugin API](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-execution-api/README.md), [Union protocol module](../dacp-union-protocol/README.md) |
 
 ## Topic references
@@ -71,12 +71,9 @@ Union provides standard DACP discovery, Items, Jobs and S3. For public short nam
 
 [Measured local versus cross-node streaming job performance](local-vs-union-benchmark.md).
 
-Project presentation material: [English meeting poster and A4 PDF](../assets/posters/README.md).
 
 [Online Job Designer](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-designer/README.md): design local and cross-node jobs in the browser and export YAML for Shell / SDK submission.
 
 - [Operator parameter types and designer forms](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-parameters.md)
 
 Source-only operator publication: [submission, isolated builds, review and trust scores](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.
-
-Project boundaries: [DACP services powered by XStream](ecosystem.md). The visual designer, SDK/engine and operator repository are independently maintained projects.

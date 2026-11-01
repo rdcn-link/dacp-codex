@@ -10,7 +10,7 @@ Nodes continue publishing datasets by local name. Union maps each (member certif
 
 Names use a persistent increasing counter, keyed reversible permutation and an unambiguous alphabet. Adjacent counters are not apparent from their strings. Encoding is not authorization. Logical node IDs use `nd-xxxx-xxxx` for clients requiring explicit placement; obtain them through Flight Action `dacp.nodes`.
 
-Each `dacp.nodes` entry includes a logical `id`, server `address`, `state`, `capacity` and observation time. Available status fields also include task reservations, Union slots, start time, uptime, resource usage, runtimes and dashboard address. Unavailable members remain visible with explicitly unavailable state; any retained metrics are the last observation. The designer displays addresses and status details, disables placement on unavailable members, and saves logical IDs for execution placement.
+Each `dacp.nodes` entry includes a logical `id`, server `address`, `state`, `capacity` and observation time. Available status fields also include step reservations, Union slots, start time, uptime, resource usage, runtimes and dashboard address. Unavailable members remain visible with explicitly unavailable state; any retained metrics are the last observation. The designer displays addresses and status details, disables placement on unavailable members, and saves logical IDs for execution placement.
 
 `state_directory/dataset-routes/routes.json` stores the encoding key, next counter and current routes, without dataset metadata replicas. A writer lock allows one serving instance. Back up the entire Union state directory; do not restore an old backup over an dataset namespace still referenced externally. Losing the key or rolling back the counter can break name stability.
 
@@ -60,7 +60,7 @@ Execution policy JSON, output streams, failed-attempt notifications, cancellatio
 
 ## Management boundaries
 
-Members are configured in Union's startup configuration and use node-issued service credentials. Ordinary clients use TLS and tokens; task APIs and result/event streams enforce ownership. No remote member administration API exists. The internal HTTP dashboard is publicly readable and exposes operational topology. S3 uses separate SigV4 credentials. See [security](security.md) and [Union configuration](../dacp-union-server/README.md).
+Members are configured in Union's startup configuration and use node-issued service credentials. Ordinary clients use TLS and tokens; step APIs and result/event streams enforce ownership. No remote member administration API exists. The internal HTTP dashboard is publicly readable and exposes operational topology. S3 uses separate SigV4 credentials. See [security](security.md) and [Union configuration](../dacp-union-server/README.md).
 
 ## Development and validation
 

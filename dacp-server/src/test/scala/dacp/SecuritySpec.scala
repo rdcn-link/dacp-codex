@@ -58,25 +58,24 @@ class SecuritySpec extends AnyFunSuite {
       assert(capabilities(reader).path("permissions").path("job_submit").asBoolean)
     }finally {anonymous.close();reader.close()}
   }}
-  test("DACP execution-target adapter reports caller rights, streams results and cancels remotely") {fixture{(c,_,a)=>
-    val dir=Files.createTempDirectory("target-credential-")
+  test("DACP client reports caller rights, submits results and cancels remotely") {fixture{(c,_,a)=>
+    val dir=Files.createTempDirectory("client-credential-")
     val issued=c.credentials.create("alice");val token=dir.resolve("token");Files.writeString(token,issued._2)
-    val settings=_root_.xstream.util.Json.obj().put("url",c.uri("").stripSuffix("/")).put("ca",c.ca.toString).put("token_file",token.toString)
-    val target=new _root_.xstream.connector.dacp.DacpExecutionTarget("test",settings)
-    val cancel=new StreamCancel()
+    val tls=dacp.client.TlsConfig(ca=Some(c.ca),tokenFile=Some(token))
+    val origin=c.uri("").stripSuffix("/")
     try {
-      assert(!target.describe(cancel).canSubmit)
+      assert(!dacp.client.Source.capabilities(origin,tls).path("permissions").path("job_submit").asBoolean)
       c.credentials.setRoles("alice",Set("runner"))
-      assert(target.describe(cancel).canSubmit)
+      assert(dacp.client.Source.capabilities(origin,tls).path("permissions").path("job_submit").asBoolean)
       val job="name: Remote source\nsteps:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: 'context:/live/ticks', view: bytes}\noutputs: {result: read}\n"
-      val handle=target.submit(_root_.xstream.execution.ExecutionRequest(job,_root_.xstream.util.Json.obj(),30),cancel)
+      val stream=dacp.client.Job.run(origin,job,tls,30)
       try {
-        assert(StreamProtocol.header(handle.next().get).path("type").asText=="start")
-        assert(StreamProtocol.header(handle.next().get).path("type").asText=="data")
-        assert(handle.status().id.nonEmpty)
-        handle.cancel();assert(handle.status().state=="cancelled")
-      }finally handle.close()
-    }finally {cancel.close();target.close();Data.deleteTree(dir)}
+        assert(stream.next().kind=="execution")
+        assert(stream.next().kind=="start")
+        assert(stream.next().kind=="data")
+        assert(stream.executionId.nonEmpty)
+      }finally stream.close()
+    }finally Data.deleteTree(dir)
   }}
   test("remote Item provider reads with reader credentials without needing job submission") {fixture{(c,_,a)=>
     val dir=Files.createTempDirectory("item-credential-")

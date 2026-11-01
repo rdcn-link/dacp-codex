@@ -18,7 +18,7 @@ function card(member,index,version){
  facts.replaceChildren();
  const state=member.status,stale=!member.observed_at_ms||Date.now()-member.observed_at_ms>healthWindow;
  facts.append(element('span',member.state==='approved'&&state&&!stale?'● Reachable':'● Unknown or not approved','node-health'));
- facts.append(element('span','Task capacity: '+(state?state.reserved_tasks+' / '+state.capacity:'—')));
+ facts.append(element('span','Step capacity: '+(state?state.reserved_tasks+' / '+state.capacity:'—')));
  facts.append(element('span','Union capacity: '+(state?state.union_reserved_tasks+' / '+state.union_capacity:'—')));
  const resource=state?.resources,percent=v=>v===undefined?'—':(v*100).toFixed(1)+'%';
  const gauge=(label,fraction,hint)=>{const item=element('span',undefined,'resource-gauge');item.append(element('strong',label+' '+percent(fraction)));const meter=element('meter');meter.min=0;meter.max=1;meter.value=fraction??0;meter.setAttribute('aria-label',label);if(fraction===undefined)meter.hidden=true;item.append(meter);item.title=hint;facts.append(item);};

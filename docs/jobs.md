@@ -50,7 +50,7 @@ submit examples/convert-variables.yaml --vars examples/convert-variables-values.
 
 Paths are relative to the shell's working directory. Change `INPUT_URI` in the variable file to an Item URI accessible to the target server and ensure the referenced operators are available.
 
-Variable names are case-sensitive and match `[A-Za-z_][A-Za-z0-9_]*`. When a variable object is supplied, the client parses YAML and recursively substitutes complete string values, preserving numbers, booleans, strings, lists, mappings, and `null`, then submits the resolved workflow. Mapping keys are unchanged; `prefix-$VAR_NAME` is not interpolated; `$OTHER` inside an inserted value is not expanded again. Environment variables are not read and Shell commands are not executed. Missing variables or invalid variable files fail before submission; unused variables are allowed. Omitting `--vars` / the SDK `variables` argument preserves the existing submission behavior.
+Variable names are case-sensitive and match `[A-Za-z_][A-Za-z0-9_]*`. When a variable object is supplied, the client parses YAML and recursively substitutes complete string values, preserving numbers, booleans, strings, lists, mappings, and `null`, then submits the resolved workflow. Mapping keys are unchanged; `prefix-$VAR_NAME` is not interpolated; `$OTHER` inside an inserted value is not expanded again. Environment variables are not read and Shell commands are not executed. Missing variables or invalid variable files fail before submission; unused variables are allowed. Supply `--vars` or the SDK `variables` argument when the Job contains variable references.
 
 The Python SDK accepts variable dictionaries for both node and Union submissions:
 
