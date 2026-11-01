@@ -1,10 +1,6 @@
-# Execution policy, output materialization, and replay
+# Submit execution policies and request replay
 
-[中文](materialization_zh.md)
-
-Execution policies apply to both single-node DACP Server jobs and collaborative Union workflows submitted through Python or Scala clients. The business step file defines operators, inputs and outputs, dependencies, and placement. A separate execution-policy YAML controls materialization of **connected output ports**.
-
-Direct streaming without output retention remains the default. `materialize` saves typed Arrow IPC File segments on the producing node while forwarding output, preserving bytes, records and scientific schemas, dictionaries and batch boundaries. It creates no Dataset, does not route intermediate data through Union, and does not checkpoint internal operator state.
+Use this guide to submit policies to a DACP node or Union, handle failed attempts and request replay. For policy fields, materialization commit rules and storage plugin contracts, see the [XStream execution policy reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/materialization.md). Direct streaming is the default.
 
 ## Administrators: enable node storage
 
@@ -26,40 +22,9 @@ union:
 
 `directory` is private node configuration, not a submitter-selected path. The file plugin ships with the standard distribution in `plugins/xstream-plugin-execution-file`. Without `materialization_store`, the node rejects steps requiring materialization or replay. Union prepares every node before starting any step, so unsupported storage causes preparation failure rather than silent fallback.
 
-The file plugin requires `directory`; the other three settings default to the values above and must be positive integers. `max_bytes` limits managed data across the directory; `max_task_bytes` limits all selected outputs of one step, including Arrow file and manifest overhead. Exceeding quota fails execution and removes uncommitted data. Materialization retention is independent of in-memory `union.retention_seconds`. Expired artifacts cannot be acquired by new executions; files remain until active leases close. Only one writer service may open a storage directory. Startup removes uncommitted temporary directories.
+## Submit a policy with the Job
 
-All selected ports of a step commit atomically only after the operator succeeds, its inputs are fully consumed, and the selected outputs are complete. Uncommitted data cannot be replayed; cancellation, failure, and quota errors discard it. A downstream failure does not delete previously committed upstream outputs. The file plugin syncs files, publishes a manifest atomically, and validates lengths and SHA-256 to reject truncated or corrupt replay data.
-
-## Users: separate policy YAML
-
-For example, `execution-policy.yaml`:
-
-```yaml
-max_retries: 0
-materialization:
-  allowed: true
-  default: stream
-  steps:
-    ta:
-      outputs:
-        result: materialize
-```
-
-- `allowed` defaults to `true`: permission alone does not enable materialization.
-- `default` defaults to `stream`; use `materialize` to select all connected outputs.
-- `steps.<task id>.outputs.<port>` overrides the default with `stream` or `materialize`. The step ID identifies a step, not a server.
-- Omitting policy means direct streaming. The engine never enables materialization based on risk estimates.
-- Unknown fields, incorrect types, missing steps, unconnected ports, invalid modes, and conflicts are rejected at submission. The engine does not create consumers for otherwise unconnected operator ports.
-
-To prohibit engine retention of result streams throughout the workflow:
-
-```yaml
-materialization:
-  allowed: false
-  default: stream
-```
-
-Any materializing default or step override then produces an error, even if that override would not ultimately execute. This does not prohibit operator file writes, format-processing temporary files, logs, or execution metadata. Policy cannot expand a node's operator, input-prefix, capacity, or identity authorization.
+Save the policy as `execution-policy.yaml` and submit with Shell `submit workflow.yaml --policy execution-policy.yaml` or the SDK. The client sends its contents; the server does not need the client file.
 
 Python:
 
@@ -116,7 +81,7 @@ Expired, incomplete, corrupt, offline, or unauthorized sources produce errors ra
 
 ## Automatic retry count and overall timeout
 
-The top-level `max_retries` is an integer from 0 to 10, defaulting to `0`; `2` permits two retries after the initial attempt. `timeout_seconds` is an integer from 1 to 86400 covering the entire job, resource waits, and all retries. If omitted, the server's `execution_timeout_seconds` applies; a submitted value cannot exceed that limit. Under Union, individual nodes may impose a smaller local limit.
+Set retry count and timeout using the XStream policy fields. A server enforces its configured timeout limit; Union members may impose smaller local limits.
 
 ```yaml
 max_retries: 2
@@ -200,7 +165,7 @@ replay EXECUTION_ID
 
 The shell displays the execution ID, explicitly invalidates preceding attempt output before retry, and resets its display state. Previously printed terminal text remains as attempt history; do not treat the entire terminal transcript as a final result file. To materialize final output, declare its ports in the step file's `outputs` and use `submit`.
 
-## Developers: Flight protocol and storage plugins
+## Remote protocol reference
 
 Use the existing Arrow Flight TLS / Token transport; there is no HTTP write interface. All Action names use the `dacp.union.` prefix:
 
@@ -214,8 +179,6 @@ Results still use the existing `results` Flight stream, requiring `start/data/en
 
 Each node `prepare` step adds `materialize: ["result"]` and optional `replay_from: "source execution ID"`. Preparation checks every replay output and acquires leases. Replayed data binds the new execution ID to the intended consumer certificate; disk paths are never exposed directly to clients.
 
-Public contracts live in `xstream-execution-api`: `MaterializationStoreProvider`, `MaterializationStore`, `MaterializationWriter`, `MaterializedTask`, and `MaterializedFrames`. Register an external provider class through `META-INF/services/xstream.execution.MaterializationStoreProvider`, install its JAR and dependencies in the node `plugin_directory`, and configure `provider` to its `id`. No core registry edits are needed.
-
-Plugins own private configuration, quotas, expiration, atomic step commit, durability, leases, and read integrity. Core owns authorization, policy validation, frame protocol, cancellation, and execution resources. `append(port, OperatorFrame)` accepts typed frames; replay returns `MaterializedFrames`. Frame headers are bounded by 64 KiB and payloads by 8 MiB. Plugins must not buffer a whole step. The file plugin stores an initial zero-row Arrow File segment and independent data segments, with ordered names, sizes and checksums in a manifest. A failed append prevents commit. Closing an uncommitted writer must abort it, `get` may expose committed artifacts only, and expired artifacts cannot receive new leases. Cleanup must preserve existing leases. New implementations should test discovery, commit/abort, restart reads, quota, expiration/leases, truncation/corruption, and close cleanup. See `MaterializationSpec` and cross-node `UnionSpec`.
+For storage interfaces, ServiceLoader registration and contract tests, see the [XStream execution policy reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/materialization.md).
 
 Single-node Flight DoExchange extends `OperatorRequest` with `execution_policy_yaml` (YAML bytes), `retry_aware` (boolean), and `replay_from` (original execution ID; `job_yaml` must then be empty). The result stream begins with an `execution` metadata frame containing `execution_id`; subsequent output frames include the same ID. Both transports send `attempt_failed` metadata with `attempt_id`, `next_attempt_id`, `retry_count`, and `message` before a new attempt. Union results tickets declare `retry_aware: true`.

@@ -117,7 +117,7 @@ outputs:
 
 显式指定服务时，使用 `uri: dacp://remote.example:18861/weather/observations`。`context:` URI 引用接收 Job 的 JVM 绑定的 DataCatalog，在远程下发之前固定数据源。路径属于提交目标的公开目录：普通节点解析本地名称，Union 解析其公开名称并调度至数据所在成员。Job 不需要知道内部成员地址。
 
-SQL 支持 `SELECT *` 或字段列表、固定的 `FROM source`、可选 `WHERE` 和 `LIMIT`。谓词支持 `= != <> < <= > >=`、`IN`、`IS NULL`、`IS NOT NULL`、`AND`、`OR`、`NOT` 和括号；字符串使用单引号（内部单引号写成两个），字段名可使用双引号。仅支持单数据项只读查询，不支持 JOIN、聚合、函数、排序、多语句或数据修改。SQL 转换为通用 `Scan` 契约，由数据源插件执行，不拼接到数据库 SQL；插件可以下推，不支持的能力明确报错。数据保持分批流式传输，投影后的结构用于结构推导和有界样例。
+read_item 参数、SQL 语法、支持的谓词及推导行为见 [XStream Job 参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/jobs_zh.md)与[记录扫描参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/records-scans_zh.md)。
 
 远程凭据配置在实际执行读取的节点，设计器也需单独配置相同服务的读取凭据；不会将目标服务的 Token 转发给其他服务，也不允许在 Job 中携带凭据。Union 选中的任意读取成员应具备所需凭据。
 

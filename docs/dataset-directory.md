@@ -31,21 +31,9 @@ datasets:
 
 `description` is a string containing one valid JSON object. It requires a nonempty string `title` and a string `description` (which may be empty); other fields and nested structures are user-defined. It is separate from provider `source` and `items` settings. When omitted from static configuration, it defaults to `{"title":"dataset-name","description":""}`. Duplicate JSON keys are rejected. The string is limited to 32768 characters. Plain text, arrays, scalars, malformed JSON, multiple JSON values and YAML mappings are rejected. Public descriptions must not contain credentials or private storage settings. A complete node configuration still requires TLS and other fields.
 
-## Developers: dynamic descriptions
+## Dynamic directories
 
-Catalog plugins return the same JSON string through `DatasetInfo.description`:
-
-```scala
-import xstream.data.DatasetInfo
-
-override def list(): Seq[DatasetInfo] = Seq(
-  DatasetInfo("orders", description =
-    """{"title":"Orders","description":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}"""
-  )
-)
-```
-
-The string is validated at the shared plugin contract and preserved through Flight, SDKs, the shell and web views. Directory reads do not call `open()` or scan data contents. Backend discovery failures must throw rather than return empty lists. See [dynamic catalog plugins](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md) for registration, configuration and lease implementation.
+Reading a directory does not open data streams. For catalog configuration, the description JSON contract and provider examples, see the [XStream catalog guide](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md). Union preserves the original description of a renamed public Dataset.
 
 ## Shell
 

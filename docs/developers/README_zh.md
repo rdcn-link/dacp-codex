@@ -1,83 +1,37 @@
-# 开发者指南
+# 服务集成与开发
 
-[English](README.md) · [文档目录](../README_zh.md) · [用户指南](../users/README_zh.md)
+DACP 基于内嵌的 XStream 引擎发布 Dataset，并提供远程 Job 执行。Shell 与 SDK 用法从[用户指南](../users/README_zh.md)开始。
 
-引擎内置 `read_item@1.0` 只负责传输，后端和格式继续由 Dataset/Item 插件提供；流依赖契约见[作业说明](../jobs_zh.md).
+## 集成应用
 
-面向实现算子、Dataset provider、格式处理器、执行器、SDK 或服务端的贡献者。连接节点、浏览数据、配置内置 provider 和运行作业请先阅读用户指南。除非另有说明，命令均从项目根目录执行。
+- [嵌入服务器](../embedded-server_zh.md)：启动、关闭及注入应用数据目录。
+- [Scala 客户端](../../dacp-client-scala/README_zh.md)：远程数据与 Job 调用。
+- [Python 协作客户端](../../dacp-collaboration-client/README_zh.md)及 [Scala 协作客户端](../../dacp-collaboration-client-scala/README_zh.md)：节点协作调用。
+- [安装服务器插件](../plugins_zh.md)：宿主配置与插件生命周期。
 
-目录级扩展和程序内启动见 [DataCatalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)与[嵌入式服务器](../embedded-server_zh.md)。
+## 协议参考
 
-## 架构与扩展点
+- [DACP 协议](../protocol_zh.md)：发现、远程读取及调用者能力。
+- [服务参考](../reference_zh.md)：descriptor、ticket 及配置。
+- [Union 协议](../union_zh.md)：成员信任、子 Job 下发及直连数据流。
+- [认证](../security_zh.md)：角色、凭据与授权检查。
+- [执行历史](../execution-history_zh.md)：服务记录与管理。
 
-核心负责契约、发现与生命周期、传输、授权、命名空间校验、取消和资源管理。插件负责领域行为、私有参数和依赖。新增已有扩展点的实现不应修改核心注册表或客户端；内置与外部插件使用相同的注册契约。
+线协议定义在 [dacp.proto](../../proto/dacp.proto)。`dacp-server` 承担服务入口与授权；客户端实现远程调用；`dacp-union-server` 协调成员。
 
-| 模块 | 职责 |
-|---|---|
-| `dacp-server` | Flight 服务、命名空间、协调与资源生命周期 |
-| `dacp-client`、`dacp-client-scala` | 客户端 API 与 shell |
-| `proto/dacp.proto` | 共享线协议消息 |
+## 数据与执行扩展
 
-## 编写与发布算子
+Dataset 后端、格式、算子、打包、流契约及执行存储实现的指南见 [XStream 开发文档](http://xstream.conoai.cn/docs.html)。DACP 通过服务器配置集成这些插件。
 
-- [算子编写指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)：Scala/Python 完整源码、构建及上传。
-- [原生命令](https://github.com/rdcn-link/xstream-codex/blob/main/docs/native-commands_zh.md)：stdin/stdout 适配、可执行制品与插件配置。
-- [打包与执行器](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging_zh.md)：共享依赖、不可变制品、仓库 schema 与注册。
-- [流契约](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-streams_zh.md)：命名端口、帧、背压、取消和调度边界。
-- [DEBUG 源码](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source_zh.md)：Python/Scala 编译启动契约；不支持 Java 原始源码。
+## 验证修改
 
-算子输出为临时流，不注册结果 Dataset，不提供保存结果模式或输出 TTL。bytes、records、array 和 sequence 采用统一 Arrow 流契约，科学维度保持显式表达。通用流水线调度与 fan-out 尚未实现。
-
-## 接入 XStream 数据扩展
-
-Dataset provider、格式与容器处理器、记录查询语义由 XStream 定义。开发与注册请阅读 [XStream 扩展开发文档](http://xstream.conoai.cn/docs.html)。DACP 管理员负责将插件及依赖安装到 `plugin_directory`，并在节点配置中选择 provider；详见[插件接入](../plugins_zh.md)。
-
-## 开发与验证
-
-DACP 优先采用插件机制扩展。新的数据集后端、文件格式和处理算子应通过实现公开扩展契约并安装插件加入，避免修改核心分发逻辑。内置实现与社区实现应使用相同契约，插件负责自己的参数校验与第三方依赖，客户端通过统一路径和能力访问数据。贡献方式、现有机制与科学数据扩展边界见 [插件贡献指南](../plugins_zh.md)。
-
-从项目根目录运行：
+在仓库根目录运行：
 
 ```bash
 (cd dacp-server && sbt test)
 .venv/bin/python -m pytest -q dacp-client/tests
 (cd dacp-client-scala && sbt test)
+(cd dacp-union-server && sbt test)
 ```
 
-服务启动并设置证书环境变量后，运行 SDK 与安全检查：
-
-```bash
-.venv/bin/python examples/client.py
-.venv/bin/python examples/check_security.py
-```
-
-跨节点容器联调使用 `bash scripts/test-collaboration.sh`，需要 Docker。测试覆盖命名空间、格式读取、归档浏览、SQL 流、schema 校验、授权、流生命周期和任务协作。
-
-协议定义位于 [proto/dacp.proto](../../proto/dacp.proto)，服务端位于 [dacp-server](../../dacp-server)，Python SDK 位于 [dacp-client](../../dacp-client)，Scala SDK 位于 [dacp-client-scala](../../dacp-client-scala)。
-
-
-## 补充契约与联调验证
-
-```bash
-(cd /path/to/xstream-codex/plugins/xstream-plugin-operator-executors && sbt test)
-(cd /path/to/xstream-operator-repository && sbt test)
-```
-
-stage 服务端、构建所需运行时并准备示例证书后，使用 Docker 权限运行 `.venv/bin/python scripts/test-native-execution.py`，验证原生流、部分失败和取消。`scripts/test-source-submission.py` 需要启动 `examples/source-debug.yaml` 中的 DEBUG 服务，验证 Python/Scala heredoc。前置条件与测试端口见脚本及对应指南。
-
-[技术参考](../reference_zh.md)说明传输及配置。测试、示例与中英文文档须同步。公共契约、调用方与示例须使用一致的名称和字段定义。
-
-## 算子审查材料
-
-支持发布可选的源码包、仓库修订版本、许可证声明与文本、构建说明和 SBOM。公开页面提供下载并标注缺失信息。参见[源码与审查信息](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance_zh.md)。
-
-## Union 开发
-
-[Union 协议](../union_zh.md) 定义证书身份、计算授权和直接流。`dacp-union-protocol` 提供共享传输工具，`dacp-server/UnionWorker` 复用插件数据访问及算子执行器，`dacp-union-server` 负责成员轮询、子任务准备和结果转发。运行 `cd dacp-union-server && sbt test` 验证真实 mTLS 的双节点契约。领域分析算子放在 `examples/union/operators`，不修改核心注册表。
-
-普通 Flight 请求、Union 节点子任务和全局作业共用持久化执行记录。生命周期、原子写入及测试见 [执行记录](../execution-history_zh.md)。
-
-
-Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy_zh.md)。
-
-算子仅源码发布：[提交、隔离构建、审核和可信度](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。
+跨节点容器集成使用 `bash scripts/test-collaboration.sh`，需要 Docker 以及脚本规定的证书和运行时。同步维护服务调用者、协议定义、示例及中英文文档。

@@ -117,7 +117,7 @@ outputs:
 
 For an explicitly addressed service, use `uri: dacp://remote.example:18861/weather/observations`. A `context:` URI refers to the DataCatalog bound in the receiving JVM; it is resolved before remote dispatch. Paths address the submission target’s public directory: a node resolves local names, while Union resolves its public names and schedules readers on the owning members. Authors need no internal member addresses.
 
-SQL supports `SELECT *` or a column list, fixed `FROM source`, optional `WHERE` and `LIMIT`. Predicates support `= != <> < <= > >=`, `IN`, `IS NULL`, `IS NOT NULL`, `AND`, `OR`, `NOT` and parentheses. Strings use single quotes (double an embedded quote); double quotes delimit column names. Only single-Item read-only queries are supported: no joins, aggregation, functions, ordering, multiple statements or mutations. SQL lowers to the shared `Scan` contract, executed by the dataset plugin rather than interpolated into database SQL. Plugins may push down supported operations and explicitly reject unsupported capabilities. Data remains batch-streamed, and projected schemas apply to inference and bounded samples.
+For read_item parameters, SQL syntax, supported predicates and inference behavior, see the [XStream Job reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/jobs.md) and [record scan reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/records-scans.md).
 
 Configure remote credentials on nodes that actually execute reads and separately on the designer. The target service’s token is never forwarded to another service; credentials are not Job parameters. Every member eligible to read an external service should have its required credentials.
 

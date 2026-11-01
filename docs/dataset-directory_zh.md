@@ -31,21 +31,9 @@ datasets:
 
 `description` 是包含一个合法 JSON 对象的字符串，必须包含非空字符串 `title` 和字符串 `description`（后者允许为空）。其他字段和嵌套结构由用户定义。它与 provider 的 `source`、`items` 参数分开。静态配置省略时生成 `{"title":"数据集名称","description":""}`。重复 JSON 键会被拒绝。字符串最多 32768 字符；普通文本、数组、标量、非法 JSON、多个 JSON 值和 YAML 映射均会被拒绝。公开描述中不要包含凭据或私有存储配置。完整节点配置仍需要 TLS 等常规字段。
 
-## 开发者：动态目录描述
+## 动态目录
 
-目录插件通过 `DatasetInfo.description` 返回相同的 JSON 字符串：
-
-```scala
-import xstream.data.DatasetInfo
-
-override def list(): Seq[DatasetInfo] = Seq(
-  DatasetInfo("orders", description =
-    """{"title":"Orders","description":"Order data","owner":{"team":"sales"},"fields":["id","amount"],"updated":"daily"}"""
-  )
-)
-```
-
-字符串在公共插件契约处校验，并经 Flight、SDK、Shell 和 Web 原样传递。目录读取不会调用 `open()` 或扫描数据内容；后端目录查询失败必须抛出异常，而不是返回空列表。注册、配置和租约实现见[动态目录插件](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)。
+目录读取不会打开数据流。动态目录的配置、描述 JSON 契约及 provider 示例见 [XStream 数据目录指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)。Union 对重命名的公开 Dataset 保留原始描述。
 
 ## Shell
 

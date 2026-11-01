@@ -36,7 +36,7 @@ Union HTTP 看板的“执行历史”可分页查看 U 的持久化作业、任
 
 ## 开发
 
-共享实现为 `dacp-server/ExecutionHistory.scala`，U 复用相同实现。每次执行开始前写入记录，在状态变化、Union 进度观测与结束时更新。单个 JSON 文档同时包含最新快照和有序状态事件，避免快照与事件分开提交。写入临时文件并同步到磁盘，然后原子替换记录，同步父目录；写入失败会使对应请求失败，不静默禁用记录。目录写锁防止两个实例同时回收对方未完成的执行，CLI 使用只读模式。
+记录存储、原子更新及扩展接口见 [XStream 执行历史 API](https://github.com/rdcn-link/xstream-codex/blob/main/docs/execution-history_zh.md)。
 
 `TaskService` 覆盖普通 Flight Job 与直接 worker 请求；`UnionWorker` 记录节点执行和每项 task；`Coordinator` 记录全局作业。记录标识独立于用户提供的任务名称，因此重复运行同一任务不会覆盖旧记录。终态不会被迟到的运行状态覆盖。当前采用目录扫描、按创建时间排序的分页，适合初期部署；尚无数据库索引、自动归档或远端汇总节点历史的功能。U 持久化的是其观察到的节点状态；每个节点的本地记录保留本地任务状态转换。
 
@@ -44,9 +44,6 @@ Union HTTP 看板的“执行历史”可分页查看 U 的持久化作业、任
 
 Union 看板展示提交的 Job YAML 和数据集、任务、端口依赖及最终输出组成的 DAG 图。看板和只读查询接口公开展示这些信息，历史文件由服务器管理员管理。节点健康信息包含 JVM 进程启动时间 `started_at_ms` 和单调计时的已运行时间 `uptime_ms`；节点不可达时保留上次观测值。未保存脚本的旧记录明确提示脚本不可用。
 
-## 存储扩展
-
-节点和 Union 都支持上述 `execution_store` 映射。`provider` 选择通过 ServiceLoader 注册的 `ExecutionStoreProvider`，实现自行校验私有 `settings`。默认 file 位于 `plugins/xstream-plugin-execution-file`，`ExecutionHistory` 保留状态转换、中断恢复和分页。应用可用 `new ExecutionHistory(store, ownsStore = false)` 保留存储所有权。见[插件注册](plugins_zh.md#内嵌宿主与生命周期)。
 
 ## 看板中的作业与步骤
 

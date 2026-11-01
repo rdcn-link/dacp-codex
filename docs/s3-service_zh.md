@@ -20,7 +20,7 @@ s3:
 
 服务随 `DacpServer.start()` 启动，随 `close()` 关闭；绑定失败会回滚整个节点启动。嵌入式应用通过 `server.s3Port` 获取实际端口。启动日志输出 S3 监听地址；通过 `http://节点主机:S3端口/` 访问。
 
-S3 是只读 HTTPS 端点，使用节点 TLS 证书，与 DACP 共享主体和角色。每个请求（含列表和元数据）需要有效 SigV4 签名以及 reader 或 runner，不支持匿名 S3 访问。DACP Token 与 S3 签名密钥是同一主体的两类独立凭据，可分别撤销。清空主体角色后，两个协议的后续读取均被拒绝，包括预签名 GET 和 Range 请求；已接纳的下载继续。支持预签名 GET 临时分享对象，不支持预签名列表请求。
+S3 使用节点已有的 Dataset 与 Item，不需要另一份后端注册。原始 bytes 优先；纯 records Item 的 JSONL bytes 规则见 [XStream bytes 视图](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access_zh.md)。S3 对象 key 不添加 `.jsonl` 后缀。未知大小的对象使用 HTTP chunked 下载，列表不虚构 Size，HEAD 不提供 Content-Length；依赖已知大小的托管下载工具可能无法处理这类对象。
 
 ## 数据表示与插件
 

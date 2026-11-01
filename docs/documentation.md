@@ -7,7 +7,7 @@ Each topic has one editable source. README files introduce the project, provide 
 | Owner | Canonical content |
 |---|---|
 | dacp-codex | Data services, clients, Union, proxy, security, deployment and integration |
-| xstream-codex | Engine, Job YAML, execution policies, Designer, data SDK and operator development |
+| xstream-codex | Dataset management, data model, formats, Job execution, Designer, operator development, packaging and stream contracts |
 | xstream-operator-repository | Repository APIs, submission review, administration, browsing and runtime catalog |
 | Website repositories | Product presentation, downloads, screenshots, website deployment and demo operation |
 

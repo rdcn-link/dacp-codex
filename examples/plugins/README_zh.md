@@ -14,11 +14,11 @@
 在项目根目录运行：
 
 ```bash
-(cd xstream-execution-api && sbt publishLocal)
+
 (cd examples/plugins && sbt package)
 (cd dacp-server && sbt stage)
-mkdir -p plugins
-cp examples/plugins/target/scala-2.13/dacp-example-plugins_2.13-0.1.0-SNAPSHOT.jar plugins/
+mkdir -p .dacp-plugins
+cp examples/plugins/target/scala-2.13/dacp-example-plugins_2.13-0.1.0-SNAPSHOT.jar .dacp-plugins/
 ```
 
 将以下片段加入完整服务器配置（还需配置监听和 TLS）。相对路径基于服务器工作目录解析；本示例从 `dacp-server/` 启动：

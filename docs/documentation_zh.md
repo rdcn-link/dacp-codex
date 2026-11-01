@@ -7,7 +7,7 @@
 | 所属项目 | 权威内容 |
 |---|---|
 | dacp-codex | 数据服务、客户端、Union、代理、安全、部署和集成 |
-| xstream-codex | 引擎、Job YAML、执行策略、Designer、数据 SDK 和算子开发 |
+| xstream-codex | Dataset 管理、数据模型、格式、Job 执行、Designer、算子开发、打包与流契约 |
 | xstream-operator-repository | 仓库 API、提交审核、管理、浏览和运行环境目录 |
 | 官网项目 | 产品介绍、下载、截图、网站部署和演示环境运维 |
 

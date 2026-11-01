@@ -6,21 +6,9 @@ Job inputs and outputs use `step[:port]`, defaulting to `result`. External data 
 
 For people browsing data, using SDKs, running operators, and configuring DACP nodes with existing plugins. Commands below run from the project root unless stated otherwise. To implement a new backend, format, or operator, use the developer guide.
 
-## Data model
+## Access published data
 
-DACP describes data access through Datasets, Items, and Streams:
-
-| Concept | Meaning | Example |
-|---|---|---|
-| Dataset | A named logical namespace published by a node, combining data from different sources | `dacp://localhost:8815/data1` |
-| Item | A resource with an absolute logical path within a Dataset | `/reports/orders` |
-| `folder` Item | A grouping of child Items; archive and compression folders also offer original file bytes | `/reports`, `/archive` |
-| `data` Item | Readable data with a format and supported views | CSV file, SQL table, image |
-| Stream | The reading interface obtained by opening an Item | Arrow record batches or a byte stream |
-
-A Dataset is a logical namespace and may contain both files and SQL tables. Administrators choose public paths, keeping server file paths and database table names private. Every Item path starts with `/`; the root folder `/` is implicit and does not appear in listings.
-
-**kind** describes whether an Item can contain children, **format** identifies its representation, and **views** describes how to read it. Clients should check views rather than infer record-reading capabilities from filenames.
+Discover Datasets with `datasets`, select one with `use`, then browse or read Items by logical path. Use paths and views advertised by the service; private filesystem paths are not published. For data concepts and format examples, see the [XStream data model](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-model.md).
 
 ## Quick start
 
@@ -180,89 +168,9 @@ libraryDependencies += "io.github.rdcn-link" %% "dacp-client-scala" % "0.1.0"
 
 Use `Source.open`, `Dataset.list`, `Dataset.open`, `asRecords()`, and `asBytes()`, managing resources with `scala.util.Using`. The SDK guide covers complete examples, TLS, timeouts, and Arrow JVM options. The artifact is not yet published to Maven Central.
 
-## Constructing and publishing Datasets
+## Publish data
 
-Datasets are constructed by extensible providers. Three providers are built in, exposing the same `list`, `open`, and `count` APIs to clients:
-
-| provider | Construction | Private source |
-|---|---|---|
-| `directory` | Discovers files, subdirectories, and archives beneath a root | `source.root` |
-| `sqldb` | Publishes tables from one SQL connection under public aliases | `source.connection` |
-| `mixed` | Defines each Item explicitly, combining files, SQL tables, and logical folders | Item `file`, `sql`, and `table` bindings |
-
-```yaml
-datasets:
-  documents:
-    provider: directory
-    source:
-      root: /home/test/dataset1
-    reader_overrides:
-      /events.json: {format: ndjson}
-
-  sales:
-    provider: sqldb
-    source:
-      connection: warehouse
-    tables:
-      /customers: {table: CUSTOMERS}
-
-  research:
-    provider: mixed
-    items:
-      /measurements: {file: /private/results.csv}
-      /customers: {sql: warehouse, table: CUSTOMERS}
-      /empty: {kind: folder}
-
-sources:
-  warehouse:
-    provider: jdbc
-    settings:
-      url: jdbc:h2:../examples/sql/sales
-      user: sa
-      password: ""
-      schema: PUBLIC
-      tables: [CUSTOMERS]
-```
-
-This is a configuration fragment; merge it with listener and TLS settings, and replace example paths and database connections. Relative paths resolve against the server process working directory.
-
-Directory Datasets expose paths relative to their root, such as `/reports/orders.csv`. Empty directories are folders, and supported archives can be browsed further. Subsequent listings reflect additions, deletions, and changes. The root stays private, all symbolic links are ignored, and access remains confined to the root. Optional directory `reader_overrides` override reader format, sheet, header row, and schema; they do not rename paths or add other sources.
-
-SQL Dataset `tables` bind public paths to private tables in the selected connection; tables are not automatically exposed. `mixed` retains explicit mappings and mixed-source flexibility. Every Dataset must explicitly specify `provider`.
-
-The default example provides `data1` and `csv_data` (mixed), plus `documents` (directory). In the shell, use `use documents`, `ls /`, or read `/nested/orders.csv`. See the [SQL example](../../examples/sql/README.md) for a complete SQLDB initialization example. Future sources such as MongoDB can be added through provider JARs without client changes; see the [Dataset provider guide](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers.md).
-
-### Formats and views
-
-| Source | format | kind | views |
-|---|---|---|---|
-| CSV | `csv` | `data` | `records`, `bytes` |
-| NDJSON (`.jsonl`, `.ndjson`) | `ndjson` | `data` | `records`, `bytes` |
-| Ordinary JSON | `json` | `data` | `bytes` |
-| Excel (`.xls`, `.xlsx`) | `excel` | `data` | `records`, `bytes` |
-| Parquet with DACP Arrow schema metadata | `parquet` | `data` | `records`, `bytes` |
-| SQL table | `sql` | `data` | `records`, `bytes` |
-| ZIP | `zip` | `folder` | `bytes` |
-| TAR | `tar` | `folder` | `bytes` |
-| GZIP (`.gz`) | `gzip` | `folder` | `bytes` |
-| Compressed TAR (`.tar.gz`, `.tgz`) | `tar-gzip` | `folder` | `bytes` |
-| Other files | `bin` | `data` | `bytes` |
-
-Detection supports explicit `format` settings, signatures, and case-insensitive extensions, recognizing compound suffixes such as `.tar.gz` first and falling back to binary for unknown formats. Set `format: ndjson` for `.json` files containing one object per line to enable records. Excel supports sheet selection, header rows, and explicit schemas.
-
-Browse ZIP, TAR, and compressed TAR entries through paths such as `/archive/reports/orders.csv`; opening the folder's bytes view reads the original archive. Plain GZIP exposes one decompressed child, such as `/orders.csv.gz/orders.csv`. Its name comes from the public alias, never a private filename; aliases without a `.gz` suffix use the child name `content`.
-
-ZIP listings read the directory index. TAR requires a sequential scan, and `.tar.gz` / `.tgz` also requires decompression, so initial listings and reads can be slow for large archives. Reading stages only the requested entry into a temporary file. Nested containers are not expanded; `.bz2`, `.xz`, and `.zst` currently remain ordinary binary data.
-
-See the [technical reference](../reference.md) for format details, Excel behavior, archive limits, and schema rules, and [format extensions](https://github.com/rdcn-link/xstream-codex/blob/main/docs/format-handlers.md) for third-party handler development.
-
-### Metadata and counting
-
-Items may carry modification time, byte size, and an exact record count. Unknown values differ from `0`. All three properties remain unknown for every folder; computing them never traverses children.
-
-The example server enables `count_file_records_on_startup: true`: mixed file mappings and initially discovered directory record files such as CSV, NDJSON, and Excel are counted once when published, so `/events` and `/reports/orders` show `2` in Records. This option defaults to off; enabling it increases startup time, and counting failures fail startup. SQL, archive children, and all folders are excluded from startup counting. Newly discovered directory files do not trigger counting during browsing; query explicitly or restart to populate them.
-
-Ordinary browsing does not scan files for counts or execute SQL `COUNT(*)`. Saved file counts become unknown when size or modification time changes. Restart to repopulate them, or use `count` to request the latest value explicitly; explicit requests do not update saved listing counts. Parquet can still obtain counts from its footer. Metadata is not an atomic snapshot with subsequent reads.
+See the [administrator guide](../administrators/README.md) for the listener, TLS, credentials and catalog publication settings. Configure backends using the [XStream Dataset guide](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers.md) and reader options using the [file format reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/file-formats.md). For a complete SQL publication example, see the [SQL example](../../examples/sql/README.md).
 
 ## Collaboration and steps
 
@@ -277,17 +185,7 @@ sbt 'run ../examples/server.yaml'
 
 In a connected shell started from the project root, run the complete weather workflow in the [current operator catalog](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-catalog.md), or select a weather dataset and run `run piflow_csv_parser@1.0 --input source=/observations --view bytes`. The shell waits and prints results incrementally; Ctrl-C cancels execution.
 
-Further reading:
-
-- [Two-node example](../../examples/multi-node/README.md): step placement, remote inputs, and consuming outputs.
-- [Scala operator repository and website](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing.md): public search, version details, downloads, and immutable operator publication.
-- [Write and upload custom operators](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md): complete Scala/Python source, packaging, publication, remote transfer, and execution.
-- [Step and operator reference](../reference.md#step-execution-and-operators): DAGs, container input/output contracts, and conversion parameters.
-
-From the independent operator repository checkout, start the service using `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820`, publish operators through source submission and approval, then open `http://localhost:8820/` to search, view, and download operators without signing in. See the repository guide for HTTPS deployment.
-
-Operators share dependency environments and small code packages. The independent repository accepts source only, builds JVM JARs or Python bytecode ZIPs, and publishes after review. Runtime and package artifacts are verified and cached by SHA-256. Operator development and deployment belong to the XStream documentation; DACP users configure repository URLs and consume approved versions.
-
+See [remote Job submission](../jobs.md) for execution commands and [XStream operator development](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring.md) for authoring.
 
 `run` and `submit` print `Execution time: 1.234 s` after completion, failure or cancellation. This is elapsed time measured by the shell from submission through closing the result stream, including connection, runtime preparation, execution, transfer, display and client cleanup. It excludes heredoc entry time and is not server step CPU time. Multi-step jobs print one total for the whole job.
 
@@ -312,19 +210,7 @@ At startup, DEBUG logs from `dacp.Main` print the count of `remote_operator_libr
 
 This logging level is independent of the `mode: DEBUG` source-submission setting. Enabling DEBUG logs does not enable source execution.
 
-## Inspect local runtimes
 
-The shell currently has no `runtimes` command, and the server has no runtime discovery endpoint. On the server host, list installed Docker images with:
-
-```bash
-docker image ls
-```
-
-IDs accepted by `run --runtime` come from `source_runtimes` in the server configuration, such as `python@1.0` and `scala@1.0` in `examples/source-debug.yaml`. Installed Docker images are not the same list as configured source runtimes. Ordinary repository operators select their runtime through their definitions or manifests.
-
-## Operator review evidence
-
-Publish optional source archives, repository revisions, license declarations/text, build instructions and SBOMs. Public pages show downloads and missing information. See [source and review information](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance.md).
 
 ## Union collaboration jobs
 

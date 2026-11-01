@@ -8,7 +8,7 @@ DACP provides data access and collaborative computation across nodes. Servers pu
 
 DACP is powered by the **XStream streaming engine**. Publish datasets, access typed data streams and execute stream-connected processing steps on a single node. Use Union to combine data and computation across nodes, with authentication, cancellation and configurable execution policies.
 
-For the data model, transport, trust, and collaboration contracts of DACP (Data Access and Collaboration Protocol), see the [protocol overview](docs/protocol.md).
+For remote access, transport, trust and collaboration contracts of DACP (Data Access and Collaboration Protocol), see the [protocol overview](docs/protocol.md).
 
 [DataCatalog plugins](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md) can supply Dataset identities dynamically; Scala/JVM applications can host nodes through the [DacpServer API](docs/embedded-server.md).
 

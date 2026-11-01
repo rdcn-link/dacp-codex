@@ -11,14 +11,14 @@ This project compiles against `xstream-execution-api` only. It does not depend o
 
 The small example reads its text in memory; production handlers should use bounded streaming for large content.
 
-From the repository root:
+Install the XStream development artifacts with `scripts/bootstrap-local.sh` from the XStream checkout first. Then, from the DACP repository root:
 
 ```bash
-(cd xstream-execution-api && sbt publishLocal)
+
 (cd examples/plugins && sbt package)
 (cd dacp-server && sbt stage)
-mkdir -p plugins
-cp examples/plugins/target/scala-2.13/dacp-example-plugins_2.13-0.1.0-SNAPSHOT.jar plugins/
+mkdir -p .dacp-plugins
+cp examples/plugins/target/scala-2.13/dacp-example-plugins_2.13-0.1.0-SNAPSHOT.jar .dacp-plugins/
 ```
 
 Add this fragment to a complete server configuration (including listener and TLS settings). Relative paths resolve against the server working directory; this example starts from `dacp-server/`:
@@ -56,4 +56,4 @@ The server's [PluginSpec](../../dacp-server/src/test/scala/dacp/PluginSpec.scala
 
 The dynamic catalog example `example.JdbcCatalogProvider` registers through `META-INF/services/xstream.data.DataCatalogProvider`, queries database registry tables, and constructs Datasets on demand. After building this project, install its JAR and the JDBC driver in the plugin directory. See the [DataCatalog guide](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md) for configuration and table definitions.
 
-Once published by a node, `/summary` also receives an automatic JSONL `bytes` view. With `message: hello`, its bytes are `{"characters":5}` followed by a newline; the plugin still implements only records. See the [common view rules](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access.md#common-jsonl-bytes-view).
+Once published by a node, `/summary` also receives an automatic JSONL `bytes` view. With `message: hello`, its bytes are `{"characters":5}` followed by a newline; the plugin still implements only records. See the [common view rules](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access.md#derived-jsonl-bytes).

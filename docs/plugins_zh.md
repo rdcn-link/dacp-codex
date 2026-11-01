@@ -1,6 +1,6 @@
 # DACP 插件接入
 
-数据后端、格式与容器处理器、目录、算子执行器及执行存储由 XStream 提供。实现契约、注册与开发测试见 [XStream 插件指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/plugins_zh.md)。DACP 负责服务接入、授权和宿主资源管理，不重复定义这些契约。
+在 DACP 服务器中安装并启用数据或执行插件。插件开发、注册契约及示例见 [XStream 插件指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/plugins_zh.md)。
 
 ## 安装与配置
 

@@ -1,6 +1,6 @@
 # DACP plugin integration
 
-XStream owns data backends, format and container handlers, catalogs, operator executors and execution stores. See [XStream plugins](https://github.com/rdcn-link/xstream-codex/blob/main/docs/plugins.md) for implementation contracts, registration and development tests. DACP owns service integration, authorization and host resource management, without redefining those contracts.
+Install and enable data or execution plugins in a DACP server. For implementation contracts, registration and examples, use the [XStream plugin guide](https://github.com/rdcn-link/xstream-codex/blob/main/docs/plugins.md).
 
 ## Installation and configuration
 

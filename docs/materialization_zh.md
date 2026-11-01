@@ -1,10 +1,6 @@
-# 执行策略、输出物化与重放
+# 提交执行策略与请求重放
 
-[English](materialization.md)
-
-执行策略同时用于通过 Python 或 Scala 客户端提交的单机 DACP Server 任务和 Union 协作工作流。业务任务文件定义算子、输入输出、依赖及执行节点；独立的执行策略 YAML 控制哪些**已连接的输出端口**物化。
-
-默认仍是直接流处理，不保存输出。`materialize` 表示在产出节点边传输边保存类型化 Arrow IPC File 分段，保留 bytes、records 和科学视图的 schema、字典及批次边界。它不创建 Dataset，不把跨节点数据中转到 Union，不包含算子内部状态 checkpoint。
+此页说明如何向 DACP 节点或 Union 提交策略、处理失败尝试，并请求重放。策略字段、物化提交规则及存储插件契约见 [XStream 执行策略参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/materialization_zh.md)。默认使用直接流传输。
 
 ## 管理员：启用节点存储
 
@@ -26,40 +22,9 @@ union:
 
 `directory` 是节点私有路径，不能由任务提交者指定。文件存储插件随标准发行包提供，位于 `plugins/xstream-plugin-execution-file`。省略 `materialization_store` 时，该节点拒绝需要物化或重放的任务。Union 先 prepare 全部节点，再启动任何步骤，因此不支持存储会导致准备失败，而非静默降级。
 
-文件插件必须提供 `directory`；其余三个设置默认为上述值，且须为正整数。`max_bytes` 限制整个目录的受管理数据，`max_task_bytes` 限制单个任务的所有选定输出，两者包含 Arrow 文件和清单开销；配额不足使执行失败，清理未提交数据。物化保留时间与内存会话的 `union.retention_seconds` 相互独立。到期数据不能被新执行获取；正在使用的租约关闭后才删除文件。存储目录只允许一个写入服务，启动时清理未提交临时目录。
+## 随 Job 提交策略
 
-只有算子成功、输入完整消费且所有选定输出均完整时，任务的全部选定端口才原子提交。提交前不可重放；取消、失败和配额错误会废弃未提交数据。已成功提交的上游输出不因下游失败而删除。文件插件同步文件并原子发布清单，通过长度和 SHA-256 检查拒绝截断或损坏的重放数据。
-
-## 用户：独立策略 YAML
-
-例如 `execution-policy.yaml`：
-
-```yaml
-max_retries: 0
-materialization:
-  allowed: true
-  default: stream
-  steps:
-    ta:
-      outputs:
-        result: materialize
-```
-
-- `allowed` 默认 `true`，只表示允许，不会自动开启物化。
-- `default` 默认 `stream`；可设为 `materialize`，为所有已连接输出开启物化。
-- `steps.<任务 id>.outputs.<端口>` 可覆盖默认值，值为 `stream` 或 `materialize`。这里的任务 id 是步骤标识，不是服务器名。
-- 省略策略等同于直接流处理；不存在风险判断后自动物化。
-- 未知字段、类型错误、不存在的步骤、未连接的端口、非法取值及策略冲突在提交时拒绝。不为未连接的算子端口额外创建消费者。
-
-全局禁止引擎保存结果流：
-
-```yaml
-materialization:
-  allowed: false
-  default: stream
-```
-
-此时任何物化默认值或步骤覆盖都会报错，即使某个覆盖最终未被执行。该约束不等于禁止算子自身文件写入、格式处理临时文件、日志或执行元数据。策略不能扩大节点的算子、输入前缀、容量和身份授权。
+将策略保存为 `execution-policy.yaml`，通过 Shell 的 `submit workflow.yaml --policy execution-policy.yaml` 或 SDK 提交。客户端传送策略内容，服务器无需读取客户端文件。
 
 Python：
 
@@ -116,7 +81,7 @@ with union.replay(job_id, steps=['ta']) as replay:
 
 ## 自动重试次数与总超时
 
-顶层 `max_retries` 是 0–10 的整数，默认 `0`；`2` 表示首次执行之后最多再试两次。`timeout_seconds` 是 1–86400 的整数，覆盖整个任务的执行、资源等待和所有重试；省略时使用服务器的 `execution_timeout_seconds`，提交值不能超过服务器上限。Union 下各节点还可执行更小的本地时限。
+重试次数和总超时使用 XStream 策略字段；服务器会实施自己的超时上限，Union 成员还可能设置更小的本地上限。
 
 ```yaml
 max_retries: 2
@@ -200,7 +165,7 @@ replay EXECUTION_ID
 
 Shell 显示执行 ID，重试前明确标记上一轮输出作废并重置显示状态。已经打印的终端文字仍保留作为尝试记录，不能把整段终端输出当作最终结果文件。最终输出需要物化时，在任务文件的 `outputs` 中声明端口，再通过 `submit` 提交。
 
-## 开发者：Flight 协议与存储插件
+## 远程协议参考
 
 沿用 Arrow Flight TLS / Token，无 HTTP 写接口。Action 名均加 `dacp.union.` 前缀：
 
@@ -214,8 +179,6 @@ Shell 显示执行 ID，重试前明确标记上一轮输出作废并重置显�
 
 节点 `prepare` 的各任务增加 `materialize: ["result"]` 以及可选 `replay_from: "源执行 ID"`。准备阶段验证所有重放输出存在，并持有租约；重放数据继续使用新的执行 ID 与原消费者证书绑定，不直接向客户端暴露磁盘路径。
 
-公共契约在 `xstream-execution-api`：`MaterializationStoreProvider`、`MaterializationStore`、`MaterializationWriter`、`MaterializedTask` 和 `MaterializedFrames`。外部实现通过 `META-INF/services/xstream.execution.MaterializationStoreProvider` 注册提供者类，将 JAR 与依赖安装到节点 `plugin_directory`，并将 `provider` 设置为其 `id`，无须修改核心注册表。
-
-插件负责私有配置、配额、过期清理、原子任务提交、持久化、租约与读取完整性；核心负责授权、策略校验、帧协议、取消及运行资源。`append(port, OperatorFrame)` 接收类型化帧，重放返回 `MaterializedFrames`。帧头上限 64 KiB，载荷上限 8 MiB；插件不得缓存整个任务。文件插件先写零行 Arrow File 分段，再写独立的数据分段，清单记录有序文件名、大小及校验和。append 失败后禁止提交。关闭未提交 writer 必须中止，提交后才可 `get`，到期后不可新建租约；清理不得破坏现有租约。新实现应通过发现、提交/中止、重启读取、配额、过期/租约、截断/损坏和关闭清理契约测试；参考 `MaterializationSpec` 及跨节点 `UnionSpec`。
+存储扩展的接口、ServiceLoader 注册及契约测试见 [XStream 执行策略参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/materialization_zh.md)。
 
 单机 Flight DoExchange 的 `OperatorRequest` 增加 `execution_policy_yaml`（YAML 字节）、`retry_aware`（布尔值）与 `replay_from`（原执行 ID，此时 `job_yaml` 必须为空）。结果流首先发送 `execution` 元数据帧（包含 `execution_id`），随后输出帧也包含该 ID。两种传输在下一次尝试前均发送 `attempt_failed` 元数据，包含 `attempt_id`、`next_attempt_id`、`retry_count` 和 `message`。Union 的结果 ticket 通过 `retry_aware: true` 声明接收能力。

@@ -36,7 +36,7 @@ On restart, unfinished records become `interrupted`, with `interruption_detected
 
 ## Developers
 
-The shared implementation is `dacp-server/ExecutionHistory.scala`, reused by U. A record is written before execution, then updated on state transitions, Union progress observations, and completion. A single JSON document contains both its latest snapshot and ordered state events, avoiding separate commits. A temporary file is synchronized to disk, atomically replaces the record, and its parent directory is synchronized. Write failures fail the associated request rather than silently disabling recording. A directory writer lock prevents two instances from recovering each other's active executions; the CLI opens history read-only.
+For record storage, atomic updates and extension interfaces, see the [XStream execution history API](https://github.com/rdcn-link/xstream-codex/blob/main/docs/execution-history.md).
 
 `TaskService` covers ordinary Flight Jobs and direct worker requests; `UnionWorker` records node executions and each step; `Coordinator` records global jobs. Record IDs are independent of user step names, so repeated runs never overwrite previous records. Late running-state updates cannot replace terminal outcomes. Pagination currently scans the directory and sorts by creation time, suitable for initial deployments. Database indexing, automatic archival, and remote aggregation of node history are unavailable. U persists its observed node status; each node's local history retains local step transitions.
 
@@ -44,9 +44,6 @@ Validate with `cd dacp-server && sbt test` and `cd dacp-union-server && sbt test
 
 The Union dashboard displays the submitted Job YAML and a DAG of datasets, steps, port dependencies and final outputs. Union history retains the complete submitted Job YAML (including parameters) for this view; nodes also retain local Job scripts or dispatched subjob definitions. The public read-only dashboard and query APIs expose this information; server administrators manage the history files. Node health reports include JVM process start time (`started_at_ms`) and monotonic uptime (`uptime_ms`); unreachable nodes retain their last observation. Older records without saved source display an explicit unavailable message.
 
-## Storage extension
-
-Both nodes and Union accept the `execution_store` mapping above. `provider` selects a ServiceLoader-registered `ExecutionStoreProvider`; the implementation validates private `settings`. The default `file` implementation is in `plugins/xstream-plugin-execution-file`; `ExecutionHistory` retains state transitions, interrupted-execution recovery and pagination. Applications can construct `new ExecutionHistory(store, ownsStore = false)` to retain ownership. See [plugin registration](plugins.md#embedded-hosts-and-lifecycle).
 
 ## Jobs and steps in the dashboard
 

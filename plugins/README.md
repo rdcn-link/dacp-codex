@@ -1,52 +1,10 @@
-# DACP plugin integration
+# Use plugins in DACP
 
-[中文](README_zh.md)
+The standard distribution bundles its data readers and execution plugins. Install additional plugins into the server configuration’s `plugin_directory`, then restart.
 
-Plugin implementations, including `xstream-plugin-execution-file`, are owned by XStream. This directory documents their integration into DACP. Data backends, formats, archives, catalogs and operator launch implementations are maintained in XStream and consumed as versioned artifacts. They register through `META-INF/services/` inside their JARs and do not depend on `dacp-server`. They use the same discovery mechanism as contributed plugins; core registries do not enumerate built-in classes.
+- [Server plugin installation and lifecycle](../docs/plugins.md)
+- [DACP integration example](../examples/plugins/README.md)
+- [XStream plugin development and registration](https://github.com/rdcn-link/xstream-codex/blob/main/docs/plugins.md)
+- [XStream data implementations and dependencies](https://github.com/rdcn-link/xstream-codex/blob/main/xstream-data/README.md)
 
-| Module | Implementations and registration IDs | Implementation-specific dependencies |
-|---|---|---|
-| `xstream-data-files` | `DatasetProvider`: `directory`, `sqldb`, `mixed`; file/JDBC reading and mixed namespaces | H2 and PostgreSQL JDBC drivers |
-| `xstream-data-formats-basic` | `FormatHandler`: `csv`, `ndjson`, `json`, `bin` | Apache Commons CSV |
-| `xstream-data-parquet` | `FormatHandler`: `parquet`, including scan pushdown | Parquet and Hadoop |
-| `xstream-data-excel` | `FormatHandler`: `excel` | Apache POI |
-| `xstream-data-archives` | `ContainerReader`: `zip`, `gzip`, `tar`, `tar-gzip` | Apache Commons Compress |
-| `xstream-data-catalog-static` | `DataCatalogProvider`: `static` | No additional dependencies |
-| `xstream-plugin-operator-executors` | `OperatorExecutor`: `container`, `jvm`, `python`, `command` | No additional dependencies |
-| `xstream-data-mounted` | `DatasetProvider`: `mounted`; generic namespace composition | No additional dependencies |
-| `xstream-plugin-execution-file` | `ExecutionStoreProvider`, `MaterializationStoreProvider`: `file`; atomic execution metadata and output materialization with quotas, expiry, and integrity validation | No additional dependencies |
-
-File, JDBC, and mixed providers share alias and directory implementation in one Dataset plugin. Format readers are packaged independently; the Dataset plugin does not depend on POI, Parquet, or archive implementation classes. JSON provides original bytes by default; NDJSON provides records. Operator programs and shared runtimes remain in `operators/`, `examples/operators/`,; they execute in containers rather than loading into the server as plugins.
-
-## Build and run
-
-From the repository root:
-
-```bash
-(cd /path/to/xstream-codex/xstream-data/xstream-data-files && sbt package)
-(cd /path/to/xstream-codex/xstream-data/xstream-data-excel && sbt package)
-(cd /path/to/xstream-codex/plugins/xstream-plugin-operator-executors && sbt test)
-(cd dacp-server && sbt test 'Universal / stage')
-```
-
-Server compilation depends only on the public API and core modules such as the protocol. The standard distribution includes these plugins and their dependencies through runtime dependencies. Both `sbt run` and packaged launchers provide bundled capabilities without copying built-ins into the installation directory. Server integration tests verify real Flight access, aliases, records/bytes, scans, cleanup, and cancellation.
-
-Third-party data plugins compile against `xstream-data-core` as `Provided`; execution extensions use `xstream-execution-api`. Put plugin JARs and private dependencies not already supplied by the server directly into the installation directory, then restart. For example:
-
-```yaml
-plugin_directory: ../.dacp-plugins
-datasets:
-  files:
-    provider: directory
-    source: {root: /srv/data}
-```
-
-`plugins/` is a version-controlled source directory; `.dacp-plugins/` is the Git-ignored local installation directory. The server does not recursively scan the source tree. Do not install duplicate copies of plugin IDs already bundled with the distribution. Catalogs, backends, formats, archives, and launchers register in `xstream.data.DataCatalogProvider`, `xstream.data.DatasetProvider`, `xstream.data.FormatHandler`, `xstream.data.ContainerReader`, and `xstream.execution.OperatorExecutor` respectively.
-
-## Architecture and extensions
-
-XStream data modules supply data contracts, parsing, typed views, codecs and plugin discovery; `xstream-execution-api` supplies service integration and execution contracts. `dacp-server` retains Flight, authorization, and request/step lifecycles. Core `sources` entries contain only provider/settings; the Dataset plugin validates JDBC settings and implements connections, queries and type mapping. NetCDF, FITS and FASTA parsing and scientific view codecs are implemented by XStream data plugins; do not confuse file-format support with planned remote-backend integrations such as MongoDB or S3-backed catalogs.
-
-Adding a plugin for an existing extension point requires only registration, installation, and configuration, without core or client changes. See [the plugin guide](../docs/plugins.md), [Dataset/Item access](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access.md), [independent contributor examples](../examples/plugins/README.md), and [executor documentation](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-operator-executors/README.md).
-
-[Output materialization configuration and plugin contracts](../docs/materialization.md).
+This source directory contains integration documentation; use a separate path such as `.dacp-plugins/` for local plugin installation.

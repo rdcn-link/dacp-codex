@@ -8,7 +8,7 @@ DACP 提供数据访问与跨节点协作计算。服务器以 Dataset / Item �
 
 DACP 基于 **XStream 流式执行引擎**，支持在单个节点发布数据集、访问类型化数据流及执行流连接的处理步骤，也可通过 Union 跨节点组织数据与计算，并提供认证、取消和可配置的执行策略。
 
-DACP（Data Access and Collaboration Protocol，数据访问与协作协议）的数据模型、传输、信任和协作约定见[协议说明](docs/protocol_zh.md)。
+DACP（Data Access and Collaboration Protocol，数据访问与协作协议）的远程访问、传输、信任和协作约定见[协议说明](docs/protocol_zh.md)。
 
 Dataset 列表可由 [DataCatalog 插件](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)动态提供；Scala/JVM 应用可通过 [DacpServer API](docs/embedded-server_zh.md)直接启动节点。
 

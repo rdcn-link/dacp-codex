@@ -6,21 +6,9 @@ Job 的输入和最终输出使用 `step[:port]`，端口缺省为 `result`；�
 
 面向浏览数据、使用 SDK、执行算子，以及使用已有插件配置 DACP 节点的用户。除非另有说明，命令均从项目根目录执行。实现新后端、格式或算子请阅读开发者指南。
 
-## 数据模型
+## 访问已发布的数据
 
-DACP 用 Dataset、Item 和 Stream 描述数据访问：
-
-| 概念 | 含义 | 示例 |
-|---|---|---|
-| Dataset | 节点发布的命名逻辑空间，可组合不同来源的数据 | `dacp://localhost:8815/data1` |
-| Item | Dataset 内具有绝对逻辑路径的资源 | `/reports/orders` |
-| `folder` Item | 包含子 Item 的集合；归档和压缩集合还提供原始文件的 bytes 视图 | `/reports`、`/archive` |
-| `data` Item | 可读取的数据，具有格式和支持的视图 | CSV 文件、SQL 表、图片 |
-| Stream | 打开 Item 后取得的读取接口 | Arrow 记录批次或字节流 |
-
-Dataset 是逻辑空间，可以同时包含文件和 SQL 表。公开路径由管理员配置，不暴露服务器文件路径或数据库表名。所有 Item 路径从 `/` 开始；根集合 `/` 是隐式的，不出现在清单中。
-
-**kind** 表示 Item 是否可包含子项，**format** 表示数据格式，**views** 表示读取能力。客户端应检查 views，而不是根据文件名判断能否读取记录。
+用 `datasets` 发现数据集，用 `use` 选择数据集，再以 Item 的逻辑路径列举或读取。路径及可用视图以服务器返回的信息为准；底层文件路径不会公开。数据概念和格式示例见 [XStream 数据模型](https://github.com/rdcn-link/xstream-codex/blob/main/docs/data-model_zh.md)。
 
 ## 快速开始
 
@@ -180,89 +168,9 @@ libraryDependencies += "io.github.rdcn-link" %% "dacp-client-scala" % "0.1.0"
 
 使用 `Source.open`、`Dataset.list`、`Dataset.open`、`asRecords()` 和 `asBytes()`，通过 `scala.util.Using` 管理资源。SDK 文档提供完整示例、TLS 配置、超时及 Arrow JVM 参数；构件尚未发布到 Maven Central。
 
-## 构建与发布 Dataset
+## 发布数据
 
-Dataset 由可扩展的 provider 构建。内置三种方式，对客户端提供相同的 `list`、`open` 和 `count`：
-
-| provider | 构建方式 | 私有来源 |
-|---|---|---|
-| `directory` | 自动发现根目录中的文件、子目录和归档 | `source.root` |
-| `sqldb` | 从一个 SQL 连接发布具有公开别名的表 | `source.connection` |
-| `mixed` | 逐个定义 Item，可组合文件、SQL 表及逻辑集合 | Item 的 `file`、`sql`、`table` |
-
-```yaml
-datasets:
-  documents:
-    provider: directory
-    source:
-      root: /home/test/dataset1
-    reader_overrides:
-      /events.json: {format: ndjson}
-
-  sales:
-    provider: sqldb
-    source:
-      connection: warehouse
-    tables:
-      /customers: {table: CUSTOMERS}
-
-  research:
-    provider: mixed
-    items:
-      /measurements: {file: /private/results.csv}
-      /customers: {sql: warehouse, table: CUSTOMERS}
-      /empty: {kind: folder}
-
-sources:
-  warehouse:
-    provider: jdbc
-    settings:
-      url: jdbc:h2:../examples/sql/sales
-      user: sa
-      password: ""
-      schema: PUBLIC
-      tables: [CUSTOMERS]
-```
-
-这是配置片段，需与监听地址和 TLS合并，并替换示例路径及数据库连接。相对路径以服务进程工作目录为基准。
-
-目录 Dataset 将根目录内的相对路径作为公开逻辑路径，例如 `/reports/orders.csv`；空目录也是 folder，受支持的归档可继续浏览。后续列举会反映文件新增、删除和修改。根目录保持私有，所有符号链接均忽略；不会访问根目录之外的数据。目录的 `reader_overrides` 是可选读取选项覆盖，支持格式、工作表、表头行和 schema，不用于重命名或额外添加来源。
-
-SQL Dataset 的 `tables` 将公开路径绑定到选定连接的私有表名，不自动暴露所有表。`mixed` 保留逐项映射和混合来源的灵活性。每个 Dataset 必须显式指定 `provider`。
-
-默认示例同时提供 `data1`、`csv_data`（mixed）和 `documents`（directory）。在 shell 中执行 `use documents`、`ls /`，或读取 `/nested/orders.csv`。SQLDB 的完整初始化示例见 [SQL 示例](../../examples/sql/README_zh.md)。添加 MongoDB 等新来源时，可通过 provider JAR 扩展，无需修改客户端；开发接口见 [Dataset provider 指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers_zh.md)。
-
-### 格式与视图
-
-| 来源 | format | kind | views |
-|---|---|---|---|
-| CSV | `csv` | `data` | `records`, `bytes` |
-| NDJSON（`.jsonl`、`.ndjson`） | `ndjson` | `data` | `records`, `bytes` |
-| 普通 JSON | `json` | `data` | `bytes` |
-| Excel（`.xls`、`.xlsx`） | `excel` | `data` | `records`, `bytes` |
-| 带 DACP Arrow schema 元数据的 Parquet | `parquet` | `data` | `records`, `bytes` |
-| SQL 表 | `sql` | `data` | `records`, `bytes` |
-| ZIP | `zip` | `folder` | `bytes` |
-| TAR | `tar` | `folder` | `bytes` |
-| GZIP（`.gz`） | `gzip` | `folder` | `bytes` |
-| 压缩 TAR（`.tar.gz`、`.tgz`） | `tar-gzip` | `folder` | `bytes` |
-| 其他文件 | `bin` | `data` | `bytes` |
-
-格式检测支持显式 `format`、文件签名和不区分大小写的扩展名，优先识别 `.tar.gz` 等组合后缀；未知格式回退为二进制。按行存储对象的 `.json` 文件可用 `format: ndjson` 启用记录读取。Excel 支持指定工作表、表头行及显式 schema。
-
-ZIP、TAR、压缩 TAR 的子项可按 `/archive/reports/orders.csv` 浏览和读取；打开集合的 bytes 视图读取原始归档。普通 GZIP 提供一个解压后的子项，例如 `/orders.csv.gz/orders.csv`，其名称来自公开别名，不使用私有文件名。别名不以 `.gz` 结尾时，子项名为 `content`。
-
-ZIP 列举只读取目录索引；TAR 需要顺序扫描，`.tar.gz` / `.tgz` 还需要解压，因此大归档的首次列举和读取可能较慢。读取条目时只将所需条目暂存到临时文件。嵌套归档暂不展开；`.bz2`、`.xz` 和 `.zst` 目前仍作为普通二进制数据读取。
-
-格式细节、Excel 行为、归档限制和 schema 规则见 [技术参考](../reference_zh.md)，第三方处理器开发见 [格式扩展](https://github.com/rdcn-link/xstream-codex/blob/main/docs/format-handlers_zh.md)。
-
-### 元数据与计数
-
-Item 可携带修改时间、字节大小和精确记录数。未知值与 `0` 不同；所有 folder 的这三个属性始终为未知，不遍历子项来计算。
-
-示例服务启用了 `count_file_records_on_startup: true`：在发布时对 mixed 文件映射及目录初次发现的 CSV、NDJSON、Excel 等记录文件计算一次精确记录数，因此 `/events` 和 `/reports/orders` 的 Records 显示为 `2`。此选项默认关闭；启用后会增加启动时间，计数失败会使启动失败。SQL、归档子项和所有 folder 不参与启动计数。目录中新发现的文件不会在浏览时触发计数，可显式查询或重启后填充。
-
-普通浏览不扫描文件计数，也不执行 SQL `COUNT(*)`。已保存的文件计数在大小或修改时间变化后回到未知；重启可重新填充，也可用 `count` 显式查询最新数量，但显式查询不更新已保存的列表计数。Parquet 仍可从 footer 获取记录数。元数据与之后读取的内容不构成原子快照。
+发布节点的监听、TLS、凭据及目录配置见[管理员指南](../administrators/README_zh.md)。Dataset 后端配置和文件读取参数见 [XStream Dataset 指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers_zh.md)及[文件格式参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/file-formats_zh.md)。完整 SQL 发布示例见 [SQL 示例](../../examples/sql/README_zh.md)。
 
 ## 数据协作与任务
 
@@ -282,7 +190,7 @@ sbt 'run ../examples/server.yaml'
 - [双节点示例](../../examples/multi-node/README_zh.md)：任务放置、远端输入及输出消费。
 - [Scala 算子仓库与网站](https://github.com/rdcn-link/xstream-operator-repository/blob/main/docs/browsing_zh.md)：公共搜索、版本详情、下载与不可变算子发布。
 - [自定义算子编写与上传](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-authoring_zh.md)：Scala/Python 完整源码、构建、发布、远程上传和任务执行。
-- [任务与算子参考](../reference_zh.md#任务执行与算子)：DAG、容器输入输出契约和转换参数。
+- [任务与算子参考](../jobs_zh.md)：DAG、容器输入输出契约和转换参数。
 
 在独立算子仓库项目目录中，使用 `scripts/setup-operator-repository.sh --host 0.0.0.0 --port 8820` 启动空仓库，通过源码提交与审批发布算子后，打开 `http://localhost:8820/`，无需登录即可搜索、查看和下载算子。HTTPS 部署参见仓库指南。
 
@@ -312,19 +220,7 @@ DEBUG 模式下可通过 `run --runtime python@1.0 --input source=/orders <<END`
 
 这是日志级别设置，与允许提交源码的 `mode: DEBUG` 独立。启用 DEBUG 日志不会开放源码执行。
 
-## 查看本机运行时
 
-目前 shell 没有 `runtimes` 命令，服务端也没有运行时发现接口。在服务器宿主机执行以下命令可列出 Docker 中已安装的镜像：
-
-```bash
-docker image ls
-```
-
-`run --runtime` 可使用的 ID 来自服务端配置中的 `source_runtimes`，例如 `examples/source-debug.yaml` 中的 `python@1.0` 与 `scala@1.0`。Docker 镜像列表不等于已配置的源码运行时列表；普通仓库算子的运行时则由各算子定义或 manifest 指定。
-
-## 算子审查材料
-
-支持发布可选的源码包、仓库修订版本、许可证声明与文本、构建说明和 SBOM。公开页面提供下载并标注缺失信息。参见[源码与审查信息](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-provenance_zh.md)。
 
 ## Union 协作作业
 
