@@ -25,7 +25,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | GetFlightInfo `[datasets, dataset, /logical/item]` | Arrow schema + 含 protobuf `Ticket` 的 FlightEndpoint |
 | DoGet `Ticket(dataset,item,view)` | `view=records` 为记录，`view=bytes` 为单列 binary（原始文件字节） |
 
-记录视图支持 CSV、NDJSON、Excel、SQL 和 dacp 生成的 Parquet；任意文件可用 bytes。SDK 将 binary batch 包装成可增量读取的 `io.BufferedReader`。ticket 只描述资源和视图，不是认证 token。GetFlightInfo 和 DoGet 均校验已发布命名空间、规范化路径和符号链接边界。越界链接不会出现在清单中。
+可用视图与格式由配置的 XStream 插件提供；打开视图前请查看 Item 元信息。SDK 将 binary batch 包装成可增量读取的 `io.BufferedReader`。ticket 只描述资源和视图，不是认证 token。GetFlightInfo 和 DoGet 均校验已发布命名空间、规范化路径和符号链接边界。越界链接不会出现在清单中。
 
 `examples/server.yaml` 配置：
 

@@ -1,37 +1,63 @@
 # DACP documentation
 
-DACP uses XStream to publish Datasets and provide remote data access and remotely callable Job execution.
+Use the User guide for connections, data access and Jobs; the Operations guide for deployment, publication, security, monitoring and maintenance; and the Development guide for application integration, embedded services and protocols.
 
-## Connect and read data
+[中文](README_zh.md)
 
-- [Shell and SDK quick start](users/README.md)
-- [Discover published Datasets](dataset-directory.md)
-- [Query remote records](records-scans.md)
-- [Read through S3](s3-service.md)
+## User guide · Get started
 
-## Submit and inspect Jobs
+- [User guide](usage.md)
+- [First connection](quickstart.md)
+- [Shell and SDK examples](users/README.md)
 
-- [Submit a Job with variables](jobs.md)
-- [Submit policies and request replay](materialization.md)
-- [Inspect the dashboard](node-web.md)
-- [Manage execution history](execution-history.md)
+## User guide · Remote data access
 
-## Publish and operate services
+- [Dataset discovery](dataset-directory.md)
+- [Remote record queries](records-scans.md)
+- [S3-compatible access](s3-service.md)
+- [Scala client SDK](../dacp-client-scala/README.md)
 
-- [Deploy a node and publish data](administrators/README.md)
+## User guide · Jobs and results
+
+- [Remote Job submission](jobs.md)
+- [Execution policies and replay](materialization.md)
+- [Dashboards and plans](node-web.md)
+- [Local and cross-node measurements](local-vs-union-benchmark.md)
+- [Streaming and materialization measurements](materialization-benchmark.md)
+- [Union public catalog and Jobs](union-proxy.md)
+
+## Operations guide · Deployment and security
+
+- [Operations guide](operations/README.md)
 - [Credentials and roles](security.md)
-- [Service configuration and protocol](reference.md)
-- [Install plugins on a server](plugins.md)
-- [Collect access logs](access-logs.md)
-- [Union public catalog and execution](union-proxy.md)
+- [Union deployment](../dacp-union-server/README.md)
+- [Weather collaboration example](../examples/union/README.md)
+- [Multi-node example](../examples/multi-node/README.md)
+- [Publish SQL tables](../examples/sql/README.md)
+- [Proxy deployment](../dacp-proxy-server/README.md)
+- [Install server plugins](plugins.md)
+- [Service configuration reference](reference.md)
 
-## Integrate and develop services
+## Operations guide · Monitoring and maintenance
 
-- [Service developer guide](developers/README.md)
-- [Embed a DACP server](embedded-server.md)
+- [Monitoring and dashboards](operations/monitoring.md)
+- [Access logs](access-logs.md)
+- [Execution-history maintenance](execution-history.md)
+
+## Development guide · Service integration
+
+- [Development guide](developers/README.md)
+- [Embed a server](embedded-server.md)
+- [Embedded application example](../examples/embedded-server/README.md)
+- [Plugin deployment example](../examples/plugins/README.md)
+- [Python collaboration SDK](../dacp-collaboration-client/README.md)
+- [Scala collaboration SDK](../dacp-collaboration-client-scala/README.md)
+
+## Development guide · Protocol and reference
+
 - [DACP protocol](protocol.md)
 - [Union collaboration protocol](union.md)
+- [Union transport API](../dacp-union-protocol/README.md)
+- [DEBUG source execution](operator-source.md)
 
-## Data management and operator development
-
-For the data model, Dataset configuration, file formats, Job language, operator authoring and packaging, use the guides and examples in the [XStream documentation](http://xstream.conoai.cn/docs.html).
+For data models, formats, Job authoring and operator development, use the [XStream documentation](http://xstream.conoai.cn/docs.html).

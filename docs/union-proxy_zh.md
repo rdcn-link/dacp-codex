@@ -10,7 +10,7 @@ Union 同时提供标准 DACP 服务、Union 专用 API 和独立 HTTP 运维看
 
 名称使用持久化递增计数器、密钥化可逆置换和不易混淆字符编码生成，不能从字符串直接看出相邻整数关系。编码不是访问授权手段。逻辑节点 ID 使用 `nd-xxxx-xxxx`，供需要指定计算位置的客户端使用；通过 Flight Action `dacp.nodes` 获取。
 
-`dacp.nodes` 的每个节点包含逻辑 `id`、服务地址 `address`、状态 `state`、容量 `capacity` 和观测时间。可用时还提供任务占用、Union 槽位、启动时间、运行时长、资源使用情况、执行器和看板地址。不可用成员仍展示并明确标注状态；保留指标属于最后一次观测。设计器显示地址和状态详情，禁止把步骤放置到不可用成员，执行位置仍保存逻辑 ID。
+`dacp.nodes` 的每个节点包含逻辑 `id`、服务地址 `address`、状态 `state`、容量 `capacity` 和观测时间。可用时还提供任务占用、Union 槽位、启动时间、运行时长、资源使用情况、执行器和看板地址。不可用成员仍展示并明确标注状态；保留指标属于最后一次观测。Union 看板展示这些观测值。普通客户端提交逻辑 Job，由 Union 决定步骤放置。
 
 映射保存在 `state_directory/dataset-routes/routes.json`，包含编码密钥、下一计数值和当前路由。不保存数据集元数据副本。该目录只允许一个服务实例持有写锁。备份时保留整个 Union 状态目录；不要用旧备份覆盖仍被外部引用的 名称空间。密钥丢失或计数器回退可能破坏 名称稳定性。
 
@@ -47,7 +47,7 @@ steps:
     view: bytes
 - id: summarize
   title: Parse observation CSV
-  operator: piflow_csv_parser@1.0
+  operator: piflow_csv_parser@2.0
   inputs:
     source: read_summarize_source
 outputs:

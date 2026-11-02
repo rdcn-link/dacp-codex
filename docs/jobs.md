@@ -4,13 +4,26 @@
 
 The shared YAML fields, port bindings, source steps and execution semantics are defined in the [XStream Job reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/jobs.md). This guide covers DACP Shell/SDK submission, Union integration and service credentials.
 
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Service as Node or Union
+  participant Engine as Local engine or member subjobs
+  Client->>Service: Submit Job + variables + policy
+  Service->>Service: Authenticate and plan
+  Service->>Engine: Execute stream-connected steps
+  Engine-->>Service: Output stream and attempt events
+  Service-->>Client: Incremental results
+  Client->>Service: Cancel when requested
+```
+
 ## Shell
 
 ```text
 submit job.yaml
 submit job.yaml --vars variables.yaml
-run piflow_filter@1.0 --input source=/observations --view records --params '{"condition":"CAST(quality AS INTEGER) = 0"}'
-run piflow_csv_parser@1.0 --input source=/observations --view bytes
+run piflow_filter@2.0 --input source=/observations --view records --params '{"condition":"CAST(quality AS INTEGER) = 0"}'
+run piflow_csv_parser@2.0 --input source=/observations --view bytes
 ```
 
 The shell converts Item inputs into `read_item` steps and prints results incrementally. It connects to either a node or Union using [TLS and a token](security.md). Repeat `--output PORT` to select multiple ports, or use `--no-output` for a sink. Inline heredoc source is DEBUG-only; see [source submission](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md).

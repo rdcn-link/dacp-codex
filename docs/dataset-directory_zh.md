@@ -12,6 +12,18 @@ Union Web 分为三个独立页面：
 
 节点本地 `name` 与 Union 公开 `name` 是不同命名空间中的名称；数据集没有额外的 `id` 属性。目录列表不保存在 Union，名称映射持久化以保持公开名称稳定。节点页已加载的目录只在当前浏览器页面中保留；刷新节点列表会清除这些展示内容。
 
+```mermaid
+flowchart LR
+  Client["客户端"] --> Node["节点公开目录"]
+  Node --> Local["本地数据集名称"]
+  Client --> Union["Union 公开目录"]
+  Union --> A["在线读取成员 A 目录"]
+  Union --> B["在线读取成员 B 目录"]
+  Union --> Public["稳定公开名称与原始描述"]
+  A -.-> Partial["不可用时明确标记不完整"]
+  B -.-> Partial
+```
+
 ## 访问边界
 
 目录、Item 列表及元数据允许通过 TLS 匿名访问。数据流及查询需要主体具有 `reader` 或 `runner` 角色。管理 Web 的访问边界见 [Union 代理服务](union-proxy_zh.md)。Union 使用自身证书查询已配置的指定成员，并校验成员身份；不接受任意远程地址。目录仅展示名称、URI 和 JSON 描述，不读取 Items 或数据内容。已发布数据的读取需要 reader 或 runner，执行需要 runner。

@@ -4,13 +4,26 @@
 
 公共 YAML 字段、端口连接、源步骤和执行语义见 [XStream 作业参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/jobs_zh.md)。本页说明 DACP Shell／SDK 提交、Union 集成和服务凭据。
 
+```mermaid
+sequenceDiagram
+  participant Client as 客户端
+  participant Service as 节点或 Union
+  participant Engine as 本地引擎或成员子任务
+  Client->>Service: 提交 Job、变量和策略
+  Service->>Service: 认证并生成计划
+  Service->>Engine: 执行流连接步骤
+  Engine-->>Service: 输出流与执行尝试事件
+  Service-->>Client: 增量结果
+  Client->>Service: 按需取消
+```
+
 ## Shell
 
 ```text
 submit job.yaml
 submit job.yaml --vars variables.yaml
-run piflow_filter@1.0 --input source=/observations --view records --params '{"condition":"CAST(quality AS INTEGER) = 0"}'
-run piflow_csv_parser@1.0 --input source=/observations --view bytes
+run piflow_filter@2.0 --input source=/observations --view records --params '{"condition":"CAST(quality AS INTEGER) = 0"}'
+run piflow_csv_parser@2.0 --input source=/observations --view bytes
 ```
 
 Shell 将 Item 输入转换为 `read_item` 步骤，逐块打印结果。连接节点或 Union 使用 [TLS 与 Token](security_zh.md)。多输出可重复指定 `--output PORT`，无输出步骤使用 `--no-output`。源码 heredoc 仅允许 DEBUG 模式，见[源码提交](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source_zh.md)。

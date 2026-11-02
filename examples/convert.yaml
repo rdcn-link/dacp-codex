@@ -9,6 +9,6 @@ steps:
 - id: convert
   inputs:
     source: read_convert_source
-  operator: piflow_csv_save@1.0
+  operator: piflow_csv_save@2.0
 outputs:
   result: convert

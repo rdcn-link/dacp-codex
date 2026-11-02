@@ -1,10 +1,32 @@
-# 管理员指南
+# 运维指南
 
 [English](README.md) · [文档目录](../README_zh.md)
 
 管理员负责部署 DACP 数据节点和 Union Server，配置与独立算子仓库的连接，维护证书、授权、数据发布及执行记录。协议与身份边界见 [DACP 协议](../protocol_zh.md)。
 
 数据集清单来自数据库或业务程序时，使用[动态目录插件](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)；宿主应用直接运行节点时，参见[嵌入式启动](../embedded-server_zh.md)。
+
+```mermaid
+flowchart LR
+  Config["监听地址、TLS 与数据目录"] --> Start["启动 DACP 节点"] --> Metadata["匿名发现元信息"]
+  Start --> Account["本地工具签发账号与角色"] --> Read["授权读取或提交 Job"]
+  Start --> Monitor["内网只读看板"]
+  Read --> Union["按需配置 Union 成员协作"]
+```
+
+## 按运维任务查找
+
+| 任务 | 说明与参考 |
+|---|---|
+| 部署节点与发布数据 | 本文部署步骤、[配置参考](../reference_zh.md)、[SQL 示例](../../examples/sql/README_zh.md) |
+| 账号、角色和证书 | [认证与本地凭据工具](../security_zh.md) |
+| 部署 Union 或代理 | [Union 部署](../../dacp-union-server/README_zh.md)、[代理部署](../../dacp-proxy-server/README_zh.md) |
+| 安装后端与执行插件 | [服务端插件](../plugins_zh.md) |
+| 查看健康、资源、S3 和流量 | [监控与看板配置](monitoring_zh.md) |
+| 日志、历史清理与维护 | [访问日志](../access-logs_zh.md)、[执行记录](../execution-history_zh.md) |
+| 备份与重启 | 本文“监控、记录与停机” |
+
+客户端连接和 Job 提交见[使用指南](../usage_zh.md)；应用集成见[开发指南](../developers/README_zh.md)。
 
 ## 单节点部署
 
@@ -49,10 +71,8 @@ Union 从配置构建唯一的 Union，使用节点签发的凭据连接独立�
 
 使用前台进程的 Ctrl+C 或发送 SIGTERM 停机。重启不会恢复中断的结果流。算子镜像可通过 `docker image ls` 检查；本地运行时配置与仓库制品是不同资源。日志中的 DEBUG 级别与允许源码提交的 DEBUG 运行模式分别配置。
 
-节点默认同时开启只读 HTTP 看板，端口为 DACP 服务端口加 1000；可通过 `web.enabled: false` 关闭。配置和 DAG 展示见[节点 Web 看板](../node-web_zh.md)。
+节点默认同时开启只读 HTTP 看板，端口为 DACP 服务端口加 1000；可通过 `web.enabled: false` 关闭。配置和 DAG 展示见[监控与看板配置](monitoring_zh.md)。
 
 节点默认同时启用 [S3 兼容读取服务](../s3-service_zh.md)，端口为 DACP 服务端口加 2000；它通过 HTTPS 与 SigV4 认证下载 bytes Item，签名密钥独立，主体及 reader/runner 角色与 DACP 共用。可通过 `s3: {enabled: false}` 关闭。
 
 Union 对外提供标准 DACP 目录、Item、Job 与 S3 服务；公开短名称、自动放置及管理权限配置见 [Union 代理服务](../union-proxy_zh.md)。
-
-算子仅源码发布：[提交、隔离构建、审核和可信度](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission_zh.md)。管理员指定多个分类，开发者选择已注册环境。

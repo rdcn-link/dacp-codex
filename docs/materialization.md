@@ -159,7 +159,7 @@ The shell supports:
 
 ```text
 submit workflow.yaml --policy policy.yaml
-run piflow_csv_parser@1.0 --input source=/observations --view bytes --policy policy.yaml
+run piflow_csv_parser@2.0 --input source=/observations --view bytes --policy policy.yaml
 replay EXECUTION_ID
 ```
 

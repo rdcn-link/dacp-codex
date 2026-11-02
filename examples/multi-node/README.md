@@ -2,7 +2,7 @@
 
 [中文](README_zh.md)
 
-[job.yaml](job.yaml) reads the records view of `dacp://localhost:8816/csv_data/orders` and sends it to `piflow_csv_save@1.0` on the coordinating node at port 8815. Results return as a CSV byte stream. Publish and approve that operator in your repository, configure both nodes to use it, and configure their collaboration credentials before running this example. Adjust the addresses and Item path to your deployment.
+[job.yaml](job.yaml) reads the records view of `dacp://localhost:8816/csv_data/orders` and sends it to `piflow_csv_save@2.0` on the coordinating node at port 8815. Results return as a CSV byte stream. Publish and approve that operator in your repository, configure both nodes to use it, and configure their collaboration credentials before running this example. Adjust the addresses and Item path to your deployment.
 
 From the repository root, set `DACP_CA` and `DACP_TOKEN_FILE` for the coordinating node, then run:
 

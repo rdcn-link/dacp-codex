@@ -1,10 +1,32 @@
-# Administrator guide
+# Operations guide
 
 [中文](README_zh.md) · [Documentation](../README.md)
 
 Administrators deploy DACP data nodes and Union Server, configure connections to independent operator repositories, and maintain certificates, authorization, published data, and execution records. See the [DACP protocol](../protocol.md) for protocol and identity boundaries.
 
 For Dataset identities supplied by a database or application, use a [dynamic catalog plugin](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md). Applications hosting a node directly can use the [embedding API](../embedded-server.md).
+
+```mermaid
+flowchart LR
+  Config["Listeners, TLS and catalog"] --> Start["Start a DACP node"] --> Metadata["Anonymous metadata discovery"]
+  Start --> Account["Issue accounts and roles locally"] --> Read["Authorized reads and Jobs"]
+  Start --> Monitor["Internal read-only dashboard"]
+  Read --> Union["Configure Union collaboration when needed"]
+```
+
+## Find an operations task
+
+| Task | Guide and reference |
+|---|---|
+| Deploy nodes and publish data | Deployment below, [configuration](../reference.md), [SQL example](../../examples/sql/README.md) |
+| Accounts, roles and certificates | [Authentication and local credential tools](../security.md) |
+| Deploy Union or a relay | [Union deployment](../../dacp-union-server/README.md), [proxy deployment](../../dacp-proxy-server/README.md) |
+| Install backend and execution plugins | [Server plugins](../plugins.md) |
+| Observe health, resources, S3 and traffic | [Monitoring and dashboard configuration](monitoring.md) |
+| Logs, history cleanup and maintenance | [Access logs](../access-logs.md), [execution records](../execution-history.md) |
+| Back up and restart | Monitoring, records, and shutdown below |
+
+For client connections and Job submission, use the [User guide](../usage.md); for application integration, use the [Development guide](../developers/README.md).
 
 ## Single-node deployment
 
@@ -25,7 +47,7 @@ cd dacp-server
 sbt 'run ../examples/server.yaml'
 ```
 
-## Publishing data and operators
+## Publish data and configure execution
 
 Declare Dataset providers and their parameters in node configuration. Built-in and external providers share the same plugin contracts. See the [technical reference](../reference.md), [Dataset providers](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers.md), and [SQL example](../../examples/sql/README.md) for directory and SQL configuration. Restrict data directories and credentials to the service account.
 
@@ -49,10 +71,8 @@ The dashboard shows node health, start time, uptime, job DAGs, status, and traff
 
 Use Ctrl+C for foreground processes or send SIGTERM. Restarting does not resume interrupted result streams. Inspect operator images with `docker image ls`; local runtime configuration and repository artifacts are separate resources. DEBUG logging and the DEBUG execution mode that allows source submission are configured separately.
 
-Nodes also start a read-only HTTP dashboard by default on the DACP service port plus 1000. Disable it with `web.enabled: false`. See the [node web dashboard](../node-web.md) for configuration and DAG views.
+Nodes also start a read-only HTTP dashboard by default on the DACP service port plus 1000. Disable it with `web.enabled: false`. See the [monitoring and dashboard configuration](monitoring.md) for configuration and DAG views.
 
 Nodes also enable the [S3-compatible read service](../s3-service.md) by default, on the DACP service port plus 2000. It provides HTTPS and SigV4-authenticated downloads of bytes Items using separate signing keys with the same DACP subjects and reader/runner roles. Disable it with `s3: {enabled: false}`.
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy.md).
-
-Source-only operator publication: [submission, isolated builds, review and trust scores](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-submission.md). Repository administrators assign multiple categories; developers choose a registered runtime.

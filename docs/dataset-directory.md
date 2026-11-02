@@ -12,6 +12,17 @@ The Union website has three independent pages:
 
 Local names and Union public names belong to different namespaces. Datasets have no separate `id` attribute. Union persists name mappings for stable public names, not dataset lists. Loaded local directories stay only in the current browser page; refreshing the node list clears them.
 
+```mermaid
+flowchart LR
+  Client --> Node["Node public catalog"] --> Local["Local Dataset names"]
+  Client --> Union["Union public catalog"]
+  Union --> A["Read member A catalog online"]
+  Union --> B["Read member B catalog online"]
+  Union --> Public["Stable public names and original descriptions"]
+  A -.-> Partial["Report incompleteness when unavailable"]
+  B -.-> Partial
+```
+
 ## Access boundaries
 
 Directory, Item-list and Item-metadata requests allow anonymous TLS access. Data streams and queries require a `reader` or `runner` subject role. See [Union proxy service](union-proxy.md) for management Web access boundaries. Union uses its own certificate to query the selected configured member and verifies the member identity. Arbitrary remote addresses are not accepted. Directories show names, URIs and JSON descriptions without reading Items or data contents. Published data requires a reader or runner role; execution requires runner.

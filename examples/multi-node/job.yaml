@@ -7,7 +7,7 @@ steps:
     uri: dacp://localhost:8816/csv_data/orders
     view: records
 - id: export
-  operator: piflow_csv_save@1.0
+  operator: piflow_csv_save@2.0
   node: dacp://localhost:8815
   inputs:
     source: read

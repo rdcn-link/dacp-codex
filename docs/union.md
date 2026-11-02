@@ -28,7 +28,7 @@ union_id: union-U
 execution_id: job-001
 steps:
   - id: export
-    operator: piflow_csv_save@1.0
+    operator: piflow_csv_save@2.0
     params: {header: true}
     inputs:
       source:

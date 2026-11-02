@@ -1,64 +1,48 @@
-# DACP node web dashboard
+# Dashboard and execution plans
 
 [中文](node-web_zh.md)
 
-Each dacp-server starts a public, read-only HTTP dashboard by default. It binds to `0.0.0.0` on the DACP service port plus 1000: DACP `8815` uses HTTP `9815`, and DACP `18861` uses HTTP `19861`. Startup logs report the actual listener. DACP service ports above 64535 require an explicit HTTP port.
+Use the read-only node and Union dashboards on the internal network to inspect services and Jobs. The dashboards do not require login, consume Item streams or offer data downloads.
 
-```yaml
-web:
-  enabled: true
-  host: 0.0.0.0
-  public_host: node-a.example.org
-  port: 19861
-```
+## Find a page
 
-Disable the dashboard:
+| Page | What to inspect |
+|---|---|
+| Node overview | Service address, uptime, resources, execution capacity and Job history |
+| Data catalog (`/datasets`) | Published Dataset names, descriptions and service URIs |
+| S3 service (`/s3`) | Listener state, request counts and transferred bytes |
+| Job details (`/job?id=...`) | Submitted script, plans, execution policy, attempts and step status |
+| Union members (`/nodes`) | Member health, resources, Job participation and observed stream traffic |
 
-```yaml
-web:
-  enabled: false
-```
+Job lists show readable names and generated IDs, source, type, status, start time and duration. Select a Job to open its separate detail page. Detail pages do not refresh automatically; use **Refresh** when needed. Node and Union use matching tabs and DAG controls. Dataset pages load asynchronously and expose incomplete/failing requests explicitly.
 
-`enabled` must be a boolean and `port` an integer from 0 to 65535. Port 0 requests an ephemeral port, available to embedded applications through `server.webPort`. An HTTP bind failure fails node startup and releases the DACP service port and resources already acquired. Closing the node also closes HTTP.
+## Read a Job detail page
 
-The homepage displays the DACP service address, startup time, uptime, step capacity, available executors, dataset directory, and paginated execution history. Select a record to view a G6 DAG with horizontal layout, server grouping, step titles, states, observed traffic, click details, zoom, and pan. Node and Union dashboards reuse the same renderer, styles, and offline G6 resources; both use the project DACP logo.
+| Tab | Question it answers |
+|---|---|
+| Submitted job | What did the client submit? |
+| Logical plan | Which steps and stream connections define the computation? |
+| Physical plan | Where does it execute, and which steps share an execution unit? |
+| Execution information | What happened: policy, attempts, status, timing and failure details? |
 
-Union subjobs display the definitions and steps assigned to this node. External inputs are marked as cross-node inputs; dependencies between local steps retain their edges. Use the Union dashboard for the global workflow and scheduling state. Ordinary Jobs retain their scripts; the page displays dependencies from those definitions and reads step states from execution records. Unobserved traffic shows `—`. Running Union subjobs read current in-memory states and counters on demand; completed executions use persistent records. Historical records without step definitions do not receive invented DAGs.
+The physical plan contains the complete plan and, on Union, dispatched subjob tabs ordered from upstream to downstream. Each plan has **DAG** and **YAML script** views. Placement annotations belong to the physical plan. Server groups identify execution locations; dashed unit groups identify process boundaries and runtime models. Step cards show state and observed stream payload. Missing observations appear as `—`.
 
-Node status and the selected execution refresh every 2 seconds. Dataset directories are read on page load or manual refresh. The dashboard does not open Items, run operators, cancel jobs, or consume result streams.
+![A successful node Job and its physical execution units](images/local-job.png)
 
-The page publicly exposes execution metadata and stored scripts and step parameters. Use it where this information may be public, configure its bind address, or disable it. Flight uses TLS and tokens; published metadata is anonymous, reading requires reader or runner, and execution requires runner. Responses use `Cache-Control: no-store`; static resources require no external network access.
+A Union-assigned subjob is the plan dispatched to that node. Its external inputs identify upstream outputs outside the local execution area. Use Union's detail page for the complete logical Job and its global plan. A node's direct client Job shows its submitted definition and local plans.
 
-Union provides public DACP proxy catalogs and per-member dataset pages on its management website; see [dataset directories](dataset-directory.md).
+## DAG controls
 
-`web.public_host` is the browser-facing dashboard hostname and defaults to the node `public_host`; it is separate from the bind address `web.host`. Only after HTTP starts successfully does the node report `web_enabled: true` and `web_url`, including its actual port, through DACP `node_status`. The Union member table links to that address, shows “未启用” when Web is disabled, and an unknown state when node status is unavailable.
-
-The dashboard interface uses English. Step titles, dataset names, JSON descriptions and user scripts retain their original content; dates and numbers use English locale formatting.
+Switch between dependency and swimlane layouts and choose horizontal or vertical direction. Select a step or edge to highlight it. Toolbar controls offer zoom, fit, reset and expand. Mouse-wheel zoom is locked by default; the wheel scrolls the page while locked. Unlock **Mouse zoom** to zoom with the wheel. Horizontal layouts align server and unit heights; vertical layouts align widths.
 
 ## Execution sources and internal routing
 
-The job list shows only top-level jobs; child steps do not occupy separate rows. Expand Operator step records in job details to view each step’s operator, state, start time, duration and attempt number. Step records from all attempts are retained.
+The list distinguishes `Direct client` / `Union` sources and `User job` / `Union sub-job` types. Source filtering applies before pagination. Only top-level Jobs occupy list rows; associated step records appear in details and retain attempt numbers.
 
-The Source column distinguishes `Direct client` submissions from `Union` assignments. Type shows `User job` or `Union sub-job`. Source filtering applies before pagination and resets to the first page when changed. Details show the Union ID, execution ID and parent-record association.
-
-The dashboard HTTP endpoints `/api/history?source=client` and `?source=union` filter by origin. Omit `source`, or use `source=all`, for all top-level jobs; steps are excluded before pagination. `/api/executions/<record_id>` includes associated step records in `step_records`. History entries and details include `execution_source: client|union`; `kind` retains the precise record type. The server derives the source from execution records; it is not a user-supplied authorization field.
-
-Execution topology shows local connections and cross-node boundaries graphically. Sub-job definition displays the complete persisted definitions dispatched to this node, preserving operators, parameters, inputs, materialization settings and remote `output_routes` without filtering or rewriting fields. Local inputs use `task:port`; remote inputs retain their location objects. There is no separate routing section. Ordinary jobs display Job script. A `consumer_identity` digest authorizes a remote output reader; it is not a data representation or delivery mode.
-
-Mouse-wheel zoom is locked by default. Click 🔒 Mouse zoom to unlock it; click again to lock it. Toolbar zoom, Fit to view and 100% controls remain available.
-
-While locked, scrolling the wheel over the DAG scrolls the page normally; only unlocked graphs capture wheel scrolling.
-
-Cross-node input interfaces appear in a separate upstream-server group outside this node’s execution area. Interface cards identify the upstream step and output port, such as `parse.result`; they are not steps executed on this node. Dependency and swimlane layouts use the same ownership.
-
-Jobs have a required readable `name` and a system-generated execution ID. Node and Union job lists share Name, Job ID, Source, Type, Status, Started at and Duration columns; details show the name and full ID. Job definitions, subjob definitions and execution policies display as YAML.
+For dashboard integrations, `/api/history?source=client` or `?source=union` filters source; omitted or `all` returns all top-level Jobs. `/api/executions/<record_id>` includes `step_records`. Source is derived from server execution records. Subjob YAML preserves the actual assigned definitions, remote inputs and output routes; identity digests authorize stream consumers and are not data representations.
 
 ## Data catalog
 
-Open **Data catalog** in the navigation, or visit /datasets, to browse this node’s published datasets. The separate page uses the Union catalog’s layout, with local names, JSON descriptions, DACP URIs, text filtering and an explicit refresh button. It loads /api/datasets asynchronously on entry and on refresh, so a custom dynamic DataCatalog supplies the current list. Failures show an error and retain the previous successful list. Browsing metadata does not open Items, consume streams or submit Jobs. The overview focuses on node health and Job history.
+`/datasets` shows local Dataset names on a node and public Union names on Union. It offers text filtering, refresh and JSON descriptions. Loading metadata does not open Items or submit Jobs. See [directory semantics](dataset-directory.md) for incomplete catalogs and member-local names.
 
-## S3 operations overview
-
-Open /s3 for runtime information and aggregate request/transfer statistics. It offers no bucket browsing, object downloads or credential controls. See [S3 monitoring and counter semantics](s3-service.md#s3-operations-overview) for fields, reset behavior and byte-count scope.
-
-Execution policies recorded for local Jobs appear in Execution information. Union sub-jobs without an independently recorded complete policy identify Union as the policy owner and refer to its Job details; local materialization and replay settings are shown in the sub-job definition. Missing historical policies are explicitly marked as not recorded.
+For operational metrics, S3 status and dashboard listeners, see [monitoring and dashboard configuration](operations/monitoring.md).

@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-[job.yaml](job.yaml) 读取 `dacp://localhost:8816/csv_data/orders` 的 records 视图，并传给端口 8815 的协调节点上的 `piflow_csv_save@1.0`，结果以 CSV 字节流返回。运行前，请在仓库发布并审批该算子，配置两个节点使用该仓库，并配置协作凭据。地址和 Item 路径需按实际部署调整。
+[job.yaml](job.yaml) 读取 `dacp://localhost:8816/csv_data/orders` 的 records 视图，并传给端口 8815 的协调节点上的 `piflow_csv_save@2.0`，结果以 CSV 字节流返回。运行前，请在仓库发布并审批该算子，配置两个节点使用该仓库，并配置协作凭据。地址和 Item 路径需按实际部署调整。
 
 在项目根目录设置协调节点的 `DACP_CA` 和 `DACP_TOKEN_FILE`，然后执行：
 

@@ -25,7 +25,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | GetFlightInfo `[datasets, dataset, /logical/item]` | Arrow schema and a FlightEndpoint containing a protobuf `Ticket` |
 | DoGet `Ticket(dataset,item,view)` | `view=records` returns records; `view=bytes` returns a single binary column containing raw file bytes |
 
-The records view supports CSV, NDJSON, Excel, SQL, and dacp-generated Parquet. Any file can use the bytes view. The SDK wraps binary batches in an incrementally readable `io.BufferedReader`. Tickets describe resources and views; they are not authentication tokens. Both GetFlightInfo and DoGet validate published namespaces, normalized paths, and symbolic-link boundaries. Links outside allowed boundaries are excluded from listings.
+Available views and formats come from the configured XStream plugins; consult Item metadata before opening a view. The SDK wraps binary batches in an incrementally readable `io.BufferedReader`. Tickets describe resources and views; they are not authentication tokens. Both GetFlightInfo and DoGet validate published namespaces, normalized paths, and symbolic-link boundaries. Links outside allowed boundaries are excluded from listings.
 
 Configuration in `examples/server.yaml`:
 
