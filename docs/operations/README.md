@@ -76,3 +76,5 @@ Nodes also start a read-only HTTP dashboard by default on the DACP service port 
 Nodes also enable the [S3-compatible read service](../s3-service.md) by default, on the DACP service port plus 2000. It provides HTTPS and SigV4-authenticated downloads of bytes Items using separate signing keys with the same DACP subjects and reader/runner roles. Disable it with `s3: {enabled: false}`.
 
 Union provides standard DACP discovery, Items, Jobs and S3. For public short names, placement and management access, see [Union proxy service](../union-proxy.md).
+
+For joining a Union, multi-Union membership, permissions and timeout troubleshooting, see the [FAQ](../faq.md).

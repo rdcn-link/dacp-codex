@@ -7,6 +7,7 @@
 ## 使用指南 · 快速上手
 
 - [使用指南](usage_zh.md)
+- [常见问题](faq_zh.md)
 - [连接第一个 DACP 服务](quickstart_zh.md)
 - [Shell 与 SDK 指南](users/README_zh.md)
 

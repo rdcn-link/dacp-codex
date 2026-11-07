@@ -7,6 +7,7 @@ Use the User guide for connections, data access and Jobs; the Operations guide f
 ## User guide · Get started
 
 - [User guide](usage.md)
+- [Frequently asked questions](faq.md)
 - [First connection](quickstart.md)
 - [Shell and SDK examples](users/README.md)
 
