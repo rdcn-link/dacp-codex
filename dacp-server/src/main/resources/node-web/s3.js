@@ -28,4 +28,4 @@ async function refresh(){
  }catch(e){byId('s3-error').textContent='S3 statistics unavailable ('+e.message+'). Showing the previous snapshot.';byId('s3-error').hidden=false;byId('s3-updated').textContent='Unavailable';}
  finally{busy=false;}
 }
-byId('s3-refresh').addEventListener('click',refresh);refresh();setInterval(refresh,2000);
+byId('s3-refresh').addEventListener('click',refresh);refresh();

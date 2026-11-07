@@ -14,7 +14,7 @@ Use the read-only node and Union dashboards on the internal network to inspect s
 | Job details (`/job?id=...`) | Submitted script, plans, execution policy, attempts and step status |
 | Union members (`/nodes`) | Member health, resources, Job participation and observed stream traffic |
 
-Job lists show readable names and generated IDs, source, type, status, start time and duration. Select a Job to open its separate detail page. Detail pages do not refresh automatically; use **Refresh** when needed. Node and Union use matching tabs and DAG controls. Dataset pages load asynchronously and expose incomplete/failing requests explicitly.
+Job lists show readable names and generated IDs, source, type, status, start time and duration. Select a Job to open its separate detail page. All dashboard pages load once when opened and do not refresh automatically; use **Refresh** or **Reload** when needed. This includes node and Union overviews, Job lists and details, S3 statistics, and member topology. Changing a filter or page, or expanding a dataset, may load the requested information. Node and Union use matching tabs and DAG controls. Dataset pages load asynchronously and expose incomplete/failing requests explicitly.
 
 ## Read a Job detail page
 

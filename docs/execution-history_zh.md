@@ -50,3 +50,7 @@ Union 看板展示提交的 Job YAML 和数据集、任务、端口依赖及最�
 节点看板 Jobs 列表仅展示顶层作业，通过 Source 筛选 `Direct client` 或 `Union`。步骤记录保留在持久化存储中，在所属作业的 Operator step records 展开查看状态、开始时间、耗时及尝试编号。来源筛选与步骤排除均在分页前完成。
 
 Execution topology 展示本地连接和跨节点边界；Sub-job definition 完整展示收到的步骤定义，不另设路由文件或路由展示区域。远端输入使用 `producer_identity`，远端输出使用 `consumer_identity`；本地连接无需证书身份。
+
+## 子任务启动
+
+Union 的启动请求在节点接纳执行后返回，算子解析及执行单元准备在后台进行，受子任务执行时限与取消控制约束。接纳启动不表示初始化成功或作业完成；请查看后续执行状态。已取消或已结束的子任务不能重新启动。

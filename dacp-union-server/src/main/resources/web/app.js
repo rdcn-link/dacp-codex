@@ -26,4 +26,4 @@ async function render(data){snapshot=data;$('union-info').textContent='Union '+d
 async function refresh(){if(busy)return;busy=true;try{const data=await api('/api/overview');if($('job-view').value==='history'){const page=await api('/api/history?offset='+historyOffset+'&limit=100');data.jobs=page.jobs;$('previous').disabled=historyOffset===0;$('next').disabled=page.jobs.length<100;}await render(data);}catch(e){$('error').textContent=e.message+'. Showing the previous snapshot; current status is unavailable.';$('error').hidden=false;$('connection').textContent='Disconnected';}finally{busy=false;}}
 $('refresh').addEventListener('click',refresh);$('job-view').addEventListener('change',()=>{historyOffset=0;selected=null;for(const id of ['previous','next'])$(id).hidden=$('job-view').value!=='history';refresh();});$('previous').addEventListener('click',()=>{historyOffset=Math.max(0,historyOffset-100);refresh();});$('next').addEventListener('click',()=>{historyOffset+=100;refresh();});$('search').addEventListener('input',renderJobs);$('state-filter').addEventListener('change',renderJobs);
 
-refresh();setInterval(refresh,2000);
+refresh();

@@ -50,3 +50,7 @@ The Union dashboard displays the submitted Job YAML and a DAG of datasets, steps
 The node dashboard Jobs list shows only top-level jobs, with Source filters for `Direct client` and `Union`. Step records remain persisted and appear under Operator step records inside their job, including state, start time, duration and attempt number. Source filtering and step exclusion happen before pagination.
 
 Execution topology shows local connections and cross-node boundaries. Sub-job definition displays complete dispatched step definitions, without a separate routing file or routing section. Remote inputs use `producer_identity`, remote outputs use `consumer_identity`, and local connections require no certificate identity.
+
+## Sub-job startup
+
+A Union start request returns after the node accepts execution. Operator resolution and execution-unit preparation run in the background under the sub-job deadline and cancellation scope. Acceptance does not establish successful initialization or completion; inspect subsequent execution status. Cancelled or terminal sub-jobs cannot be started again.

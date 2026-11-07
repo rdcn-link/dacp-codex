@@ -175,6 +175,30 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     def close():Unit={x.close();a.close();b.close();af.close();bf.close();client.close();stranger.close();Thread.sleep(100);ca.close();cb.close();allocator.close()}
   }
   private def policy(all:Boolean=false):JsonNode=if(all)Json.parse("""{"materialization":{"default":"materialize"}}""")else Json.parse("""{"materialization":{"steps":{"ta":{"outputs":{"result":"materialize"}}}}}""")
+  test("start acknowledges a running sub-job and rejects cancelled sessions with their state") {
+    val f=new Fixture()
+    try {
+      f.approved()
+      def request(op:String,body:JsonNode)=f.x.members.remote.action(DacpUri.origin(f.ca.uri("")),op,body,Some(tls("a").identity),timeout=5)
+      def prepare(id:String):Unit={
+        val body=Json.obj().put("name","Startup test").put("union_id",f.unionId).put("execution_id",id)
+        val step=body.putArray("steps").addObject().put("id","waiting").put("operator","identity@1.3")
+        step.putObject("params").put("wait",true);step.putObject("inputs")
+        request("prepare",Json.obj().put("job_yaml",dacp.union.YamlDocument.dump(body)))
+      }
+      def execution(id:String)=Json.obj().put("execution_id",id)
+      prepare("startup-live")
+      val started=request("start",execution("startup-live"))
+      assert(started.path("state").asText=="running")
+      eventually(f.count("waiting")==1)
+      request("cancel_execution",execution("startup-live"))
+      prepare("startup-cancelled")
+      request("cancel_execution",execution("startup-cancelled"))
+      val failure=intercept[UnionFailure](request("start",execution("startup-cancelled")))
+      assert(failure.code==ALREADY_EXISTS && failure.detail.contains("cancelled"))
+      assert(f.count("waiting")==1)
+    } finally f.close()
+  }
   test("Union rejects local source directories before dispatch") {
     val f=new Fixture
     try {

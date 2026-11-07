@@ -95,7 +95,7 @@ window.DacpTopology=(()=>{
   resizeObserver?.disconnect();resizeObserver=new ResizeObserver(positionLabels);resizeObserver.observe(stage);
   if(focused)[...nodes.querySelectorAll('.network-node')].find(n=>n.dataset.identity===focused)?.focus({preventScroll:true});
   const healthy=[...health.values()].filter(Boolean).length;
-  document.getElementById('topology-summary').textContent=healthy+' / '+count+' nodes healthy · refreshed every 5s';
+  document.getElementById('topology-summary').textContent=healthy+' / '+count+' nodes healthy · refresh manually to update';
   const stats=document.getElementById('network-stats');stats.replaceChildren();for(const [value,label]of [[healthy+'/'+count,'Healthy nodes'],[moving,'Active data links'],[bytes(total),'Inter-member step payload']]){const card=el('div');card.append(el('strong',String(value)),el('span',label));stats.append(card);}
   document.getElementById('traffic-scope').textContent='Recent '+(data.job_count||0)+' / 100 jobs · latest attempts only · receiver-side step payload · excludes protocol overhead, heartbeats, status queries, catalog access and other applications · rates require consecutive observations; — means unknown';
   if(!edges.length){const empty=svg('text',{x:500,y:height-15,class:'wire-label'});empty.textContent='No step traffic observed yet';lines.append(empty);}

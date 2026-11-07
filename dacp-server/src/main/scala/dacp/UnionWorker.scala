@@ -396,9 +396,27 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     }
     private[dacp] def executionSnapshots:Vector[JsonNode]=sessions.values.asScala.toVector.map(_.snapshot)
   def start():Unit={
-      if(!started.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"execution already started")
-      val group=try grouped()catch{case t:Throwable=>logFailure(t);stop("failed",Some("Job planning failed; request_id="+requestId));throw t}
-      synchronized {require(state=="prepared","execution cannot start");state="running";historyRecord.update(state,snapshot)}
+      synchronized {
+        if(state!="prepared")throw UnionFailure(ALREADY_EXISTS,s"execution cannot start in state $state")
+        if(!started.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"execution already started")
+        state="running";historyRecord.update(state,snapshot)
+      }
+      StreamProtocol.thread(cancel){
+        try {cancel.active();launch()}
+        catch {case scala.util.control.NonFatal(t)=>
+          logFailure(t)
+          val reason=cancel.cause(t) match {
+            case _:java.util.concurrent.TimeoutException=>"expired"
+            case _:java.util.concurrent.CancellationException=>"cancelled"
+            case _=>"failed"
+          }
+          stop(reason,Some("Job initialization failed; request_id="+requestId))
+        }
+      }
+    }
+    private def launch():Unit={
+      val group=grouped()
+      cancel.active()
       group.foreach{case(plan,external,selected)=>startGrouped(plan,external,selected);return}
       val threads=definitions.map { t=>StreamProtocol.thread(cancel){
         val taskId=t.path("id").asText

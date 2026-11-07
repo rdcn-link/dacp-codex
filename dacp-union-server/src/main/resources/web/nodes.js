@@ -1,7 +1,7 @@
 'use strict';
 const directoryNodes=document.getElementById('directory-nodes'),directoryError=document.getElementById('directory-error');
 const nodeStates={approved:'Approved',pending:'Pending approval',invited:'Invited',revoked:'Revoked',rejected:'Rejected',unknown:'Unknown'};
-let generation=0,healthWindow=10000,polling=false;
+let generation=0,healthWindow=10000;
 function element(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
 async function request(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error(r.status===503?'Node is temporarily unreachable. Try again later.':'Read failed (HTTP '+r.status+'). Try again.');return r.json();}
 function card(member,index,version){
@@ -66,14 +66,3 @@ function renderTopology(data){DacpTopology.render(data,identity=>{
  card.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'center'});
 });}
 document.getElementById('refresh-nodes').addEventListener('click',refreshNodes);refreshNodes();
-
-setInterval(async()=>{
- if(document.getElementById('refresh-nodes').disabled||polling)return;
- const version=generation;polling=true;
- try{
-  const data=await request('/api/topology'),cards=[...directoryNodes.querySelectorAll('.directory-node')];
-  if(version!==generation)return;healthWindow=data.stale_after_ms||10000;
-  if(cards.length!==data.members.length||cards.some((c,i)=>c.dataset.identity!==data.members[i].identity)){await refreshNodes();return;}
-  cards.forEach((c,i)=>c.updateMember(data.members[i]));renderTopology(data);setParticipation(data);directoryError.hidden=true;
- }catch(error){if(version===generation){directoryError.textContent=error.message+' Showing the last observed node information.';directoryError.hidden=false;DacpTopology.stale();}}finally{polling=false;}
-},5000);
