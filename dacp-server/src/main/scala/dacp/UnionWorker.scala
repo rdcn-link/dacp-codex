@@ -75,7 +75,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
   }
   private def connectedPorts(steps:Vector[JsonNode],task:JsonNode):Set[String]=
     task.path("output_routes").fieldNames.asScala.toSet ++ steps.filterNot(_.has("replay_from")).flatMap(_.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin") && b.path("task").asText==task.path("id").asText).map(_.path("port").asText))
-  private def prepare(body:JsonNode,who:String,jobYaml:String):Session=synchronized {
+  private def prepare(body:JsonNode,who:String,jobYaml:String,requestId:String=Json.uuid()):Session=synchronized {
     Json.fields(body,Set("name","union_id","execution_id","steps"),Set("allow_fusion","timeout_seconds"))
     require(!body.has("allow_fusion") || body.path("allow_fusion").isBoolean,"allow_fusion must be boolean")
     val timeout=if(body.has("timeout_seconds"))math.min(Json.number(body,"timeout_seconds",1,86400),settings.executionTimeoutSeconds)else settings.executionTimeoutSeconds
@@ -135,7 +135,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     val own=sessions.values.asScala.filter(s=> !s.terminal && s.owner==who && s.union==union).map(_.size).sum
     if(reserved+steps.size>config.maxConcurrentTasks || own+steps.size>policy.path("max_concurrent_tasks").asInt)throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
     if(!config.taskSlots.tryAcquire(steps.size))throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
-    try {val s=new Session(id,union,who,jobName,jobYaml,submitted,body.path("allow_fusion").asBoolean(false),timeout);sessions.put(id,s);s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(steps.size);throw t}
+    try {val s=new Session(id,union,who,jobName,jobYaml,submitted,body.path("allow_fusion").asBoolean(false),timeout,requestId);sessions.put(id,s);s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(steps.size);throw t}
   }
   private def find(id:String,who:String,owner:Boolean=true):Session={
     val s=Option(sessions.get(Json.id(id))).getOrElse(throw UnionFailure(NOT_FOUND,"execution unavailable"))
@@ -143,12 +143,13 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     if(owner && s.owner!=who)denied("execution owner denied")
     s
   }
-  def doAction(ctx:CallContext,a:Action,out:StreamListener[Result]):Unit=Rpc.action(ctx,a,out) { (op,n,who)=>
+  def doAction(ctx:CallContext,a:Action,out:StreamListener[Result],audit:Option[AccessEvent]=None):Unit=Rpc.action(ctx,a,out,t=>audit.foreach(_.failure(t))) { (op,n,who)=>
     {
       val control=if(op=="prepare"){Json.fields(n,Set("job_yaml"));dacp.union.YamlDocument.parse(Json.text(n,"job_yaml"))}else n
       val union=if(control.has("union_id"))Json.text(control,"union_id")else find(Json.text(control,"execution_id"),who).union
       Rpc.requireUnion(union)
     }
+    audit.foreach(a=>a.job(n.path("execution_id").asText))
     op match {
       case "membership"=>
         Json.fields(n,Set("union_id"));val id=Json.text(n,"union_id");Rpc.requireUnion(id)
@@ -169,7 +170,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           }finally a.close()
         };result
       case "prepare"=>
-        Json.fields(n,Set("job_yaml"));val text=Json.text(n,"job_yaml");prepare(dacp.union.YamlDocument.parse(text),who,text).snapshot
+        Json.fields(n,Set("job_yaml"));val text=Json.text(n,"job_yaml");{val definition=dacp.union.YamlDocument.parse(text);audit.foreach(_.job(definition.path("execution_id").asText));prepare(definition,who,text,audit.map(_.requestId).getOrElse(Json.uuid())).snapshot}
       case "start"|"execution_status"|"cancel_execution"=>
         Json.fields(n,Set("execution_id"));val id=Json.text(n,"execution_id")
         val session=if(op=="cancel_execution"){
@@ -181,9 +182,10 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       case _=>throw UnionFailure(UNIMPLEMENTED,"unknown Union action")
     }
   }
-  def getStream(ctx:CallContext,ticket:Ticket,listener:ServerStreamListener):Unit=Rpc.stream(ctx,ticket,listener) { (n,who)=>
+  def getStream(ctx:CallContext,ticket:Ticket,listener:ServerStreamListener,audit:Option[AccessEvent]=None):Unit=Rpc.stream(ctx,ticket,listener,t=>audit.foreach(_.failure(t))) { (n,who)=>
     if(Rpc.isAuthenticatedCall && !(Set("peer","union")(Rpc.principal.kind) && Rpc.principal.certificate.nonEmpty))denied("certificate-bound execution consumer required")
     Json.fields(n,Set("type","execution_id","task","port"));require(Json.text(n,"type")==Rpc.Prefix+"output","unknown Union ticket")
+    audit.foreach(_.job(n.path("execution_id").asText))
     val session=find(Json.text(n,"execution_id"),who,owner=false)
     val out=session.output(Json.id(Json.text(n,"task")),Json.id(Json.text(n,"port")));out.claim(who)
     listener.setOnCancelHandler(()=>if(!out.delivered.get())session.stop("cancelled"))
@@ -200,7 +202,9 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     def claimLocal():Unit={require(consumer.isEmpty,"not a local output");claim("")}
     def claim(who:String):Unit={if(who!=consumer)denied("output consumer denied");if(!claimed.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"output already consumed")}
   }
-  private final class Session(val id:String,val union:String,val owner:String,jobName:String,jobYaml:String,submitted:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long) {
+  private final class Session(val id:String,val union:String,val owner:String,jobName:String,jobYaml:String,submitted:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long,requestId:String) {
+    private def logFailure(t:Throwable):Unit=org.slf4j.LoggerFactory.getLogger(getClass).error(
+      s"Execution failed: operation=job.execute request_id=$requestId job_id=$id",t)
     private val definitions=submitted.map(normalizeTask)
     private val serviceCredential=if(Rpc.isAuthenticatedCall)Rpc.principal.credentialId else None
     private val proxyPath=Rpc.proxyHops
@@ -387,13 +391,13 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
             outputs.values.foreach(_.queue.end())
             synchronized{if(!terminal){state="succeeded";finished=Json.now;historyRecord.update(state,snapshot);releaseSlots()}}
           }finally inputs.values.foreach(_.close())
-        }catch{case t:Throwable=>stop("failed",Some(Option(t.getMessage).getOrElse(t.getClass.getSimpleName)));throw t}
+        }catch{case t:Throwable=>logFailure(t);stop("failed",Some("Job execution failed; request_id="+requestId));throw t}
       }
     }
     private[dacp] def executionSnapshots:Vector[JsonNode]=sessions.values.asScala.toVector.map(_.snapshot)
   def start():Unit={
       if(!started.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"execution already started")
-      val group=try grouped()catch{case t:Throwable=>stop("failed",Some(Option(t.getMessage).getOrElse("group planning failed")));throw t}
+      val group=try grouped()catch{case t:Throwable=>logFailure(t);stop("failed",Some("Job planning failed; request_id="+requestId));throw t}
       synchronized {require(state=="prepared","execution cannot start");state="running";historyRecord.update(state,snapshot)}
       group.foreach{case(plan,external,selected)=>startGrouped(plan,external,selected);return}
       val threads=definitions.map { t=>StreamProtocol.thread(cancel){
@@ -481,7 +485,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           } finally inputs.values.foreach(_.close())
           }finally writer.foreach(_.close())
           }
-        } catch {case t:Throwable=>stop("failed",Some(Option(t.getMessage).getOrElse(t.getClass.getSimpleName)));throw t}
+        } catch {case t:Throwable=>logFailure(t);stop("failed",Some("Job execution failed; request_id="+requestId));throw t}
       }}
       StreamProtocol.thread(cancel){
         threads.foreach(t=>while(t.isAlive){cancel.active();t.join(100)})
@@ -523,7 +527,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     monitor.scheduleWithFixedDelay(new Runnable{def run():Unit=try {
       sessions.values.asScala.foreach{s=>s.check();if(s.terminal && Json.now-s.finished>settings.retentionSeconds*1000){sessions.remove(s.id,s);s.close()}}
       materialization.foreach(_.cleanup())
-    }catch{case scala.util.control.NonFatal(t)=>System.err.println("union worker cleanup failed: "+t.getClass.getSimpleName)}},1,1,TimeUnit.SECONDS)
+    }catch{case scala.util.control.NonFatal(t)=>org.slf4j.LoggerFactory.getLogger(getClass).error("Background request failed: operation=execution.cleanup request_id="+Json.uuid()+" job_id=unavailable",t)}},1,1,TimeUnit.SECONDS)
     println(s"union worker listening on ${config.uri("")}; identity ${tls.identity}")
   }
   def close():Unit=if(stopped.compareAndSet(false,true)){monitor.shutdownNow();sessions.values.asScala.foreach(_.stop("cancelled"));sessions.values.asScala.foreach(_.close());remote.close();()}

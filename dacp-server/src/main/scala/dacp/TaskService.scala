@@ -18,7 +18,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
   private val jobs=new Semaphore(config.maxConcurrentTasks)
   private val active=java.util.concurrent.ConcurrentHashMap.newKeySet[StreamCancel]()
   private def join(t:Thread,c:StreamCancel):Unit={while(t.isAlive){c.active();t.join(50)};c.active()}
-  def exchange(ctx: FlightProducer.CallContext,reader: FlightStream,writer: FlightProducer.ServerStreamListener): Unit = {
+  def exchange(ctx: FlightProducer.CallContext,reader: FlightStream,writer: FlightProducer.ServerStreamListener,audit:Option[AccessEvent]=None): Unit = {
     val serviceLease=if(dacp.union.Rpc.isAuthenticatedCall && dacp.union.Rpc.principal.kind=="union")Some(dacp.union.Rpc.principal.active)else None
     val cancel=new StreamCancel(()=>ctx.isCancelled || writer.isCancelled || serviceLease.exists(check=> !check()),config.executionTimeoutSeconds)
     active.add(cancel)
@@ -36,6 +36,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     try {
       val owner=try dacp.union.Rpc.identity catch{case _:dacp.union.UnionFailure=>Option(ctx.peerIdentity()).getOrElse("anonymous")}
       record=config.executionHistory.begin("dacp_exchange",metadata=dacp.union.Json.obj().put("node",DacpUri.origin(config.uri(""))).put("owner",owner))
+      audit.foreach(_.job(record.id))
       val bytes=reader.getDescriptor.getCommand
       require(bytes.length<=1024*1024,"request exceeds 1 MiB")
       val request=Metadata.OperatorRequest.parseFrom(bytes)
@@ -134,10 +135,10 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
       case caught:Throwable=>
         val t=cancel.cause(caught)
         finalState=if(t.isInstanceOf[java.util.concurrent.TimeoutException])"expired"else if(t.isInstanceOf[java.util.concurrent.CancellationException])"cancelled"else "failed"
-        failureMessage=Some(Option(t.getMessage).getOrElse(t.getClass.getSimpleName))
-        org.slf4j.LoggerFactory.getLogger(classOf[TaskService]).warn("operator exchange failed",t)
+        failureMessage=Some("Job execution failed"+audit.map(a=>"; request_id="+a.requestId).getOrElse(""))
+        audit match {case Some(a)=>a.failure(t);case None=>org.slf4j.LoggerFactory.getLogger(classOf[TaskService]).warn("operator exchange failed",t)}
         val status=if(Option(t.getMessage).exists(_.contains("FORBIDDEN"))) CallStatus.UNAUTHORIZED else if(t.isInstanceOf[IllegalArgumentException]) CallStatus.INVALID_ARGUMENT else CallStatus.INTERNAL
-        if(!writer.isCancelled)writer.error(status.withDescription(Option(t.getMessage).getOrElse("operator execution failed")).toRuntimeException)
+        if(!writer.isCancelled)writer.error(status.withDescription("Job execution failed"+audit.map(a=>"; request_id="+a.requestId).getOrElse("")).toRuntimeException)
     } finally {
       try {
         if(record!=null){val detail=dacp.union.Json.obj();val ports=detail.putObject("ports");metrics.asScala.foreach{case(k,v)=>ports.set[com.fasterxml.jackson.databind.JsonNode](k,v.snapshot)};record.update(finalState,detail,failureMessage)}

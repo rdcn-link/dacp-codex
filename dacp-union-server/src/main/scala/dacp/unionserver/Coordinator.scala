@@ -61,7 +61,12 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     override def listFlights(ctx:CallContext,c:Criteria,out:StreamListener[FlightInfo]):Unit=standard.listFlights(ctx,c,out)
     override def getFlightInfo(ctx:CallContext,d:FlightDescriptor):FlightInfo=standard.getFlightInfo(ctx,d)
     override def doExchange(ctx:CallContext,r:FlightStream,out:ServerStreamListener):Unit=publicExchange(ctx,r,out)
-    override def doAction(ctx:CallContext,a:Action,out:StreamListener[Result]):Unit={
+    override def doAction(ctx:CallContext,a:Action,raw:StreamListener[Result]):Unit={
+      val audit=publicConfig.accessLog.begin(dacp.AccessOperations.action(a.getType))
+      val out=dacp.AccessLogging.results(audit,raw)
+      try routeAction(ctx,a,out,audit) catch {case scala.util.control.NonFatal(t)=>audit.failure(t);out.onError(Rpc.failure(t))}
+    }
+    private def routeAction(ctx:CallContext,a:Action,out:StreamListener[Result],audit:dacp.AccessEvent):Unit={
       if(a.getType=="dacp.nodes")try {Rpc.requirePermission("job:execute");out.onNext(new Result(Json.mapper.writeValueAsBytes(planner.nodes)));out.onCompleted()}catch{case scala.util.control.NonFatal(_)=>out.onError(CallStatus.UNAUTHORIZED.withDescription("access denied").toRuntimeException)}
       else if(Set("dacp.infer","dacp.infer_job")(a.getType))try {
         Rpc.requirePermission("job:execute")
@@ -79,19 +84,30 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         }
         val bytes=Json.mapper.writeValueAsBytes(result);require(bytes.length<=StructureInference.MaxBytes,"inference result exceeds 1 MiB")
         out.onNext(new Result(bytes));out.onCompleted()
-      }catch{case scala.util.control.NonFatal(t)=>out.onError(Rpc.failure(t))}
+      }catch{case scala.util.control.NonFatal(t)=>audit.failure(t);out.onError(Rpc.failure(t))}
       else if(Set("dacp.catalog","dacp.capabilities")(a.getType))standard.doAction(ctx,a,out)
       else if(workerActions(a.getType.stripPrefix(Rpc.Prefix))) {
         if(Rpc.proxyHops.contains(members.unionId) || Rpc.proxyHops.size>=8)out.onError(CallStatus.INVALID_ARGUMENT.withDescription("proxy cycle or depth limit").toRuntimeException)
-        else worker.doAction(ctx,a,out)
-      }else Rpc.action(ctx,a,out)(action)
+        else worker.doAction(ctx,a,out,Some(audit))
+      }else Rpc.action(ctx,a,out,t=>audit.failure(t)){(op,n,who)=>
+        audit.job(n.path("job_id").asText(n.path("execution_id").asText))
+        action(op,n,who)
+      }
     }
-    override def getStream(ctx:CallContext,t:Ticket,out:ServerStreamListener):Unit={
+    override def getStream(ctx:CallContext,t:Ticket,raw:ServerStreamListener):Unit={
+      if(!Rpc.isTicket(t.getBytes)){standard.getStream(ctx,t,raw);return}
+      val audit=publicConfig.accessLog.begin("job.result.read")
+      val out=dacp.AccessLogging.stream(audit,raw)
+      try routeStream(ctx,t,out,audit)catch{case scala.util.control.NonFatal(t)=>audit.failure(t);out.error(Rpc.failure(t))}
+    }
+    private def routeStream(ctx:CallContext,t:Ticket,out:ServerStreamListener,audit:dacp.AccessEvent):Unit={
       if(!Rpc.isTicket(t.getBytes))standard.getStream(ctx,t,out)
       else {
         val n=Rpc.parse(t.getBytes)
-        if(n.path("type").asText==Rpc.Prefix+"output")worker.getStream(ctx,t,out)
-        else Rpc.stream(ctx,t,out)((n,who)=>stream(n,who,out))
+        audit.job(n.path("job_id").asText(n.path("execution_id").asText))
+        if(n.path("type").asText==Rpc.Prefix+"events")audit.operation("job.events.read")
+        if(n.path("type").asText==Rpc.Prefix+"output"){audit.operation("step.output.read");worker.getStream(ctx,t,out,Some(audit))}
+        else Rpc.stream(ctx,t,out,t=>audit.failure(t))((n,who)=>stream(n,who,out))
       }
     }
   }
@@ -138,7 +154,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   }
   private def publicExchange(ctx:CallContext,reader:FlightStream,out:ServerStreamListener):Unit={
     var job:Execution=null
-    val audit=publicConfig.accessLog.begin("do_exchange")
+    val audit=publicConfig.accessLog.begin("job.submit")
     val sink=new Rpc.Sink(allocator,out,Rpc.Frames)
     try {
       Rpc.requireClient();val owner=Rpc.identity
@@ -160,6 +176,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         submit(plan,owner,render(plan),policy,path=Rpc.proxyHops,submittedScript=Some(request.getJobYaml),decisions=planned.decisions).snapshot
       }
       job=owned(result.path("job_id").asText,owner)
+      audit.job(job.id)
       require(!job.requiresRetryAwareness || request.getRetryAware,"retry-aware client required")
       require(job.claimed.compareAndSet(false,true),"results already consumed")
       val current=job;out.setOnCancelHandler(()=>current.stop("cancelled"))
@@ -174,7 +191,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       }
       sink.completed();audit.finish("completed")
     }catch{case scala.util.control.NonFatal(t)=>
-      org.slf4j.LoggerFactory.getLogger(getClass).warn("Public Job request failed",t)
+      audit.failure(t)
       if(job!=null && !job.terminal)job.stop(if(ctx.isCancelled || out.isCancelled)"cancelled"else "failed")
       audit.finish("failed")
       val status=t match {
@@ -421,7 +438,11 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     }
     private def change(s:String):Unit=synchronized {if(!terminal){state=s;event("state")}}
     private def request(n:JsonNode,op:String,body:JsonNode):JsonNode=
-      remote.action(url(n),op,body,Some(identity(n)),hops=proxyPath)
+      try remote.action(url(n),op,body,Some(identity(n)),hops=proxyPath)
+      catch {case scala.util.control.NonFatal(t)=>
+        org.slf4j.LoggerFactory.getLogger(getClass).error(s"Remote request failed: operation=${dacp.AccessOperations.action(Rpc.Prefix+op)} request_id=${Json.uuid()} job_id=$id execution_id=$attemptId",t)
+        throw t
+      }
     private def executionBody:JsonNode=Json.obj().put("execution_id",attemptId)
     private def unionBody:JsonNode=Json.obj().put("union_id",members.unionId)
     private def rollback():Unit=prepared.values.asScala.foreach { n=>
@@ -592,7 +613,9 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
           }
           cancel.checkState();output.put(StreamProtocol.frame("complete"));output.end()
           synchronized {if(!terminal){state="succeeded";finished=Json.now;event("state")}}
-        }catch{case scala.util.control.NonFatal(t)=>stop(if(cancel.cause(t).isInstanceOf[java.util.concurrent.TimeoutException] || Json.now-created>=timeout*1000)"expired"else "failed",Some(Option(cancel.cause(t).getMessage).getOrElse(t.getClass.getSimpleName)))}
+        }catch{case scala.util.control.NonFatal(t)=>
+          org.slf4j.LoggerFactory.getLogger(getClass).error(s"Job failed: operation=job.execute request_id=$id job_id=$id execution_id=$attemptId",t)
+          stop(if(cancel.cause(t).isInstanceOf[java.util.concurrent.TimeoutException] || Json.now-created>=timeout*1000)"expired"else "failed",Some("Job execution failed; request_id="+id))}
       }
     }
     def validateCursor(after:Long):Unit=synchronized {require(after>=0 && after<=sequence,"invalid event cursor")}
@@ -630,7 +653,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         val current=members.all;val ids=current.map(_.path("identity").asText).toSet
         observed.keySet.asScala.filterNot(ids).foreach(observed.remove)
         current.foreach(m=>{val inspected=members.inspect(m);observed.put(inspected.path("identity").asText,inspected)})
-      }catch{case scala.util.control.NonFatal(t)=>System.err.println(s"union polling failed: ${t.getClass.getSimpleName}")}
+      }catch{case scala.util.control.NonFatal(t)=>org.slf4j.LoggerFactory.getLogger(getClass).error("Background request failed: operation=union.poll request_id="+Json.uuid()+" job_id=unavailable",t)}
     }},0,settings.pollMs,TimeUnit.MILLISECONDS)
     timer.scheduleWithFixedDelay(new Runnable{def run():Unit=jobs.values.asScala.foreach { j=>
       j.check();if(j.terminal && Json.now-j.finished>settings.retention*1000){jobs.remove(j.id,j);j.release()}

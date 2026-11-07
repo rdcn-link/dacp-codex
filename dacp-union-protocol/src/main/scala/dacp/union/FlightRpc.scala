@@ -92,11 +92,11 @@ object Rpc {
     case _:java.util.concurrent.CancellationException|_:InterruptedException=>CallStatus.CANCELLED.withDescription("Union stream cancelled").toRuntimeException
     case _=>CallStatus.INTERNAL.withDescription("Union execution failed").toRuntimeException
   }
-  def action(ctx:CallContext,a:Action,out:StreamListener[Result])(run:(String,JsonNode,String)=>JsonNode):Unit=
+  def action(ctx:CallContext,a:Action,out:StreamListener[Result],onFailure:Throwable=>Unit=(_=>()))(run:(String,JsonNode,String)=>JsonNode):Unit=
     try {val who=identity;require(a.getType.startsWith(Prefix),"unknown Union action");val n=run(a.getType.stripPrefix(Prefix),parse(a.getBody),who);out.onNext(new Result(bytes(n)));out.onCompleted()}
-    catch{case NonFatal(t)=>out.onError(failure(t))}
-  def stream(ctx:CallContext,t:Ticket,out:ServerStreamListener)(run:(JsonNode,String)=>Unit):Unit=
-    try run(parse(t.getBytes),identity)catch{case NonFatal(e)=>out.error(failure(e))}
+    catch{case NonFatal(t)=>onFailure(t);out.onError(failure(t))}
+  def stream(ctx:CallContext,t:Ticket,out:ServerStreamListener,onFailure:Throwable=>Unit=(_=>()))(run:(JsonNode,String)=>Unit):Unit=
+    try run(parse(t.getBytes),identity)catch{case NonFatal(e)=>onFailure(e);out.error(failure(e))}
 
   /** One owned binary value per Arrow batch. Backpressure never buffers an unbounded result. */
   final class Sink(allocator:BufferAllocator,val listener:ServerStreamListener,val schema:Schema) extends AutoCloseable {

@@ -3,11 +3,35 @@ package dacp
 import _root_.xstream.data._
 
 import java.nio.file.Files
+import scala.jdk.CollectionConverters._
 import java.util.concurrent.{CountDownLatch,TimeUnit}
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 import org.scalatest.funsuite.AnyFunSuite
 
 class AsyncAccessLogSpec extends AnyFunSuite {
+  test("failure records correlate requests and jobs without serializing exception details") {
+    val dir=Files.createTempDirectory("correlated-access-log-")
+    val log=new AccessLog(dir,1024*1024)
+    val event=log.begin("job.prepare")
+    try {
+      event.job("example-job")
+      val failure=new IllegalStateException("PRIVATE_EXCEPTION_DETAIL",new java.io.IOException("PRIVATE_CAUSE"))
+      event.failure(failure)
+      event.failure(failure)
+      event.finish("failed")
+    } finally log.close()
+    try {
+      val paths=Files.list(dir)
+      val text=try paths.iterator().asScala.map(Files.readString(_)).mkString finally paths.close()
+      val record=Data.mapper.readTree(text)
+      assert(record.path("request_id").asText==event.requestId)
+      assert(record.path("job_id").asText=="example-job")
+      assert(record.path("operation").asText=="job.prepare")
+      assert(record.path("status").asText=="failed")
+      assert(!text.contains("PRIVATE_") && !record.has("stack_trace"))
+    } finally Data.deleteTree(dir)
+  }
+
   test("slow disk synchronization does not delay new request records; shutdown drains the queue") {
     val dir=Files.createTempDirectory("async-access-log-")
     val syncing=new CountDownLatch(1);val release=new CountDownLatch(1)

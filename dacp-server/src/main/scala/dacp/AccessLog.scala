@@ -85,14 +85,23 @@ final class AccessLog private[dacp](directory:Path,maxBytes:Long,open:Path=>Acce
     }finally if(interrupted)Thread.currentThread().interrupt()
   }
 }
-final class AccessEvent(log:AccessLog,operation:String) {
+final class AccessEvent(log:AccessLog,initialOperation:String) {
   private val started=System.nanoTime()
   private val n=Data.mapper.createObjectNode().put("request_id",UUID.randomUUID().toString)
-    .put("started_at",Instant.now().toString).put("operation",operation)
+    .put("started_at",Instant.now().toString).put("operation",initialOperation)
     .put("identity",scala.util.Try(dacp.union.Rpc.identity).getOrElse("unknown"))
   private var ended=false
   private var rows=0L
   private var bytes=0L
+  val requestId:String=n.path("request_id").asText
+  @volatile private var jobId=""
+  private val logged=new java.util.concurrent.atomic.AtomicBoolean()
+  def job(value:String):Unit=if(value!=null && value.nonEmpty && value.length<=256 && !value.exists(_.isControl)){jobId=value;n.put("job_id",value)}
+  def failure(t:Throwable):Unit=if(logged.compareAndSet(false,true)){
+    org.slf4j.LoggerFactory.getLogger("dacp.request").error(
+      s"Request failed: operation=${n.path("operation").asText} request_id=$requestId job_id=${if(jobId.isEmpty)"unavailable"else jobId}",t)
+  }
+  def operation(value:String):Unit=n.put("operation",value)
   def actor(subject:String):Unit=n.put("identity",subject)
   def add(count:Long,payload:Long):Unit=synchronized {rows+=count;bytes+=payload}
   def resource(dataset:String,item:String="",view:String=""):Unit={n.put("dataset",dataset);n.put("item",item);n.put("view",view)}
@@ -128,7 +137,7 @@ object AccessLogging {
       def putNext():Unit={out.putNext();count()}
       def putNext(metadata:org.apache.arrow.memory.ArrowBuf):Unit={out.putNext(metadata);count()}
       def putMetadata(metadata:org.apache.arrow.memory.ArrowBuf):Unit=out.putMetadata(metadata)
-      def error(t:Throwable):Unit={audit.finish(status(t));out.error(t)}
+      def error(t:Throwable):Unit={audit.failure(t);audit.finish(status(t));out.error(t)}
       def completed():Unit={audit.finish(if(out.isCancelled)"cancelled" else "completed");out.completed()}
       override def setUseZeroCopy(value:Boolean):Unit=out.setUseZeroCopy(value)
     }
@@ -136,6 +145,6 @@ object AccessLogging {
     new org.apache.arrow.flight.FlightProducer.StreamListener[A] {
       def onNext(value:A):Unit=out.onNext(value)
       def onCompleted():Unit={audit.finish("completed");out.onCompleted()}
-      def onError(t:Throwable):Unit={audit.finish(status(t));out.onError(t)}
+      def onError(t:Throwable):Unit={audit.failure(t);audit.finish(status(t));out.onError(t)}
     }
 }
