@@ -17,7 +17,7 @@ Use `.venv/bin/dacp-shell` below, or `dacp-shell` after activating the environme
 
 ## 2. Discover public metadata
 
-Replace the example address with your service. With no token, CA or client certificate configured, anonymous metadata browsing requires only the address:
+Replace the example address with your service. Anonymous browsing needs no token. This example assumes a platform-trusted server certificate; for a private CA, also pass `--ca /path/to/ca.crt`:
 
 ```bash
 .venv/bin/dacp-shell dacp://data.example.org:18861
@@ -30,7 +30,7 @@ ls /
 help cat
 ```
 
-`datasets` lists numbered Dataset names and JSON descriptions. `use 1` selects the first entry; a complete directory with one Dataset is selected automatically. `ls /` lists Items and their advertised views. Row numbers refer to the latest listing. Anonymous browsing keeps TLS encryption without certificate verification; see [connection security](security.md).
+`datasets` lists numbered Dataset names and JSON descriptions. `use 1` selects the first entry; a complete directory with one Dataset is selected automatically. `ls /` lists Items and their advertised views. Row numbers refer to the latest listing. Anonymous browsing verifies the server certificate and hostname; see [connection security](security.md).
 
 ## 3. Read an Item
 

@@ -1,0 +1,6 @@
+pyarrow==26.0.1
+protobuf==6.33.6
+psutil==7.2.2
+PyYAML==6.0.3
+pycurl==7.49.0
+matplotlib==3.11.2

@@ -19,7 +19,7 @@ class S3ServiceSpec extends AnyFunSuite {
     val closed=new AtomicInteger();var exists=true
     val objects=Seq("/folder/a +&.bin","/folder/b.bin","/z.bin")
     val catalog=new DataCatalog {
-      def list():Seq[DatasetInfo]=if(exists)Seq(DatasetInfo("science"))else Seq.empty
+      def list():Seq[DatasetInfo]=if(exists)Seq(DatasetInfo("science",SecurityTestSupport.publicDescription))else Seq.empty
       def open(name:String):PublishedDataset={
         if(!exists || name!="science")throw new java.io.FileNotFoundException()
         new PublishedDataset {
@@ -61,7 +61,7 @@ class S3ServiceSpec extends AnyFunSuite {
   private def request(s:S3Service,path:String,method:String="GET",headers:Map[String,String]=Map.empty)={
     client.send(SecurityTestSupport.signed(s.port,path,method,headers),HttpResponse.BodyHandlers.ofString())
   }
-  test("DACP and S3 share subject roles while token and key lifecycles remain separate") {fixture{(c,s,closed,_)=>
+  test("public data is independent of subject roles while token and key lifecycles remain separate") {fixture{(c,s,closed,_)=>
     val a=new RootAllocator()
     val flight=dacp.union.Rpc.secure(org.apache.arrow.flight.FlightServer.builder(a,org.apache.arrow.flight.Location.forGrpcTls("localhost",0),new Producer(c,a)),new xstream.connector.dacp.wire.Tls(c.cert,c.key,c.ca),Some(c.credentials)).build().start()
     val issued=c.credentials.create("s3-test")
@@ -76,9 +76,9 @@ class S3ServiceSpec extends AnyFunSuite {
       read();assert(request(s,"/").statusCode()==200 && shared==200)
       c.credentials.setRoles("s3-test",Set.empty)
       val before=closed.get()
-      assert(request(s,"/").statusCode()==403 && request(s,"/science/folder/a%20%2B%26.bin","HEAD").statusCode()==403 && shared==403)
-      assert(closed.get()==before) // Denied S3 calls never open a dataset.
-      deniedRead()
+      assert(request(s,"/").statusCode()==200 && request(s,"/science/folder/a%20%2B%26.bin","HEAD").statusCode()==200 && shared==200)
+      assert(closed.get()>before)
+      read()
       c.credentials.setRoles("s3-test",Set("runner"))
       read();assert(shared==200)
       c.credentials.revoke(issued._1.path("id").asText)
@@ -92,7 +92,7 @@ class S3ServiceSpec extends AnyFunSuite {
       assert(request(s,"/").statusCode()==403 && c.credentials.authenticate(token._2,None).nonEmpty)
       val noRole=c.credentials.create("unassigned","s3")
       val denied=dacp.union.SigV4.presignGet(URI.create(s"https://localhost:${s.port}/science/folder/a%20%2B%26.bin"),noRole._1.path("id").asText,noRole._2,60)
-      assert(client.send(HttpRequest.newBuilder(denied).GET().build(),HttpResponse.BodyHandlers.ofString()).statusCode()==403)
+      assert(client.send(HttpRequest.newBuilder(denied).GET().build(),HttpResponse.BodyHandlers.ofString()).statusCode()==200)
       intercept[IllegalArgumentException](dacp.union.CredentialAdmin.main(Array("presign-get",c.credentials.directory.toString,noRole._1.path("id").asText,s"https://localhost:${s.port}/science/x")))
     }finally{connection.close();flight.close();a.close()}
   }}
@@ -160,9 +160,9 @@ class S3ServiceSpec extends AnyFunSuite {
     assert(request(s,"/science/z.bin?acl").statusCode()==501)
     assert(request(s,"/science?max-keys=-1").statusCode()==400)
   }}
-  test("anonymous requests, tampering, expired presigns and revoked keys fail closed") {fixture{(c,s,_,_)=>
+  test("public anonymous reads succeed while tampering, expired presigns and revoked keys fail closed") {fixture{(c,s,_,_)=>
     val base=URI.create(s"https://localhost:${s.port}/science/z.bin")
-    assert(client.send(HttpRequest.newBuilder(base).build(),HttpResponse.BodyHandlers.ofString()).statusCode()==403)
+    assert(client.send(HttpRequest.newBuilder(base).build(),HttpResponse.BodyHandlers.ofString()).statusCode()==200)
     val (id,secret)=SecurityTestSupport.credentials.get(s.port)
     val url=dacp.union.SigV4.presignGet(base,id,secret,60)
     def get(u:URI)=client.send(HttpRequest.newBuilder(u).build(),HttpResponse.BodyHandlers.ofString())
@@ -186,7 +186,7 @@ class S3ServiceSpec extends AnyFunSuite {
     val dir=Files.createTempDirectory("s3-plugin-");val allocator=new RootAllocator()
     val path=Files.writeString(dir.resolve("sample.csv"),"station,temp\nA,20\n")
     val empty=Files.createFile(dir.resolve("empty.bin"))
-    val c=Config("localhost",8815,"localhost",Map("climate"->DatasetDefinition("mixed",items=Map("/sample.csv"->Map("file"->path.toString),"/empty.bin"->Map("file"->empty.toString)))),SecurityTestSupport.certificate,SecurityTestSupport.key,SecurityTestSupport.certificate,s3=S3Settings(host="localhost",port=Some(0)),accessLogDirectory=Some(dir.resolve("access")))
+    val c=Config("localhost",8815,"localhost",Map("climate"->DatasetDefinition("mixed",description=SecurityTestSupport.publicDescription,items=Map("/sample.csv"->Map("file"->path.toString),"/empty.bin"->Map("file"->empty.toString)))),SecurityTestSupport.certificate,SecurityTestSupport.key,SecurityTestSupport.certificate,s3=S3Settings(host="localhost",port=Some(0)),accessLogDirectory=Some(dir.resolve("access")))
     val s=new S3Service(c,8815,allocator);s.start();SecurityTestSupport.register(s.port,c)
     try {assert(request(s,"/climate?list-type=2").body.contains("sample.csv"));assert(request(s,"/climate/sample.csv").body==Files.readString(path));val zero=request(s,"/climate/empty.bin");assert(zero.statusCode()==200 && zero.body.isEmpty && zero.headers.firstValue("Content-Length").get=="0")}
     finally {s.close();c.close();allocator.close();Data.deleteTree(dir)}
@@ -205,7 +205,7 @@ class S3ServiceSpec extends AnyFunSuite {
     val dir=Files.createTempDirectory("s3-cancel-");val allocator=new RootAllocator()
     val released=new java.util.concurrent.CountDownLatch(1)
     val cat=new DataCatalog {
-      def list():Seq[DatasetInfo]=Seq(DatasetInfo("large"))
+      def list():Seq[DatasetInfo]=Seq(DatasetInfo("large",SecurityTestSupport.publicDescription))
       def open(name:String):PublishedDataset=new PublishedDataset {
         def open(check:()=>Unit):DatasetAccess=new BatchDatasetAccess {
           def list():Seq[Item]=Seq(describe("/stream"))

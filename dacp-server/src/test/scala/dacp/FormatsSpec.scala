@@ -161,7 +161,7 @@ datasets:
     val allocator = new RootAllocator()
     try {
       val file = dir.resolve("private-workbook.xlsx"); workbook(file,multiple=true)
-      val config = Config("localhost",8815,"localhost",Map("public" -> FileDatasets.mixed(Seq(
+      val config = Config("localhost",8815,"localhost",Map("public" -> SecurityTestSupport.publicFiles(Seq(
         PublishedItem("/orders",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Orders"))),
         PublishedItem("/other",file=Some(file),options=FileOptions(parameters=Map("sheet" -> "Other")))))),dir,dir,dir,batchSize=1,inferSample=1)
       val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(config,allocator)).build().start()

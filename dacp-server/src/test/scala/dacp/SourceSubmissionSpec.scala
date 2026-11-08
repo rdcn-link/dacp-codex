@@ -34,7 +34,7 @@ class SourceSubmissionSpec extends AnyFunSuite {
         exchange.getWriter.start(root);exchange.getWriter.completed()
         val error=intercept[FlightRuntimeException](exchange.getReader.next())
         assert(error.status().code()==FlightStatusCode.UNAUTHORIZED)
-        assert(error.getMessage.contains("DEBUG"))
+        assert(error.getMessage.contains("Job execution failed"))
       } finally {try exchange.close() catch{case _:FlightRuntimeException=>()};root.close()}
       }
       val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(3)
@@ -42,7 +42,7 @@ class SourceSubmissionSpec extends AnyFunSuite {
       val records=config.executionHistory.list()
       assert(records.size==2)
       assert(records.forall(_.path("state").asText=="failed"))
-      assert(records.forall(_.path("message").asText.contains("DEBUG")))
+      assert(records.forall(_.path("message").asText.contains("Job execution failed")))
       assert(records.forall(!_.toString.contains("def process")))
     } finally {client.close();server.close();service.close();config.close();allocator.close()}
   }

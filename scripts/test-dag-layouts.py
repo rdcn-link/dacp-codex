@@ -10,13 +10,13 @@ args=parser.parse_args()
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path=args.chromium,headless=True)
  for url in args.urls:
-  page=b.new_page(viewport={'width':1600,'height':1100});errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+  page=b.new_page(viewport={'width':1600,'height':1100},bypass_csp=True);errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
   if args.dag_script:page.route('**/dag.js',lambda route:route.fulfill(path=args.dag_script,content_type='text/javascript'))
   page.goto(url);selector='#jobs .job-link' if page.locator('#jobs').count() else '#history .job-link'
   if '/job?' not in url:
    if page.locator('#job-view').count():page.locator('#job-view').select_option('history')
    page.locator(selector).first.click()
-  page.wait_for_function('() => dagViewer.ready');page.evaluate('dagViewer.pending')
+  page.wait_for_function('() => typeof dagViewer!=="undefined" && dagViewer.ready');page.evaluate('dagViewer.pending')
   for layout,direction in [('dependency','vertical'),('swimlane','vertical'),('swimlane','horizontal'),('dependency','horizontal')]:
    mode=layout+':'+direction
    page.locator(f'[data-dag-layout={layout}]').click();page.locator(f'[data-dag-direction={direction}]').click();page.evaluate('dagViewer.pending');assert page.locator('#dag-error').is_hidden(),page.locator('#dag-error').inner_text()
@@ -26,6 +26,18 @@ with sync_playwright() as p:
    assert page.locator(f'[data-dag-direction={direction}]').get_attribute('aria-pressed')=='true'
    geometry=page.evaluate('dagViewer.graph.getData()')
    nodes={n['id']:n for n in geometry['nodes']}
+   # Every bound stream terminates at a named port; compact cards grow for fan-in.
+   for node in nodes.values():
+    if node['data'].get('kind')=='task':
+     data=node['data']
+     assert node['style']['size'][1]>=(70 if data.get('logical') else 118)+22*max(1,len(data['inputs']),len(data['outputs']))
+     assert data['fill']=='#fff'
+   for edge in geometry['edges']:
+    source,target=nodes[edge['source']],nodes[edge['target']]
+    if source['data'].get('kind')=='task':
+     assert edge['style']['sourcePort'].removeprefix('output:') in source['data']['outputs']
+    if target['data'].get('kind')=='task':
+     assert edge['style']['targetPort'].removeprefix('input:') in target['data']['inputs']
    axis='y' if direction=='vertical' else 'x'
    for edge in geometry['edges']:
     source,target=nodes[edge['source']],nodes[edge['target']]
@@ -58,6 +70,25 @@ with sync_playwright() as p:
    before=page.evaluate('dagViewer.graph.getZoom()');page.locator('#dag-zoom-in').click();page.evaluate('dagViewer.pending');assert page.evaluate('dagViewer.graph.getZoom()')>before
    page.locator('#dag-fit').click();page.evaluate('dagViewer.pending')
    print(url,mode,'OK',flush=True)
+  # Exercise a fan-in taller than the usual card, with non-default output ports.
+  page.evaluate("""async () => {
+   const sources=Array.from({length:8},(_,i)=>({id:'source'+i,node:'fixture',operator:'source@1',state:'succeeded',inputs:[]}));
+   const join={id:'join',node:'fixture',operator:'join@1',state:'succeeded',inputs:sources.map((s,i)=>({task:s.id,output_port:'chunk_'+i,port:'input_'+i}))};
+   const job={job_id:'port-regression',state:'succeeded',steps:[...sources,join],nodes:{},outputs:{result:{task:'join',port:'merged'}}};
+   await dagViewer.update(job,new Map(),dagViewer.lastRequest[2]);
+  }""")
+  for direction in ['horizontal','vertical']:
+   page.locator('[data-dag-layout=swimlane]').click();page.locator(f'[data-dag-direction={direction}]').click();page.evaluate('dagViewer.pending')
+   assert page.locator('#dag-error').is_hidden(),page.locator('#dag-error').inner_text()
+   boxes=page.evaluate('dagViewer.graph.getNodeData().map(n=>dagViewer.graph.getElementRenderBounds(n.id))')
+   for i,a in enumerate(boxes):
+    for other in boxes[i+1:]:
+     assert a['max'][0]<=other['min'][0] or other['max'][0]<=a['min'][0] or a['max'][1]<=other['min'][1] or other['max'][1]<=a['min'][1],(a,other)
+  page.locator('[data-dag-layout=dependency]').click();page.evaluate('dagViewer.pending')
+  page.evaluate('async () => {const [job,previous,fmt]=dagViewer.lastRequest;await dagViewer.update({...job,job_id:"logical-port-regression",logical:true},previous,fmt);}')
+  assert page.evaluate('dagViewer.graph.getComboData().length')==0
+  assert page.evaluate('dagViewer.graph.getNodeData().find(n=>n.id==="task:join").style.size[1]')==246
+  print(url,'named ports, tall fan-in, logical plan OK',flush=True)
   assert not errors,errors
   page.close()
  b.close()

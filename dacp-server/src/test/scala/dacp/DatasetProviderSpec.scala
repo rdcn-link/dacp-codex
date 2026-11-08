@@ -143,10 +143,10 @@ datasets:
       val defs = Map(
         "files" -> directory(dir),
         "sales" -> DatasetDefinition("sqldb",Map("connection" -> "warehouse"),Map("/customers" -> Map("table" -> "PRIVATE_CUSTOMERS"))),
-        "mixed" -> FileDatasets.mixed(Seq(PublishedItem("/orders",file=Some(dir.resolve("orders.csv"))),
+        "mixed" -> SecurityTestSupport.publicFiles(Seq(PublishedItem("/orders",file=Some(dir.resolve("orders.csv"))),
           PublishedItem("/customers",sql=Some("warehouse"),table=Some("PRIVATE_CUSTOMERS")))),
         "plugin" -> DatasetDefinition("test-dataset",Map("message" -> "external provider")))
-      val c = config(dir,defs).copy(sources=Map("warehouse" -> SqlConfig.source(SqlConfig(url,Some("sa"),Some(""),Some("PUBLIC")))))
+      val c = config(dir,defs.view.mapValues(_.copy(description=SecurityTestSupport.publicDescription)).toMap).copy(sources=Map("warehouse" -> SqlConfig.source(SqlConfig(url,Some("sa"),Some(""),Some("PUBLIC")))))
       assert(!defs("sales").toString.contains("warehouse"))
       val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator)).build().start()
       val client = FlightClient.builder(allocator,server.getLocation).build()

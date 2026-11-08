@@ -22,7 +22,7 @@ class ZipSpec extends AnyFunSuite {
     try {
       val file = dir.resolve("private.ZIP")
       write(file,Seq("reports/orders.csv" -> "id\n1\n2\n","empty/" -> "","nested.zip" -> "opaque"))
-      val config = Config("localhost",8815,"localhost",Map("public" -> FileDatasets.mixed(Seq(PublishedItem("/archive",file=Some(file))))),dir,dir,dir)
+      val config = Config("localhost",8815,"localhost",Map("public" -> SecurityTestSupport.publicFiles(Seq(PublishedItem("/archive",file=Some(file))))),dir,dir,dir)
       val ns = config.openDataset("public")
       val folder = ns.list("/").head
       assert(folder.kind == "folder" && folder.format == "zip" && folder.totalSizeBytes.isEmpty && folder.lastModifiedTimeMs.isDefined && folder.creationTimeMs.isDefined && folder.recordCount.isEmpty)

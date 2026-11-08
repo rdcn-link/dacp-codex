@@ -57,7 +57,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         require(previous.isEmpty || request.getJobYaml.isEmpty,"replay uses original job definition")
         val raw=if(!request.getExecutionPolicyYaml.isEmpty)dacp.union.YamlDocument.parse(request.getExecutionPolicyYaml.toStringUtf8)
           else previous.map(_.path("execution_policy")).getOrElse(dacp.union.Json.obj())
-        val plan=Jobs.resolveReads(Jobs.parse(yaml),config.uri(""));plan.steps.foreach(Jobs.authorizeSource(config,_));val policy=ExecutionPolicy.parse(raw,plan)
+        val plan=Jobs.resolveReads(Jobs.parse(yaml),config.uri(""));plan.steps.foreach(t=>Jobs.authorizeSource(config,t));plan.steps.foreach(t=>DatasetPublication.requireTask(config,allocator,t));val policy=ExecutionPolicy.parse(raw,plan)
         val timeout=policy.timeoutSeconds.getOrElse(config.executionTimeoutSeconds)
         require(timeout<=config.executionTimeoutSeconds,"timeout_seconds exceeds server limit")
         require(policy.maxRetries==0 || request.getRetryAware,"automatic retries require a retry-aware client callback")
@@ -106,6 +106,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         require(inline.isEmpty || config.debug,"FORBIDDEN: source submission requires DEBUG mode")
         val task=Task(n.path("id").asText,ports.map(p=>p->sources.headOption.map(u=>InputBinding(uri=Some(u))).getOrElse(InputBinding(task=Some("upstream")))).toMap,n.path("operator").asText,
           Data.mapper.convertValue(n.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),description=Option(n.get("description")).map(v=>{require(v.isTextual,"description must be a string");v.asText}),source=inline,title=Option(n.get("title")).map(v=>{require(v.isTextual,"title must be a string");v.asText}))
+        DatasetPublication.requireTask(config,allocator,task)
         Jobs.validate(task)
         val queues=ports.map(p=>p->new FrameQueue(cancel)).toMap
         // Every input metadata frame precedes any payload, preventing startup head-of-line blocking.
@@ -154,7 +155,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     val details=dacp.union.Json.obj();val steps=details.putArray("steps")
     plan.steps.foreach { t=>val entry=steps.addObject().put("id",t.id).put("operator",t.source.map(code=>"inline:"+code.runtime).getOrElse(t.operator));t.title.foreach(entry.put("title",_));t.description.foreach(entry.put("description",_)) }
     record.update("running",details)
-    plan.steps.foreach(Jobs.authorizeSource(config,_))
+    plan.steps.foreach(t=>Jobs.authorizeSource(config,t));plan.steps.foreach(t=>DatasetPublication.requireTask(config,allocator,t))
     record.update("running",dacp.union.Json.obj().put("job_yaml",yaml))
     val local=DacpUri.origin(config.uri(""));val allowed=config.taskPeers.map(DacpUri.node).toSet+local
     var targets=Map.empty[String,String];var provenance=Map.empty[String,Vector[String]]

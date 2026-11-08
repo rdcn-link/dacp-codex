@@ -143,3 +143,5 @@ Using.resource(Job.run("dacp://localhost:8815",
 `dacp.client.Union` 支持向独立 X 提交作业，分别读取 `results()` 和 `events()`，查询 `status()` 或 `cancel()`。执行和流均用 `Using.resource` 关闭。完整代码及认证配置见 [Union 服务器](../dacp-union-server/README_zh.md)。
 
 `Source.nodes(unionOrigin, tls)` 返回 Union 公开的逻辑执行节点及容量，使用普通客户端凭据；不会返回成员内部地址。在线设计器用它选择步骤执行位置。
+
+所有连接（包括匿名目录访问）均验证服务器证书和主机名。默认使用平台信任根；私有 CA 或自签名 CA 必须通过 `TlsConfig.ca` 或 `DACP_CA` 配置，不提供跳过验证的选项。

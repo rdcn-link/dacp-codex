@@ -88,11 +88,11 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
     try {
       check()
       if(!Set("GET","HEAD")(e.getRequestMethod))throw Failure(405,"MethodNotAllowed")
-      val credential=try dacp.union.SigV4.authenticate(e.getRequestMethod,e.getRequestURI,
+      val signed=e.getRequestHeaders.asScala.keys.exists(_.equalsIgnoreCase("authorization")) || dacp.union.SigV4.query(e.getRequestURI).exists(_._1.startsWith("X-Amz-"))
+      val credential=if(signed)Some(try dacp.union.SigV4.authenticate(e.getRequestMethod,e.getRequestURI,
         e.getRequestHeaders.asScala.map{case(k,v)=>k->v.asScala.toVector}.toMap,config.credentials)
-        catch{case NonFatal(_)=>throw Failure(403,"AccessDenied")}
-      audit.actor(credential.subject)
-      if(!config.credentials.permissions(credential)("data:read"))throw Failure(403,"AccessDenied")
+        catch{case NonFatal(_)=>throw Failure(403,"AccessDenied")})else None
+      audit.actor(credential.map(_.subject).getOrElse("anonymous"))
       val pairs=dacp.union.SigV4.query(e.getRequestURI).filterNot(_._1.startsWith("X-Amz-"))
       require(pairs.map(_._1).distinct.length==pairs.length,"duplicate parameter")
       val q=pairs.toMap
@@ -117,6 +117,7 @@ private[dacp] final class S3Service(config:Config,flightPort:Int,allocator:Buffe
             val logical=LogicalPath.validate("/"+key)
             val item=ds.describe(logical)
             if(!config.plugins.views(item).contains("bytes"))throw Failure(404,"NoSuchKey")
+            if(e.getRequestMethod=="GET")try DatasetPublication.requireDataset(config,bucket) catch{case _:org.apache.arrow.flight.FlightRuntimeException=>throw Failure(403,"AccessDenied")}
             download(e,ds,item,audit)
           }
         }finally ds.close()

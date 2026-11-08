@@ -1,7 +1,7 @@
 /* DACP execution viewer. G6 owns rendering, layout, grouping and viewport interaction. */
 'use strict';
 window.DacpDag=(()=>{
- const palette=[{stroke:'#2563eb',fill:'#dbeafe'},{stroke:'#c2410c',fill:'#ffedd5'},{stroke:'#15803d',fill:'#dcfce7'},{stroke:'#9333ea',fill:'#f3e8ff'},{stroke:'#be123c',fill:'#ffe4e6'},{stroke:'#0e7490',fill:'#cffafe'}];
+ const palette=[{stroke:'#2563eb',fill:'#f1f5fe'},{stroke:'#c2410c',fill:'#fff7f0'},{stroke:'#15803d',fill:'#f0faf4'},{stroke:'#9333ea',fill:'#f8f3fd'},{stroke:'#be123c',fill:'#fff3f6'},{stroke:'#0e7490',fill:'#f0fafc'}];
  const states={skipped:{color:'#94a3b8',fill:'#f1f5f9',label:'↷ Skipped'},replaying:{color:'#7c3aed',fill:'#f5f3ff',label:'↻ Replaying'},succeeded:{color:'#168264',fill:'#f0faf5',label:'✓ Completed'},running:{color:'#2563eb',fill:'#eff6ff',label:'▶ Running'},failed:{color:'#cc4560',fill:'#fff3f5',label:'! Execution failed'},cancelled:{color:'#cc4560',fill:'#fff3f5',label:'! Cancelled'},expired:{color:'#cc4560',fill:'#fff3f5',label:'! Timed out'},interrupted:{color:'#cc4560',fill:'#fff3f5',label:'! Service interrupted'},unknown:{color:'#b68424',fill:'#fff9eb',label:'? Unknown status'}};
  const pending={color:'#94a3b8',fill:'#f8fafc',label:'○ Not started',dash:[5,4]};
  const compact=(text,max)=>Array.from(String(text||'')).length>max?Array.from(String(text)).slice(0,max-1).join('')+'…':String(text||'');
@@ -21,15 +21,17 @@ window.DacpDag=(()=>{
    const rate=!fmt.terminal.has(job.state)&&last&&dt>0&&m.payload_bytes>=last.value?fmt.bytes((m.payload_bytes-last.value)*1000/dt)+'/s':'—';
    return {label:fmt.bytes(m.payload_bytes),remote:m.remote_payload_bytes>0,lines:['Payload '+fmt.bytes(m.payload_bytes),'Rate '+rate,'Cross-node payload '+fmt.bytes(m.remote_payload_bytes),...(m.records===undefined?[]:['Records '+m.records.toLocaleString()]),'Last activity '+fmt.time(m.last_activity_ms)]};
   }
-  function edge(source,target,label,task,direction,port){
+  function edge(source,target,label,task,direction,port,sourcePort='result'){
    const traffic=flow(task,direction,port),id='flow:'+target+':'+port+':'+source;
-   edges.push({id,source,target,data:{port:label,traffic:traffic.label},style:{targetPort:source.startsWith('task:')&&target.startsWith('task:')?'left':'in',labelText:label+'\n'+traffic.label,stroke:traffic.remote?'#5c7bb5':'#a3b2c5',lineWidth:traffic.remote?1.8:1.3}});
+   edges.push({id,source,target,data:{port:label,traffic:traffic.label},style:{sourcePort:source.startsWith('task:')?'output:'+sourcePort:'out',targetPort:target.startsWith('task:')?'input:'+port:'in',labelText:label+'\n'+traffic.label,stroke:traffic.remote?'#5c7bb5':'#a3b2c5',lineWidth:traffic.remote?1.8:1.3}});
    details.set(id,{title:'Data flow · '+label,lines:traffic.lines});
   }
   for(const t of job.steps){
    const state=states[t.state]||{...pending,label:pending.label+' · '+(fmt.labels[t.state]||t.state||'Waiting')};
    const incoming=aggregate(t,'inputs'),outgoing=aggregate(t,'outputs'),observed=job.nodes[t.node_identity]?.observed_at_ms;
-  nodes.push({id:'task:'+t.id,combo:groups.get(t.node),data:{kind:'task',title:t.title||t.id,subtitle:t.operator,stateLabel:state.label,border:t.state==='running'?2:1.2,color:state.color,fill:state.fill,dash:state.dash||[],incoming,outgoing},style:{size:[268,150]}});
+   const inputs=[...new Set((t.inputs||[]).map(b=>b.port))],outputs=[...new Set([...job.steps.flatMap(other=>(other.inputs||[]).filter(b=>b.task===t.id).map(b=>b.output_port||'result')),...Object.values(job.outputs).filter(b=>b.task===t.id).map(b=>b.port||'result')])];
+   const height=(job.logical?70:118)+Math.max(1,inputs.length,outputs.length)*22;
+   nodes.push({id:'task:'+t.id,combo:groups.get(t.node),data:{kind:'task',title:t.title||t.id,subtitle:t.operator,stateLabel:state.label,border:t.state==='running'?1.8:1,color:state.color,fill:'#fff',statusFill:state.fill,dash:[],incoming,outgoing,inputs,outputs},style:{size:[252,height]}});
    details.set('task:'+t.id,{title:t.title||t.id,lines:['Step ID: '+t.id,'Operator: '+t.operator,'Server: '+t.node,'Status: '+(fmt.labels[t.state]||t.state),...(t.replayed?['Replaying from materialized results']:[]),'Input payload: '+incoming,'Output payload: '+outgoing,'Last observed: '+fmt.time(observed)]});
   }
   for(const t of job.steps)for(const binding of t.inputs){
@@ -47,10 +49,10 @@ window.DacpDag=(()=>{
      }
     }
     const title=binding.upstream_task?binding.upstream_task+'.'+(binding.upstream_port||'result'):binding.uri?.split('/').pop()||binding.port;
-    nodes.push({id:source,combo,data:{kind:'input',title,subtitle:(binding.remote?'External output':'Local input')+' · '+binding.port,color:'#7f93ad',fill:'#fff',dash:[]},style:{size:[228,76]}});
+    nodes.push({id:source,combo,data:{kind:'input',title,subtitle:(binding.remote?'External output':'Local input')+' · '+binding.port,color:'#7f93ad',fill:'#fff',dash:[]},style:{size:[216,76]}});
     details.set(source,{title:(binding.remote?'Cross-node input':'Local input')+' · '+binding.port,lines:[binding.uri||'', 'Meaning: '+(binding.view||'bytes'),'Server: '+server]});
    }
-   edge(source,'task:'+t.id,binding.task?binding.output_port+' → '+binding.port:binding.port,t,'inputs',binding.port);
+   edge(source,'task:'+t.id,binding.task?(binding.output_port||'result')+' → '+binding.port:binding.port,t,'inputs',binding.port,binding.output_port||'result');
   }
   if(Object.keys(job.outputs).length){
    combos.push({id:'client',data:{title:'Result outlet',subtitle:job.output_route||'Union → Client'},style:{labelText:'Result outlet · '+(job.output_route||'Union → Client'),stroke:'#a3b2c5',fill:'#f5f7fa'}});
@@ -58,9 +60,9 @@ window.DacpDag=(()=>{
   }
   for(const [label,binding]of Object.entries(job.outputs)){
    const id='output:'+label;
-  nodes.push({id,combo:'client',data:{kind:'output',title:label,subtitle:job.output_route||'Union → Client',color:'#6f8ba7',fill:'#fff',dash:[]},style:{size:[228,76]}});
+  nodes.push({id,combo:'client',data:{kind:'output',title:label,subtitle:job.output_route||'Union → Client',color:'#6f8ba7',fill:'#fff',dash:[]},style:{size:[216,76]}});
    details.set(id,{title:'Output · '+label,lines:[binding.task+'.'+binding.port,job.output_route||'Forwarded through Union to the submitting client']});
-   edge('task:'+binding.task,id,binding.port,steps.get(binding.task),'outputs',binding.port);
+   edge('task:'+binding.task,id,binding.port,steps.get(binding.task),'outputs',binding.port,binding.port||'result');
   }
   if(!job.logical){
    const modeNames={shared_process:'Shared process',isolated_step:'Separate execution',host_stream_source:'Host stream source',remote_subjob:'Remote sub-job'};
@@ -86,7 +88,7 @@ window.DacpDag=(()=>{
   }
   if(job.logical){
    combos.length=0;
-   for(const node of nodes){delete node.combo;node.data.logical=true;node.data.color='#5679a6';node.data.fill='#f4f8fd';node.data.dash=[];
+   for(const node of nodes){delete node.combo;node.data.logical=true;node.data.color='#5679a6';node.data.fill='#fff';node.data.statusFill='#edf3ff';node.data.dash=[];
     if(node.data.kind==='task'){const task=steps.get(node.id.slice(5));
      node.data.stateLabel='Logical step';
      details.set(node.id,{title:task.title||task.id,lines:['Step: '+task.id,'Operator: '+task.operator,...Object.entries(task.params||{}).map(([key,value])=>key+': '+String(value))]});}
@@ -129,7 +131,7 @@ window.DacpDag=(()=>{
    const c=combos.get(id),box=content(id),pad=c.style.padding||[64,24,24,24];
    return {left:box.left-pad[3],top:box.top-pad[0],right:box.right+pad[1],bottom:box.bottom+pad[2]};
   }
-  const roots=data.combos.filter(c=>!c.combo),lanes=[];
+  const roots=data.combos.filter(c=>!c.combo),lanes=[],rankStride=Math.max(...data.nodes.map(n=>n.style.size[1]))+180;
   for(const combo of roots){
    const members=data.nodes.filter(n=>rootOf(n)===combo.id);if(!members.length)continue;
    // Include nested execution-unit headers and padding in the slot size.
@@ -139,7 +141,7 @@ window.DacpDag=(()=>{
     return span;
    }))+48;
    const columns=new Map();
-   for(const n of members){const rank=ranks.get(n.id),slot=columns.get(rank)||0;columns.set(rank,slot+1);n.style={...n.style,x:vertical?slot*stride:rank*400,y:vertical?rank*280:slot*stride};}
+   for(const n of members){const rank=ranks.get(n.id),slot=columns.get(rank)||0;columns.set(rank,slot+1);n.style={...n.style,x:vertical?slot*stride:rank*400,y:vertical?rank*rankStride:slot*stride};}
    lanes.push({combo,members,box:content(combo.id)});
   }
   if(!lanes.length)return;
@@ -161,16 +163,29 @@ window.DacpDag=(()=>{
   class TaskCard extends G6.Rect {
    render(attributes=this.parsedAttributes,container){
     super.render(attributes,container);
-    const d=attributes.card||{},task=d.kind==='task',width=task?268:228,height=task?150:76,left=-width/2+18,top=-height/2;
-    const text=(key,value,x,y,size,fill,weight=400)=>this.upsert(key,'text',{x,y,text:value,fontFamily:'system-ui, sans-serif',fontSize:size,fill,fontWeight:weight,textBaseline:'middle'},container);
-    this.upsert('accent','rect',{x:-width/2,y:top+14,width:3,height:height-28,radius:2,fill:d.color},container);
-    text('title',compact(d.title,task?19:22),left,top+25,14,'#243b53',600);
-    text('subtitle',compact(d.subtitle,task?33:29),left,top+47,10,'#8291a5');
+    const d=attributes.card||{},task=d.kind==='task',size=attributes.size||[252,140],width=size[0],height=size[1],left=-width/2,top=-height/2;
+    const text=(key,value,x,y,size,fill,weight=400,align='left')=>this.upsert(key,'text',{x,y,text:value,fontFamily:'system-ui, sans-serif',fontSize:size,fill,fontWeight:weight,textBaseline:'middle',textAlign:align,pointerEvents:'none'},container);
+    this.upsert('accent','rect',{x:left+1,y:top+1,width:width-2,height:3,radius:[9,9,0,0],fill:d.color,pointerEvents:'none'},container);
+    const symbol=task?'M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M9 15v6':d.kind==='output'?'M5 5h14v14H5zM9 12h10M15 8l4 4-4 4':'M6 3h8l4 4v14H6zM14 3v5h5M9 12h6M9 16h6';
+    const svg='<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="'+symbol+'" fill="none" stroke="'+d.color+'" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    this.upsert('operator-icon','image',{x:width/2-38,y:top+15,width:23,height:23,src:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg),pointerEvents:'none'},container);
+    text('title',compact(d.title,task?23:21),left+14,top+25,12,'#21324c',600);
+    text('subtitle',compact(d.subtitle,task?35:29),left+14,top+46,10,'#77869b');
     if(task){
-     text('status',d.stateLabel,left,top+73,11,d.color,600);
-     this.upsert('divider','line',{x1:left,x2:width/2-18,y1:top+91,y2:top+91,stroke:'#e1e9f0',lineWidth:1},container);
-     text('input-label',d.logical?'Inputs':'Input',left,top+109,10,'#8291a5');text('output-label',d.logical?'Outputs':'Output',12,top+109,10,'#8291a5');
-     text('input',d.logical?'Stream':d.incoming,left,top+130,16,'#324c65',600);text('output',d.logical?'Stream':d.outgoing,12,top+130,16,'#324c65',600);
+     const portY=d.logical?80:104;
+     if(!d.logical){
+     this.upsert('status-background','rect',{x:left+13,y:top+61,width:Math.min(width-26,20+Array.from(d.stateLabel||'').length*5.6),height:19,radius:5,fill:d.statusFill||'#f2f5fa',pointerEvents:'none'},container);
+     text('status',d.stateLabel,left+20,top+71,10,d.color,500);
+     }
+     this.upsert('divider','line',{x1:left+1,x2:width/2-1,y1:top+portY-15,y2:top+portY-15,stroke:'#edf1f6',lineWidth:1,pointerEvents:'none'},container);
+     // Named ports mirror the designer, while the inspector retains full traffic details.
+     for(const [side,ports]of [['input',d.inputs||[]],['output',d.outputs||[]]]){
+      for(let i=0;i<ports.length;i++)text(side+'-label-'+i,compact(ports[i],18),side==='input'?left+14:width/2-14,top+portY+i*22,10,'#5c779d',400,side==='input'?'left':'right');
+     }
+     if(!d.logical){
+      this.upsert('traffic-divider','line',{x1:left+14,x2:width/2-14,y1:top+height-25,y2:top+height-25,stroke:'#edf1f6',lineWidth:1,pointerEvents:'none'},container);
+      text('traffic','↓ '+d.incoming+'    ↑ '+d.outgoing,left+14,top+height-12,9,'#8291a5');
+     }
     }
    }
   }
@@ -178,7 +193,7 @@ window.DacpDag=(()=>{
    render(attributes=this.parsedAttributes,container){
     super.render(attributes,container);
     const d=attributes.region||{},process=d.kind==='process',key=this.getKeyStyle(attributes),{x,y,width,height}=key;
-    const header=Math.min(process?60:52,height-8),color=process?'#64879a':'#55779b';
+    const header=Math.min(process?60:52,height-8),color=process?'#7890a5':d.stroke||'#55779b';
     this.upsert('region-header','rect',{x:x+2,y:y+2,width:Math.max(0,width-4),height:header,radius:[12,12,0,0],fill:'#fff',fillOpacity:process?.55:.35,pointerEvents:'none'},container);
     this.upsert('header-divider','line',{x1:x+12,x2:x+width-12,y1:y+header,y2:y+header,stroke:color,strokeOpacity:.18,lineWidth:1,pointerEvents:'none'},container);
     const text=(id,value,tx,ty,size,weight=400)=>this.upsert(id,'text',{x:tx,y:ty,text:value,fontFamily:'system-ui, sans-serif',fontSize:size,fontWeight:weight,textBaseline:'top',fill:'#36536d',pointerEvents:'none'},container);
@@ -261,7 +276,6 @@ window.DacpDag=(()=>{
    this.lastRequest=[job,previous,fmt];
    const layout=this.layoutMode,vertical=this.direction==='vertical',layoutKey=layout+':'+this.direction,model=buildData(job,previous,fmt);
    if(layout==='swimlane')swimlane(model.data,vertical);
-   if(vertical)for(const edge of model.data.edges)edge.style.targetPort='in';
    // Serialize viewport operations and refreshes; a slow render must finish before the next update.
    const work=this.pending.catch(()=>{}).then(async()=>{
     if(!window.G6)throw new Error('G6 Graph component failed to load');
@@ -273,10 +287,14 @@ window.DacpDag=(()=>{
      this.destroyGraph();this.renderedLayout=layoutKey;document.getElementById('dag-error').hidden=true;this.host.replaceChildren();this.job=job.job_id;this.topology=model.topology;this.mode='fit';this.inspect(selected);
      this.graph=new G6.Graph({
       container:this.host,width:this.host.clientWidth,height:this.host.clientHeight,animation:false,padding:36,zoomRange:[.15,2.5],data:model.data,
-      layout:layout==='swimlane'?undefined:{type:'combo-combined',comboPadding:[64,24,24,24],comboSpacing:64,layout:comboId=>({type:'dagre',rankdir:vertical?'TB':'LR',nodesep:comboId?36:70,ranksep:comboId?70:90})},
-      node:{type:'dacp-task-card',state:{selected:{stroke:'#2563eb',lineWidth:3.5,shadowColor:'#2563eb66',shadowBlur:20,shadowOffsetY:0}},style:{card:d=>d.data,fill:d=>d.data.fill,stroke:d=>d.data.color,lineDash:d=>d.data.dash,lineWidth:d=>d.data.border||1.2,radius:12,shadowColor:'#1e3a5f0c',shadowBlur:10,shadowOffsetY:4,label:false,ports:[{key:'in',placement:vertical?'top':'left'},{key:'out',placement:vertical?'bottom':'right'},{key:'left',placement:'left'},{key:'right',placement:'right'}],portR:3,portFill:'#fff',portStroke:'#b5c4d6'}},
-      edge:{type:vertical?'cubic-vertical':'cubic-horizontal',state:{selected:{stroke:'#2563eb',lineWidth:4,shadowColor:'#2563eb55',shadowBlur:10,labelFill:'#1d4ed8',labelFontWeight:700,labelBackgroundFill:'#dbeafe'}},style:{sourcePort:'out',targetPort:d=>d.style?.targetPort||'in',endArrow:true,endArrowSize:7,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#6e829b',labelBackground:true,labelBackgroundFill:'#fff',labelBackgroundRadius:5,labelPadding:[4,7],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
-      combo:{type:d=>d.data?.kind?'dacp-execution-region':'rect',state:{selected:{stroke:'#2563eb',lineWidth:3.5,shadowColor:'#2563eb44',shadowBlur:16}},style:{region:d=>d.data,label:d=>!d.data?.kind,radius:18,padding:d=>d.style?.padding||[64,24,24,24],lineWidth:2,fillOpacity:1,labelPlacement:'top-left',labelTextAlign:'left',labelTextBaseline:'top',labelOffsetX:16,labelOffsetY:14,labelFontSize:12,labelFontWeight:600,labelFill:'#526b88',collapsedSize:[268,76]}},
+      layout:layout==='swimlane'?undefined:{type:'combo-combined',comboPadding:[64,24,24,24],comboSpacing:64,layout:comboId=>({type:'dagre',rankdir:vertical?'TB':'LR',nodesep:comboId?36:70,ranksep:comboId?80:100})},
+      node:{type:'dacp-task-card',state:{selected:{stroke:'#346ded',lineWidth:2,shadowColor:'#346ded30',shadowBlur:14,shadowOffsetY:2}},style:{card:d=>d.data,fill:d=>d.data.fill,stroke:'#cbd9ed',lineDash:d=>d.data.dash,lineWidth:d=>d.data.border||1,radius:10,shadowColor:'#24436618',shadowBlur:14,shadowOffsetY:5,label:false,ports:d=>{
+       if(d.data.kind!=='task')return [{key:'in',placement:vertical?'top':'left'},{key:'out',placement:vertical?'bottom':'right'}];
+       const size=d.style.size;
+       return ['input','output'].flatMap(side=>(d.data[side==='input'?'inputs':'outputs']||[]).map((port,i)=>({key:side+':'+port,placement:vertical?[(i+1)/((d.data[side==='input'?'inputs':'outputs']||[]).length+1),side==='input'?0:1]:[side==='input'?0:1,((d.data.logical?80:104)+i*22)/size[1]]})));
+      },portR:3.5,portFill:'#fff',portStroke:'#7192c3',portLineWidth:1.5}},
+      edge:{type:vertical?'cubic-vertical':'cubic-horizontal',state:{selected:{stroke:'#2563eb',lineWidth:4,shadowColor:'#2563eb55',shadowBlur:10,labelFill:'#1d4ed8',labelFontWeight:700,labelBackgroundFill:'#dbeafe'}},style:{sourcePort:d=>d.style?.sourcePort||'out',targetPort:d=>d.style?.targetPort||'in',endArrow:true,endArrowSize:6,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#5b718c',labelBackground:true,labelBackgroundFill:'#ffffffed',labelBackgroundRadius:5,labelPadding:[2,5],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
+      combo:{type:d=>d.data?.kind?'dacp-execution-region':'rect',state:{selected:{stroke:'#2563eb',lineWidth:3.5,shadowColor:'#2563eb44',shadowBlur:16}},style:{region:d=>d.data,label:d=>!d.data?.kind,radius:18,padding:d=>d.style?.padding||[64,24,24,24],lineWidth:1.2,fillOpacity:1,labelPlacement:'top-left',labelTextAlign:'left',labelTextBaseline:'top',labelOffsetX:16,labelOffsetY:14,labelFontSize:12,labelFontWeight:600,labelFill:'#526b88',collapsedSize:[252,76]}},
       behaviors:[{type:'drag-canvas',onFinish:()=>{this.mode='manual';}},{type:'zoom-canvas',enable:()=>this.mouseZoom,preventDefault:false,sensitivity:.5,onFinish:()=>{this.mode='manual';this.zoomLabel();}},{type:'collapse-expand',enable:event=>layout!=='swimlane'&&event.targetType==='combo',animation:false,onCollapse:()=>this.action(()=>this.normalizeRegions()),onExpand:()=>this.action(()=>this.normalizeRegions())}],
      });
      for(const type of ['node','edge','combo'])this.graph.on(type+':click',event=>this.select(event.target.id));

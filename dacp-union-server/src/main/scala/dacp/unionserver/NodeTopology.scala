@@ -37,4 +37,23 @@ private[unionserver] object NodeTopology {
     }
     val es=n.putArray("edges");edges.values.foreach(es.add);n
   }
+  /** Receiver-side Union result payload, separate from member-to-member transfers. */
+  def unionEdges(members:Vector[JsonNode],jobs:Vector[JsonNode],unionIdentity:String):JsonNode={
+    val edges=members.map { m=>
+      val id=m.path("identity").asText
+      val e=Json.obj().put("source",id).put("target",unionIdentity).put("kind","union_result").put("payload_bytes",0L).put("observed",false)
+      e.putArray("samples");id->e
+    }.toMap
+    jobs.foreach { job=>job.path("union_result_streams").elements.asScala.foreach { metric=>
+      if(metric.path("attempt_id").asText==job.path("attempt_id").asText)edges.get(metric.path("source").asText).foreach { edge=>
+        val bytes=metric.path("payload_bytes").asLong
+        edge.put("payload_bytes",edge.path("payload_bytes").asLong+bytes).put("observed",true)
+        edge.withArray("samples").addObject().put("key",job.path("job_id").asText+"/"+metric.path("attempt_id").asText+"/union/"+metric.path("step").asText+"/"+metric.path("port").asText)
+          .put("bytes",bytes).put("observed_at_ms",metric.path("observed_at_ms").asLong)
+          .put("active",!Set("succeeded","failed","cancelled","expired","interrupted")(job.path("state").asText))
+      }
+    }}
+    val result=Json.mapper.createArrayNode();members.foreach(m=>result.add(edges(m.path("identity").asText)));result
+  }
+
 }

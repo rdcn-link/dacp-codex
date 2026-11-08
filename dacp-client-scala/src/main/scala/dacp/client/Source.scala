@@ -123,7 +123,7 @@ object Source {
     val allocator = new RootAllocator(Long.MaxValue)
     try {
       val client=xstream.connector.dacp.wire.ClientTransport.open(allocator,new URI("dacp",null,u.getHost,if(u.getPort<0)8815 else u.getPort,null,null,null).toString,
-        ca,cert,key,()=>tls.token.orElse(credential(tls.tokenFile,"DACP_TOKEN_FILE").map(p=>Files.readString(p).trim)),allowAnonymousWithoutCa=true)
+        ca,cert,key,()=>tls.token.orElse(credential(tls.tokenFile,"DACP_TOKEN_FILE").map(p=>Files.readString(p).trim)))
       (client,allocator)
     }catch{case t:Throwable=>allocator.close();throw DacpErrors.translate(t)}
   }

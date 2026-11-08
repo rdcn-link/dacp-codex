@@ -16,15 +16,16 @@ import org.scalatest.funsuite.AnyFunSuite
 import scala.jdk.CollectionConverters._
 
 class SecuritySpec extends AnyFunSuite {
-  private def fixture(run:(Config,DacpServer,RootAllocator)=>Unit):Unit={
+  private def fixture(run:(Config,DacpServer,RootAllocator)=>Unit):Unit=fixturePolicy("""{"policy":"public"}""")(run)
+  private def fixturePolicy(policy:String)(run:(Config,DacpServer,RootAllocator)=>Unit):Unit={
     val dir=Files.createTempDirectory("security-contract-");val socket=new java.net.ServerSocket(0);val port=socket.getLocalPort;socket.close()
     val catalog=new DataCatalog {
-      def list():Seq[DatasetInfo]=Seq(DatasetInfo("live"))
+      def list():Seq[DatasetInfo]=Seq(DatasetInfo("live",s"""{"title":"Live","description":"Test","publication":$policy}"""))
       def open(name:String):PublishedDataset=new PublishedDataset {
         def open(check:()=>Unit):DatasetAccess=new BatchDatasetAccess {
           def list():Seq[Item]=Seq(describe("/ticks"))
           def list(p:String):Seq[Item]=list()
-          def describe(p:String):Item=Item(p,"binary",None,views=Some(Seq("bytes")))
+          def describe(p:String):Item=Item(p,"binary",None,totalSizeBytes=Some(1L),views=Some(Seq("bytes")))
           def count(p:String):Option[Long]=None
           def read(p:String,v:String,a:org.apache.arrow.memory.BufferAllocator,l: BatchReceiver,ready:()=>Unit):Unit={
             val root=VectorSchemaRoot.create(PluginSchemas.bytes,a)
@@ -94,7 +95,7 @@ class SecuritySpec extends AnyFunSuite {
       }finally source.close()
     }finally {cancel.close();environment.close();provider.close();Data.deleteTree(dir)}
   }}
-  test("metadata is public; certificates alone cannot read data and S3 keys cannot authenticate Flight") {fixture{(c,_,a)=>
+  test("metadata is public; certificates alone cannot read data and S3 keys cannot authenticate Flight") {fixturePolicy("""{"policy":"private"}"""){(c,_,a)=>
     val issued=c.credentials.create("alice");val good=client(c,a,()=>Some(issued._2))
     val peer=client(c,a,()=>None,true);val s3=c.credentials.create("s3","s3");val wrong=client(c,a,()=>Some(s3._2))
     try {
@@ -108,8 +109,11 @@ class SecuritySpec extends AnyFunSuite {
       assert(audit.contains("UNAUTHENTICATED") && !audit.contains(issued._2) && !audit.contains(s3._2))
     }finally {good.close();peer.close();wrong.close()}
   }}
-  test("anonymous metadata needs no CA while payload authorization remains enforced") {fixture{(c,_,a)=>
-    val public=ClientTransport.open(a,c.uri(""),None,None,None,()=>None,allowAnonymousWithoutCa=true)
+  test("anonymous connections reject untrusted servers and trusted metadata remains public") {fixturePolicy("""{"policy":"private"}"""){(c,_,a)=>
+    val untrusted=ClientTransport.open(a,c.uri(""),None,None,None,()=>None)
+    try intercept[FlightRuntimeException](untrusted.listFlights(Criteria.ALL).asScala.toVector)
+    finally untrusted.close()
+    val public=ClientTransport.open(a,c.uri(""),Some(c.ca),None,None,()=>None)
     try {
       assert(public.listFlights(Criteria.ALL).asScala.size==1)
       val info=public.getInfo(FlightDescriptor.path("datasets","live","/ticks"))
@@ -141,7 +145,7 @@ class SecuritySpec extends AnyFunSuite {
     }finally {bad.close();good.close()}
   }}
 
-  test("anonymous metadata includes nested listings and schemas, but not count, inference or payload") {fixture{(c,_,a)=>
+  test("anonymous metadata includes nested listings and schemas, but not count, inference or payload") {fixturePolicy("""{"policy":"private"}"""){(c,_,a)=>
     val connection=client(c,a,()=>None)
     try {
       assert(connection.listFlights(Criteria.ALL).asScala.size==1)
@@ -161,7 +165,7 @@ class SecuritySpec extends AnyFunSuite {
     def inferenceStatus=intercept[FlightRuntimeException](connection.doAction(new Action("dacp.infer","{}".getBytes("UTF-8"))).next()).status.code
     def deniedRead():Unit={val reader=stream(connection);try assert(intercept[FlightRuntimeException](reader.next()).status.code==FlightStatusCode.UNAUTHORIZED)finally reader.close()}
     try {
-      deniedRead();assert(inferenceStatus==FlightStatusCode.UNAUTHORIZED)
+      val publicRead=stream(connection);try assert(publicRead.next())finally {publicRead.cancel("done",null);publicRead.close()};assert(inferenceStatus==FlightStatusCode.UNAUTHORIZED)
       c.credentials.setRoles("visitor",Set("reader"))
       val first=stream(connection);try assert(first.next())finally{first.cancel("done",null);first.close()}
       assert(inferenceStatus==FlightStatusCode.UNAUTHORIZED)
@@ -172,7 +176,7 @@ class SecuritySpec extends AnyFunSuite {
       val next=client(c,a,()=>Some(rotated._2))
       try {val reader=stream(next);try assert(reader.next())finally{reader.cancel("done",null);reader.close()}}finally next.close()
       c.credentials.setRoles("visitor",Set.empty)
-      val noRoles=client(c,a,()=>Some(rotated._2));try {val reader=stream(noRoles);try assert(intercept[FlightRuntimeException](reader.next()).status.code==FlightStatusCode.UNAUTHORIZED)finally reader.close()}finally noRoles.close()
+      val noRoles=client(c,a,()=>Some(rotated._2));try {val reader=stream(noRoles);try assert(reader.next())finally {reader.cancel("done",null);reader.close()}}finally noRoles.close()
     }finally connection.close()
   }}
   test("subject roles persist independently, reload and reject invalid roles") {
@@ -209,5 +213,28 @@ class SecuritySpec extends AnyFunSuite {
       Files.writeString(dir.resolve("credentials.json"),"invalid")
       Thread.sleep(600);assert(other.authenticate(rotated._2,None).isEmpty)
     }finally {store.close();other.close();Data.deleteTree(dir)}
+  }
+
+  test("dataset publication controls anonymous DACP, S3 and read_item while discovery remains public") {
+    for((policy,allowed)<-Seq("""{"policy":"public"}"""->true,"""{"policy":"private"}"""->false,"""{"policy":"embargoed","public_at":"2999-01-01T00:00:00Z"}"""->false,"""{"policy":"embargoed","public_at":"2000-01-01T00:00:00Z"}"""->true))fixturePolicy(policy){(c,_,a)=>
+      val anonymous=client(c,a,()=>None)
+      val s3=new S3Service(c.copy(s3=S3Settings(port=Some(0))),c.port,a);s3.start()
+      def http(path:String,method:String="GET")=SecurityTestSupport.client().send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"https://localhost:${s3.port}"+path)).method(method,java.net.http.HttpRequest.BodyPublishers.noBody()).build(),java.net.http.HttpResponse.BodyHandlers.ofString())
+      try {
+        assert(anonymous.listFlights(Criteria.ALL).asScala.size==1)
+        assert(anonymous.getInfo(FlightDescriptor.path("datasets","live")).getAppMetadata.nonEmpty)
+        val info=anonymous.getInfo(FlightDescriptor.path("datasets","live","/ticks"))
+        val stream=anonymous.getStream(info.getEndpoints.get(0).getTicket)
+        try {if(allowed)assert(stream.next())else intercept[FlightRuntimeException](stream.next())}finally {stream.cancel("done",null);stream.close()}
+        assert(http("/").statusCode==200);assert(http("/live").statusCode==200);assert(http("/live/ticks","HEAD").statusCode==200)
+        // A bounded Range avoids consuming this fixture's infinite source.
+        val request=java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"https://localhost:${s3.port}/live/ticks")).header("Range","bytes=0-0").build()
+        val response=SecurityTestSupport.client().send(request,java.net.http.HttpResponse.BodyHandlers.ofString());assert(response.statusCode==(if(allowed)206 else 403));if(allowed)assert(response.body=="0")
+        val params=new java.util.LinkedHashMap[String,Object]();params.put("uri","context:/live/ticks");params.put("view","bytes")
+        val task=_root_.xstream.engine.Task("read",Map.empty,"read_item@1.0",params)
+        if(allowed)DatasetPublication.requireTask(c,a,task,trusted=false)else intercept[FlightRuntimeException](DatasetPublication.requireTask(c,a,task,trusted=false))
+        DatasetPublication.requireTask(c,a,task,trusted=true)
+      }finally {s3.close();anonymous.close()}
+    }
   }
 }

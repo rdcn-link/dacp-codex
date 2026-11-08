@@ -11,6 +11,10 @@ import java.security.KeyStore
 import scala.sys.process._
 
 private[dacp] object SecurityTestSupport {
+  val publicDescription="""{"title":"Public test data","description":"Test fixture","publication":{"policy":"public"}}"""
+  def publicFiles(items:Seq[_root_.xstream.data.files.PublishedItem]):_root_.xstream.data.DatasetDefinition=
+    _root_.xstream.data.files.FileDatasets.mixed(items).copy(description=publicDescription)
+
   lazy val directory:Path={
     val dir=Files.createTempDirectory("dacp-security-tls-")
     require(Process(Seq("openssl","req","-x509","-newkey","rsa:2048","-nodes","-days","1","-subj","/CN=localhost","-addext","subjectAltName=DNS:localhost","-keyout",dir.resolve("key.pem").toString,"-out",dir.resolve("cert.pem").toString)).!(ProcessLogger(_=>(),_=>()))==0)

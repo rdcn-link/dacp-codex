@@ -4,6 +4,8 @@
 
 DACP Server 默认同时启动 Flight、Web 看板和一个独立的 HTTPS S3 兼容端口。S3 服务复用实时 DataCatalog 与 DatasetAccess：dataset 对应 bucket，Item 的逻辑路径去掉开头的 `/` 后对应 object key。例如 `climate` 中的 `/observations/day.csv` 对应 `s3://climate/observations/day.csv`。不复制数据，不产生第二份目录配置。
 
+此只读 HTTPS 服务使用节点 TLS 证书。列表及 HEAD 元数据匿名公开；GET 和 Range 遵循数据集发布策略：公开内容可匿名读取，不公开和未到期的定时公开数据拒绝普通读取，包括签名及预签名请求。提供的 SigV4 签名必须有效。撤销或过期密钥拒绝后续签名请求，已接纳的下载继续。DACP Token 和 S3 密钥是同一主体的独立凭据。支持预签名 GET，不支持预签名列表。匿名读取公开内容可使用 `--no-sign-request`，仍须验证服务器证书。
+
 ## 配置与生命周期
 
 ```yaml
@@ -100,4 +102,4 @@ DACP_S3_TEST_PYTHON="$(command -v python3)" sbt 'testOnly dacp.S3ServiceSpec dac
 
 /s3 页面通过 /api/s3 展示启用／运行状态、纯文本服务地址、启动时间、已运行时间、活动请求数、按方法及 HTTP 状态码统计的请求量、成功／失败次数、已完成请求的平均耗时和对象发送字节数。传输速率和请求速率由浏览器两次采样的差值计算。计数为 S3 启动以来的内存聚合值，重启后清零；并发快照为近似值。对象字节统计成功写出的数据内容，包括范围请求及中途失败前的部分传输，不计 XML 列表／错误响应、HTTP 和 TLS 开销。失败传输也可能已发送 HTTP 200／206 头，因此失败计数与状态码计数描述不同维度。不返回凭据、桶／对象名或 Item 路径。读取指标不会打开数据集或消费数据流。页面不提供 S3 浏览、下载、签名或凭据管理操作。
 
-Union 发行包通过 `union-admin` 提供完全相同的命令。`list-credentials DIRECTORY` 隐藏秘密；`revoke-credential DIRECTORY ID` 和 `rotate-credential DIRECTORY ID` 作用于单个凭据。`presign-get` 要求当前具有 reader 或 runner，URL 不能绕过之后的角色变更。
+Union 发行包通过 `union-admin` 提供完全相同的命令。`list-credentials DIRECTORY` 隐藏秘密；`revoke-credential DIRECTORY ID` 和 `rotate-credential DIRECTORY ID` 作用于单个凭据。`presign-get` 要求当前具有 reader 或 runner，URL 不能绕过数据集发布策略或密钥撤销、过期。

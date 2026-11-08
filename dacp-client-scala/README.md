@@ -143,3 +143,5 @@ For a records data event, call `event.records(allocator)` with your own Arrow al
 `dacp.client.Union` submits jobs to independent X, exposes separate `results()` and `events()` streams, and provides `status()` and `cancel()`. Close executions and streams with `Using.resource`. See the [Union server](../dacp-union-server/README.md) for complete code and authentication configuration.
 
 `Source.nodes(unionOrigin, tls)` returns public logical execution nodes and capacities using ordinary client credentials, without exposing member addresses. The online designer uses it for step placement.
+
+All connections, including anonymous catalog access, verify the server certificate and hostname. Platform trust roots are used by default; configure private or self-signed CAs through `TlsConfig.ca` or `DACP_CA`. Verification cannot be disabled.

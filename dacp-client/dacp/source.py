@@ -33,11 +33,10 @@ def _flight_client(u, tls_root_certs=None, cert_chain=None, private_key=None, to
     ca = credential(tls_root_certs, "DACP_CA")
     certificate = credential(cert_chain, "DACP_CERT")
     key = credential(private_key, "DACP_KEY")
-    anonymous = token is None and certificate is None and key is None
     return flight.FlightClient(
         f"grpc+tls://{host}:{u.port or 8815}",
         tls_root_certs=ca,
-        disable_server_verification=anonymous and ca is None,
+        disable_server_verification=False,
         cert_chain=certificate,
         private_key=key, middleware=[AuthFactory()])
 

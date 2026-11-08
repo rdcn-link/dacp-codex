@@ -48,3 +48,6 @@ node_modules/
 
 # Python distribution build output
 dacp-client/build/
+
+# Isolated benchmark data, credentials and logs
+.benchmark-runs/

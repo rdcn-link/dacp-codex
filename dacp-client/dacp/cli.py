@@ -736,7 +736,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog='dacp-shell', description='Interactive DACP dataset shell (TLS; anonymous metadata, role-authorized data and Jobs).')
     parser.add_argument('uri', help='dacp-server address: dacp://host[:port] (automatically selects a sole Dataset)')
     parser.add_argument('--token-file', type=Path, help='bearer token file; defaults to DACP_TOKEN_FILE')
-    parser.add_argument('--ca', type=Path, help='CA certificate; defaults to DACP_CA; optional for anonymous browsing')
+    parser.add_argument('--ca', type=Path, help='CA certificate; defaults to DACP_CA; uses platform trust roots when omitted')
     parser.add_argument('--cert', type=Path, help='client certificate; defaults to DACP_CERT')
     parser.add_argument('--key', type=Path, help='client key; defaults to DACP_KEY')
     parser.add_argument('--rows', type=positive, default=20, help='maximum rows per preview (default: 20)')

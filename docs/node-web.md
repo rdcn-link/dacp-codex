@@ -25,7 +25,7 @@ Job lists show readable names and generated IDs, source, type, status, start tim
 | Physical plan | Where does it execute, and which steps share an execution unit? |
 | Execution information | What happened: policy, attempts, status, timing and failure details? |
 
-The physical plan contains the complete plan and, on Union, dispatched subjob tabs ordered from upstream to downstream. Each plan has **DAG** and **YAML script** views. Placement annotations belong to the physical plan. Server groups identify execution locations; dashed unit groups identify process boundaries and runtime models. Step cards show state and observed stream payload. Missing observations appear as `—`.
+The physical plan contains the complete plan and, on Union, dispatched subjob tabs ordered from upstream to downstream. Each plan has **DAG** and **YAML script** views. Placement annotations belong to the physical plan. Server groups identify execution locations; dashed unit groups identify process boundaries and runtime models. Step cards use the Designer’s white-card styling, named input/output ports, curved connections and compact status indicators. Card height follows the number of connected ports. Input/output payload totals appear in a compact footer; select a card or connection for complete metadata and traffic details. Missing observations appear as `—`.
 
 ![A successful node Job and its physical execution units](images/local-job.png)
 
@@ -46,3 +46,7 @@ For dashboard integrations, `/api/history?source=client` or `?source=union` filt
 `/datasets` shows local Dataset names on a node and public Union names on Union. It offers text filtering, refresh and JSON descriptions. Loading metadata does not open Items or submit Jobs. See [directory semantics](dataset-directory.md) for incomplete catalogs and member-local names.
 
 For operational metrics, S3 status and dashboard listeners, see [monitoring and dashboard configuration](operations/monitoring.md).
+
+## Copy YAML
+
+YAML areas for submitted Jobs, logical and physical plans, Union sub-jobs and execution policies provide a **Copy** button. Copying preserves the current text, newlines and indentation without toolbar labels or headings. After selecting another sub-job, copying uses the newly selected definition. **Copied** confirms success; if browser clipboard access is unavailable, select and copy the YAML manually. Internal HTTP dashboards also support a compatible copy fallback.

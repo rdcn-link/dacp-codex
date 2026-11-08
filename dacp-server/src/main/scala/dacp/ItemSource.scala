@@ -26,8 +26,7 @@ object ItemSource {
     val client=c.add(NodeConnection.open(config,allocator,uri))
     val info=client.getInfo(FlightDescriptor.path("datasets",split(0),"/"+split(1)))
     val meta=Metadata.Item.parseFrom(info.getAppMetadata)
-    require(meta.getKind=="data","input must be a data item")
-    val view=ItemViews.select(binding.view,meta.getViewsList.asScala)
+    val view=ItemViews.selectForRead(binding.view,meta.getKind,meta.getViewsList.asScala)
     val ticketBuilder=Metadata.Ticket.newBuilder().setDataset(split(0)).setItem("/"+split(1)).setView(view)
     binding.scan.foreach { scan=>require(view=="records","sql requires records view");scan.bind(info.getSchema);ticketBuilder.setScan(ScanProtocol.encode(scan)) }
     binding.selection.foreach(n=>ticketBuilder.setSelectionJson(com.google.protobuf.ByteString.copyFrom(Data.mapper.writeValueAsBytes(n))))

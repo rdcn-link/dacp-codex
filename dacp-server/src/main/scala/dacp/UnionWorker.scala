@@ -265,7 +265,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       val client=remote.dataClient(Json.text(b,"origin"),Some(Json.text(b,"producer_identity")))
       val info=client.getInfo(FlightDescriptor.path("datasets",parts(0),"/"+parts(1)),CallOptions.timeout(10,TimeUnit.SECONDS))
       val meta=dacp.protocol.Metadata.Item.parseFrom(info.getAppMetadata)
-      val view=ItemViews.select(requestedView,meta.getViewsList.asScala)
+      val view=ItemViews.selectForRead(requestedView,meta.getKind,meta.getViewsList.asScala)
       require(!b.has("sql") || view=="records","sql requires records view")
       val ticketBuilder=dacp.protocol.Metadata.Ticket.newBuilder().setDataset(parts(0)).setItem("/"+parts(1)).setView(view)
       Option(b.get("selection")).foreach(n=>ticketBuilder.setSelectionJson(com.google.protobuf.ByteString.copyFrom(Data.mapper.writeValueAsBytes(n))))
@@ -298,7 +298,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       if(DacpUri.origin(b.path("uri").asText)!=DacpUri.origin(config.uri("")))return ItemSource.open(config,allocator,InputBinding(uri=Some(b.path("uri").asText),view=requestedView,scan=Option(b.get("sql")).map(x=>ItemSql.parse(x.asText)),selection=Option(b.get("selection"))),cancel)
       val access=cancel.add(config.openDataset(split(0),()=>cancel.active()))
       val meta=access.describe(path)
-      val view=ItemViews.select(requestedView,config.plugins.views(meta))
+      val view=ItemViews.selectForRead(requestedView,meta,config.plugins)
       val queue=new FrameQueue(cancel)
       StreamProtocol.thread(cancel){
         try {

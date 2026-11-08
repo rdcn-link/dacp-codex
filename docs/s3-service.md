@@ -20,7 +20,7 @@ Merge this snippet with the node's existing datasets or data_catalog, TLS, and o
 
 The service starts with `DacpServer.start()` and stops with `close()`. A bind failure rolls back the entire node startup. Embedded applications can obtain the actual port through `server.s3Port`. Startup logs report the S3 listening address; access it at `https://node-host:S3-port/`.
 
-This read-only HTTPS endpoint uses the node TLS certificate and shares DACP subjects and roles. Every request, including listings and metadata, requires SigV4 plus reader or runner. Anonymous S3 access is unsupported. DACP tokens and S3 signing keys remain separate credentials for the same subject and can be revoked independently. Clearing the subject’s roles rejects subsequent reads through both protocols, including presigned GET and Range requests; admitted downloads continue. Presigned GET supports temporary object sharing; presigned listings are unsupported.
+This read-only HTTPS endpoint uses the node TLS certificate. Listings and HEAD metadata are anonymous. GET and Range requests follow dataset publication policies: public content is anonymously readable; private and active embargoes deny ordinary reads, including signed or presigned requests. Supplied SigV4 signatures must be valid. Revoked or expired keys reject subsequent signed requests; admitted downloads continue. DACP tokens and S3 keys are separate credentials for the same subject. Presigned GET is supported; presigned listings are unsupported.
 
 ## Representations and plugins
 
@@ -63,7 +63,7 @@ url = s3.generate_presigned_url('get_object',
     Params={'Bucket': 'climate', 'Key': 'observations/day.csv'}, ExpiresIn=300)
 ```
 
-AWS CLI uses the same access key environment variables, `--endpoint-url https://localhost:10815` and `--ca-bundle examples/certs/ca.crt`. Do not use `--no-sign-request`. Local presigning is also available:
+AWS CLI uses the same access key environment variables, `--endpoint-url https://localhost:10815` and `--ca-bundle examples/certs/ca.crt`. Use `--no-sign-request` for anonymous public reads; server certificate verification remains required. Local presigning is also available:
 
 ```bash
 target/universal/stage/bin/dacp-admin presign-get /protected/node-credentials ACCESS_KEY_ID https://localhost:10815/climate/observations/day.csv 300
@@ -99,4 +99,4 @@ Contract tests cover third-party Dataset interfaces, the built-in file plugin, l
 
 The S3 service page at /s3 reads /api/s3 to show enabled/running state, endpoint as plain text, startup time, uptime, active requests, request method and HTTP response counts, successful/failed requests, mean completed-request time, and object bytes sent. Transfer and request rates are differences between two browser samples. Counters are in-memory aggregates since S3 startup and reset on restart; concurrent snapshots are approximate. Object bytes count successful payload writes, including ranges and partial transfers, and exclude XML listing/error bodies, HTTP and TLS overhead. A failed transfer can have an HTTP 200/206 header, so failure counters and status-code counts describe different aspects. No credentials, bucket/object names or Item paths are included. Reading these metrics never opens a dataset or consumes a data stream. The page does not provide S3 browsing, downloads, signing or credential-management controls.
 
-Union distributions provide identical commands through `union-admin`. `list-credentials DIRECTORY` hides secrets; `revoke-credential DIRECTORY ID` and `rotate-credential DIRECTORY ID` affect one credential. `presign-get` requires a current reader or runner role; the URL does not bypass later role changes.
+Union distributions provide identical commands through `union-admin`. `list-credentials DIRECTORY` hides secrets; `revoke-credential DIRECTORY ID` and `rotate-credential DIRECTORY ID` affect one credential. `presign-get` requires a current reader or runner role; the URL does not bypass dataset publication policies or key revocation/expiry.

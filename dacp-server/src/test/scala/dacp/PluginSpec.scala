@@ -23,11 +23,11 @@ class PluginSpec extends AnyFunSuite {
     Files.writeString(dir.resolve("private.message"),"native child")
     Files.writeString(dir.resolve("private.testpack"),"id\n1\n2\n")
     val c = Config("localhost",8815,"localhost",Map(
-      "native" -> DatasetDefinition("example-message",Map("message" -> "native dataset")),
-      "files" -> FileDatasets.mixed(Seq(
+      "native" -> DatasetDefinition("example-message",Map("message" -> "native dataset"),description=SecurityTestSupport.publicDescription),
+      "files" -> SecurityTestSupport.publicFiles(Seq(
         PublishedItem("/science",file=Some(dir.resolve("private.message")),options=FileOptions(parameters=Map("prefix" -> "hello "))),
         PublishedItem("/archive",file=Some(dir.resolve("private.testpack"))))),
-      "directory" -> DatasetDefinition("directory",Map("root" -> dir.toString))),dir,dir,dir)
+      "directory" -> DatasetDefinition("directory",Map("root" -> dir.toString),description=SecurityTestSupport.publicDescription)),dir,dir,dir)
     val server = FlightServer.builder(allocator,Location.forGrpcInsecure("localhost",0),new Producer(c,allocator)).build().start()
     val client = FlightClient.builder(allocator,server.getLocation).build()
     def read(ds: String, path: String): String = {

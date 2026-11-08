@@ -18,7 +18,7 @@ class DataCatalogSpec extends AnyFunSuite {
   test("registered JDBC catalog discovers additions and removals through Flight; leases survive removal and all published datasets are readable") {
     val dir=Files.createTempDirectory("dynamic-catalog-");val url="jdbc:h2:mem:catalog"+java.util.UUID.randomUUID.toString
     val db=DriverManager.getConnection(url);val sql=db.createStatement()
-    sql.execute("CREATE TABLE dacp_datasets(name VARCHAR PRIMARY KEY)")
+    sql.execute("CREATE TABLE dacp_datasets(name VARCHAR PRIMARY KEY, description VARCHAR NOT NULL)")
     sql.execute("CREATE TABLE dacp_items(dataset_name VARCHAR, item_path VARCHAR, file_path VARCHAR)")
     val file=dir.resolve("records.csv");Files.writeString(file,"id\n1\n2\n")
     val insert=db.prepareStatement("INSERT INTO dacp_items VALUES (?, '/records', ?)")
@@ -29,7 +29,8 @@ class DataCatalogSpec extends AnyFunSuite {
     def names()=client.listFlights(Criteria.ALL).asScala.toSeq.map(_.getDescriptor.getPath.get(1))
     try {
       assert(names().isEmpty)
-      sql.execute("INSERT INTO dacp_datasets VALUES ('public'), ('private')")
+      val published=db.prepareStatement("INSERT INTO dacp_datasets VALUES (?, ?)")
+      try {for(name<-Seq("public","private")){published.setString(1,name);published.setString(2,SecurityTestSupport.publicDescription);published.executeUpdate()}}finally published.close()
       insert.setString(1,"public");insert.setString(2,file.toString);insert.executeUpdate()
       assert(names()==Seq("private","public"))
       val info=client.getInfo(FlightDescriptor.path("datasets","public","/records"))
@@ -37,7 +38,7 @@ class DataCatalogSpec extends AnyFunSuite {
       try {assert(stream.next());assert(!stream.next())}finally stream.close()
       assert(dacp.protocol.Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets","private")).getAppMetadata).getItemsCount==0)
       val dataset=dacp.protocol.Metadata.DataSet.parseFrom(client.getInfo(FlightDescriptor.path("datasets","public")).getAppMetadata)
-      assert(dataset.getName=="public" && dataset.getDescription==DatasetDescriptions.default("public"))
+      assert(dataset.getName=="public" && dataset.getDescription==SecurityTestSupport.publicDescription)
       val lease=c.openDataset("public")
       sql.execute("DELETE FROM dacp_datasets WHERE name='public'")
       assert(names()==Seq("private"))

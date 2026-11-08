@@ -3,7 +3,7 @@ import pytest
 from dacp.source import _flight_client
 
 @pytest.mark.parametrize('authenticated,explicit_ca', [(False,False),(False,True),(True,False),(True,True)])
-def test_only_anonymous_without_ca_skips_certificate_verification(monkeypatch, authenticated, explicit_ca):
+def test_all_connections_verify_server_certificates(monkeypatch, authenticated, explicit_ca):
     for name in ('DACP_CA','DACP_CERT','DACP_KEY','DACP_TOKEN_FILE'):
         monkeypatch.delenv(name, raising=False)
     captured = {}
@@ -13,7 +13,7 @@ def test_only_anonymous_without_ca_skips_certificate_verification(monkeypatch, a
     monkeypatch.setattr('dacp.source.flight.FlightClient', client)
     _flight_client(urlsplit('dacp://localhost:18861'), tls_root_certs=b'ca' if explicit_ca else None,
                    token='secret' if authenticated else None)
-    assert captured['disable_server_verification'] == (not authenticated and not explicit_ca)
+    assert captured['disable_server_verification'] is False
     assert captured['tls_root_certs'] == (b'ca' if explicit_ca else None)
 
 

@@ -57,3 +57,5 @@ with Source.open("dacp://localhost:8815/files") as ds:
 动态目录示例 `example.JdbcCatalogProvider` 通过 `META-INF/services/xstream.data.DataCatalogProvider` 注册，查询数据库登记表并按需构建 Dataset。构建本工程后将 JAR 与 JDBC 驱动放到插件目录；配置及表结构见 [DataCatalog 指南](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)。
 
 节点发布后，`/summary` 还自动提供 JSONL `bytes` 视图。例如配置 `message: hello` 时，其字节内容为 `{"characters":5}` 加一个换行符；插件仍只实现 records。参见[通用视图规则](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access_zh.md#通用-jsonl-bytes-视图)。
+
+JDBC 示例使用 `dacp_datasets(name VARCHAR PRIMARY KEY, description VARCHAR NOT NULL)` 和 `dacp_items(dataset_name VARCHAR, item_path VARCHAR, file_path VARCHAR)`。每项描述是包含 `title` 和 `description` 的 JSON 对象，可包含服务发布元数据，例如 `{"title":"Observations","description":"Daily records","publication":{"policy":"public"}}`。目录发现直接返回原始描述，不读取数据集内容。

@@ -30,7 +30,7 @@ class DacpServerSpec extends AnyFunSuite {
     Config("localhost",port,"localhost",Map.empty,cert,key,cert,s3=S3Settings(port=Some(0)),web=NodeWebSettings(port=Some(0)),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve("history")).toString))))
   }
   private def catalog(counter:AtomicInteger)=new DataCatalog {
-    def list():Seq[DatasetInfo]=Seq(DatasetInfo("public"))
+    def list():Seq[DatasetInfo]=Seq(DatasetInfo("public",SecurityTestSupport.publicDescription))
     def open(name:String):PublishedDataset=throw new java.io.FileNotFoundException("no items")
     override def close():Unit={counter.incrementAndGet();()}
   }
@@ -38,7 +38,7 @@ class DacpServerSpec extends AnyFunSuite {
     val c=config(dir,cert,key)
     val path=dir.resolve("sample.fa");Files.writeString(path,">chr1\nACGTACGT\n")
     val cat=new DataCatalog {
-      def list():Seq[DatasetInfo]=Seq(DatasetInfo("science"))
+      def list():Seq[DatasetInfo]=Seq(DatasetInfo("science",SecurityTestSupport.publicDescription))
       def open(name:String):PublishedDataset=new PublishedDataset {
         def open(check:()=>Unit):DatasetAccess=new _root_.xstream.data.fasta.FastaFormat().openStructure(ByteSource.local(path),FileOptions(),c,check)
       }
@@ -184,7 +184,7 @@ web: {host: localhost, port: 0}
       assert(info.path("started_at_ms").asLong>0 && info.path("uptime_ms").asLong>=0)
       val datasets=dacp.union.Json.mapper.readTree(http(port,"/api/datasets").body())
       val entry=datasets.path("datasets").get(0)
-      assert(entry.path("name").asText=="public" && entry.path("description").asText==DatasetDescriptions.default("public"))
+      assert(entry.path("name").asText=="public" && entry.path("description").asText==SecurityTestSupport.publicDescription)
       assert(!entry.has("title") && !entry.has("tags")) // Catalog.open deliberately throws.
       assert(http(port,"/api/overview","POST").statusCode()==405)
       assert(http(port,"/api/history?limit=0").statusCode()==400)
@@ -265,7 +265,7 @@ web: {host: localhost, port: 0}
     val s3Port=server.s3Port.get
     val http=SecurityTestSupport.client(cert)
     val anonymous=http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"https://localhost:$s3Port/")).GET().build(),java.net.http.HttpResponse.BodyHandlers.ofString())
-    assert(anonymous.statusCode()==403)
+    assert(anonymous.statusCode()==200)
     SecurityTestSupport.register(s3Port,c)
     val response=http.send(SecurityTestSupport.signed(s3Port,"/"),java.net.http.HttpResponse.BodyHandlers.ofString())
     assert(response.statusCode()==200 && response.body.contains("ListAllMyBucketsResult"))

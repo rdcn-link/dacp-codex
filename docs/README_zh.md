@@ -16,6 +16,7 @@
 - [节点数据集目录](dataset-directory_zh.md)
 - [记录查询：过滤、投影和限制](records-scans_zh.md)
 - [S3 兼容数据读取服务](s3-service_zh.md)
+- [DACP 与 FTP 传输实测](transfer-benchmark_zh.md)
 - [DACP Scala SDK](../dacp-client-scala/README_zh.md)
 
 ## 使用指南 · Job 与结果
@@ -62,3 +63,5 @@
 - [DEBUG 源码算子](operator-source_zh.md)
 
 数据模型、格式、Job 语言与算子开发请阅读 [XStream 文档](http://xstream.conoai.cn/docs.html)。
+
+[数据集发布策略](dataset-publication_zh.md)：公开、不公开、定时公开及 Union 信任边界。

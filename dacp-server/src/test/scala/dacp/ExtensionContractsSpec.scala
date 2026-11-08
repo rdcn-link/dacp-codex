@@ -79,7 +79,7 @@ class ExtensionContractsSpec extends AnyFunSuite {
   test("access logs record successful and missing metadata without private paths") {
     val dir=Files.createTempDirectory("access-flight-contract-")
     val allocator=new org.apache.arrow.memory.RootAllocator()
-    val config=Config("localhost",18819,"localhost",Map("public"->FileDatasets.mixed(Seq(PublishedItem("/visible",file=Some(dir.resolve("private-secret.csv")))))),dir,dir,dir,accessLogDirectory=Some(dir.resolve("logs")))
+    val config=Config("localhost",18819,"localhost",Map("public"->SecurityTestSupport.publicFiles(Seq(PublishedItem("/visible",file=Some(dir.resolve("private-secret.csv")))))),dir,dir,dir,accessLogDirectory=Some(dir.resolve("logs")))
     try {
       Files.writeString(dir.resolve("private-secret.csv"),"id\n1\n")
       val producer=new Producer(config,allocator)

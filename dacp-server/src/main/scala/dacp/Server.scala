@@ -107,7 +107,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
   def datasetDirectory(check:()=>Unit=()=>()):DatasetDirectory={
     val snapshot=catalog.directory(check)
     val result=snapshot.entries.toVector
-    result.foreach { i=>DatasetNames.validate(i.name);DatasetDescriptions.validate(i.description) }
+    result.foreach { i=>DatasetNames.validate(i.name);DatasetDescriptions.validate(i.description);DatasetPublication.parse(i.description) }
     require(result.map(_.name).distinct.size==result.size,"duplicate dataset name")
     snapshot.copy(entries=result.sortBy(_.name))
   }
@@ -261,7 +261,7 @@ class Producer(config: Config, allocator: BufferAllocator, steps: Option[TaskSer
     val a = adapter(ds,item,ctx)
     try {
     if (p.size == 4 && p(2) == "count") {
-      dacp.union.Rpc.requirePermission("data:read")
+      DatasetPublication.requireDataset(config,ds,DatasetPublication.trustedService(config))
       val metadata = itemMetadata(Item(item,"",None,recordCount=a.count(item)))
       new FlightInfo(PluginSchemas.bytes, desc, java.util.Collections.emptyList[FlightEndpoint](), -1,-1,false,
         org.apache.arrow.vector.ipc.message.IpcOption.DEFAULT,metadata.toByteArray)
@@ -309,7 +309,7 @@ class Producer(config: Config, allocator: BufferAllocator, steps: Option[TaskSer
         p.kind=="union" && p.active() || p.kind=="token" && p.permissions(permission)
       }
       n.putObject("permissions").put("catalog_read",true).put("item_metadata",true)
-        .put("item_read",allowed("data:read")).put("job_submit",allowed("job:execute"))
+        .put("item_read",DatasetPublication.trustedUnion || config.datasetInfos().exists(i=>DatasetPublication.parse(i.description).readable())).put("job_submit",allowed("job:execute"))
       val resources=n.putObject("resources").put("max_concurrent_steps",config.maxConcurrentTasks)
       val executors=n.putArray("executors");config.plugins.services(classOf[OperatorExecutor]).foreach(p=>executors.add(p.id))
       listener.onNext(new Result(Data.mapper.writeValueAsBytes(n)));listener.onCompleted()
@@ -346,7 +346,6 @@ class Producer(config: Config, allocator: BufferAllocator, steps: Option[TaskSer
     }catch{case scala.util.control.NonFatal(t)=>audit.failure(t);listener.onError(fail(t))}
   }
   override def getStream(ctx: FlightProducer.CallContext, ticket: Ticket, raw: FlightProducer.ServerStreamListener): Unit = {
-    if(!dacp.union.Rpc.isTicket(ticket.getBytes))dacp.union.Rpc.requirePermission("data:read")
     val audit=config.accessLog.begin(if(dacp.union.Rpc.isTicket(ticket.getBytes))"step.output.read"else "item.read");val listener=AccessLogging.stream(audit,raw)
     if(dacp.union.Rpc.isTicket(ticket.getBytes)){
       union match {case Some(worker)=>worker.getStream(ctx,ticket,listener,Some(audit));case None=>listener.error(CallStatus.UNIMPLEMENTED.withDescription("Union disabled").toRuntimeException)}
@@ -355,6 +354,7 @@ class Producer(config: Config, allocator: BufferAllocator, steps: Option[TaskSer
     }
     try {
       val t = Metadata.Ticket.parseFrom(ticket.getBytes)
+      DatasetPublication.requireDataset(config,t.getDataset,DatasetPublication.trustedService(config))
       audit.resource(t.getDataset,t.getItem,t.getView)
       require(t.getView.matches("[a-z][a-z0-9_.-]*"), "invalid view")
       require(!(t.hasScan && !t.getSelectionJson.isEmpty),"scan and scientific selection cannot be combined")

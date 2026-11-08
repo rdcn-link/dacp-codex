@@ -62,3 +62,7 @@ Each job supports 64 steps and 1024 connected ports, with 32 inputs/connected ou
 ## Development
 
 The ordinary and collaboration SDKs share transport, certificate and stream implementations in `dacp-union-protocol`; service-side authorization is independent of SDK choice. Dataset proxying uses plugin contracts without backend-specific core branches. Run `sbt test` here and the browser checks in `scripts/test-union-dashboard.py` from the repository root.
+
+### Union result traffic
+
+`GET /api/topology` exposes `union` (coordinator identity) and `union_edges` in addition to direct member `edges`. Union links count only task `data` payload bytes actually received from members; control, metadata, heartbeats and gRPC framing are excluded. Counters are persisted with job observations as `union_result_streams`. Topology totals use the latest attempt of each of the most recent 100 jobs. Each sample includes a timestamp and attempt-specific key for rate calculation. Unsampled members and historical jobs without a result observation remain unknown. No reverse traffic is inferred, and direct peer transfers are not counted as Union traffic.

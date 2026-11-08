@@ -57,7 +57,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     @volatile var controlFinished=false
     def count(task:String):Int=Option(invocations.get(task)).map(_.get).getOrElse(0)
     def config(name:String):Config={
-      val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin"))))++(if(withRecords)Seq(PublishedItem("/observations",file=Some(dir.resolve("observations.csv"))))else Seq.empty)++(if(scientific)Seq(PublishedItem("/genome",file=Some(dir.resolve("genome.fa"))))else Seq.empty)).copy(description=""" { "title": "公开数据", "description": "公开数据说明", "html": "<script>alert(1)</script>" } """)
+      val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin"))))++(if(withRecords)Seq(PublishedItem("/observations",file=Some(dir.resolve("observations.csv"))))else Seq.empty)++(if(scientific)Seq(PublishedItem("/genome",file=Some(dir.resolve("genome.fa"))))else Seq.empty)).copy(description=""" { "title": "公开数据", "description": "公开数据说明", "html": "<script>alert(1)</script>", "publication": {"policy":"public"} } """)
       val c=Config("localhost",port(),"localhost",if(dynamicCatalog)Map.empty else Map("data"->definition),root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,accessLogDirectory=Some(dir.resolve(name+"-access")),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve(s"$name-executions")).toString))))
       if(dynamicCatalog)c.installCatalog(new DataCatalog {
         def list():Seq[DatasetInfo]={if(catalogFailure)throw new IllegalStateException("catalog unavailable");if(catalogVisible)Seq(DatasetInfo("data",definition.description))else Seq.empty}
@@ -223,7 +223,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(anonymous.getInfo(FlightDescriptor.path("datasets",name)).getAppMetadata.nonEmpty)
       val info=anonymous.getInfo(FlightDescriptor.path("datasets",name,"/input"))
       val blocked=anonymous.getStream(info.getEndpoints.get(0).getTicket)
-      try assert(intercept[FlightRuntimeException](blocked.next()).status.code==UNAUTHORIZED)finally blocked.close()
+      try assert(blocked.next())finally {blocked.cancel("test complete",null);blocked.close()}
       assert(nodeAnonymous.listFlights(Criteria.ALL).asScala.nonEmpty)
       f.ca.credentials.setRoles(tls("b").identity,Set("runner"))
       val forgedToken=f.ca.credentials.create(tls("b").identity)._2

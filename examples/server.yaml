@@ -9,7 +9,7 @@ count_file_records_on_startup: true
 datasets:
   data1:
     provider: mixed
-    description: '{"owner":{"team":"DACP"},"title":"data1","description":"Example records, files and archives"}'
+    description: '{"publication":{"policy":"public"},"owner":{"team":"DACP"},"title":"data1","description":"Example records, files and archives"}'
     items:
       /events:
         file: ../examples/data/events.json

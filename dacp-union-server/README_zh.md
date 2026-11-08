@@ -62,3 +62,7 @@ Job 通过 `inputs` 将步骤的输入端口连接到上游输出流。算子可
 ## 开发
 
 普通 SDK 与协作 SDK 通过 `dacp-union-protocol` 共享传输、证书和流实现，服务端授权不依赖 SDK 类型。数据代理使用插件接口，核心不包含后端专用分支。在本模块运行 `sbt test`，在仓库根目录运行 `scripts/test-union-dashboard.py` 验证网页。
+
+### Union 结果流量
+
+`GET /api/topology` 除成员直连 `edges` 外，还提供 `union`（协调节点身份）和 `union_edges`。Union 链路仅统计实际从成员接收到的任务 `data` 载荷字节，不计控制帧、元数据、心跳和 gRPC 封装。计数通过 `union_result_streams` 随作业观测持久化。拓扑汇总使用最近 100 个作业各自最新的执行尝试。每个样本包含时间戳和区分尝试的唯一键，供速率计算使用。未采样成员及没有结果观测的历史作业保持未知。不推测反向流量，也不把成员直传的数据计入 Union。

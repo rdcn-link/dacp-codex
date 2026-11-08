@@ -23,7 +23,7 @@ class NamespaceSpec extends AnyFunSuite {
     Files.writeString(dir.resolve("unpublished.csv"),"hidden\n1\n")
     val entries = Seq(PublishedItem("/events",file=Some(file)), PublishedItem("/nested/orders",file=Some(file)),
       PublishedItem("/nested/archive/old",file=Some(file)), PublishedItem("/empty",kind="folder"))
-    val config = Config("localhost",8815,"localhost",Map("public"->FileDatasets.mixed(entries)),dir,dir,dir)
+    val config = Config("localhost",8815,"localhost",Map("public"->SecurityTestSupport.publicFiles(entries)),dir,dir,dir)
     val allocator = new RootAllocator()
     try test(config,new Producer(config,allocator))
     finally { allocator.close(); Data.deleteTree(dir) }
@@ -84,7 +84,7 @@ class NamespaceSpec extends AnyFunSuite {
   }}
   test("missing private files produce sanitized client errors") { fixture { (c,_) =>
     val missing = DatasetPublication.mixedBindings(c.datasets("public")).head.file.get.resolveSibling("private-missing.csv")
-    val config = c.copy(datasets=Map("public" -> FileDatasets.mixed(Seq(PublishedItem("/published",file=Some(missing))))))
+    val config = c.copy(datasets=Map("public" -> SecurityTestSupport.publicFiles(Seq(PublishedItem("/published",file=Some(missing))))))
     val a = new RootAllocator()
     try {
       val p = new Producer(config,a)

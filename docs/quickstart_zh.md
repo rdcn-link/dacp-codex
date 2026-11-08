@@ -17,7 +17,7 @@ python3 -m venv .venv
 
 ## 2. 发现公开元信息
 
-将示例地址替换为实际服务地址。未配置 Token、CA 或客户端证书时，匿名浏览元信息只需服务器地址：
+将示例地址替换为实际服务地址。匿名浏览不需要 Token。示例假设平台已信任服务器证书；使用私有 CA 时还需传入 `--ca /path/to/ca.crt`：
 
 ```bash
 .venv/bin/dacp-shell dacp://data.example.org:18861
@@ -30,7 +30,7 @@ ls /
 help cat
 ```
 
-`datasets` 列出带行号的数据集名称与 JSON 描述；`use 1` 选择第一项，完整目录只有一个数据集时会自动选中。`ls /` 列出 Item 及其支持的视图。行号对应最近一次列表。匿名浏览保留 TLS 加密，但不验证服务器证书；详见[连接安全](security_zh.md)。
+`datasets` 列出带行号的数据集名称与 JSON 描述；`use 1` 选择第一项，完整目录只有一个数据集时会自动选中。`ls /` 列出 Item 及其支持的视图。行号对应最近一次列表。匿名浏览同样验证服务器证书和主机名；详见[连接安全](security_zh.md)。
 
 ## 3. 读取 Item
 

@@ -140,6 +140,8 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     val recent=(saved++live).values.toVector.sortBy(j=> -j.path("created_at_ms").asLong).take(100)
     val topology=NodeTopology.build(memberSnapshots,recent,Json.now,math.max(settings.pollMs*3,5000L)).asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode]
     val all=(history.store.records.map(j=>j.path("job_id").asText->j).toMap++live).values
+    topology.set[JsonNode]("union_edges",NodeTopology.unionEdges(memberSnapshots,recent,members.tls.identity))
+    topology.set[JsonNode]("union",Json.obj().put("identity",members.tls.identity).put("kind","union"))
     val counts=topology.putObject("participation")
     memberSnapshots.foreach { m=>val id=m.path("identity").asText;counts.put(id,all.count(_.path("nodes").has(id))) }
     topology
@@ -323,6 +325,10 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     }
   }
   private def submit(plan:JobPlan,owner:String,script:String,policy:ExecutionPolicy,replaySources:Map[String,String]=Map.empty,replayOf:Option[String]=None,path:Vector[String]=Vector.empty,submittedScript:Option[String]=None,decisions:Vector[PlacementDecision]=Vector.empty):Execution=synchronized {
+    val required=mutable.Set.empty[String]
+    def visit(id:String):Unit=if(required.add(id) && !replaySources.contains(id))Jobs.dependencies(plan.steps.find(_.id==id).get).foreach(visit)
+    Jobs.roots(plan).foreach(visit)
+    plan.steps.filter(t=>required(t.id) && !replaySources.contains(t.id)).foreach(t=>DatasetPublication.requireTask(publicConfig,allocator,t))
     if(jobs.size>=4096 || jobs.values.asScala.count(!_.terminal)>=64)throw UnionFailure(RESOURCE_EXHAUSTED,"union job capacity unavailable")
     val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     require(timeout<=settings.timeout,"timeout_seconds exceeds Union server limit")
@@ -376,6 +382,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     private val prepared=new ConcurrentHashMap[String,JsonNode]()
     private val dispatchedDefinitions=new ConcurrentHashMap[String,JsonNode]()
     private val nodeStates=new ConcurrentHashMap[String,JsonNode]()
+    private val resultTraffic=new ResultTraffic()
     private val ring=mutable.Queue.empty[JsonNode]
     private var sequence=0L
     private var ringBytes=0L
@@ -395,6 +402,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       replayOf.foreach(n.put("replay_of",_))
       n.put("attempt_id",attemptId).put("attempt_started_at_ms",attemptStartedAt).put("retry_count",retryCount).put("max_retries",policy.maxRetries)
       val history=n.putArray("attempts");synchronized{attempts.foreach(history.add)}
+      n.set[JsonNode]("union_result_streams",resultTraffic.snapshot)
       val a=n.putObject("nodes");nodeStates.asScala.foreach{case(k,v)=>a.set[JsonNode](k,v)};n
     }
     def dashboardSnapshot:JsonNode={
@@ -514,7 +522,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
             case "complete"=>require(ended,"result missing end");require(in.next().isEmpty,"events after completion");complete=true
             case "error"=>throw new IllegalArgumentException("node execution failed")
             case "start"=>require(!started && !ended,"duplicate result start");started=true;if(publish)output.put(StreamProtocol.rename(f,label,task))
-            case "data"=>require(started && !ended,"data outside result");if(publish)output.put(StreamProtocol.rename(f,label,task))
+            case "data"=>require(started && !ended,"data outside result");resultTraffic.record(identity(n),attemptId,task,port,f.data.length.toLong,Json.now);if(publish)output.put(StreamProtocol.rename(f,label,task))
             case "end"=>require(started && !ended,"invalid result end");ended=true;if(publish)output.put(StreamProtocol.rename(f,label,task))
             case _=>throw new IllegalArgumentException("invalid result frame")
           }

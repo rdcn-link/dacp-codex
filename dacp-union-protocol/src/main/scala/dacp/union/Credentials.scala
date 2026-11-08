@@ -133,6 +133,7 @@ final class Credentials(val directory:Path) extends AutoCloseable {
   def union(id:String,fingerprint:String):Option[Credential]=entries.values.find(c=>c.kind=="union" && c.unionId==id && c.fingerprint==fingerprint && c.active)
   def s3(id:String):Option[Credential]=entries.get(id).filter(c=>c.kind=="s3" && c.active)
   /** Private loopback client, never written to configuration, disk, logs or downstream nodes. */
+  def isInternal(id:String):Boolean=temporary.contains(id)
   def internalToken():String=synchronized{val token=random(32);val id=random(12);temporary += id->Credential(id,"dacp-internal","token",hash(token),System.currentTimeMillis(),0);token}
   def close():Unit=timer.shutdownNow()
 }

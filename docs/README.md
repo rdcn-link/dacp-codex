@@ -16,6 +16,7 @@ Use the User guide for connections, data access and Jobs; the Operations guide f
 - [Dataset discovery](dataset-directory.md)
 - [Remote record queries](records-scans.md)
 - [S3-compatible access](s3-service.md)
+- [DACP and FTP transfer measurements](transfer-benchmark.md)
 - [Scala client SDK](../dacp-client-scala/README.md)
 
 ## User guide · Jobs and results
@@ -62,3 +63,5 @@ Use the User guide for connections, data access and Jobs; the Operations guide f
 - [DEBUG source execution](operator-source.md)
 
 For data models, formats, Job authoring and operator development, use the [XStream documentation](http://xstream.conoai.cn/docs.html).
+
+[Dataset publication policies](dataset-publication.md): public, private and timed publication, including Union trust boundaries.

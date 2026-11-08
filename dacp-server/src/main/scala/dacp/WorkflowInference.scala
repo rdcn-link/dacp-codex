@@ -52,11 +52,11 @@ object WorkflowInference {
         try {
           val info=client.getInfo(FlightDescriptor.path("datasets",parts(0),"/"+parts(1)),CallOptions.timeout(15,TimeUnit.SECONDS))
           val meta=dacp.protocol.Metadata.Item.parseFrom(info.getAppMetadata)
-          require(meta.getKind=="data","input must be a data item")
-          val view=ItemViews.select(binding.view,meta.getViewsList.asScala)
+          val view=ItemViews.selectForRead(binding.view,meta.getKind,meta.getViewsList.asScala)
           val schema=if(view=="records" && !meta.getArrowSchema.isEmpty)Some(binding.scan.map(_.bind(info.getSchema).outputSchema).getOrElse(info.getSchema))else None
           if(Set("bytes","records")(view))InferenceResult(Map("result"->StreamDescriptor(Set(view),Set(meta.getFormat),schema,if(view=="bytes" || schema.nonEmpty)"known"else "unknown")))
           else {
+            DatasetPublication.requireUri(config,allocator,binding.uri.get,DatasetPublication.trustedUnion)
             val codec=DataViewSupports.named(config.plugins,view)
             val selection=codec.selection(binding.selection.getOrElse(Data.mapper.createObjectNode()))
             val ticket=dacp.protocol.Metadata.Ticket.newBuilder().setDataset(parts(0)).setItem("/"+parts(1)).setView(view)

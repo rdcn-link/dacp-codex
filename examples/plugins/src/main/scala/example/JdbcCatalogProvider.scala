@@ -27,9 +27,9 @@ class JdbcCatalogProvider extends DataCatalogProvider {
     new DataCatalog {
       def list():Seq[DatasetInfo]=list(()=>())
       override def list(check:()=>Unit):Seq[DatasetInfo]=Using.Manager { use=>
-        check();val db=use(connection());val query=use(db.prepareStatement("SELECT name FROM dacp_datasets ORDER BY name"));query.setQueryTimeout(10)
+        check();val db=use(connection());val query=use(db.prepareStatement("SELECT name, description FROM dacp_datasets ORDER BY name"));query.setQueryTimeout(10)
         val rows=use(query.executeQuery());val result=Vector.newBuilder[DatasetInfo]
-        while(rows.next()){check();result+=DatasetInfo(rows.getString(1))}
+        while(rows.next()){check();result+=DatasetInfo(rows.getString(1),rows.getString(2))}
         result.result()
       }.get
       def open(name:String):PublishedDataset=open(name,()=>())
