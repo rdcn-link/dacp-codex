@@ -86,6 +86,16 @@ function orderSubjobs(j){
  return result;
 }
 function renderPlanning(j){
+ const report=j.planning,summary=$('planning-summary');summary.replaceChildren();summary.hidden=!report?.search;
+ if(report?.search){
+  summary.append(el('strong','Plan estimates · '+report.provider),el('span',report.evaluated_candidates+' candidates evaluated · estimated critical path '+duration(report.estimated_completion_ms)+' · cross-node '+bytes(report.estimated_transfer_bytes)+' · '+report.estimated_processes+' processes'));
+  summary.append(el('small','Estimates use metadata and configured costs. Fusion candidates are verified by each member before launch; actual execution units appear on the DAG.'));
+  const details=el('details'),title=el('summary','Transfers and execution unit candidates');details.append(title);
+  for(const u of report.execution_units||[])details.append(el('p',u.steps.join(' → ')+' · '+u.node+' · '+u.mode+' · '+(u.runtime||'Runtime unknown')));
+  for(const e of report.edges||[])details.append(el('p',e.from+' → '+e.to+' · '+e.mode+' · '+bytes(e.estimated_bytes)+' · '+duration(e.estimated_transfer_ms)));
+  for(const warning of report.warnings||[])details.append(el('p',warning,'muted'));summary.append(details);
+ }
+
  $('resolved-job-script').textContent=DacpJobScript.format(j.job_yaml);
  const tabs=$('physical-plan-tabs');tabs.querySelectorAll('[data-subjob-tab]').forEach(b=>b.remove());
  const complete=tabs.querySelector('[data-physical="overview"]'),locations=[...new Set(j.steps.map(t=>t.node).filter(Boolean))].join(' · ');

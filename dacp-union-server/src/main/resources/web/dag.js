@@ -24,7 +24,8 @@ window.DacpDag=(()=>{
   function edge(source,target,label,task,direction,port,sourcePort='result'){
    const traffic=flow(task,direction,port),id='flow:'+target+':'+port+':'+source;
    edges.push({id,source,target,data:{port:label,traffic:traffic.label},style:{sourcePort:source.startsWith('task:')?'output:'+sourcePort:'out',targetPort:target.startsWith('task:')?'input:'+port:'in',labelText:label+'\n'+traffic.label,stroke:traffic.remote?'#5c7bb5':'#a3b2c5',lineWidth:traffic.remote?1.8:1.3}});
-   details.set(id,{title:'Data flow · '+label,lines:traffic.lines});
+   const estimate=(job.planning?.edges||[]).find(e=>'task:'+e.from===source&&'task:'+e.to===target);
+   details.set(id,{title:'Data flow · '+label,lines:[...traffic.lines,...(estimate?['Planned transport: '+estimate.mode,'Estimated payload: '+fmt.bytes(estimate.estimated_bytes),'Estimated transfer time: '+fmt.duration(estimate.estimated_transfer_ms)]:[])]});
   }
   for(const t of job.steps){
    const state=states[t.state]||{...pending,label:pending.label+' · '+(fmt.labels[t.state]||t.state||'Waiting')};
@@ -65,8 +66,16 @@ window.DacpDag=(()=>{
    edge('task:'+binding.task,id,binding.port,steps.get(binding.task),'outputs',binding.port,binding.port||'result');
   }
   if(!job.logical){
-   const modeNames={shared_process:'Shared process',isolated_step:'Separate execution',host_stream_source:'Host stream source',remote_subjob:'Remote sub-job'};
-   for(const [identity,snapshot] of Object.entries(job.nodes||{})){
+   const modeNames={fusion_candidate:'Fusion candidate (estimated)',isolated_step_candidate:'Separate process (estimated)',shared_process:'Shared process',isolated_step:'Separate execution',host_stream_source:'Host stream source',remote_subjob:'Remote sub-job'};
+   const executionNodes={...(job.nodes||{})};
+   for(const planned of job.planning?.execution_units||[]){
+    const task=job.steps.find(t=>t.node===planned.node);if(!task)continue;
+    const identity=task.node_identity;if(!identity||job.nodes?.[identity]?.execution_units?.length)continue;
+    if(executionNodes[identity]===job.nodes?.[identity])executionNodes[identity]={...executionNodes[identity],execution_units:[]};
+    if(!executionNodes[identity])executionNodes[identity]={execution_units:[]};
+    executionNodes[identity].execution_units.push({...planned,mode:planned.mode==='isolated_step'?'isolated_step_candidate':planned.mode,runtime_image:planned.runtime==='unknown'?'':planned.runtime,state:'estimated',reason:'Candidate only; member preparation determines actual execution units'});
+   }
+   for(const [identity,snapshot] of Object.entries(executionNodes)){
     for(const unit of snapshot.execution_units||[]){
      const members=nodes.filter(n=>n.data.kind==='task'&&steps.get(n.id.slice(5))?.node_identity===identity&&(unit.steps||[]).includes(n.id.slice(5)));
      if(!members.length)continue;
@@ -81,6 +90,7 @@ window.DacpDag=(()=>{
    }
    for(const task of job.steps){
     const decision=(job.placement_decisions||[]).find(d=>d.step===task.id),detail=details.get('task:'+task.id);
+    const estimate=(job.planning?.steps||[]).find(s=>s.step===task.id);if(estimate&&detail)detail.lines.push('Estimated output: '+fmt.bytes(estimate.output_bytes),'Estimated compute: '+fmt.duration(estimate.compute_ms),'Estimate basis: '+estimate.confidence);
     if(decision&&detail)detail.lines.push('Placement reason: '+decision.reason,...(decision.requested_source?['Source: '+decision.requested_source+' → '+decision.resolved_source]:[]));
     const node=nodes.find(n=>n.id==='task:'+task.id);
     if(node&&node.combo===groups.get(task.node))detail.lines.push('Execution unit: not recorded / pending planning');

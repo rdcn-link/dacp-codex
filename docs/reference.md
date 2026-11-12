@@ -60,3 +60,7 @@ Server `mode` defaults to `NORMAL`. Inline source requires `DEBUG` at both coord
 ## S3-compatible endpoint
 
 Nodes enable a SigV4-authenticated, read-only HTTPS S3 endpoint by default: datasets are buckets, and Items advertising `bytes` are objects. Configure `s3.enabled` (default true), `s3.host` (default `0.0.0.0`), and `s3.port` (default actual Flight port plus 2000). Use path-style URLs and SigV4-signed requests. See the [S3-compatible service](s3-service.md) for supported operations, clients, and plugin examples.
+
+## Union physical planning
+
+Union selects an optimizer with `planning.provider` (default `cost`), bounds candidate search with `planning.beam_width` (default `32`, range `1–256`), and passes provider-specific values through `planning.settings`. See [physical plan generation](physical-planning.md) for the configuration, constraints and estimates, and [optimizer extensions](developers/planning-optimizer.md) for plugin development.

@@ -142,3 +142,11 @@ remote_item_credentials:
 [科学视图选择与样例](https://github.com/rdcn-link/xstream-codex/blob/main/docs/designer-scientific_zh.md)。
 
 步骤可选 `description` 为最多 8192 个字符的多行说明，保留在逻辑计划及下发的子 Job 中，不改变执行语义。设计器的 Step 属性页可直接编辑；完整 Job 语法见 XStream 的 Job 文档。
+
+## 图形化检查已提交的 Job
+
+![节点 Job 详情与物理执行单元](images/local-job.png)
+
+提交后，从看板历史列表打开 Job 详情。对照提交任务、逻辑计划和物理计划：服务器分组表示执行位置，执行单元分组表示进程边界。通过 **Execution information** 查看状态和失败信息。截图仅为示例，不要求 Job 采用同样布局。参见[看板操作](node-web_zh.md)。
+
+[物理计划生成与优化](physical-planning_zh.md) · [扩展规划优化](developers/planning-optimizer_zh.md)

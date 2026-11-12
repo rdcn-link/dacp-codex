@@ -1,0 +1,5 @@
+-Xms256m
+-Xmx2g
+-XX:ActiveProcessorCount=4
+-Dsbt.override.build.repos=true
+-Dsbt.repository.config=project/repositories

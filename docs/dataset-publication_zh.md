@@ -28,3 +28,19 @@ DACP 各 View 的读取、计算记录数、S3 GET（包括签名请求），以
 节点完全信任经过显式认证的 Union 服务身份，此类请求可以读取不公开数据。Union 在代理读取或下发 Job 前，对普通用户应用源数据集策略，无需将 Union 用户映射为节点账号。不得向用户分发 Union 服务凭据。内部服务凭据仅保存在进程中，用于请求准入后的内部操作。受信任的本地嵌入式计算与普通远程访问分开。
 
 在请求或 Job 输入检查时判断读取准入；仅普通策略变化不会打断已准入的数据流，Union 凭据撤销仍保持原有取消行为。新准入会读取目录元数据，Union 目录缓存可能延迟策略的可见性。这里不提供 Item 级 ACL 或逐用户授权。
+
+## 读取授权流程
+
+```mermaid
+flowchart TD
+    Request[远程请求] --> Metadata{元数据或列表请求？}
+    Metadata -->|是| Public[通过已验证的 TLS 公开访问]
+    Metadata -->|否：读取内容| Policy{数据集发布策略}
+    Policy -->|public| Allow[允许匿名读取]
+    Policy -->|private| Deny[拒绝普通远程读取]
+    Policy -->|embargoed| Clock{服务器时间已到 public_at？}
+    Clock -->|是| Allow
+    Clock -->|否| Deny
+```
+
+此图描述普通远程访问。可信 Union 执行遵循上文的独立服务授权规则；用户持有 Job Token 本身不能绕过发布策略。

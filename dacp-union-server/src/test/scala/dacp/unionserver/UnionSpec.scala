@@ -40,7 +40,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     assignedPorts+=chosen;chosen
   }
   private def eventually(check: => Boolean,clue: => String="condition"):Unit={val end=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(15);while(!check && System.nanoTime()<end)Thread.sleep(50);assert(check,clue)}
-  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=60,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false,materialize:Boolean=false,withRecords:Boolean=false,scientific:Boolean=false) {
+  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=60,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false,materialize:Boolean=false,withRecords:Boolean=false,scientific:Boolean=false,trustedSources:Boolean=false) {
     @volatile var catalogVisible=true
     @volatile var catalogFailure=false
     val allocator=new RootAllocator()
@@ -102,7 +102,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val path=dir.resolve(name+"-credential");Files.writeString(path,issued._2)
       MemberSettings(DacpUri.origin(c.uri("")),path)
     }
-    val settings=Settings("localhost",xp,s"dacp://localhost:$xp",root.resolve("x.crt"),root.resolve("x.key"),root.resolve("ca.crt"),dir.resolve("x-state"),100,timeoutSeconds,30,web,memberSettings=Vector(issue(ca,"a"),issue(cb,"b")),s3=S3Settings(port=Some(0)))
+    val settings=Settings("localhost",xp,s"dacp://localhost:$xp",root.resolve("x.crt"),root.resolve("x.key"),root.resolve("ca.crt"),dir.resolve("x-state"),100,timeoutSeconds,30,web,memberSettings=Vector(issue(ca,"a"),issue(cb,"b")),s3=S3Settings(port=Some(0)),trustedJobSources=if(trustedSources)Map("alice"->Set(DacpUri.origin(ca.uri(""))))else Map.empty)
     settings.credentials.setRoles("alice",Set("runner"));settings.credentials.setRoles("bob",Set("runner"))
     val clientToken=settings.credentials.create("alice")._2
     val strangerToken=if(allowStranger)settings.credentials.create("bob")._2 else "invalid"
@@ -175,6 +175,58 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     def close():Unit={x.close();a.close();b.close();af.close();bf.close();client.close();stranger.close();Thread.sleep(100);ca.close();cb.close();allocator.close()}
   }
   private def policy(all:Boolean=false):JsonNode=if(all)Json.parse("""{"materialization":{"default":"materialize"}}""")else Json.parse("""{"materialization":{"steps":{"ta":{"outputs":{"result":"materialize"}}}}}""")
+  test("trusted service can read hidden inputs only from its approved source member") {
+    val f=new Fixture(allowStranger=true,dynamicCatalog=true,trustedSources=true)
+    try {
+      f.approved();f.catalogVisible=false
+      def script(origin:String)=s"""name: private-input
+        |steps:
+        |- id: read
+        |  operator: read_item@1.0
+        |  params: {uri: "$origin/data/input", view: bytes}
+        |  inputs: {}
+        |outputs: {result: read}
+        |""".stripMargin
+      val body=Json.obj().put("job_yaml",script(DacpUri.origin(f.ca.uri(""))))
+      intercept[Exception](f.stranger.action(f.settings.publicUrl,"submit",body))
+      intercept[Exception](f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",script(DacpUri.origin(f.cb.uri(""))))))
+      val id=f.client.action(f.settings.publicUrl,"submit",body).path("job_id").asText
+      assert(f.bytes(id).sameElements(f.inputA))
+      val planning=f.x.jobSnapshots.find(_.path("job_id").asText==id).get.path("planning")
+      assert(planning.path("search").asText=="bounded_beam")
+      assert(planning.path("steps").elements.asScala.exists(e=>e.path("step").asText=="read"&&e.path("confidence").asText=="source_metadata"&&e.path("output_bytes").asDouble==f.inputA.length))
+      f.revokeA()
+      intercept[Exception](f.client.action(f.settings.publicUrl,"submit",body))
+    }finally f.close()
+  }
+  test("execution resources survive Union dispatch and excessive member requests fail at prepare") {
+    val f=new Fixture()
+    try {
+      val policy=Json.parse("""{"resources":{"tmp_size_mb":768,"memory_mb":2048}}""")
+      val id=f.submitPolicy(policy)
+      assert(f.bytes(id).sameElements(f.inputA++f.inputB))
+      eventually(f.status(id).path("state").asText=="succeeded")
+      assert(f.status(id).path("effective_execution_policy").path("resources")==policy.path("resources"))
+      Seq(f.ca,f.cb).foreach(c=>assert(c.executionHistory.store.records.find(_.path("kind").asText=="union_execution").get.path("resources")==policy.path("resources")))
+      val body=Json.obj().put("name","too-big").put("union_id",f.unionId).put("execution_id","too-big")
+      body.set[JsonNode]("resources",Json.parse("""{"tmp_size_mb":9000,"memory_mb":10000}"""))
+      val step=body.putArray("steps").addObject().put("id","one").put("operator","identity@1.3")
+      step.putObject("params");step.putObject("inputs")
+      val before=f.ca.taskSlots.availablePermits()
+      val error=intercept[UnionFailure](f.x.members.remote.action(DacpUri.origin(f.ca.uri("")),"prepare",Json.obj().put("job_yaml",dacp.union.YamlDocument.dump(body)),Some(tls("a").identity)))
+      assert(error.code==INVALID_ARGUMENT)
+      assert(f.ca.taskSlots.availablePermits()==before)
+    }finally f.close()
+  }
+  test("planning profiles require Union membership and do not invoke operator inference") {
+    val f=new Fixture()
+    try {
+      f.approved();val body=Json.obj().put("union_id",f.unionId);body.putArray("operators").add("read_item@1.0")
+      val result=f.x.members.remote.action(DacpUri.origin(f.ca.uri("")),"planning_profile",body,Some(tls("a").identity),timeout=5)
+      assert(result.path("read_item@1.0").path("runtime").asText=="host")
+      intercept[Exception](f.client.action(DacpUri.origin(f.ca.uri("")),"planning_profile",body))
+    }finally f.close()
+  }
   test("start acknowledges a running sub-job and rejects cancelled sessions with their state") {
     val f=new Fixture()
     try {

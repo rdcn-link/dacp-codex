@@ -157,3 +157,15 @@ sequenceDiagram
 ```
 
 In dependency layouts, execution servers align along the top edge for horizontal flow and the left edge for vertical flow. Sibling execution units use the same alignment, with spacing to keep frames separate. Server and execution-unit dimensions are normalized separately. Collapsed frames are excluded; expanding groups reapplies alignment.
+
+## Trusted Job source services
+
+Union administrators can permit an authenticated service subject to submit Jobs reading non-public inputs from explicit member origins:
+
+```yaml
+trusted_job_sources:
+  conet-app:
+    - dacp://10.0.82.103:34681
+```
+
+The default mapping is empty. The permission applies only to an active token subject and the exact configured source origin, and only while that origin belongs to an approved Union member. Other sources and callers retain dataset publication checks. This grants the service access to non-public inputs at the specified origin; use a dedicated service credential and restrict allowed origins accordingly. Member execution continues to use certificate-bound Union credentials. It does not publish datasets or alter anonymous access. Metadata for ordinary catalog datasets remains public.

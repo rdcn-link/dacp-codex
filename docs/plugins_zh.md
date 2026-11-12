@@ -28,3 +28,5 @@ datasets:
 DACP 将共享目录映射为远程数据访问，并对受保护的操作执行授权。S3 适配复用同一数据访问对象，不要求后端再次注册。仅提供 records 的 Item 可通过公共适配器提供 JSONL bytes，详见 [S3 服务](s3-service_zh.md)。
 
 服务配置见[技术参考](reference_zh.md)，内嵌启动见[内嵌服务器](embedded-server_zh.md)。
+
+[物理计划生成与优化](physical-planning_zh.md) · [扩展规划优化](developers/planning-optimizer_zh.md)

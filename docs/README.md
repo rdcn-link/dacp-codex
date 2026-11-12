@@ -16,14 +16,16 @@ Use the User guide for connections, data access and Jobs; the Operations guide f
 - [Dataset discovery](dataset-directory.md)
 - [Remote record queries](records-scans.md)
 - [S3-compatible access](s3-service.md)
-- [DACP and FTP transfer measurements](transfer-benchmark.md)
+- [Public-WAN CSV filtering measurements](csv-filter-benchmark.md)
 - [Scala client SDK](../dacp-client-scala/README.md)
 
 ## User guide · Jobs and results
 
 - [Remote Job submission](jobs.md)
+- [Physical plan generation and optimization](physical-planning.md)
 - [Execution policies and replay](materialization.md)
 - [Dashboards and plans](node-web.md)
+- [Check-dam collaboration versus FTP download-first analysis](check-dams-benchmark.md)
 - [Local and cross-node measurements](local-vs-union-benchmark.md)
 - [Streaming and materialization measurements](materialization-benchmark.md)
 - [Union public catalog and Jobs](union-proxy.md)
@@ -65,3 +67,5 @@ Use the User guide for connections, data access and Jobs; the Operations guide f
 For data models, formats, Job authoring and operator development, use the [XStream documentation](http://xstream.conoai.cn/docs.html).
 
 [Dataset publication policies](dataset-publication.md): public, private and timed publication, including Union trust boundaries.
+
+- [Extend planning optimization](developers/planning-optimizer.md)

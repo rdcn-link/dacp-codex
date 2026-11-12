@@ -72,7 +72,7 @@ def cases(files):
         ('small-batch-fresh',small,1,'fresh')]]
 
 class Servers:
-    def __init__(self,out,vsftpd):
+    def __init__(self,out,vsftpd,*,publication=None):
         self.out=out;self.processes={};self.logs=[]
         self.ports={m:free_port() for m in METHODS}
         tls=out/'tls';tls.mkdir()
@@ -82,6 +82,10 @@ class Servers:
         result=subprocess.run([str(ROOT/'dacp-server/target/universal/stage/bin/dacp-admin'),'create-account',str(credential),'--subject','transfer-benchmark','--role','reader'],check=True,capture_output=True,text=True)
         self.token=json.loads(result.stdout)['token']
         config=dict(host='127.0.0.1',public_host='127.0.0.1',port=self.ports['dacp-tls'],tls_cert=str(tls/'cert.pem'),tls_key=str(tls/'key.pem'),tls_ca=str(tls/'cert.pem'),credential_directory=str(credential),datasets={'bench':{'provider':'directory','description':json.dumps({'title':'Transfer benchmark','description':'Deterministic raw binary fixtures'}),'source':{'root':str(out/'data')}}},web={'enabled':False},s3={'enabled':False},remote_operator_library_urls=[],access_log={'directory':str(out/'access-log')},byte_chunk=CHUNK)
+        if publication is not None:
+            description=json.loads(config['datasets']['bench']['description'])
+            description['publication']=publication
+            config['datasets']['bench']['description']=json.dumps(description)
         (out/'server.yaml').write_text(yaml.safe_dump(config))
         self.start('dacp-tls',[str(ROOT/'dacp-server/target/universal/stage/bin/dacp-server'),str(out/'server.yaml')])
         empty=out/'empty';empty.mkdir();subprocess.run(['sudo','-n','chown','root:root',str(empty)],check=True)

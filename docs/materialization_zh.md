@@ -182,3 +182,7 @@ Shell 显示执行 ID，重试前明确标记上一轮输出作废并重置显�
 存储扩展的接口、ServiceLoader 注册及契约测试见 [XStream 执行策略参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/materialization_zh.md)。
 
 单机 Flight DoExchange 的 `OperatorRequest` 增加 `execution_policy_yaml`（YAML 字节）、`retry_aware`（布尔值）与 `replay_from`（原执行 ID，此时 `job_yaml` 必须为空）。结果流首先发送 `execution` 元数据帧（包含 `execution_id`），随后输出帧也包含该 ID。两种传输在下一次尝试前均发送 `attempt_failed` 元数据，包含 `attempt_id`、`next_attempt_id`、`retry_count` 和 `message`。Union 的结果 ticket 通过 `retry_aware: true` 声明接收能力。
+
+## 临时空间请求
+
+在执行策略中传入 `resources.tmp_size_mb` 与 `resources.memory_mb`，例如 `resources: {tmp_size_mb: 2048, memory_mb: 4096}`。此配置控制容器内存型 `/tmp`，不是磁盘存储。Union 将请求下发给各成员，成员在启动前按其启动配置 `execution_resources.max_tmp_size_mb` 和 `max_memory_mb` 验证。默认值、单位、融合语义和内存约束见 [XStream 执行策略参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/materialization_zh.md#容器临时空间与内存)。

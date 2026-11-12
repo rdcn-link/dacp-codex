@@ -142,3 +142,11 @@ remote_item_credentials:
 [Scientific view selections and samples](https://github.com/rdcn-link/xstream-codex/blob/main/docs/designer-scientific.md).
 
 Steps support an optional multiline `description` of up to 8192 characters. It is retained in logical plans and dispatched sub-jobs without changing execution semantics. Edit it in the Designer Step tab; see the XStream Job guide for the full syntax.
+
+## Inspect the submitted Job visually
+
+![Node Job details and physical execution units](images/local-job.png)
+
+After submission, open the Job detail page from the dashboard history. Compare the submitted Job and logical plan with the physical plan: server groups indicate execution locations and execution-unit groups indicate process boundaries. Use **Execution information** to inspect status and failures; the screenshot is an example rather than a required Job layout. See [dashboard controls](node-web.md).
+
+[Physical plan generation and optimization](physical-planning.md) · [Extend planning optimization](developers/planning-optimizer.md)

@@ -60,3 +60,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 ## S3 兼容端口
 
 节点默认启动SigV4 认证的只读 HTTPS S3 服务：dataset 为 bucket，支持 `bytes` 的 Item 为 object。配置 `s3.enabled`（默认 true）、`s3.host`（默认 `0.0.0.0`）与 `s3.port`（默认实际 Flight 端口加 2000）。使用 path-style 与 SigV4 签名请求。操作范围、客户端与插件示例见 [S3 兼容服务](s3-service_zh.md)。
+
+## Union 物理计划规划
+
+Union 使用 `planning.provider` 选择优化器（默认 `cost`），使用 `planning.beam_width` 限制候选搜索宽度（默认 `32`，范围 `1–256`），并通过 `planning.settings` 传入优化器专属配置。配置、约束和估算方式见[物理计划生成](physical-planning_zh.md)，插件开发见[优化器扩展](developers/planning-optimizer_zh.md)。

@@ -14,6 +14,7 @@ object AccessOperations {
     "dacp.infer_job"->"job.infer",
     "dacp.union.membership"->"union.membership.get",
     "dacp.union.node_status"->"node.status",
+    "dacp.union.planning_profile"->"job.planning.profile",
     "dacp.union.materialized_status"->"step.materialization.status",
     "dacp.nodes"->"node.list",
     "dacp.union.submit"->"job.submit",

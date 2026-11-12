@@ -16,14 +16,16 @@
 - [节点数据集目录](dataset-directory_zh.md)
 - [记录查询：过滤、投影和限制](records-scans_zh.md)
 - [S3 兼容数据读取服务](s3-service_zh.md)
-- [DACP 与 FTP 传输实测](transfer-benchmark_zh.md)
+- [公网 CSV 属性筛选实测](csv-filter-benchmark_zh.md)
 - [DACP Scala SDK](../dacp-client-scala/README_zh.md)
 
 ## 使用指南 · Job 与结果
 
 - [向 DACP 提交流式作业](jobs_zh.md)
+- [物理计划生成与优化](physical-planning_zh.md)
 - [提交执行策略与请求重放](materialization_zh.md)
 - [看板与执行计划](node-web_zh.md)
+- [淤地坝协作分析与 FTP 集中处理对比](check-dams-benchmark_zh.md)
 - [本地与跨节点流式作业执行对比](local-vs-union-benchmark_zh.md)
 - [Stream 与逐步物化对比](materialization-benchmark_zh.md)
 - [Union 的 DACP 代理服务](union-proxy_zh.md)
@@ -65,3 +67,5 @@
 数据模型、格式、Job 语言与算子开发请阅读 [XStream 文档](http://xstream.conoai.cn/docs.html)。
 
 [数据集发布策略](dataset-publication_zh.md)：公开、不公开、定时公开及 Union 信任边界。
+
+- [扩展规划优化](developers/planning-optimizer_zh.md)

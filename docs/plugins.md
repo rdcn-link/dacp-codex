@@ -28,3 +28,5 @@ Execution history can use `execution_store: {provider: file, settings: {director
 DACP maps the shared catalog to remote access and authorizes protected operations. Its S3 adapter reuses the same data access object without a second backend registration. Records-only Items can expose JSONL bytes through the shared adapter; see [S3 service](s3-service.md).
 
 See [configuration reference](reference.md) and [embedded server](embedded-server.md) for host integration.
+
+[Physical plan generation and optimization](physical-planning.md) · [Extend planning optimization](developers/planning-optimizer.md)

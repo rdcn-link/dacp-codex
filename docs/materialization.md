@@ -182,3 +182,7 @@ Each node `prepare` step adds `materialize: ["result"]` and optional `replay_fro
 For storage interfaces, ServiceLoader registration and contract tests, see the [XStream execution policy reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/materialization.md).
 
 Single-node Flight DoExchange extends `OperatorRequest` with `execution_policy_yaml` (YAML bytes), `retry_aware` (boolean), and `replay_from` (original execution ID; `job_yaml` must then be empty). The result stream begins with an `execution` metadata frame containing `execution_id`; subsequent output frames include the same ID. Both transports send `attempt_failed` metadata with `attempt_id`, `next_attempt_id`, `retry_count`, and `message` before a new attempt. Union results tickets declare `retry_aware: true`.
+
+## Temporary space requests
+
+Pass `resources.tmp_size_mb` and `resources.memory_mb` in the execution policy, for example `resources: {tmp_size_mb: 2048, memory_mb: 4096}`. This configures memory-backed container `/tmp`, not disk storage. Union forwards the request to every member; each validates its `execution_resources.max_tmp_size_mb` and `max_memory_mb` startup limits before starting work. See the [XStream policy reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/materialization.md#container-temporary-space-and-memory) for defaults, units, fusion semantics and memory constraints.

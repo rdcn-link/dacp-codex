@@ -164,3 +164,112 @@ s3:
 以上是 DACP Server 配置；Union 使用 `public_url: dacp://10.0.82.103:19860` 声明对外地址，而非 `public_host`。仅本机访问时，各监听地址设置为 `127.0.0.1`；此时不能通过内网 IP 访问。未使用的看板和 S3 应关闭，关闭方式见本页相关问题。
 
 绑定内网地址限制监听网卡，但不会校验访问来源。还需在主机防火墙、云安全组和网络边界中，仅允许指定内网网段访问实际配置的 DACP、看板和 S3 端口，并禁止公网映射、转发及代理暴露；同时检查 IPv6 入站规则。修改后重启服务，分别从允许的内网和禁止的网络验证可达性。`public_host` / `public_url` 只声明地址，不是访问控制规则。网络限制不替代 TLS 服务器身份验证和业务权限校验。
+
+## 12. 如何理解 CONET、DACP 和 XStream 三个项目之间的关系？
+
+**XStream 提供数据管理与本地计算基础，DACP 将这些能力开放到网络，CONET 将网络能力组织成面向用户的应用。**
+
+| 项目 | 定位 | 核心职责 |
+|---|---|---|
+| XStream | 数据集管理与本地数据流执行引擎 | DataCatalog—Dataset—Item、格式解析、DataView、算子、Job 本地执行和 Designer |
+| DACP | 数据发布与远程计算服务 | 数据集与 Job 执行的网络访问、身份认证和读取授权；Union 提供跨节点协作 |
+| CONET | 数据协作网络与应用平台 | 组织数据中心、展示联合目录、App Builder、分析历史、数据产品发布与分享，以及网络大屏 |
+
+```mermaid
+flowchart TB
+    U[用户] --> C[CONET：应用与数据产品]
+    C --> D[DACP / Union：远程访问与跨节点协作]
+    D --> X[XStream：数据集管理与本地执行]
+    X --> F[文件、数据库及其他数据源]
+```
+
+以一次跨中心分析为例：
+
+1. 用户在 CONET 应用中选择区域、上传文件或填写参数。
+2. CONET 将参数填入固定 Job，提交给 DACP Union。
+3. Union 根据数据位置规划、拆分 Job，向各 DACP 节点下发子任务。
+4. 每个节点使用内嵌的 XStream 引擎执行本地步骤。
+5. CONET 展示进度和结果，并可将分析结果发布为 DACP 数据集。
+
+XStream 在本地执行步骤：读取远程 Item 不意味着自动将后续计算下推到该服务器。DACP 提供远程调用，Union 提供跨节点规划。CONET 负责应用表单、展示、历史和产品，不重复实现格式解析、流执行或跨节点规划。CONET 的应用准入队列与执行节点的资源保护相互配合，不能替代节点自身的资源限制。
+
+XStream 可以独立在本地运行；DACP 可以脱离 CONET，通过客户端、SDK 或 Shell 使用；CONET 为 DACP 网络提供面向应用的入口。图中表示该应用栈，不代表 XStream 的所有数据访问都必须经过 DACP。
+
+## 13. 公网 DACP 服务如何配置证书，客户端需要怎样配置？
+
+建议使用受公开信任的 CA 签发的服务器证书。使用 Certbot、acme.sh 等 ACME 客户端，通过 HTTP 或 DNS 验证证明对服务域名的控制权后申请证书。为 DACP TLS 监听配置服务器证书及中间证书链（通常为 `fullchain.pem`）和私钥（通常为 `privkey.pem`）。私钥仅保存在服务端；配置自动续期，并在续期后重新加载或重启服务，使新证书生效。
+
+客户端验证证书链、有效期和主机名。当签发 CA 已被客户端运行环境的默认信任库信任时，无需显式提供 `ca` 文件。使用私有 CA 时，通过可信渠道分发根证书并配置 `ca`，或将其安装到客户端受管理的信任库。匿名浏览目录也不能关闭服务器身份校验。客户端信任库应保持更新。
+
+证书验证确认服务器身份，访问 Token 授予业务操作权限。公开目录浏览仍验证服务器；受保护操作还需提供具有相应权限的凭据。普通客户端不需要客户端证书。参见[认证与访问控制](security_zh.md)和 [ACME 证书申请说明](https://letsencrypt.org/getting-started/)。
+
+## 14. 支持通过域名连接时，服务器端需要配置什么？
+
+以 `node.example.com` 为例：
+
+1. 添加 DNS A 记录，指向服务器公网 IPv4 地址；仅在 IPv6 已配置且可访问时添加 AAAA 记录。
+2. DACP 监听可访问的本机网络接口，或监听 `0.0.0.0` 以覆盖全部 IPv4 接口。监听地址仍是本机接口地址，无需填写域名；监听 `127.0.0.1` 时仅本机可访问。
+3. 安装 Subject Alternative Name 包含 `node.example.com` 的 TLS 证书，并配置中间证书链和私钥。
+4. 在防火墙、云安全组及必要的 NAT 映射中开放实际配置的 TCP 端口。
+5. DACP Server 的 `public_host` 设置为 `node.example.com`；Union 的 `public_url` 设置为 `dacp://node.example.com:19860`，端口使用实际值。相应更新客户端、Designer 和 Union 成员的连接地址。
+
+客户端随后可以使用 `dacp://node.example.com:19860/dataset/item` 连接。仅包含域名的证书不能用于验证直接通过 IP 建立的连接。仅修改 DNS，也不会让已有的仅含 IP 的证书自动适用于域名。
+
+DACP 可以直接提供 TLS 服务，无需额外部署反向代理。如使用代理，须支持 Arrow Flight 的 gRPC/HTTP/2 流量，并保留所需安全边界。独立暴露的看板和 S3 端点应分别配置。
+
+## 15. 如何让 DACP 动态发布现有 Java 业务系统中的 Dataset 和 Item？
+
+通过 DACP 服务端安装的 XStream 数据提供器插件接入。薄适配层可以直接调用已有 Java 库，也可以通过 HTTP/RPC 接口连接独立运行的业务程序；客户端仍使用正常的 DACP 协议。
+
+| 需求 | 扩展点 |
+|---|---|
+| 动态发现 Dataset 列表 | 实现 `DataCatalogProvider`，返回 `DataCatalog` |
+| 列出 Item、描述元数据及读取内容 | 实现 `DatasetProvider`，返回 `PublishedDataset`，由其创建请求作用域的 `DatasetAccess` 实现数据访问契约 |
+| 在自己的 JVM 应用内启动 DACP | 通过 `DacpServer.builder().catalog(...)` 注入 `DataCatalog` |
+
+如果发现的 Dataset 对应普通文件目录，目录适配层可通过 `CatalogContext.createDataset` 复用已安装的 `directory` provider。自定义内容后端则需要实现相应的 Dataset 访问接口。仅返回元数据列表不代表 Item 可以读取；读取和 Job 执行还需要提供受支持的 `DataView` 及其流实现。
+
+将插件 JAR 和私有依赖安装到服务端 `plugin_directory`，在 `META-INF/services/xstream.data.DataCatalogProvider` 和按需使用的 `META-INF/services/xstream.data.DatasetProvider` 中注册具有公开无参构造方法的实现类，然后重启。无需修改核心注册表或客户端。编译时以 provided 范围依赖与宿主兼容的 `xstream-data-core` API，不重复打包宿主 API。当前公共接口使用 Scala 集合和函数类型，因此通常采用少量 Scala 适配代码更方便，业务逻辑仍可保留在 Java 中。
+
+例如，将以下片段合并到服务端配置：
+
+```yaml
+plugin_directory: /opt/dacp/plugins
+data_catalog:
+  provider: business-catalog
+  source:
+    endpoint: http://127.0.0.1:9000
+```
+
+`business-catalog` 和 `source.endpoint` 是由自定义插件解释、校验的示例设置，并非内置的 HTTP 目录连接器。`data_catalog` 不能与非空的静态 `datasets` 配置并存。适配层负责刷新与缓存策略、后端超时、取消检查、并发访问和资源清理；发现失败不能伪装为空目录。Dataset 描述必须包含公开的 `title` 和 `description` 字段，后端凭据及私有存储设置不能进入公共元数据。
+
+参见 [DACP 插件安装](plugins_zh.md)、[动态目录](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs_zh.md)、[Dataset 提供器](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers_zh.md)和 [Item 与流访问](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access_zh.md)。现有完整提供器示例采用 Scala，目前未提供完整的纯 Java 接入示例。
+
+## 连接配置图解
+
+```mermaid
+sequenceDiagram
+    participant Admin as 服务管理员
+    participant CA as 公开证书颁发机构
+    participant Server as DACP 服务
+    participant Client as 客户端
+    Admin->>CA: 证明域名控制权并申请证书
+    CA-->>Admin: 服务器证书及中间证书链
+    Admin->>Server: 配置证书链与私钥
+    Client->>Server: 使用证书对应域名连接
+    Server-->>Client: 提供证书链
+    Client->>Client: 验证信任链、有效期与主机名
+    Client->>Server: 请求公开元数据，或携带 Token 执行受保护操作
+```
+
+私钥始终保留在服务端。客户端的信任来自默认信任库或明确配置的私有 CA，不能仅因服务器提供了某张证书就信任它。部署细节见第 13、14 问。
+
+## 16. 如何调整或二次扩展物理计划优化？
+
+部署调优可以在 Union 启动 YAML 中设置 `planning.beam_width`，以及内置 `cost` provider 的启动、计算、带宽和延迟参数。在**物理计划 → 完整计划**中比较预计传输量、关键路径与实际执行观测。更大的束宽比较更多候选，但会增加规划时间。这些参数属于 Union，不放在 Designer 或 Job 中。
+
+需要针对领域优化时，实现 `dacp.union.PhysicalPlanOptimizer`，提供输出大小、计算和内存估算、链路模型、额外完整节点分配候选及评分。通过 `META-INF/services/dacp.union.PhysicalPlanOptimizer` 注册 JAR，安装到 `plugin_directory`，选择 `planning.provider` 后重启。安装实现无需修改核心、重新编译服务器或改变客户端。回调应确定、有界且无副作用。
+
+所有候选仍遵守来源所有权、显式分配、容量、executor 及已知内存约束；runtime 合并由成员最终确认，发布策略和凭据不变。插件是管理员安装的可信代码，不是 Job 上传的代码。该接口不提供自动过滤／Join 重写、自动物化或运行中重规划。
+
+参见[物理计划](physical-planning_zh.md)、[开发契约](developers/planning-optimizer_zh.md)和[可运行示例](../examples/planning-optimizer/README_zh.md)。

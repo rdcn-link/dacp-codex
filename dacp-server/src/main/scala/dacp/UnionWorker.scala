@@ -76,8 +76,9 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
   private def connectedPorts(steps:Vector[JsonNode],task:JsonNode):Set[String]=
     task.path("output_routes").fieldNames.asScala.toSet ++ steps.filterNot(_.has("replay_from")).flatMap(_.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin") && b.path("task").asText==task.path("id").asText).map(_.path("port").asText))
   private def prepare(body:JsonNode,who:String,jobYaml:String,requestId:String=Json.uuid()):Session=synchronized {
-    Json.fields(body,Set("name","union_id","execution_id","steps"),Set("allow_fusion","timeout_seconds"))
+    Json.fields(body,Set("name","union_id","execution_id","steps"),Set("allow_fusion","timeout_seconds","resources"))
     require(!body.has("allow_fusion") || body.path("allow_fusion").isBoolean,"allow_fusion must be boolean")
+    val resources=_root_.xstream.engine.ExecutionResources.parse(Option(body.get("resources")).getOrElse(Json.obj()));config.executionResourceLimits.validate(resources)
     val timeout=if(body.has("timeout_seconds"))math.min(Json.number(body,"timeout_seconds",1,86400),settings.executionTimeoutSeconds)else settings.executionTimeoutSeconds
     val jobName=Json.text(body,"name");require(jobName.length<=256 && !jobName.exists(_.isControl),"invalid job name")
     val union=Json.id(Json.text(body,"union_id"));val id=Json.id(Json.text(body,"execution_id"));val policy=grant(union,who)
@@ -135,7 +136,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     val own=sessions.values.asScala.filter(s=> !s.terminal && s.owner==who && s.union==union).map(_.size).sum
     if(reserved+steps.size>config.maxConcurrentTasks || own+steps.size>policy.path("max_concurrent_tasks").asInt)throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
     if(!config.taskSlots.tryAcquire(steps.size))throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
-    try {val s=new Session(id,union,who,jobName,jobYaml,submitted,body.path("allow_fusion").asBoolean(false),timeout,requestId);sessions.put(id,s);s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(steps.size);throw t}
+    try {val s=new Session(id,union,who,jobName,jobYaml,submitted,body.path("allow_fusion").asBoolean(false),timeout,requestId,resources);sessions.put(id,s);s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(steps.size);throw t}
   }
   private def find(id:String,who:String,owner:Boolean=true):Session={
     val s=Option(sessions.get(Json.id(id))).getOrElse(throw UnionFailure(NOT_FOUND,"execution unavailable"))
@@ -161,6 +162,9 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         result.set[JsonNode]("resources",NodeResources.snapshot())
         result.put("web_enabled",config.runningWebUrl.nonEmpty);config.runningWebUrl.foreach(result.put("web_url",_))
         val ids=result.putArray("executors");config.plugins.services(classOf[OperatorExecutor]).foreach(x=>ids.add(x.id));result
+      case "planning_profile"=>
+        Json.fields(n,Set("union_id","operators"));grant(Json.text(n,"union_id"),who)
+        val references=Json.strings(n,"operators");PlanningMetadata.profiles(config,references,()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException())
       case "materialized_status"=>
         Json.fields(n,Set("union_id","execution_id","task"));val union=Json.id(Json.text(n,"union_id"));grant(union,who)
         val result=Json.obj().put("committed",false)
@@ -202,7 +206,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     def claimLocal():Unit={require(consumer.isEmpty,"not a local output");claim("")}
     def claim(who:String):Unit={if(who!=consumer)denied("output consumer denied");if(!claimed.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"output already consumed")}
   }
-  private final class Session(val id:String,val union:String,val owner:String,jobName:String,jobYaml:String,submitted:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long,requestId:String) {
+  private final class Session(val id:String,val union:String,val owner:String,jobName:String,jobYaml:String,submitted:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long,requestId:String,resources:_root_.xstream.engine.ExecutionResources) {
     private def logFailure(t:Throwable):Unit=org.slf4j.LoggerFactory.getLogger(getClass).error(
       s"Execution failed: operation=job.execute request_id=$requestId job_id=$id",t)
     private val definitions=submitted.map(normalizeTask)
@@ -386,7 +390,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
               val name=StreamProtocol.header(f).path("port").asText
               val (_,label)=group.outputs(name);val pair=selected(label)
               outputs(pair).queue.put(StreamProtocol.rename(f,pair._2))
-            },cancel,Some(group.operator),Some(event))
+            },cancel,Some(group.operator),Some(event),resources=resources)
             inputs.values.foreach(_.finish())
             outputs.values.foreach(_.queue.end())
             synchronized{if(!terminal){state="succeeded";finished=Json.now;historyRecord.update(state,snapshot);releaseSlots()}}
@@ -488,7 +492,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
                   datasetInput(descriptor)
                 }else if(DacpUri.origin(binding.uri.get)!=DacpUri.origin(config.uri("")))ItemSource.open(config,allocator,binding,cancel)else localInput(descriptor)
                 try {var f=source.next();while(f.nonEmpty){emit(StreamProtocol.rename(f.get,"result"));f=source.next()}}finally source.close()
-              case None=>runner match {case Some(run)=>run(task,inputs,emit,cancel);case None=>executor.execute(task,inputs,emit,cancel,onRuntime=Some(runtime=>unitRuntimes.put(taskId,runtime)))}
+              case None=>runner match {case Some(run)=>run(task,inputs,emit,cancel);case None=>executor.execute(task,inputs,emit,cancel,onRuntime=Some(runtime=>unitRuntimes.put(taskId,runtime)),resources=resources)}
             }
             // Worker transports must validate upstream success, not only an end frame.
             inputs.values.foreach { s=>
@@ -512,6 +516,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     }
     def snapshot:JsonNode={
       val n=Json.obj().put("history_record_id",historyRecord.id).put("execution_id",id).put("name",jobName).put("union_id",union).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished).put("execution_mode",executionMode).put("fusion_reason",fusionReason).put("runtime_pid",runtimePid)
+      n.set[JsonNode]("resources",resources.json)
       val units=n.putArray("execution_units")
       if(executionMode=="shared_process"){
         val unit=units.addObject().put("id","shared").put("mode","shared_process").put("runtime_image",runtimeImage).put("state",state).put("reason",fusionReason)
