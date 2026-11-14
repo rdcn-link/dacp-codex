@@ -34,7 +34,7 @@ final case class OutputEvent(kind:String, port:String, task:Option[String], repr
 
 object Job {
   def infer(node:String,yaml:String,tls:TlsConfig=TlsConfig(),variables:com.fasterxml.jackson.databind.JsonNode=null):com.fasterxml.jackson.databind.JsonNode =
-    inferAction(node,"dacp.infer_job",dacp.union.Json.obj().put("job_yaml",WorkflowVariables.resolve(yaml,variables)),tls)
+    {val resolved=WorkflowVariables.resolve(yaml,variables);_root_.xstream.execution.RemoteJobPolicy.validateYaml(resolved);inferAction(node,"dacp.infer_job",dacp.union.Json.obj().put("job_yaml",resolved),tls)}
   def inferOperator(node:String,operator:String,inputs:com.fasterxml.jackson.databind.JsonNode,
     params:com.fasterxml.jackson.databind.JsonNode=dacp.union.Json.obj(),tls:TlsConfig=TlsConfig()):com.fasterxml.jackson.databind.JsonNode={
     val n=dacp.union.Json.obj().put("operator",operator);n.set[com.fasterxml.jackson.databind.JsonNode]("inputs",inputs);n.set[com.fasterxml.jackson.databind.JsonNode]("params",params)
@@ -59,6 +59,7 @@ object Job {
     onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None, replayFrom:Option[String]=None, variables:com.fasterxml.jackson.databind.JsonNode=null):JobStream = {
     require(replayFrom.isEmpty || variables==null,"replay uses the original resolved variables")
     val resolved=WorkflowVariables.resolve(yaml,variables)
+    if(replayFrom.isEmpty)_root_.xstream.execution.RemoteJobPolicy.validateYaml(resolved)
     val u=new URI(node)
     require(u.getScheme=="dacp" && u.getHost!=null && u.getUserInfo==null && u.getQuery==null && u.getFragment==null &&
       Set("", "/")(Option(u.getPath).getOrElse("")) && (u.getPort == -1 || u.getPort>0 && u.getPort<=65535),"expected node origin dacp://host[:port]")

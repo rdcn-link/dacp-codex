@@ -126,9 +126,9 @@ The authentication layer also writes `authentication-audit.jsonl`, recording RPC
 
 `list-history DIRECTORY [OFFSET LIMIT]` and `get-history DIRECTORY RECORD_ID` read local history; see [execution history](execution-history.md). `identity CONFIG` reads or initializes Union identity. `members CONFIG` diagnoses members online using configured credentials; other administration commands operate locally.
 
-## Local source operator boundary
+## Local operator boundary
 
-Standalone XStream supports `operator: {local: ./directory}` for trusted local development and later source publication. DACP and Union remote Job interfaces reject this reference, including in DEBUG mode; they do not expose host paths or build commands. Server execution continues to use repository operators and the separately configured DEBUG inline-source mechanism.
+Standalone XStream can define SDK, command-line, or script operators in a local Job's `operators` mapping and refer to them with `operator: {inline: name}`. DACP nodes and Union accept only versioned operators from the public repository. Remote Jobs are rejected if they contain any inline definitions, including unused ones.
 
 ## Authorization boundaries
 

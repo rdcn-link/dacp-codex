@@ -4,7 +4,7 @@
 
 Measured on 2026-10-26 with 500,000 weather observations: 18,500,050 input CSV bytes and 29,094,344 final Arrow payload bytes.
 
-Four steps: A read_item → A CSV parser → B quality filter → C temperature filter. Three node processes share one physical host, loopback Flight and XFS on /dev/vdb. Each policy receives one warmup, followed by three alternating measured runs. Timing includes submission, scheduling, process startup, processing, transfer, complete result consumption and successful commit. There is no schema inference or retry.
+Four steps: A item_source → A CSV parser → B quality filter → C temperature filter. Three node processes share one physical host, loopback Flight and XFS on /dev/vdb. Each policy receives one warmup, followed by three alternating measured runs. Timing includes submission, scheduling, process startup, processing, transfer, complete result consumption and successful commit. There is no schema inference or retry.
 
 | Policy | Run 1 (s) | Run 2 (s) | Run 3 (s) | Median (s) | Persisted result bytes per run |
 |---|---:|---:|---:|---:|---:|

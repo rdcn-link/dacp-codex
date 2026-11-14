@@ -40,7 +40,7 @@ Submit ordinary Jobs through standard `Job.run` or shell `submit`, using only pu
 name: climate-summary
 steps:
 - id: read_summarize_source
-  operator: read_item@1.0
+  operator: item_source@1.0
   inputs: {}
   params:
     uri: dacp://union.example:19860/ds-k7m2-9wqr/observations
@@ -50,8 +50,10 @@ steps:
   operator: piflow_csv_parser@2.0
   inputs:
     source: read_summarize_source
-outputs:
-  result: summarize
+- id: client_sink
+  operator: client_sink@1.0
+  inputs:
+    result: summarize
 ```
 
 The example operator must be installed or available from a repository on the execution member. Ordinary steps may omit `node`. Union filters configured locations by service credential and capacity, preferring input or upstream locations. When all raw input sizes are known, it chooses the location minimizing transferred bytes; otherwise it follows input declaration order. A multi-input operator executes at one member and reads other members' inputs as data streams. Explicit placement uses `node: nd-xxxx-xxxx`; public steps cannot specify internal addresses.

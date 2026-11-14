@@ -199,7 +199,7 @@ def test_union_submits_resolved_variable_snapshot():
     client = Union.__new__(Union)
     calls = []
     client._action = lambda name, body: (calls.append((name, body)) or {'job_id': 'example'})
-    client.submit('steps: [{params: {limit: $LIMIT}}]', variables={'LIMIT': 123})
+    client.submit('steps: [{id: run, operator: identity@1.0, inputs: {}, params: {limit: $LIMIT}}]', variables={'LIMIT': 123})
     import json
     assert yaml.safe_load(calls[0][1]['job_yaml'])['steps'][0]['params']['limit'] == 123
     with pytest.raises(ValueError, match='missing workflow variable'):

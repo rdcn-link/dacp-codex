@@ -6,7 +6,7 @@
 
 ## 方法
 
-输入为 500,000 行气象观测 CSV，共 18,500,050 字节。两组执行同一条链：`read_item → piflow_csv_parser → piflow_filter → piflow_csv_save`。本地全部在 A 执行；跨节点在 A 读取与解析、B 过滤、C 导出，客户端从 Union 接收结果。筛选条件为 `quality = '0' AND CAST(temperature AS REAL) >= 30`。
+输入为 500,000 行气象观测 CSV，共 18,500,050 字节。两组执行同一条链：`item_source → piflow_csv_parser → piflow_filter → piflow_csv_save`。本地全部在 A 执行；跨节点在 A 读取与解析、B 过滤、C 导出，客户端从 Union 接收结果。筛选条件为 `quality = '0' AND CAST(temperature AS REAL) >= 30`。
 
 执行策略明确禁止物化，中间结果通过流传递；客户端逐块计数并计算摘要，不保存输出内容。输入文件本身已存在于磁盘，执行记录和日志仍正常保存。计时范围为客户端提交至结果流结束，包含调度、运行时启动、处理及传输。
 

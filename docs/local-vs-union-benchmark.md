@@ -6,7 +6,7 @@ Measured on 2026-10-27: median local duration was **21.86 seconds**, versus **23
 
 ## Method
 
-The input was a 500,000-row weather observation CSV containing 18,500,050 bytes. Both modes used `read_item → piflow_csv_parser → piflow_filter → piflow_csv_save`. Local execution placed every step on A. Cross-node execution read and parsed on A, filtered on B, and exported on C; the client received results through Union. The filter was `quality = '0' AND CAST(temperature AS REAL) >= 30`.
+The input was a 500,000-row weather observation CSV containing 18,500,050 bytes. Both modes used `item_source → piflow_csv_parser → piflow_filter → piflow_csv_save`. Local execution placed every step on A. Cross-node execution read and parsed on A, filtered on B, and exported on C; the client received results through Union. The filter was `quality = '0' AND CAST(temperature AS REAL) >= 30`.
 
 The execution policy prohibited materialization. Intermediate results flowed between steps; the client counted and hashed chunks without saving output payloads. The input file already existed on disk, and execution history and logs were still persisted. Timing covered client submission through result-stream completion, including scheduling, runtime startup, processing and transfer.
 

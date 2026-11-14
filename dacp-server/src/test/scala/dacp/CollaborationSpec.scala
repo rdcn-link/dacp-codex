@@ -12,13 +12,18 @@ import org.apache.arrow.memory.RootAllocator
 class CollaborationSpec extends AnyFunSuite {
   def config = Config("localhost",18815,"localhost",Map.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"))
   val yaml="""name: inline
+    |operators:
+    |  local:
+    |    type: script
+    |    role: source
+    |    runtime: python
+    |    interpreter: /usr/local/bin/python
+    |    script: {source: 'print("hello")'}
+    |    inputs: {}
+    |    outputs: {result: {view: bytes, binding: stdout, format: text}}
     |steps:
     | - id: first
-    |   operator:
-    |     runtime: python@1.0
-    |     source: |
-    |       def process(ctx):
-    |           ctx.bytes_output('result').write(b'hello')
+    |   operator: {inline: local}
     |   inputs: {}
     |""".stripMargin
   test("task titles describe work while ids remain dependency identifiers") {
@@ -28,18 +33,20 @@ class CollaborationSpec extends AnyFunSuite {
     for(value<-Seq("''","123","null","'"+("x"*257)+"'"))
       intercept[IllegalArgumentException](Jobs.parse(yaml.replace("id: first",s"id: first\n   title: $value")))
   }
-  test("inline source preserves text and requires DEBUG") {
+  test("inline definitions are local-only without a server bypass") {
     val task=Jobs.parse(yaml).steps.head
-    assert(task.source.get.runtime=="python@1.0" && task.source.get.source.contains("    ctx.bytes_output"))
+    assert(task.inlineOperator.get.name=="local")
     assert(intercept[IllegalArgumentException](Jobs.authorizeSource(config,task)).getMessage.contains("FORBIDDEN"))
-    Jobs.authorizeSource(config.copy(debug=true),task)
+    intercept[IllegalArgumentException](xstream.execution.RemoteJobPolicy.validateYaml(yaml))
   }
   test("references use task with optional port and reject old object bindings") {
     val text="""name: pipeline
       |steps:
       | - {id: b, operator: identity@1.1, inputs: {source: a}}
       | - {id: a, operator: live_ticks@1.0, inputs: {}}
-      |outputs: {result: b}
+      | - id: client_sink
+      |   operator: client_sink@1.0
+      |   inputs: {result: b}
       |""".stripMargin
     val plan=Jobs.parse(text)
     assert(plan.steps.map(_.id)==Vector("a","b"))
@@ -55,7 +62,6 @@ class CollaborationSpec extends AnyFunSuite {
       |steps:
       | - {id: consume, operator: sink@1, inputs: {source: generate}}
       | - {id: generate, operator: generate@1, inputs: {}}
-      |outputs: {}
       |""".stripMargin
     val plan=Jobs.parse(text)
     assert(Jobs.dependencies(plan.steps.last).toSet==Set("generate"))
@@ -63,11 +69,13 @@ class CollaborationSpec extends AnyFunSuite {
     intercept[IllegalArgumentException](Jobs.parse(text.replace("source: generate}","source: generate}, depends_on: [generate]")))
     intercept[IllegalArgumentException](Jobs.parse(text.replace("id: generate, operator: generate@1, inputs: {}","id: generate, operator: generate@1, inputs: {source: consume}")))
   }
-  test("read_item requires an Item URI and defaults to metadata-based view selection") {
+  test("item_source requires an Item URI and defaults to metadata-based view selection") {
     val text="""name: read
       |steps:
-      | - {id: read, operator: read_item@1.0, inputs: {}, params: {uri: 'dacp://localhost:18815/data/item', view: records}}
-      |outputs: {result: read}
+      | - {id: read, operator: item_source@1.0, inputs: {}, params: {uri: 'dacp://localhost:18815/data/item', view: records}}
+      | - id: client_sink
+      |   operator: client_sink@1.0
+      |   inputs: {result: read}
       |""".stripMargin
     assert(Jobs.readBinding(Jobs.parse(text).steps.head).get.view=="records")
     assert(Jobs.readBinding(Jobs.parse(text.replace(", view: records","")).steps.head).get.view=="auto")

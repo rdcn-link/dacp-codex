@@ -33,7 +33,6 @@ flowchart TD
 | 发布应用中的数据目录 | [嵌入 API](../embedded-server_zh.md)、[服务配置](../reference_zh.md) |
 | 加载已有后端与运行环境插件 | [插件部署](../plugins_zh.md)、[插件示例](../../examples/plugins/README_zh.md) |
 | 配置服务端执行记录存储 | [历史 API 与管理](../execution-history_zh.md) |
-| 在 DEBUG 部署中使用临时源码算子 | [DEBUG 源码算子](../operator-source_zh.md) |
 
 数据集后端、格式解析、算子、流契约和执行存储插件的开发请使用 [XStream 开发指南](http://xstream.conoai.cn/manual/xstream-codex/docs/development_zh.html)，通过 DACP 配置将插件加载到服务。
 

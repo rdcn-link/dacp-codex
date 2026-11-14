@@ -7,7 +7,7 @@
       {
         "id": "read",
         "node": "nd-t8nx-jkw4",
-        "operator": "read_item@1.0",
+        "operator": "item_source@1.0",
         "inputs": {},
         "params": {
           "uri": "dacp://localhost:19860/ds-6zmr-crvh/benchmark",

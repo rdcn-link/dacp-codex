@@ -2,6 +2,30 @@
 
 每个 Union 维护一个持久身份，从启动配置读取独立成员，主动轮询成员健康并调度作业。节点不注册、不发送心跳。
 
+## 环境就绪与执行计时
+
+Union 为各成员预留子 Job 后，节点异步准备运行环境：解析指定版本算子、校验程序包、加载固定版本的 runtime／依赖镜像，并准备可合并的进程执行单元。此阶段不读取输入流、不执行算子代码。`prepare` 立即返回 `preparing`，只有环境就绪后，`execution_status` 才报告 `prepared`。Union 等待全部参与成员就绪，随后启动执行；执行阶段复用已解析的算子和已准备的进程分组。
+
+环境准备使用独立的服务端超时，默认 1,800 秒。Union 在顶层配置，成员节点在 `union` 下配置：
+
+```yaml
+# Union 配置
+preparation_timeout_seconds: 1800
+execution_timeout_seconds: 1800
+```
+
+```yaml
+# 数据节点配置
+union:
+  state_directory: /var/lib/dacp/union
+  preparation_timeout_seconds: 1800
+  execution_timeout_seconds: 1800
+```
+
+准备阶段包括等待其他成员就绪；其截止时间也限制无人继续启动的资源预留。准备失败、超时或取消时，Union 取消所有已下发的子 Job，成员释放任务槽位。成员准入及凭据检查在准备期间持续生效。准备失败不会自动重试。
+
+Job 的 `timeout_seconds` 预算在每轮环境准备期间暂停，在向成员发送 `start` 前恢复。资源排队及准备阶段之外的重试开销仍计入整体预算，各次重试共享剩余预算。成员从 `start` 开始执行超时计时。容器创建和输入输出处理属于执行阶段。状态与历史提供 `preparation_duration_ms`、`execution_started_at_ms` 和 `execution_duration_ms`；准备与执行耗时分别跨尝试累计，总耗时还包括排队。客户端自身的 RPC 或流读取超时独立生效，需要覆盖准备和执行时间。
+
 ## 身份与授权
 
 普通客户端使用 TLS 与 Bearer Token。Union 到成员使用双向 TLS 及节点签发、绑定 Union ID 与证书指纹的服务凭据。信任 CA 本身不授予协作权限。成员信任该 Union 服务凭据授权的所有操作；节点间流受精确执行计划约束。服务凭据撤销或到期会停止运行中的协作。凭据操作和普通 Token 不同的撤销行为见[认证与访问控制](security_zh.md)。
@@ -10,7 +34,7 @@
 
 ## 执行与流
 
-客户端提交使用 Union 公开 URI、可选逻辑 task.node 和明确 outputs 的标准 Job；管理员也可通过专用异步 API 指定内部位置。X 复用 DAG 验证，按节点组织子 Job。Union 只接受版本化算子，不接受内嵌源码。输入统一为上游 `step[:port]`，外部 Item 通过 `read_item@1.0` 的 `params.uri/view` 接入；本地读取使用 DatasetAccess，不通过 X 或 Flight 下载。每条输出连接只有一个消费者。
+客户端提交使用 Union 公开 URI、可选逻辑 task.node 和明确 outputs 的标准 Job；管理员也可通过专用异步 API 指定内部位置。X 复用 DAG 验证，按节点组织子 Job。Union 只接受版本化算子，不接受内嵌源码。输入统一为上游 `step[:port]`，外部 Item 通过 `item_source@1.0` 的 `params.uri/view` 接入；本地读取使用 DatasetAccess，不通过 X 或 Flight 下载。每条输出连接只有一个消费者。
 
 X 先 prepare 所有子 Job，得到接收确认后再 start。节点检查自身容量与授权，拒绝无法执行的计划。A 输出连接绑定本次 execution/task/port 与 B 的证书身份；B 通过 mTLS 主动拉取。相同节点内使用有界队列，跨节点使用带背压的 Flight `DoGet` 流。复用 OperatorFrames：start/data/end 后，成功退出才发送 complete；失败以 Flight 错误状态结束。接收 complete 后仍须验证 Flight 正常结束。输出不创建 Dataset，默认直接流传递；显式策略可在产出节点物化选定输出供重放。
 
@@ -20,7 +44,7 @@ X 先 prepare 所有子 Job，得到接收确认后再 start。节点检查自�
 
 全局 Job、节点子 Job、执行策略及变量文件统一使用 YAML。U 保存收到的工作流原文 `submitted_job_yaml`，并将规划后的执行定义保存为 YAML；通过 Flight 控制消息的 `job_yaml` 文本字段下发子作业。策略使用 `execution_policy_yaml` 文本字段，变量由客户端替换后按 YAML 提交。状态和流量等元数据仍为结构化消息。
 
-用户 Job 的 `inputs` 只接受 `step[:port]`，顶层 `outputs` 选择返回流。U 分解后下发给 C 的内部任务示例如下；身份占位符需替换为实际的 64 位十六进制证书摘要：
+用户 Job 的 `inputs` 只接受 `step[:port]`，显式的 `client_sink@1.0` 步骤选择返回流；用户 Job 没有顶层 `outputs` 字段。U 分解后下发给 C 的内部任务示例如下；身份占位符需替换为实际的 64 位十六进制证书摘要：
 
 ```yaml
 name: Weather screening
@@ -75,7 +99,7 @@ U 可通过独立 HTTP 监听提供只读运行看板；这不改变上述 Fligh
 name: daily-temperature
 steps:
   - id: read_observations
-    operator: read_item@1.0
+    operator: item_source@1.0
     inputs: {}
     params:
       uri: dacp://localhost:18861/climate/observations
@@ -86,8 +110,10 @@ steps:
     operator: daily_temperature_stats@1.0
     inputs:
       source: read_observations
-outputs:
-  result: daily_temperature
+  - id: client_sink
+    operator: client_sink@1.0
+    inputs:
+      result: daily_temperature
 ```
 
 DAG 使用本地打包的 AntV G6 5.1.1 绘制，不依赖外部 CDN。任务卡片优先显示 `title`，缺省时显示 ID；卡片展示算子、状态、输入 / 输出负载。连线展示端口和负载；点击卡片或连线，在图下方查看完整标题、任务 ID、服务器地址、跨节点负载、相邻观测速率及记录数（适用时）。发送与接收分别计数，尚无观测和终态速率显示 `—`。最终输出连线采用源任务输出端口计数，不代表客户端已接收量。
@@ -147,6 +173,12 @@ sequenceDiagram
   U->>A: 准备子作业
   U->>B: 准备子作业
   U->>C: 准备子作业
+  A-->>U: 环境就绪
+  B-->>U: 环境就绪
+  C-->>U: 环境就绪
+  U->>A: 启动
+  U->>B: 启动
+  U->>C: 启动
   U->>C: 消费最终输出
   C->>B: 消费上游输出
   B->>A: 消费上游输出

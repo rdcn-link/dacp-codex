@@ -13,7 +13,7 @@ import org.apache.arrow.vector.VectorSchemaRoot
 import dacp.protocol.Metadata
 
 class SourceSubmissionSpec extends AnyFunSuite {
-  test("NORMAL denies source at both coordinator and direct worker Flight entry points") {
+  test("remote service denies source at both coordinator and direct worker Flight entry points") {
     val allocator=new RootAllocator()
     val config=Config("localhost",18816,"localhost",Map.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(Files.createTempDirectory("dacp-source-history-")).toString))))
     val service=new TaskService(config,allocator,new TaskExecutor(config,allocator))
@@ -23,9 +23,11 @@ class SourceSubmissionSpec extends AnyFunSuite {
     val server=FlightServer.builder(allocator,Location.forGrpcInsecure("127.0.0.1",0),producer).build().start()
     val client=FlightClient.builder(allocator,server.getLocation).build()
     val source="""{"runtime":"python@1.0","source":"def process(inputs, params): yield b'x'"}"""
-    val job=s"""{"name":"source","steps":[{"id":"read","operator":"read_item@1.0","inputs":{},"params":{"uri":"dacp://localhost:18816/data/item","view":"bytes"}},{"id":"run","operator":$source,"inputs":{"source":"read"}}],"outputs":{"result":"run"}}"""
+    val job=s"""{"name":"source","steps":[{"id":"read","operator":"item_source@1.0","inputs":{},"params":{"uri":"dacp://localhost:18816/data/item","view":"bytes"}},{"id":"run","operator":$source,"inputs":{"source":"read"}}],"outputs":{"result":"run"}}"""
+    val unusedInline="""{"name":"unused-inline","operators":{},"steps":[{"id":"read","operator":"item_source@1.0","inputs":{},"params":{"uri":"dacp://localhost:18816/data/item","view":"bytes"}}],"outputs":{"result":"read"}}"""
     val worker=s"""{"id":"run","operator":$source,"params":{},"ports":["source"],"sources":["dacp://localhost:18816/data/item"]}"""
     val requests=Seq(Metadata.OperatorRequest.newBuilder().setJobYaml(job).build(),
+      Metadata.OperatorRequest.newBuilder().setJobYaml(unusedInline).build(),
       Metadata.OperatorRequest.newBuilder().setTaskYaml(com.google.protobuf.ByteString.copyFromUtf8(worker)).build())
     try {requests.foreach { request=>
       val exchange=client.doExchange(FlightDescriptor.command(request.toByteArray))
@@ -33,14 +35,14 @@ class SourceSubmissionSpec extends AnyFunSuite {
       try {
         exchange.getWriter.start(root);exchange.getWriter.completed()
         val error=intercept[FlightRuntimeException](exchange.getReader.next())
-        assert(error.status().code()==FlightStatusCode.UNAUTHORIZED)
+        assert(Set(FlightStatusCode.UNAUTHORIZED,FlightStatusCode.INVALID_ARGUMENT)(error.status().code()))
         assert(error.getMessage.contains("Job execution failed"))
       } finally {try exchange.close() catch{case _:FlightRuntimeException=>()};root.close()}
       }
       val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(3)
-      while(config.executionHistory.list().count(_.path("state").asText=="failed")<2 && System.nanoTime()<deadline)Thread.sleep(10)
+      while(config.executionHistory.list().count(_.path("state").asText=="failed")<3 && System.nanoTime()<deadline)Thread.sleep(10)
       val records=config.executionHistory.list()
-      assert(records.size==2)
+      assert(records.size==3)
       assert(records.forall(_.path("state").asText=="failed"))
       assert(records.forall(_.path("message").asText.contains("Job execution failed")))
       assert(records.forall(!_.toString.contains("def process")))
@@ -51,21 +53,13 @@ class SourceSubmissionSpec extends AnyFunSuite {
     val frame=StreamProtocol.start("result","records","csv",Some(schema))
     assert(StreamProtocol.schema(StreamProtocol.header(frame))==schema)
   }
-  test("configuration requires explicit DEBUG and strict runtime settings") {
-    val example=Path.of("../examples/source-debug.yaml")
-    val text=Files.readString(example)
+  test("server configuration rejects execution mode and source runtime settings") {
     val temporary=Files.createTempFile("source-config-",".yaml")
     try {
-      Seq("DEBUG"->true,"NORMAL"->false).foreach {case(mode,enabled)=>
-        Files.writeString(temporary,text.replace("mode: DEBUG",s"mode: $mode"))
-        val config=Config.load(temporary)
-        try {assert(config.debug==enabled);assert(config.sourceRuntimes("python@1.0").executor=="python")}
-        finally config.close()
+      for(field<-Seq("mode: DEBUG","mode: NORMAL","source_runtimes: {}","local_operator_library: ./operators")){
+        Files.writeString(temporary,field+"\n")
+        assert(intercept[IllegalArgumentException](Config.load(temporary)).getMessage.contains("unknown server setting"))
       }
-      Files.writeString(temporary,text.replace("mode: DEBUG","mode: debug"))
-      intercept[IllegalArgumentException](Config.load(temporary))
-      Files.writeString(temporary,text.replace("mode: DEBUG\n",""))
-      val normal=Config.load(temporary);try assert(!normal.debug) finally normal.close()
-    } finally Files.delete(temporary)
+    }finally Files.delete(temporary)
   }
 }

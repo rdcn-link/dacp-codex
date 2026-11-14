@@ -32,7 +32,7 @@ class GraphPlacementSpec extends AnyFunSuite {
     assert(GraphPlacement.optimize(PlanningInput(mismatched,nodes)).estimate.processes==2)
   }
   test("plugins cannot override owner, executor, memory or numeric constraints and cancellation propagates") {
-    val graph=Vector(PlanningStep("read",Vector.empty,Some("east"->Some(10L)),operator="read_item@1.0"))
+    val graph=Vector(PlanningStep("read",Vector.empty,Some("east"->Some(10L)),operator="item_source@1.0"))
     val input=PlanningInput(graph,Vector(PlanningTarget("east",4),PlanningTarget("west",4)))
     val malicious=new PhysicalPlanOptimizer{val id="bad";override def candidates(i:PlanningInput,s:Map[String,Object])=Vector(Map("read"->"west"))}
     intercept[IllegalArgumentException](GraphPlacement.optimize(input,Some(malicious)))

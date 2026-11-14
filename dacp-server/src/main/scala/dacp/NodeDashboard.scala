@@ -140,7 +140,7 @@ private[dacp] final class NodeDashboard(config:Config,flightPort:Int,startedAt:L
     if(path!="/api/history" && path!="/job" && e.getRequestURI.getRawQuery!=null){error(e,400,"unexpected query parameters");return}
     path match {
       case "/api/overview"=>
-        val n=Json.obj().put("web_url",publicUrl).put("flight_uri",origin).put("started_at_ms",startedAt).put("uptime_ms",System.currentTimeMillis()-startedAt).put("capacity",config.maxConcurrentTasks).put("reserved_tasks",config.maxConcurrentTasks-config.taskSlots.availablePermits()).put("mode",if(config.debug)"DEBUG"else "NORMAL")
+        val n=Json.obj().put("web_url",publicUrl).put("flight_uri",origin).put("started_at_ms",startedAt).put("uptime_ms",System.currentTimeMillis()-startedAt).put("capacity",config.maxConcurrentTasks).put("reserved_tasks",config.maxConcurrentTasks-config.taskSlots.availablePermits())
         n.set[JsonNode]("resources",NodeResources.snapshot())
         val executors=n.putArray("executors");config.plugins.services(classOf[OperatorExecutor]).foreach(x=>executors.add(x.id));json(e,200,n)
       case "/api/s3"=>json(e,200,s3Status())

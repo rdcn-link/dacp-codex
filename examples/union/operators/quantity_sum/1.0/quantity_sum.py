@@ -14,7 +14,7 @@ def emit(kind, data=b'', **metadata):
     sys.stdout.buffer.flush()
 
 
-def read_item(directory, item):
+def item_source(directory, item):
     if item['representation'] != 'bytes':
         raise ValueError('expected bytes input')
     data = bytearray()
@@ -40,7 +40,7 @@ def main():
     if [m['port'] for m in manifest] != ['source']:
         raise ValueError('expected source input')
     totals = {}
-    for row in csv.DictReader(io.StringIO(read_item(directory, manifest[0]))):
+    for row in csv.DictReader(io.StringIO(item_source(directory, manifest[0]))):
         quantity = int(row['quantity'])
         totals[row['product']] = totals.get(row['product'], 0) + quantity
     emit('start', representation='bytes', format='json')

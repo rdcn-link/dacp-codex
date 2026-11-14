@@ -40,7 +40,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     assignedPorts+=chosen;chosen
   }
   private def eventually(check: => Boolean,clue: => String="condition"):Unit={val end=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(15);while(!check && System.nanoTime()<end)Thread.sleep(50);assert(check,clue)}
-  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=60,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false,materialize:Boolean=false,withRecords:Boolean=false,scientific:Boolean=false,trustedSources:Boolean=false) {
+  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=60,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false,materialize:Boolean=false,withRecords:Boolean=false,scientific:Boolean=false,trustedSources:Boolean=false,preparationDelayMs:Long=0,preparationFailure:Boolean=false,preparationTimeoutSeconds:Long=1800) {
     @volatile var catalogVisible=true
     @volatile var catalogFailure=false
     val allocator=new RootAllocator()
@@ -50,8 +50,8 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     Files.writeString(dir.resolve("observations.csv"),"station,temperature\nA,18\nB,21\nC,24\n")
     if(scientific)Files.writeString(dir.resolve("genome.fa"),">chr1\nACGTACGT\n")
     def store(name:String)=if(materialize)Some(MaterializationStoreDefinition("file",Map("directory"->dir.resolve(name+"-outputs").toString)))else None
-    val as=NodeUnionSettings(dir.resolve("a-state"),30,30,store("a"))
-    val bs=NodeUnionSettings(dir.resolve("b-state"),30,30,store("b"))
+    val as=NodeUnionSettings(dir.resolve("a-state"),30,30,store("a"),preparationTimeoutSeconds)
+    val bs=NodeUnionSettings(dir.resolve("b-state"),30,30,store("b"),preparationTimeoutSeconds)
     val invocations=new java.util.concurrent.ConcurrentHashMap[String,java.util.concurrent.atomic.AtomicInteger]()
     @volatile var failDownstreamOnce=false
     @volatile var controlFinished=false
@@ -93,7 +93,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       emit(StreamProtocol.frame("end","result"))
       }
     }
-    val a=new UnionWorker(ca,as,allocator,Some(runner));val b=new UnionWorker(cb,bs,allocator,Some(runner))
+    val a=new UnionWorker(ca,as,allocator,Some(runner),Some(c=>{val until=System.nanoTime()+preparationDelayMs*1000000L;while(System.nanoTime()<until){c.active();Thread.sleep(10)};if(preparationFailure)throw new IllegalArgumentException("environment unavailable")}));val b=new UnionWorker(cb,bs,allocator,Some(runner),Some(c=>{val until=System.nanoTime()+preparationDelayMs*1000000L;while(System.nanoTime()<until){c.active();Thread.sleep(10)};if(preparationFailure)throw new IllegalArgumentException("environment unavailable")}))
     val xp=port()
     val unionId="test-union"
     Files.createDirectories(dir.resolve("x-state"));Json.write(dir.resolve("x-state/union.json"),Json.obj().put("union_id",unionId))
@@ -130,7 +130,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val yaml=s"""name: union-example
     |steps:
     |- id: read_ta_source
-    |  operator: read_item@1.0
+    |  operator: item_source@1.0
     |  inputs: {}
     |  params:
     |    uri: ${ca.uri("data","/input")}
@@ -143,7 +143,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     |  inputs:
     |    source: read_ta_source
     |- id: read_tb_right
-    |  operator: read_item@1.0
+    |  operator: item_source@1.0
     |  inputs: {}
     |  params:
     |    uri: ${cb.uri("data","/input")}
@@ -156,8 +156,9 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     |  inputs:
     |    left: ta
     |    right: read_tb_right
-    |outputs:
-    |  result: tb
+    |- id: client_sink
+    |  operator: client_sink@1.0
+    |  inputs: {result: tb}
     |""".stripMargin
     def submit(text:String=yaml):String=client.action(settings.publicUrl,"submit",Json.obj().put("job_yaml",publicYaml(text))).path("job_id").asText
     def submitPolicy(policy:JsonNode):String=client.action(settings.publicUrl,"submit",Json.obj().put("job_yaml",publicYaml(yaml)).put("execution_policy_yaml",dacp.union.YamlDocument.dump(policy))).path("job_id").asText
@@ -182,10 +183,12 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       def script(origin:String)=s"""name: private-input
         |steps:
         |- id: read
-        |  operator: read_item@1.0
+        |  operator: item_source@1.0
         |  params: {uri: "$origin/data/input", view: bytes}
         |  inputs: {}
-        |outputs: {result: read}
+        |- id: client_sink
+        |  operator: client_sink@1.0
+        |  inputs: {result: read}
         |""".stripMargin
       val body=Json.obj().put("job_yaml",script(DacpUri.origin(f.ca.uri(""))))
       intercept[Exception](f.stranger.action(f.settings.publicUrl,"submit",body))
@@ -221,9 +224,9 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
   test("planning profiles require Union membership and do not invoke operator inference") {
     val f=new Fixture()
     try {
-      f.approved();val body=Json.obj().put("union_id",f.unionId);body.putArray("operators").add("read_item@1.0")
+      f.approved();val body=Json.obj().put("union_id",f.unionId);body.putArray("operators").add("item_source@1.0")
       val result=f.x.members.remote.action(DacpUri.origin(f.ca.uri("")),"planning_profile",body,Some(tls("a").identity),timeout=5)
-      assert(result.path("read_item@1.0").path("runtime").asText=="host")
+      assert(result.path("item_source@1.0").path("runtime").asText=="host")
       intercept[Exception](f.client.action(DacpUri.origin(f.ca.uri("")),"planning_profile",body))
     }finally f.close()
   }
@@ -237,6 +240,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
         val step=body.putArray("steps").addObject().put("id","waiting").put("operator","identity@1.3")
         step.putObject("params").put("wait",true);step.putObject("inputs")
         request("prepare",Json.obj().put("job_yaml",dacp.union.YamlDocument.dump(body)))
+        eventually(request("execution_status",Json.obj().put("execution_id",id)).path("state").asText=="prepared")
       }
       def execution(id:String)=Json.obj().put("execution_id",id)
       prepare("startup-live")
@@ -255,7 +259,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     val f=new Fixture
     try {
       f.approved()
-      val text="name: Local attempt\nsteps:\n- id: run\n  operator: {local: /tmp/private-operator}\n  inputs: {}\noutputs: {result: run}\n"
+      val text="name: Local attempt\nsteps:\n- id: run\n  operator: {local: /tmp/private-operator}\n  inputs: {}\n- id: client_sink\n  operator: client_sink@1.0\n  inputs: {result: run}\n"
       val error=intercept[UnionFailure](f.submit(text))
       assert(error.code==org.apache.arrow.flight.FlightStatusCode.INVALID_ARGUMENT)
     }finally f.close()
@@ -317,7 +321,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
         def accept(b:SequenceChunk):Unit=parts+=b
       }),()=>())finally reader.close()
       assert(parts.map(_.symbols.toString).mkString=="GTAC" && parts.head.offset==2)
-      val yaml=s"name: Union scientific selection\nsteps:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: '${f.ca.uri("data","/genome/sequences")}', view: sequence, selection: {offset: 1, length: 3}}\noutputs: {result: read}\n"
+      val yaml=s"name: Union scientific selection\nsteps:\n- id: read\n  operator: item_source@1.0\n  inputs: {}\n  params: {uri: '${f.ca.uri("data","/genome/sequences")}', view: sequence, selection: {offset: 1, length: 3}}\n- id: client_sink\n  operator: client_sink@1.0\n  inputs: {result: read}\n"
       val id=f.submit(yaml)
       val allocator=new org.apache.arrow.memory.RootAllocator()
       try {
@@ -380,7 +384,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     try {
       f.approved()
       assert(intercept[IllegalArgumentException](Jobs.parse(f.yaml.replace("- id: ta\n","- id: ta\n  depends_on: [read_ta_source]\n"))).getMessage.nonEmpty)
-      val script=f.yaml.replace("- id: tb\n","- id: tb\n  params: {sink: true}\n").replace("outputs:\n  result: tb\n","outputs: {}\n")
+      val script=f.yaml.replace("- id: tb\n","- id: tb\n  params: {sink: true}\n").replace("- id: client_sink\n  operator: client_sink@1.0\n  inputs: {result: tb}\n","")
       f.controlFinished=true
       val id=f.submit(script);assert(f.bytes(id).isEmpty);eventually(f.status(id).path("state").asText=="succeeded")
     }finally f.close()
@@ -468,6 +472,43 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(f.bytes(id).sameElements(f.inputA++f.inputB));eventually(f.status(id).path("state").asText=="succeeded")
       assert(f.retryNotices==1 && f.count("ta")==2 && f.count("tb")==2)
     }finally f.close()
+  }
+  test("all members prepare before execution and preparation does not consume execution timeout") {
+    val f=new Fixture(preparationDelayMs=4500)
+    try {
+      f.approved()
+      val id=f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",f.publicYaml(f.yaml)).put("execution_policy_yaml","timeout_seconds: 3")).path("job_id").asText
+      eventually(f.status(id).path("state").asText=="preparing")
+      assert(f.count("ta")==0 && f.count("tb")==0)
+      assert(f.bytes(id).sameElements(f.inputA++f.inputB))
+      eventually(f.status(id).path("state").asText=="succeeded")
+      val snapshot=f.status(id)
+      assert(snapshot.path("preparation_duration_ms").asLong>=4400)
+      assert(snapshot.path("execution_duration_ms").asLong<3000)
+    }finally f.close()
+  }
+  test("environment preparation failure starts no operators and releases all reservations") {
+    val f=new Fixture(preparationFailure=true)
+    try {
+      f.approved();val id=f.submit()
+      eventually(f.status(id).path("state").asText=="failed")
+      assert(f.count("ta")==0 && f.count("tb")==0)
+      eventually(f.ca.taskSlots.availablePermits()==4 && f.cb.taskSlots.availablePermits()==4)
+    }finally f.close()
+  }
+  test("preparation expiry and cancellation release reservations without executing steps") {
+    for(expire<-Seq(false,true)){
+      val f=new Fixture(preparationDelayMs=3000,preparationTimeoutSeconds=if(expire)1 else 30)
+      try {
+        f.approved();val id=f.submit()
+        eventually(f.status(id).path("state").asText=="preparing")
+        if(!expire)f.client.action(f.settings.publicUrl,"cancel_job",Json.obj().put("job_id",id))
+        eventually(Set("failed","expired","cancelled")(f.status(id).path("state").asText))
+        if(!expire)assert(f.status(id).path("state").asText=="cancelled")
+        assert(f.count("ta")==0 && f.count("tb")==0)
+        eventually(f.ca.taskSlots.availablePermits()==4 && f.cb.taskSlots.availablePermits()==4)
+      }finally f.close()
+    }
   }
   test("policy timeout limits resource waiting and all attempts, without retrying expiry") {
     val f=new Fixture()
@@ -588,7 +629,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(details.path("steps").elements.asScala.find(_.path("id").asText=="tb").get.path("inputs").elements.asScala.exists(_.path("task").asText=="ta"))
       assert(details.path("job_yaml").asText.contains("steps:"))
       assert(details.path("submitted_job_yaml").asText.contains("steps:"))
-      assert(details.path("logical_plan").path("steps").size()==4)
+      assert(details.path("logical_plan").path("steps").size()==5)
       assert(details.path("logical_plan").path("steps").elements.asScala.forall(t=> !t.has("node")))
       assert(details.path("placement_decisions").size()==4)
       assert(details.path("placement_decisions").elements.asScala.exists(_.path("requested_source").asText.contains("ds-")))
@@ -704,6 +745,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(intercept[UnionFailure](f.submit(f.yaml.replace("right: read_tb_right","right: ta"))).code==INVALID_ARGUMENT)
       assert(intercept[UnionFailure](f.submit(f.yaml.replace(f.cb.uri("data","/input"),"https://localhost/data/input"))).code==INVALID_ARGUMENT)
       assert(intercept[UnionFailure](f.submit(f.yaml.replace("identity@1.3","{runtime: python@1.0, source: pass}"))).code==INVALID_ARGUMENT)
+      assert(intercept[UnionFailure](f.submit("operators: {}\n"+f.yaml)).code==INVALID_ARGUMENT)
     }finally f.close()
   }
   test("resource waiting, explicit cancellation, result disconnection and worker failure release reservations") {
@@ -853,7 +895,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val job=s"""name: public-example
     |steps:
     |- id: read_copied_source
-    |  operator: read_item@1.0
+    |  operator: item_source@1.0
     |  inputs: {}
     |  params:
     |    uri: context:/${entry.getName}/input
@@ -862,8 +904,9 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     |  operator: identity@1.3
     |  inputs:
     |    source: read_copied_source
-    |outputs:
-    |  result: copied
+    |- id: client_sink
+    |  operator: client_sink@1.0
+    |  inputs: {result: copied}
     |""".stripMargin
       assert(publicJob(client,job).sameElements(f.inputA))
       assert(catalog(client).getDatasetsList.asScala.map(_.getName).toSet==entries.map(_.getName).toSet)
@@ -895,8 +938,8 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       assert(directory.forall(n=>n.path("id").asText.startsWith("nd-") && n.has("capacity") && n.path("state").asText=="approved" && n.has("resources") && n.has("uptime_ms")))
       val entries=catalog(client).getDatasetsList.asScala.toVector
       val inputs=entries.zipWithIndex.map{case(e,i)=>s"p$i: read$i"}.mkString(", ")
-      val readers=entries.zipWithIndex.map{case(e,i)=>s" - {id: read$i, operator: read_item@1.0, inputs: {}, params: {uri: '${e.getUri}/input', view: bytes}}"}.mkString("\n")
-      val job=s"name: joined\nsteps:\n$readers\n - id: join\n   operator: identity@1.3\n   inputs: {$inputs}\noutputs: {result: join}\n"
+      val readers=entries.zipWithIndex.map{case(e,i)=>s" - {id: read$i, operator: item_source@1.0, inputs: {}, params: {uri: '${e.getUri}/input', view: bytes}}"}.mkString("\n")
+      val job=s"name: joined\nsteps:\n$readers\n - id: join\n   operator: identity@1.3\n   inputs: {$inputs}\n - id: client_sink\n   operator: client_sink@1.0\n   inputs: {result: join}\n"
       val expected=entries.flatMap(e=>{val info=client.getInfo(FlightDescriptor.path("datasets",e.getName,"/input"));if(dacp.protocol.Metadata.Item.parseFrom(info.getAppMetadata).getTotalSizeBytes==f.inputA.length)f.inputA.toVector else f.inputB.toVector}).toArray
       assert(publicJob(client,job).sameElements(expected))
       val records=f.x.history.list(0,100);assert(records.head.path("steps").elements.asScala.find(_.path("id").asText=="join").get.path("node").asText==DacpUri.origin(f.ca.uri("")))

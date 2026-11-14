@@ -11,19 +11,19 @@ import com.fasterxml.jackson.databind.JsonNode
 import java.nio.file.{Files,Path}
 import scala.jdk.CollectionConverters._
 
-case class NodeUnionSettings(state:Path,executionTimeoutSeconds:Long=1800,retentionSeconds:Long=300,materializationStore:Option[MaterializationStoreDefinition]=None) {
-  require(executionTimeoutSeconds>0 && retentionSeconds>0)
+case class NodeUnionSettings(state:Path,executionTimeoutSeconds:Long=1800,retentionSeconds:Long=300,materializationStore:Option[MaterializationStoreDefinition]=None,preparationTimeoutSeconds:Long=1800) {
+  require(executionTimeoutSeconds>0 && retentionSeconds>0 && preparationTimeoutSeconds>0)
 }
 object NodeUnionSettings {
   def read(n:JsonNode):NodeUnionSettings={
-    Json.fields(n,Set("state_directory"),Set("execution_timeout_seconds","retention_seconds","materialization_store"))
+    Json.fields(n,Set("state_directory"),Set("execution_timeout_seconds","retention_seconds","materialization_store","preparation_timeout_seconds"))
     NodeUnionSettings(Path.of(Json.text(n,"state_directory")),
       if(n.has("execution_timeout_seconds"))Json.number(n,"execution_timeout_seconds",1,86400)else 1800,
       if(n.has("retention_seconds"))Json.number(n,"retention_seconds",1,86400)else 300,
       Option(n.get("materialization_store")).map { m=>
         Json.fields(m,Set("provider","settings"));require(m.path("settings").isObject,"materialization settings must be object")
         MaterializationStoreDefinition(Json.text(m,"provider"),Json.mapper.convertValue(m.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap)
-      })
+      },if(n.has("preparation_timeout_seconds"))Json.number(n,"preparation_timeout_seconds",1,86400)else 1800)
   }
 }
 /** Node-issued service credentials replace invitations, approvals and per-resource grants. */

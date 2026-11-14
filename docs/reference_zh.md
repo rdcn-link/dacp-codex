@@ -42,7 +42,6 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | `infer_sample` | 服务端记录视图推断采样 batch 数 |
 | `sources` | 私有 JDBC 数据源（不自动发布表），url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
 | `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | 有序的远程算子库 URL 列表 / 本地不可变版本缓存 / 单个制品最大字节数（默认 8 GiB） |
-| `local_operator_library` | 本地算子库 |
 | `task_peers` | 允许分发任务的节点 origin；自身始终允许，无中心发现服务 |
 | `task_input_prefixes` | 可选的执行节点输入 URI 前缀限制；省略或为空时不增加前缀限制 |
 | `max_concurrent_tasks` | 本地任务及控制请求并发上限（默认 2）；满载立即返回 UNAVAILABLE |
@@ -51,7 +50,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 
 服务错误使用 Flight/gRPC 状态和明确的 dacp 错误名称：资源不存在为 `NOT_FOUND`；禁止访问为 `UNAUTHORIZED` 且消息含 `FORBIDDEN`；schema 冲突为 `INVALID_ARGUMENT` 且消息含 `SCHEMA_CONFLICT`。protobuf 同时定义错误码供协议扩展。任何传输失败使当前 reader 作废，调用方从头 open；没有流内重试。算子结果只通过流返回，不注册输出数据集或使用输出 TTL。
 
-服务端 `mode` 默认为 `NORMAL`。内嵌源码要求协调与执行节点均为 `DEBUG`；`source_runtimes` 将运行时引用映射为管理员选择的 `image` 与 `executor` 配置。
+远程 Job 执行只接受已配置算子仓库中的公开版本算子。节点和 Union 拒绝 Job 内的 `operators`、本地路径及源码声明。
 
 ## DataCatalog
 

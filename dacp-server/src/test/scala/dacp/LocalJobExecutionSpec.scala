@@ -18,7 +18,7 @@ class LocalJobExecutionSpec extends AnyFunSuite {
   private val yaml="""name: local
     |steps:
     |- id: read_a_source
-    |  operator: read_item@1.0
+    |  operator: item_source@1.0
     |  inputs: {}
     |  params:
     |    uri: dacp://localhost:8815/data/item
@@ -31,8 +31,9 @@ class LocalJobExecutionSpec extends AnyFunSuite {
     |  operator: copy@1
     |  inputs:
     |    source: a
-    |outputs:
-    |  result: b
+    |- id: client_sink
+    |  operator: client_sink@1.0
+    |  inputs: {result: b}
     |""".stripMargin
   private val plan=Jobs.parse(yaml)
   private def fixture(f:(Config,RootAllocator)=>Unit):Unit=fixtureWithHistory(false)(f)
@@ -65,9 +66,8 @@ class LocalJobExecutionSpec extends AnyFunSuite {
   test("zero-output sink consumes its input stream") {fixtureWithHistory(true){(c,a)=>
     val definition="""name: sink
       |steps:
-      | - {id: read, operator: read_item@1.0, inputs: {}, params: {uri: 'dacp://localhost:8815/data/item', view: bytes}}
+      | - {id: read, operator: item_source@1.0, inputs: {}, params: {uri: 'dacp://localhost:8815/data/item', view: bytes}}
       | - {id: sink, operator: sink@1, inputs: {source: read}}
-      |outputs: {}
       |""".stripMargin
     val p=Jobs.parse(definition);val consumed=new AtomicInteger
     val executor=new TaskExecutor(c,a){override def execute(t:Task,in:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,resolved:Option[ResolvedOperator],onEvent:Option[com.fasterxml.jackson.databind.JsonNode=>Unit],onRuntime:Option[com.fasterxml.jackson.databind.JsonNode=>Unit],resources:_root_.xstream.engine.ExecutionResources):Unit={

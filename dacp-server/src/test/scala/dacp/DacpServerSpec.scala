@@ -59,7 +59,7 @@ class DacpServerSpec extends AnyFunSuite {
         def accept(b:SequenceChunk):Unit=chunks+=b
       }),()=>())finally reader.close()
       assert(chunks.map(_.symbols.toString).mkString=="GTAC" && chunks.head.offset==2 && chunks.last.last)
-      val yaml="name: Scientific Job\nsteps:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: 'context:/science/sequences', view: sequence, selection: {offset: 1, length: 3}}\noutputs: {result: read}\n"
+      val yaml="name: Scientific Job\nsteps:\n- id: read\n  operator: item_source@1.0\n  inputs: {}\n  params: {uri: 'context:/science/sequences', view: sequence, selection: {offset: 1, length: 3}}\n- id: client_sink\n  operator: client_sink@1.0\n  inputs: {result: read}\n"
       val tls=dacp.client.TlsConfig(ca=Some(cert),token=Some(token))
       val inference=dacp.client.Job.infer(c.uri(""),yaml,tls)
       assert(inference.path("outputs").path("result").path("structure").path("view").asText=="sequence")

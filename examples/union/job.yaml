@@ -1,7 +1,7 @@
 name: eastern-station-temperature-anomalies
 steps:
 - id: read_daily_source
-  operator: read_item@1.0
+  operator: item_source@1.0
   inputs: {}
   params:
     uri: $OBSERVATIONS_URI
@@ -12,7 +12,7 @@ steps:
   inputs:
     source: read_daily_source
 - id: read_anomalies_baselines
-  operator: read_item@1.0
+  operator: item_source@1.0
   inputs: {}
   params:
     uri: $BASELINES_URI
@@ -23,5 +23,7 @@ steps:
   inputs:
     baselines: read_anomalies_baselines
     statistics: daily
-outputs:
-  temperature_anomalies: anomalies
+- id: client_sink
+  operator: client_sink@1.0
+  inputs:
+    temperature_anomalies: anomalies

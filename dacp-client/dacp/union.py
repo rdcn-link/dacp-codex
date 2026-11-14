@@ -1,5 +1,5 @@
 """Ordinary Flight client for one DACP Union: TLS and a user bearer token."""
-from .variables import resolve_variables
+from .variables import resolve_variables, remote_job
 from . import yaml_document
 import base64
 from contextlib import suppress
@@ -38,11 +38,11 @@ class Union(FlightControl):
 
     def infer(self, job_yaml, *, variables=None):
         from .inference import infer_client
-        raw = json.dumps({'job_yaml': resolve_variables(job_yaml, variables)}).encode()
+        raw = json.dumps({'job_yaml': remote_job(resolve_variables(job_yaml, variables))}).encode()
         return infer_client(self.client, raw, workflow=True, timeout=self.timeout)
 
     def submit(self, job_yaml, *, execution_policy=None, variables=None):
-        body = {'job_yaml': resolve_variables(job_yaml, variables)}
+        body = {'job_yaml': remote_job(resolve_variables(job_yaml, variables))}
         if execution_policy is not None:
             if not isinstance(execution_policy, dict):
                 raise ValueError('execution_policy must be a mapping')

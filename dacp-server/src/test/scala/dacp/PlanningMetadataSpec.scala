@@ -7,11 +7,13 @@ import scala.jdk.CollectionConverters._
 class PlanningMetadataSpec extends AnyFunSuite {
   test("installed planning profiles expose pinned environments without reading code artifacts") {
     val root=Files.createTempDirectory("planning-metadata-")
-    val home=root.resolve("operators/example/1");Files.createDirectories(home)
-    Files.writeString(home.resolve("operator.yaml"),s"name: example\nversion: '1'\nexecutor: jvm\nimage: sha256:${"a"*64}\nartifact: missing.jar\nexecutor_config: {}\n")
-    val c=Config("localhost",1234,"localhost",Map.empty,root.resolve("cert"),root.resolve("key"),root.resolve("ca"),localOperatorLibrary=root.resolve("operators"))
+    val repository="https://operators.example.test"
+    val hash=java.security.MessageDigest.getInstance("SHA-256").digest(repository.getBytes(java.nio.charset.StandardCharsets.UTF_8)).map(b=>f"${b&255}%02x").mkString
+    val home=root.resolve(s"cache/manifests/$hash/example");Files.createDirectories(home)
+    Files.writeString(home.resolve("1.json"),s"""{"name":"example","version":"1","execution":{"executor":"jvm","config":{}},"environment":{"image":"sha256:${"a"*64}"}}""")
+    val c=Config("localhost",1234,"localhost",Map.empty,root.resolve("cert"),root.resolve("key"),root.resolve("ca"),operatorCache=root.resolve("cache"),remoteOperatorLibraryUrls=Seq(repository))
     try {
-      val profile=PlanningMetadata.profiles(c,Vector("example@1","missing@1","read_item@1.0"))
+      val profile=PlanningMetadata.profiles(c,Vector("example@1","missing@1","item_source@1.0"))
       assert(profile.path("example@1").path("fusion_key").asText.nonEmpty)
       assert(profile.path("example@1").path("executor").asText=="jvm")
       assert(profile.path("missing@1").isEmpty)

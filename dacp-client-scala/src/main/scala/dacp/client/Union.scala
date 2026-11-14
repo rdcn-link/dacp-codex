@@ -23,15 +23,16 @@ final class Union(url:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=1800)
     ca=tls.ca.orElse(sys.env.get("DACP_CA").map(Path.of(_))))
   private[client] val timeout=timeoutSeconds
   require(timeoutSeconds>0)
+  private def remoteYaml(yaml:String,variables:JsonNode):String={val resolved=WorkflowVariables.resolve(yaml,variables);_root_.xstream.execution.RemoteJobPolicy.validateYaml(resolved);resolved}
   def infer(yaml:String,variables:JsonNode=null):JsonNode={
-    val request=Json.obj().put("job_yaml",WorkflowVariables.resolve(yaml,variables))
+    val request=Json.obj().put("job_yaml",remoteYaml(yaml,variables))
     val results=remote.dataClient(origin,None).doAction(new org.apache.arrow.flight.Action("dacp.infer_job",Json.mapper.writeValueAsBytes(request)),
       org.apache.arrow.flight.CallOptions.timeout(timeout,java.util.concurrent.TimeUnit.SECONDS)).asScala
     require(results.hasNext,"missing inference response");val raw=results.next().getBody
     require(raw.length<=1024*1024 && !results.hasNext,"invalid inference response");Json.mapper.readTree(raw)
   }
   def submit(yaml:String,executionPolicy:JsonNode=Json.obj(),variables:JsonNode=null):UnionExecution={
-    val body=Json.obj().put("job_yaml",WorkflowVariables.resolve(yaml,variables));body.put("execution_policy_yaml",dacp.union.YamlDocument.dump(executionPolicy))
+    val body=Json.obj().put("job_yaml",remoteYaml(yaml,variables));body.put("execution_policy_yaml",dacp.union.YamlDocument.dump(executionPolicy))
     val n=remote.action(origin,"submit",body)
     new UnionExecution(this,Json.id(Json.text(n,"job_id")))
   }

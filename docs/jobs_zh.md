@@ -26,7 +26,7 @@ run piflow_filter@2.0 --input source=/observations --view records --params '{"co
 run piflow_csv_parser@2.0 --input source=/observations --view bytes
 ```
 
-Shell 将 Item 输入转换为 `read_item` 步骤，逐块打印结果。连接节点或 Union 使用 [TLS 与 Token](security_zh.md)。多输出可重复指定 `--output PORT`，无输出步骤使用 `--no-output`。源码 heredoc 仅允许 DEBUG 模式，见[源码提交](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source_zh.md)。
+Shell 将 Item 输入转换为 `item_source` 步骤，逐块打印结果。连接节点或 Union 使用 [TLS 与 Token](security_zh.md)。多输出可重复指定 `--output PORT`，无输出步骤使用 `--no-output`。远程 Shell Job 仅使用公开仓库算子。
 
 ## 工作流变量
 
@@ -107,7 +107,7 @@ submit workflow.yaml --policy policy.yaml --vars variables.yaml
 
 Union 下发的子作业保留全局作业的 `name`。节点与 Union 看板统一展示 Name、Job ID、Source、Type、Status、Started at、Duration；列表优先显示名称，详情保留完整 ID。子作业定义和执行策略均显示为 YAML。YAML 文档限制为 1 MiB，拒绝重复键、不安全对象标签及集合别名；字符串形式的编号、日期和布尔文本应加引号。
 
-`read_item` 的 `view` 可省略：按 records、bytes、首个可用科学视图的顺序选择。显式指定时不会自动改选；不支持所选视图则报错。
+`item_source` 的 `view` 可省略：按 records、bytes、首个可用科学视图的顺序选择。显式指定时不会自动改选；不支持所选视图则报错。
 
 ## 读取路径、远程服务与 SQL
 
@@ -115,7 +115,7 @@ Union 下发的子作业保留全局作业的 `name`。节点与 Union 看板统
 name: hot-weather-observations
 steps:
 - id: read
-  operator: read_item@1.0
+  operator: item_source@1.0
   inputs: {}
   params:
     uri: context:/ds-6zmr-crvh/observations
@@ -124,13 +124,15 @@ steps:
       FROM source
       WHERE temperature > 30
       LIMIT 100
-outputs:
-  result: read
+- id: client_sink
+  operator: client_sink@1.0
+  inputs:
+    result: read
 ```
 
 显式指定服务时，使用 `uri: dacp://remote.example:18861/weather/observations`。`context:` URI 引用接收 Job 的 JVM 绑定的 DataCatalog，在远程下发之前固定数据源。路径属于提交目标的公开目录：普通节点解析本地名称，Union 解析其公开名称并调度至数据所在成员。Job 不需要知道内部成员地址。
 
-read_item 参数、SQL 语法、支持的谓词及推导行为见 [XStream Job 参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/jobs_zh.md)与[记录扫描参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/records-scans_zh.md)。
+item_source 参数、SQL 语法、支持的谓词及推导行为见 [XStream Job 参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/jobs_zh.md)与[记录扫描参考](https://github.com/rdcn-link/xstream-codex/blob/main/docs/records-scans_zh.md)。
 
 远程凭据配置在实际执行读取的节点，设计器也需单独配置相同服务的读取凭据；不会将目标服务的 Token 转发给其他服务，也不允许在 Job 中携带凭据。Union 选中的任意读取成员应具备所需凭据。
 

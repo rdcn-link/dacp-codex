@@ -130,7 +130,7 @@ S3 对每个内容请求检查数据集策略；提供的签名还必须有效�
 
 ## 本地源码算子边界
 
-独立 XStream 支持 `operator: {local: ./directory}`，用于可信本地开发并可提交源码到仓库。DACP 和 Union 的远程 Job 接口不接受此引用，DEBUG 模式也不会开放本机路径或构建命令。服务端继续使用仓库算子及已配置的 DEBUG 内联源码机制。
+独立 XStream 可在本地 Job 的 `operators` 中定义 SDK、命令工具或脚本算子，并通过 `operator: {inline: 名称}` 引用。DACP 节点和 Union 只接受公开算子仓库中的版本化算子；远程 Job 即使包含未使用的内联定义也会被拒绝。
 
 ## 授权边界
 

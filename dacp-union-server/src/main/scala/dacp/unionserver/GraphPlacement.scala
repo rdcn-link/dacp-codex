@@ -27,7 +27,7 @@ object GraphPlacement {
         require(eligible(s,node,used(node.id)),"candidate violates placement, executor or capacity constraint: "+s.id)
         used+=node.id->(used(node.id)+1)
         val bytes=s.source.flatMap(_._2).map(_.toDouble).getOrElse(if(s.dependencies.nonEmpty)s.dependencies.map(outputs(_).outputBytes).sum else 1048576d)
-        val estimate=plugin.flatMap(_.estimate(input,s,node,bytes,settings)).getOrElse(StepEstimate(bytes,if(s.source.nonEmpty)0 else 100,if(s.operator=="read_item@1.0")0 else 500,confidence=if(s.source.exists(_._2.nonEmpty))"source_metadata"else"estimated"))
+        val estimate=plugin.flatMap(_.estimate(input,s,node,bytes,settings)).getOrElse(StepEstimate(bytes,if(s.source.nonEmpty)0 else 100,if(s.operator=="item_source@1.0")0 else 500,confidence=if(s.source.exists(_._2.nonEmpty))"source_metadata"else"estimated"))
         require(finite(estimate.outputBytes)&&finite(estimate.computeMs)&&finite(estimate.startupMs)&&estimate.outputBytes>=0&&estimate.computeMs>=0&&estimate.startupMs>=0&&estimate.memoryBytes>=0,"invalid or infeasible step estimate")
         memoryUsed+=node.id->(memoryUsed(node.id)+estimate.memoryBytes)
         if(node.freeMemory.exists(f=>BigInt(f)<memoryUsed(node.id)))throw new InfeasibleEstimate
@@ -36,14 +36,14 @@ object GraphPlacement {
         // This mirrors the worker's whole-partition fusion boundary. Partial regions are
         // not advertised as shared processes when the worker cannot launch them that way.
         val peers=steps.filter(x=>placements.get(x.id).contains(node.id))
-        val compute=peers.filterNot(_.operator=="read_item@1.0")
+        val compute=peers.filterNot(_.operator=="item_source@1.0")
         val key=profile.flatMap(_.fusionKey)
         val canFuse=partitionAcyclic(steps,placements)&&peers.forall(x=> !x.fusionBoundary)&&compute.size>1&&compute.forall(x=> !x.fusionBoundary&&x.profiles.get(node.id).flatMap(_.fusionKey)==key)&&key.nonEmpty&&
-          peers.filter(_.operator=="read_item@1.0").forall(r=>steps.exists(_.dependencies.contains(r.id)))
+          peers.filter(_.operator=="item_source@1.0").forall(r=>steps.exists(_.dependencies.contains(r.id)))
         val group=if(canFuse)Some(node.id+":fusion")else None
         val uid=group.getOrElse(node.id+":"+s.id)
         val previous=units.find(_.id==uid)
-        units=units.filterNot(_.id==uid):+PlannedUnit(uid,node.id,previous.map(_.steps).getOrElse(Vector.empty):+s.id,profile.map(_.runtime).getOrElse("unknown"),if(canFuse)"fusion_candidate"else if(s.operator=="read_item@1.0")"host_stream_source"else"isolated_step")
+        units=units.filterNot(_.id==uid):+PlannedUnit(uid,node.id,previous.map(_.steps).getOrElse(Vector.empty):+s.id,profile.map(_.runtime).getOrElse("unknown"),if(canFuse)"fusion_candidate"else if(s.operator=="item_source@1.0")"host_stream_source"else"isolated_step")
         val ready=s.dependencies.map { from=>
           val origin=targets.find(_.id==placements(from)).get
           val same=origin.id==node.id

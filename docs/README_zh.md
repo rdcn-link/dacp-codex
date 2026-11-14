@@ -62,7 +62,6 @@
 - [DACP 协议](protocol_zh.md)
 - [单 Union 协作协议](union_zh.md)
 - [Union 传输协议模块](../dacp-union-protocol/README_zh.md)
-- [DEBUG 源码算子](operator-source_zh.md)
 
 数据模型、格式、Job 语言与算子开发请阅读 [XStream 文档](http://xstream.conoai.cn/docs.html)。
 

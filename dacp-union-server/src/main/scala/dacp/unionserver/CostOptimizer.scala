@@ -15,7 +15,7 @@ final class CostOptimizer extends PhysicalPlanOptimizer {
   }
   override def estimate(input:PlanningInput,step:PlanningStep,node:PlanningTarget,bytes:Double,s:Map[String,Object]):Option[StepEstimate]=
     Some(StepEstimate(if(step.source.exists(_._2.nonEmpty)||step.dependencies.nonEmpty)bytes else value(s,"unknown_bytes"),
-      if(step.operator=="read_item@1.0")0 else value(s,"compute_ms"),if(step.operator=="read_item@1.0")0 else value(s,"startup_ms"),
+      if(step.operator=="item_source@1.0")0 else value(s,"compute_ms"),if(step.operator=="item_source@1.0")0 else value(s,"startup_ms"),
       confidence=if(step.source.exists(_._2.nonEmpty))"source_metadata"else"estimated"))
   override def link(input:PlanningInput,from:PlanningTarget,to:PlanningTarget,s:Map[String,Object]):Option[LinkEstimate]={
     val prefix=if(from.id==to.id)"local"else"network";Some(LinkEstimate(value(s,prefix+"_bytes_per_second"),value(s,prefix+"_latency_ms")))

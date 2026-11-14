@@ -26,7 +26,7 @@ run piflow_filter@2.0 --input source=/observations --view records --params '{"co
 run piflow_csv_parser@2.0 --input source=/observations --view bytes
 ```
 
-The shell converts Item inputs into `read_item` steps and prints results incrementally. It connects to either a node or Union using [TLS and a token](security.md). Repeat `--output PORT` to select multiple ports, or use `--no-output` for a sink. Inline heredoc source is DEBUG-only; see [source submission](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md).
+The shell converts Item inputs into `item_source` steps and prints results incrementally. It connects to either a node or Union using [TLS and a token](security.md). Repeat `--output PORT` to select multiple ports, or use `--no-output` for a sink. Remote shell jobs use public repository operators.
 
 ## Workflow variables
 
@@ -107,7 +107,7 @@ submit workflow.yaml --policy policy.yaml --vars variables.yaml
 
 Union subjobs retain the global job’s `name`. Node and Union dashboards share Name, Job ID, Source, Type, Status, Started at and Duration columns. Names lead the list, while details retain the full ID. Subjob definitions and execution policies display as YAML. YAML documents are limited to 1 MiB and reject duplicate keys, unsafe object tags and collection aliases. Quote textual numbers, dates and boolean labels.
 
-When `read_item.view` is omitted, Item metadata selects records, then bytes, then the first available scientific view. An explicit choice is preserved and fails if unsupported.
+When `item_source.view` is omitted, Item metadata selects records, then bytes, then the first available scientific view. An explicit choice is preserved and fails if unsupported.
 
 ## Item paths, remote services and SQL
 
@@ -115,7 +115,7 @@ When `read_item.view` is omitted, Item metadata selects records, then bytes, the
 name: hot-weather-observations
 steps:
 - id: read
-  operator: read_item@1.0
+  operator: item_source@1.0
   inputs: {}
   params:
     uri: context:/ds-6zmr-crvh/observations
@@ -124,13 +124,15 @@ steps:
       FROM source
       WHERE temperature > 30
       LIMIT 100
-outputs:
-  result: read
+- id: client_sink
+  operator: client_sink@1.0
+  inputs:
+    result: read
 ```
 
 For an explicitly addressed service, use `uri: dacp://remote.example:18861/weather/observations`. A `context:` URI refers to the DataCatalog bound in the receiving JVM; it is resolved before remote dispatch. Paths address the submission target’s public directory: a node resolves local names, while Union resolves its public names and schedules readers on the owning members. Authors need no internal member addresses.
 
-For read_item parameters, SQL syntax, supported predicates and inference behavior, see the [XStream Job reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/jobs.md) and [record scan reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/records-scans.md).
+For item_source parameters, SQL syntax, supported predicates and inference behavior, see the [XStream Job reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/jobs.md) and [record scan reference](https://github.com/rdcn-link/xstream-codex/blob/main/docs/records-scans.md).
 
 Configure remote credentials on nodes that actually execute reads and separately on the designer. The target service’s token is never forwarded to another service; credentials are not Job parameters. Every member eligible to read an external service should have its required credentials.
 

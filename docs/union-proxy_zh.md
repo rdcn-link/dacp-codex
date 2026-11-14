@@ -40,7 +40,7 @@ Shell 的启动参数绑定服务器地址。`datasets` 不接收地址参数。
 name: climate-summary
 steps:
 - id: read_summarize_source
-  operator: read_item@1.0
+  operator: item_source@1.0
   inputs: {}
   params:
     uri: dacp://union.example:19860/ds-k7m2-9wqr/observations
@@ -50,8 +50,10 @@ steps:
   operator: piflow_csv_parser@2.0
   inputs:
     source: read_summarize_source
-outputs:
-  result: summarize
+- id: client_sink
+  operator: client_sink@1.0
+  inputs:
+    result: summarize
 ```
 
 例中的算子须已安装或可从仓库获取。普通任务可省略 `node`。Union 在已认证的配置成员中按容量筛选执行位置，优先数据或上游步骤所在成员；全部原始输入大小已知时选择需要传输总字节数较少的位置，否则按输入声明顺序选择。一个多输入算子只在一个成员执行，其他成员输入通过数据流传输。需要固定位置时设置 `node: nd-xxxx-xxxx`，不能在公开任务中填写内部地址。

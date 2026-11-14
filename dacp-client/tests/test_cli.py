@@ -335,50 +335,16 @@ def test_select_number_out_of_range_does_not_open(browser, number):
     assert not hasattr(ds, 'opened') and not ds.closed
 
 
-def test_run_heredoc_source_preserves_indentation(browser, monkeypatch):
-    b, ds, out = browser
-    b.use_rawinput = False
-    b.stdin = io.StringIO("def process(inputs, params):\n    yield b'hi'\nSTOP\n")
-    calls = []
-    monkeypatch.setattr(b, 'print_job', lambda *args: calls.append(args))
-    b.onecmd('run --runtime python@1.0 --input source=1 <<STOP')
-    import json
-    task = yaml.safe_load(calls[0][1])['steps'][-1]
-    assert task['operator'] == {'runtime':'python@1.0', 'source':"def process(inputs, params):\n    yield b'hi'\n"}
-    assert task['inputs']['source'] == 'read_1'
-    reader = yaml.safe_load(calls[0][1])['steps'][0]
-    assert reader == {'id':'read_1','operator':'read_item@1.0','inputs':{},'params':{'uri':'dacp://localhost/data1/orders','view':'bytes'}}
-
-
 @pytest.mark.parametrize('command', [
-    'run --source code.py --input source=1',
-    'run --code hello --runtime python@1.0 --input source=1',
-    'run identity@1.1 --runtime python@1.0 --input source=1 <<END',
-    'run --runtime python@1.0 --input source=1',
+    'run --runtime python@1.0 --input source=1 <<END',
+    'run identity@1.1 --runtime python@1.0',
+    'run identity@1.1 --entrypoint module',
 ])
-def test_run_rejects_invalid_source_forms(browser, monkeypatch, command):
+def test_run_rejects_removed_source_submission(browser, monkeypatch, command):
     b, ds, out = browser
     monkeypatch.setattr(b, 'print_job', lambda *args: pytest.fail('must not submit'))
     b.onecmd(command)
     assert 'Error:' in out.getvalue()
-
-
-def test_run_eof_aborts_without_submission(browser, monkeypatch):
-    b, ds, out = browser
-    b.use_rawinput = False
-    b.stdin = io.StringIO('unfinished\n')
-    monkeypatch.setattr(b, 'print_job', lambda *args: pytest.fail('must not submit'))
-    b.onecmd('run --runtime python@1.0 --input source=1 <<END')
-    assert 'nothing submitted' in out.getvalue()
-
-
-def test_run_ctrl_c_aborts_entry(browser, monkeypatch):
-    b, ds, out = browser
-    def interrupted(*args): raise KeyboardInterrupt
-    monkeypatch.setattr('builtins.input', interrupted)
-    monkeypatch.setattr(b, 'print_job', lambda *args: pytest.fail('must not submit'))
-    b.onecmd('run --runtime python@1.0 --input source=1 <<END')
-    assert 'nothing submitted' in out.getvalue()
 
 
 def test_run_repository_id(browser, monkeypatch):
@@ -630,7 +596,7 @@ def test_run_builds_only_stream_references_with_explicit_item_sources(browser, m
     assert job['outputs'] == {'result': 'run'}
     assert job['steps'][-1]['inputs'] == {'left':'read_1','right':'read_2'}
     assert [t['params']['view'] for t in job['steps'][:-1]] == ['records','records']
-    assert all(t['inputs'] == {} and t['operator'] == 'read_item@1.0' for t in job['steps'][:-1])
+    assert all(t['inputs'] == {} and t['operator'] == 'item_source@1.0' for t in job['steps'][:-1])
 
 
 @pytest.mark.parametrize('options, expected', [

@@ -51,7 +51,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   private val planner=new PublicPlanner(members,settings,proxyCatalog,routes,plugins)
   private val publicConfig=Config(settings.host,settings.port,java.net.URI.create(settings.publicUrl).getHost,Map.empty,settings.cert,settings.key,settings.ca,
     catalogOverride=Some(proxyCatalog),pluginEnvironment=Some(plugins),maxConcurrentTasks=64,
-    union=Some(NodeUnionSettings(settings.state.resolve("upstream"),settings.timeout,settings.retention,settings.materializationStore)),
+    union=Some(NodeUnionSettings(settings.state.resolve("upstream"),settings.timeout,settings.retention,settings.materializationStore,settings.preparationTimeout)),
     executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->settings.state.resolve("incoming-executions").toString))),
     accessLogDirectory=Some(settings.state.resolve("access")),s3=settings.s3,credentialDirectory=Some(settings.credentials.directory),providedCredentials=Some(settings.credentials))
   private val worker=new UnionWorker(publicConfig,publicConfig.union.get,allocator,Some((task,inputs,emit,cancel)=>nested(task,inputs,emit,cancel)))
@@ -74,11 +74,12 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         val n=Json.mapper.readTree(a.getBody)
         val result=if(a.getType=="dacp.infer_job") {
           require(n.isObject && n.size==1 && n.path("job_yaml").isTextual,"expected job_yaml")
+          _root_.xstream.execution.RemoteJobPolicy.validateYaml(n.path("job_yaml").asText)
           val input=Jobs.parse(n.path("job_yaml").asText)
           inferPlan(planner.plan(input,()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()).job)
         }else {
           val task=WorkflowInference.parseTask(n)
-          require(task.source.isEmpty && task.localOperator.isEmpty,"Union requires versioned operators")
+          require(task.localOperator.isEmpty,"Union requires versioned operators")
           val planned=planner.plan(JobPlan(Vector(task),Map.empty),()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException()).job.steps.head
           StructureInference.json(inferTask(planned,StructureInference.ports(n.path("inputs"))))
         }
@@ -171,6 +172,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         Option(body.get("execution_policy")).foreach(p=>replay.put("execution_policy_yaml",dacp.union.YamlDocument.dump(p)))
         action("replay_job",replay,owner)
       }else {
+        _root_.xstream.execution.RemoteJobPolicy.validateYaml(request.getJobYaml)
         val preliminary=Jobs.parse(request.getJobYaml)
         val submittedPolicy=ExecutionPolicy.parse(Option(body.get("execution_policy")).getOrElse(Json.obj()),preliminary)
         val planned=planner.plan(preliminary,()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException(),submittedPolicy.materialized.nonEmpty)
@@ -216,7 +218,13 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       v.set[JsonNode]("params",Json.mapper.valueToTree(t.params))
       val inputs=v.putObject("inputs");t.inputs.foreach{case(p,b)=>require(b.task.nonEmpty,"job inputs require upstream steps");inputs.put(p,b.task.get+":"+b.port)}
     }
-    val outputs=n.putObject("outputs");plan.outputs.foreach{case(p,(t,o))=>outputs.put(p,t+":"+o)};dacp.union.YamlDocument.dump(n)
+    if(plan.outputs.nonEmpty){
+      val used=plan.steps.map(_.id).toSet
+      val sinkId=Iterator.from(0).map(i=>if(i==0)"client_sink"else s"client_sink_$i").find(id=> !used(id)).get
+      val sink=steps.addObject().put("id",sinkId).put("operator",Jobs.ClientSink)
+      val inputs=sink.putObject("inputs");plan.outputs.foreach{case(p,(t,o))=>inputs.put(p,t+":"+o)}
+    }
+    dacp.union.YamlDocument.dump(n)
   }
 
   private def nested(task:Task,inputs:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel):Unit={
@@ -229,7 +237,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       val ports=task.outputPorts
       val readers=inputs.keys.toVector.sorted.zipWithIndex.map {case(p,i)=>
         val params=new java.util.LinkedHashMap[String,Object]();params.put("uri",settings.publicUrl.stripSuffix("/")+"/"+upload+"/"+p);params.put("view",inputsView(upload,p))
-        Task("read_"+i,Map.empty,Jobs.ReadItem,params,node=Some(member.path("data_origin").asText))
+        Task("read_"+i,Map.empty,Jobs.ItemSource,params,node=Some(member.path("data_origin").asText))
       }
       val t=task.copy(node=Some(member.path("data_origin").asText),inputs=inputs.keys.toVector.sorted.zip(readers).map{case(p,r)=>p->InputBinding(task=Some(r.id))}.toMap)
       val plan=JobPlan(readers:+t,ports.map(p=>p->(t.id,p)).toMap)
@@ -258,7 +266,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     Rpc.requirePermission(if(Set("job_status","cancel_job")(op))"job:manage:self"else "job:execute")
     val result=op match {
       case "submit"=>
-        Json.fields(n,Set("job_yaml"),Set("execution_policy_yaml"));val script=Json.text(n,"job_yaml");val plan=Jobs.parse(script)
+        Json.fields(n,Set("job_yaml"),Set("execution_policy_yaml"));val script=Json.text(n,"job_yaml");_root_.xstream.execution.RemoteJobPolicy.validateYaml(script);val plan=Jobs.parse(script)
         val rawPolicy=Option(n.get("execution_policy_yaml")).map(v=>{require(v.isTextual,"execution_policy_yaml must be text");dacp.union.YamlDocument.parse(v.asText)}).getOrElse(Json.obj())
         val planned=planner.plan(plan,()=>(),ExecutionPolicy.parse(rawPolicy,plan).materialized.nonEmpty);val executionPlan=planned.job
         submit(executionPlan,who,render(executionPlan),ExecutionPolicy.parse(Option(n.get("execution_policy_yaml")).map(v=>{require(v.isTextual,"execution_policy_yaml must be text");dacp.union.YamlDocument.parse(v.asText)}).getOrElse(Json.obj()),executionPlan),path=Rpc.proxyHops,submittedScript=Some(script),decisions=planned.decisions,optimization=planned.optimization).snapshot
@@ -352,7 +360,8 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     private val proxyPath={require(!incomingPath.contains(members.unionId) && incomingPath.size<8,"proxy cycle or depth limit");incomingPath:+members.unionId}
     private val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     def requiresRetryAwareness:Boolean=policy.maxRetries>0
-    require(plan.steps.forall(t=>t.node.nonEmpty && t.source.isEmpty && t.localOperator.isEmpty),"union steps require explicit node and versioned operator")
+    require(!plan.hasInlineDefinitions,"remote execution rejects inline definitions")
+    require(plan.steps.forall(t=>t.inlineOperator.isEmpty && t.node.nonEmpty && t.localOperator.isEmpty),"union steps require explicit node and versioned operator")
     @volatile private var replaySources=initialReplaySources
     @volatile private var attemptId=id
     @volatile private var retryCount=0
@@ -370,7 +379,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     plan.steps.foreach { t=>Jobs.readBinding(t).foreach { b=>
       val origin=DacpUri.origin(b.uri.get)
 
-      require(!known.contains(origin) || origin==placements(t.id).path("data_origin").asText,"member read_item must execute at the data owner")
+      require(!known.contains(origin) || origin==placements(t.id).path("data_origin").asText,"member item_source must execute at the data owner")
     }}
     private def identity(n:JsonNode)=n.path("identity").asText
     private def url(n:JsonNode)=n.path("url").asText
@@ -386,6 +395,12 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     }
     require(plan.steps.map(_.inputs.size).sum+consumers.size<=1024,"union plan exceeds 1024 connected ports")
     val cancel=new StreamCancel(timeoutSeconds=timeout)
+    @volatile private var preparationCancel:Option[StreamCancel]=None
+    @volatile private var preparationStartedAt=0L
+    @volatile private var preparationDuration=0L
+    @volatile private var executionStartedAt=0L
+    @volatile private var runningSince=0L
+    @volatile private var executionDuration=0L
     val output=new FrameQueue(cancel)
     val claimed=new AtomicBoolean()
     val created=Json.now
@@ -412,6 +427,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       val n=Json.obj().put("job_id",id).put("name",plan.name).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished)
       n.set[JsonNode]("execution_policy",policy.submitted);n.set[JsonNode]("effective_execution_policy",policy.effective)
       replayOf.foreach(n.put("replay_of",_))
+      n.put("preparation_duration_ms",preparationDuration+ (if(preparationCancel.nonEmpty)Json.now-preparationStartedAt else 0L)).put("execution_started_at_ms",executionStartedAt).put("execution_duration_ms",executionDuration+(if(runningSince==0L)0L else (if(finished>0)finished else Json.now)-runningSince))
       n.put("attempt_id",attemptId).put("attempt_started_at_ms",attemptStartedAt).put("retry_count",retryCount).put("max_retries",policy.maxRetries)
       val history=n.putArray("attempts");synchronized{attempts.foreach(history.add)}
       n.set[JsonNode]("union_result_streams",resultTraffic.snapshot)
@@ -459,7 +475,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     }
     private def change(s:String):Unit=synchronized {if(!terminal){state=s;event("state")}}
     private def request(n:JsonNode,op:String,body:JsonNode):JsonNode=
-      try remote.action(url(n),op,body,Some(identity(n)),hops=proxyPath)
+      try remote.action(url(n),op,body,Some(identity(n)),hops=proxyPath,timeout=if(op=="prepare")5L else 30L)
       catch {case scala.util.control.NonFatal(t)=>
         org.slf4j.LoggerFactory.getLogger(getClass).error(s"Remote request failed: operation=${dacp.AccessOperations.action(Rpc.Prefix+op)} request_id=${Json.uuid()} job_id=$id execution_id=$attemptId",t)
         throw t
@@ -479,7 +495,8 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       }
     }
     private def definition(n:JsonNode):JsonNode={
-      val body=Json.obj().put("name",plan.name).put("union_id",members.unionId).put("execution_id",attemptId).put("timeout_seconds",math.max(1L,timeout-(Json.now-created)/1000)).put("allow_fusion",policy.materialized.isEmpty && replaySources.isEmpty && Jobs.canGroupByNode(plan,placements.map{case(task,node)=>task->identity(node)}));body.set[JsonNode]("resources",policy.resources.json);val steps=body.putArray("steps")
+      val body=Json.obj().put("name",plan.name).put("union_id",members.unionId).put("execution_id",attemptId).put("timeout_seconds",cancel.remainingSeconds).put("allow_fusion",policy.materialized.isEmpty && replaySources.isEmpty && Jobs.canGroupByNode(plan,placements.map{case(task,node)=>task->identity(node)}));body.set[JsonNode]("resources",policy.resources.json);val steps=body.putArray("steps")
+      val required=body.putArray("required_operators");plan.requiredOperators.toVector.sorted.foreach(required.add)
       activeTasks.filter(t=>identity(placements(t.id))==identity(n)).foreach { t=>
         val j=steps.addObject().put("id",t.id).put("operator",t.operator)
         t.title.foreach(j.put("title",_));t.description.foreach(j.put("description",_))
@@ -544,13 +561,38 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     }
     private def attempt():Unit={
       attemptStarted=false;attemptStartedAt=Json.now
-      val token=cancel.add(new StreamCancel(timeoutSeconds=timeout))
+      val token=cancel.add(new StreamCancel(timeoutSeconds=timeout));token.pauseTimeout()
       val polling=new AtomicBoolean(true);var poll:Thread=null
       try {
         change("waiting_resources")
         while(!capacity()){cancel.checkState();Thread.sleep(settings.pollMs)}
+        cancel.pauseTimeout()
+        val preparation=cancel.add(new StreamCancel(()=>{cancel.checkState();false},settings.preparationTimeout))
+        preparationCancel=Some(preparation);preparationStartedAt=Json.now
         change("preparing")
-        nodes.foreach { n=>cancel.checkState();prepared.put(identity(n),n);val sub=definition(n);request(n,"prepare",Json.obj().put("job_yaml",dacp.union.YamlDocument.dump(sub)));dispatchedDefinitions.put(identity(n),sub);cancel.checkState() }
+        try {
+          nodes.foreach { n=>synchronized {
+            // Serialize the bounded acceptance RPC with cancellation: rollback must see an accepted reservation.
+            preparation.active();prepared.put(identity(n),n)
+            val sub=definition(n)
+            val status=request(n,"prepare",Json.obj().put("job_yaml",dacp.union.YamlDocument.dump(sub)))
+            status.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].put("observed_at_ms",Json.now)
+            nodeStates.put(identity(n),status);dispatchedDefinitions.put(identity(n),sub)
+          }}
+          while(!nodes.forall(n=>Option(nodeStates.get(identity(n))).exists(_.path("state").asText=="prepared"))){
+            preparation.active()
+            nodes.foreach { n=>
+              val status=request(n,"execution_status",executionBody);status.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].put("observed_at_ms",Json.now);nodeStates.put(identity(n),status)
+              if(Set("failed","cancelled","expired")(status.path("state").asText))throw UnionFailure(ALREADY_EXISTS,"node environment preparation failed")
+            }
+            event("progress")
+            if(!nodes.forall(n=>nodeStates.get(identity(n)).path("state").asText=="prepared"))Thread.sleep(settings.pollMs)
+          }
+          preparation.active()
+        }finally {preparationDuration+=Json.now-preparationStartedAt;preparationCancel=None;preparation.close()}
+        cancel.resumeTimeout();token.restartTimeout(cancel.remainingSeconds)
+        runningSince=Json.now
+        if(executionStartedAt==0L)executionStartedAt=runningSince
         attemptStarted=true
         nodes.foreach(n=>{cancel.checkState();request(n,"start",executionBody)})
         change("running")
@@ -580,7 +622,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         while(!nodes.forall(n=>Option(nodeStates.get(identity(n))).exists(_.path("state").asText=="succeeded"))){token.active();cancel.checkState();Thread.sleep(100)}
         token.active();cancel.checkState()
       }catch{case scala.util.control.NonFatal(t)=>throw token.cause(t)}
-      finally {polling.set(false);token.close();if(poll!=null && poll!=Thread.currentThread())poll.join(10000)}
+      finally {if(runningSince>0L){executionDuration+=Json.now-runningSince;runningSince=0L};polling.set(false);token.close();if(poll!=null && poll!=Thread.currentThread())poll.join(10000)}
     }
     private def recordAttempt(result:String,error:Option[Throwable]=None):Unit=synchronized {
       val n=Json.obj().put("attempt_id",attemptId).put("retry_index",retryCount).put("state",result).put("started_at_ms",attemptStartedAt).put("finished_at_ms",Json.now)
@@ -636,7 +678,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
           synchronized {if(!terminal){state="succeeded";finished=Json.now;event("state")}}
         }catch{case scala.util.control.NonFatal(t)=>
           org.slf4j.LoggerFactory.getLogger(getClass).error(s"Job failed: operation=job.execute request_id=$id job_id=$id execution_id=$attemptId",t)
-          stop(if(cancel.cause(t).isInstanceOf[java.util.concurrent.TimeoutException] || Json.now-created>=timeout*1000)"expired"else "failed",Some("Job execution failed; request_id="+id))}
+          stop(if(cancel.cause(t).isInstanceOf[java.util.concurrent.TimeoutException])"expired"else "failed",Some("Job execution failed; request_id="+id))}
       }
     }
     def validateCursor(after:Long):Unit=synchronized {require(after>=0 && after<=sequence,"invalid event cursor")}
@@ -663,7 +705,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       val required=(nodes++sources).groupBy(identity).values.map(_.head).toVector
       if(!terminal && !required.forall(n=>members.all.exists(_.path("identity").asText==identity(n))))stop("cancelled")
       if(!terminal && required.exists(n=>Option(observed.get(identity(n))).exists(v=>Set("revoked","rejected","expired")(v.path("state").asText))))stop("cancelled")
-      if(!terminal){try cancel.checkState()catch{case scala.util.control.NonFatal(t)=>stop(if(cancel.cause(t).isInstanceOf[java.util.concurrent.TimeoutException] || Json.now-created>=timeout*1000)"expired"else "failed")}}
+      if(!terminal){try {cancel.checkState();preparationCancel.foreach(_.checkState())}catch{case scala.util.control.NonFatal(t)=>stop(if(cancel.cause(t).isInstanceOf[java.util.concurrent.TimeoutException])"expired"else "failed")}}
     }
     def release():Unit=cancel.close()
   }

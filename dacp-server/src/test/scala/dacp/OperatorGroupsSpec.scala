@@ -37,7 +37,7 @@ class OperatorGroupsSpec extends AnyFunSuite {
   test("fusion keeps unconsumed transport sources in the normal execution path") {
     val c=config
     val params=new java.util.LinkedHashMap[String,Object]();params.put("uri","dacp://localhost:8815/data/item");params.put("view","bytes")
-    val read=Task("read",Map.empty,Jobs.ReadItem,params)
+    val read=Task("read",Map.empty,Jobs.ItemSource,params)
     try assert(OperatorGroups.prepare(c,plan.copy(steps=plan.steps:+read))==Left("unconsumed_transport_source")) finally c.close()
   }
   test("fixed image IDs, executor IDs and process environments must all agree") {

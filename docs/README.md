@@ -62,7 +62,6 @@ Use the User guide for connections, data access and Jobs; the Operations guide f
 - [DACP protocol](protocol.md)
 - [Union collaboration protocol](union.md)
 - [Union transport API](../dacp-union-protocol/README.md)
-- [DEBUG source execution](operator-source.md)
 
 For data models, formats, Job authoring and operator development, use the [XStream documentation](http://xstream.conoai.cn/docs.html).
 

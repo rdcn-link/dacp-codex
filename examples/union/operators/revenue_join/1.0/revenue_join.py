@@ -14,7 +14,7 @@ def emit(kind, data=b'', **metadata):
     sys.stdout.buffer.flush()
 
 
-def read_item(directory, item):
+def item_source(directory, item):
     if item['representation'] != 'bytes':
         raise ValueError('expected bytes input')
     data = bytearray()
@@ -41,8 +41,8 @@ def main():
     if set(items) != {'quantities', 'prices'}:
         raise ValueError('expected quantities and prices')
     from decimal import Decimal
-    quantities = json.loads(read_item(directory, items['quantities']))
-    prices = {r['product']: Decimal(r['price']) for r in csv.DictReader(io.StringIO(read_item(directory, items['prices'])))}
+    quantities = json.loads(item_source(directory, items['quantities']))
+    prices = {r['product']: Decimal(r['price']) for r in csv.DictReader(io.StringIO(item_source(directory, items['prices'])))}
     result = {p: str(prices[p]*q) for p, q in quantities.items()}
     emit('start', representation='bytes', format='json')
     emit('data', (json.dumps(result, sort_keys=True)+'\n').encode())

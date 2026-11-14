@@ -81,7 +81,7 @@ with union.replay(job_id, steps=['ta']) as replay:
 
 ## 自动重试次数与总超时
 
-重试次数和总超时使用 XStream 策略字段；服务器会实施自己的超时上限，Union 成员还可能设置更小的本地上限。
+重试次数和总超时使用 XStream 策略字段；服务器会实施自己的超时上限，Union 成员还可能设置更小的本地上限。 Union 在成员准备算子及运行环境期间暂停执行预算；准备阶段采用独立的 `preparation_timeout_seconds` 上限，详见[环境就绪与执行计时](union_zh.md#环境就绪与执行计时)。
 
 ```yaml
 max_retries: 2

@@ -18,7 +18,6 @@ class WorkflowInferenceSpec extends AnyFunSuite {
     |- {id: source, operator: source@1, inputs: {}}
     |- {id: copy, operator: copy@1, inputs: {source: source}}
     |- {id: sink, operator: sink@1, inputs: {source: copy}}
-    |outputs: {}
     |""".stripMargin)
   test("metadata propagates along default ports and sinks return empty output sets") {
     var called=Vector.empty[String]

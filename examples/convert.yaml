@@ -1,7 +1,7 @@
 name: CSV stream export
 steps:
 - id: read_convert_source
-  operator: read_item@1.0
+  operator: item_source@1.0
   inputs: {}
   params:
     uri: dacp://localhost:8815/data1/reports/orders
@@ -10,5 +10,7 @@ steps:
   inputs:
     source: read_convert_source
   operator: piflow_csv_save@2.0
-outputs:
-  result: convert
+- id: client_sink
+  operator: client_sink@1.0
+  inputs:
+    result: convert

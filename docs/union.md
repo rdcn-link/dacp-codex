@@ -2,6 +2,30 @@
 
 Each Union maintains one persistent identity and reads its independent members from startup configuration. It polls member health and schedules jobs; nodes do not register or send heartbeats.
 
+## Environment readiness and execution timing
+
+Union reserves each member's sub-job and starts asynchronous environment preparation. Members resolve the versioned operators, validate their artifacts, load pinned runtime/dependency images and prepare any shared-process execution unit. This phase does not consume input streams or run operator code. `prepare` acknowledges immediately with `preparing`; `execution_status` reports `prepared` only when the environment is ready. Union starts no member until every participating member is ready. Execution reuses the resolved operators and prepared group.
+
+Environment preparation has a separate server limit (default 1,800 seconds). Set it at Union top level and under `union` on each member:
+
+```yaml
+# Union configuration
+preparation_timeout_seconds: 1800
+execution_timeout_seconds: 1800
+```
+
+```yaml
+# Data-node configuration
+union:
+  state_directory: /var/lib/dacp/union
+  preparation_timeout_seconds: 1800
+  execution_timeout_seconds: 1800
+```
+
+Preparation includes waiting for other members to become ready; its deadline also bounds abandoned reservations. On failure, expiry or cancellation, Union cancels all prepared sub-jobs and members release their slots. Membership and credential checks remain active throughout preparation. A preparation failure does not automatically retry.
+
+The Job's `timeout_seconds` budget pauses during each environment-preparation phase and resumes before member `start` requests. Resource-queue waiting and retry overhead outside preparation still consume that overall budget; retries share the remaining budget. Members begin their execution deadline at `start`. Container creation and input/output processing belong to execution. Status/history expose `preparation_duration_ms`, `execution_started_at_ms` and `execution_duration_ms`; preparation and execution durations accumulate across attempts, while total elapsed time includes queueing. A client's own RPC or stream deadline remains independent and must accommodate preparation plus execution.
+
 ## Identity and authorization
 
 Ordinary clients use TLS and bearer tokens. Union-to-member calls use mutual TLS plus node-issued service credentials bound to the Union ID and certificate fingerprint. Trusting a CA alone grants no collaboration permissions. Members trust all operations authorized through their Union service credential. Peer data streams are limited to exact execution plans. Local credential revocation or expiry stops active collaborative work. See [authentication and access control](security.md) for credential administration and different ordinary-token revocation semantics.
@@ -10,7 +34,7 @@ Membership comes only from configuration, without remote invitation or administr
 
 ## Execution and streams
 
-Clients submit standard Jobs with public Union input URIs, optional logical step.node and explicit outputs. Asynchronous submission uses the same public namespace. See [Union proxy service](union-proxy.md). X reuses DAG validation and groups steps into node subjobs. Union accepts versioned operators only, without inline source. Inputs use upstream `step[:port]` references; external Items enter through `read_item@1.0` with `params.uri/view`. Foreign member streams use Flight. Nodes read local Items through DatasetAccess, without downloading through X or Flight. Each output connection has one consumer.
+Clients submit standard Jobs with public Union input URIs, optional logical step.node and an explicit `client_sink@1.0` step when results must return to the caller. Asynchronous submission uses the same public namespace. See [Union proxy service](union-proxy.md). X reuses DAG validation and groups steps into node subjobs. Union accepts only public versioned repository operators. Inputs use upstream `step[:port]` references; external Items enter through `item_source@1.0` with `params.uri/view`. Foreign member streams use Flight. Nodes read local Items through DatasetAccess, without downloading through X or Flight. Each output connection has one consumer.
 
 X prepares every subjob before starting any. Nodes check capacity and authorization and reject plans they cannot execute. A's output binds the execution/step/port to B's certificate identity; B pulls it over mTLS. Local connections use bounded queues; cross-node streams use Flight `DoGet` with backpressure. OperatorFrames are reused: start/data/end is followed by complete only after successful execution; failures terminate with a Flight error. After complete, consumers must still verify successful Flight end-of-stream. Outputs create no Dataset and stream directly by default; explicit policy can materialize selected outputs on the producing node for replay.
 
@@ -20,7 +44,7 @@ Final results travel from a node through X's bounded queue to the client. Status
 
 Global jobs, node subjobs, execution policies and variable files use YAML. U retains the received workflow text as `submitted_job_yaml` and persists the planned execution definition as YAML. Subjobs travel in the `job_yaml` text field of Flight control messages; policies use `execution_policy_yaml`. Clients resolve variables before submitting YAML. Status and traffic metadata remain structured messages.
 
-User Job inputs accept only `step[:port]`; top-level `outputs` selects returned streams. An internal step dispatched by U to C looks like the following. Replace identity placeholders with actual 64-character hexadecimal certificate digests:
+User Job inputs accept only `step[:port]`; the `client_sink@1.0` step selects the returned stream. User Jobs have no top-level `outputs` field. An internal step dispatched by U to C looks like the following. Replace identity placeholders with actual 64-character hexadecimal certificate digests:
 
 ```yaml
 name: Weather screening
@@ -75,7 +99,7 @@ A step `id` is its unique dependency identifier within the Job, used by input `s
 name: daily-temperature
 steps:
   - id: read_observations
-    operator: read_item@1.0
+    operator: item_source@1.0
     inputs: {}
     params:
       uri: dacp://localhost:18861/climate/observations
@@ -86,8 +110,10 @@ steps:
     operator: daily_temperature_stats@1.0
     inputs:
       source: read_observations
-outputs:
-  result: daily_temperature
+  - id: client_sink
+    operator: client_sink@1.0
+    inputs:
+      result: daily_temperature
 ```
 
 The DAG uses locally bundled AntV G6 5.1.1 without an external CDN. Step cards show `title`, falling back to the ID, together with operator, state and input/output payload. Edges show ports and payload. Click a card or edge to inspect the full title, step ID, server address, cross-node payload, rate between observations and record counts where applicable below the graph. Sending and receiving count separately; missing observations and terminal rates display `—`. Final-output edges use source output-port counters, not confirmed client-received bytes.
@@ -147,6 +173,12 @@ sequenceDiagram
   U->>A: prepare sub-job
   U->>B: prepare sub-job
   U->>C: prepare sub-job
+  A-->>U: environment ready
+  B-->>U: environment ready
+  C-->>U: environment ready
+  U->>A: start
+  U->>B: start
+  U->>C: start
   U->>C: consume final output
   C->>B: consume upstream output
   B->>A: consume upstream output

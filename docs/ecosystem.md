@@ -22,7 +22,7 @@ DACP adds authenticated data publication and access, client SDKs and Shell, inde
 
 Ordinary DACP builds resolve versioned XStream artifacts rather than adjacent source directories. Unreleased development artifacts need the explicit bootstrap documented in the XStream repository. Repository service builds resolve the operator contract and source-analysis plugin as versioned artifacts; no DACP service is required by that service. Websites carry their own static resources and documentation. The XStream website's optional integrated demo additionally deploys its own Designer distribution and inference environment.
 
-Deploy DACP data nodes and Union independently from the repository, Designer and websites. Configure `remote_operator_library_urls` on execution services. Source submission to a repository is authenticated and reviewed; it is separate from DEBUG-only source execution on a data node. Approved operator packages are public. These boundaries do not remove API or artifact dependencies between cooperating projects.
+Deploy DACP data nodes and Union independently from the repository, Designer and websites. Configure `remote_operator_library_urls` on execution services. Repository source submissions are authenticated and reviewed. Approved operator packages are public, and remote nodes execute only these public versions. These boundaries do not remove API or artifact dependencies between cooperating projects.
 
 ## Where to read
 

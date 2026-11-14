@@ -8,7 +8,7 @@ import pyarrow as pa
 import pyarrow.flight as flight
 from . import dacp_pb2 as pb
 from .source import _flight_client
-from .variables import resolve_variables
+from .variables import resolve_variables, remote_job
 from . import yaml_document
 
 
@@ -118,7 +118,7 @@ class Job:
     def infer(node, yaml, *, variables=None, **credentials):
         """Infer every step and selected result without opening data streams."""
         from .inference import infer
-        return infer(node, {'job_yaml': resolve_variables(yaml, variables)}, workflow=True, **credentials)
+        return infer(node, {'job_yaml': remote_job(resolve_variables(yaml, variables))}, workflow=True, **credentials)
 
     @staticmethod
     def infer_operator(node, operator, inputs, params=None, **credentials):
@@ -131,6 +131,8 @@ class Job:
         if replay_from is not None and variables is not None:
             raise ValueError("replay uses the original resolved variables")
         yaml = resolve_variables(yaml, variables)
+        if replay_from is None:
+            remote_job(yaml)
         u = urlsplit(node)
         if (u.scheme != 'dacp' or not u.hostname or u.username or u.password
                 or u.path not in ('', '/') or u.query or u.fragment):

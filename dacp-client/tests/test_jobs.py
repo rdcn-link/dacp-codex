@@ -121,8 +121,8 @@ def test_policy_and_replay_are_separate_flight_fields(monkeypatch):
 
 def test_job_resolves_variables_before_flight_and_replay_cannot_override(monkeypatch):
     client = setup(monkeypatch, [])
-    client.expected_yaml = yaml.safe_dump({'name': 'demo', 'steps': [{'params': {'limit': 123}}]})
-    with Job.run('dacp://node-a', 'name: demo\nsteps: [{params: {limit: $LIMIT}}]', variables={'LIMIT': 123}):
+    client.expected_yaml = yaml.safe_dump({'name': 'demo', 'steps': [{'id': 'run', 'operator': 'example@1.0', 'inputs': {}, 'params': {'limit': 123}}, {'id': 'client_sink', 'operator': 'client_sink@1.0', 'inputs': {'result': 'run'}}]}, sort_keys=False)
+    with Job.run('dacp://node-a', 'name: demo\nsteps:\n- {id: run, operator: example@1.0, inputs: {}, params: {limit: $LIMIT}}\n- id: client_sink\n  operator: client_sink@1.0\n  inputs: {result: run}', variables={'LIMIT': 123}):
         pass
     assert yaml.safe_load(client.request.job_yaml)['steps'][0]['params']['limit'] == 123
     with pytest.raises(ValueError, match='original resolved variables'):
@@ -133,3 +133,10 @@ def test_missing_variables_do_not_open_connection(monkeypatch):
     monkeypatch.setattr(jobs, '_flight_client', lambda *args: pytest.fail('must not connect'))
     with pytest.raises(ValueError, match='missing workflow variable'):
         Job.run('dacp://node-a', 'params: {limit: $LIMIT}', variables={})
+
+
+def test_inline_definitions_are_rejected_before_connecting(monkeypatch):
+    monkeypatch.setattr(jobs, '_flight_client', lambda *args: pytest.fail('must not connect'))
+    for extra in ('operators: {}\n', 'operators: {unused: {type: script, runtime: python}}\n'):
+        with pytest.raises(ValueError, match='inline definitions'):
+            Job.run('dacp://node-a', extra + 'name: demo\nsteps:\n- {id: read, operator: item_source@1.0, inputs: {}, params: {uri: context:/x, view: bytes}}\n- id: client_sink\n  operator: client_sink@1.0\n  inputs: {result: read}')

@@ -42,7 +42,6 @@ Configuration in `examples/server.yaml`:
 | `infer_sample` | Number of batches sampled for server-side records schema inference |
 | `sources` | Private JDBC sources (tables are not automatically published): url/user_env/password_env/schema/tables/fetch_size/query_timeout_seconds |
 | `remote_operator_library_urls` / `operator_cache` / `operator_max_bytes` | Ordered remote operator library URLs / local immutable version cache / maximum size per artifact in bytes (default 8 GiB) |
-| `local_operator_library` | Local operator library |
 | `task_peers` | Node origins permitted for step dispatch; the local node is always allowed; no central discovery service |
 | `task_input_prefixes` | Optional execution-node input URI prefix restriction; omitted or empty means no additional prefix restriction |
 | `max_concurrent_tasks` | Concurrency limit for local steps and control requests (default 2); returns UNAVAILABLE immediately when full |
@@ -51,7 +50,7 @@ Published node metadata is anonymous over TLS. Reading data requires a reader or
 
 Service errors use Flight/gRPC statuses and explicit dacp error names: missing resources return `NOT_FOUND`; denied access returns `UNAUTHORIZED` with `FORBIDDEN`; schema conflicts return `INVALID_ARGUMENT` with `SCHEMA_CONFLICT`. Protobuf also defines error codes for protocol extensions. Any transport failure invalidates the current reader, and callers must reopen from the beginning; there are no retries within a stream.
 
-Server `mode` defaults to `NORMAL`. Inline source requires `DEBUG` at both coordinator and worker; `source_runtimes` maps runtime references to administrator-selected `image` and `executor` settings.
+Remote Job execution accepts public versioned operators from the configured operator repository. Job-level `operators`, local paths, and source declarations are rejected by nodes and Union.
 
 ## DataCatalog
 

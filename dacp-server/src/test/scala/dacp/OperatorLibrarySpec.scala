@@ -20,8 +20,9 @@ class OperatorLibrarySpec extends AnyFunSuite {
     |- id: ticks
     |  operator: live_ticks@1.0
     |  inputs: {}
-    |outputs:
-    |  result: ticks
+    |- id: client_sink
+    |  operator: client_sink@1.0
+    |  inputs: {result: ticks}
     |""".stripMargin
     assert(Jobs.parse(source).steps.head.inputs.isEmpty)
     intercept[IllegalArgumentException](Jobs.parse(source.replace("  inputs: {}\n", "")))
@@ -40,7 +41,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
         def invoke(p: AnyRef, m: java.lang.reflect.Method, args: Array[AnyRef]): AnyRef = f(m)
       }).asInstanceOf[T]
   private def manifest(name: String, version: String = "1", executor: String = "jvm"): String = {
-    val node = Data.mapper.createObjectNode().put("api_version",2).put("name",name).put("version",version)
+    val node = Data.mapper.createObjectNode().put("api_version",2).put("name",name).put("version",version).put("role","transform").put("type",if(executor=="command")"command"else"sdk")
     node.putObject("runtime").put("image",image).putObject("archive").put("size",archive.length).put("sha256",hash(archive)).put("filename","runtime.tar")
     node.putObject("execution").put("executor",executor).put("entrypoint",if(executor == "container") "" else "example.Main")
     if(executor != "container") node.putObject("artifact").put("size",code.length).put("sha256",hash(code)).put("filename","operators.jar")
@@ -55,7 +56,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
     node.toString
   }
   private def config(root: Path, base: String) = Config("localhost",8815,"localhost",Map.empty,Path.of("unused"),Path.of("unused"),Path.of("unused"),
-    localOperatorLibrary=root.resolve("local"),operatorCache=root.resolve("cache"),remoteOperatorLibraryUrls=Seq(base))
+    operatorCache=root.resolve("cache"),remoteOperatorLibraryUrls=Seq(base))
   private def cleanup(root: Path): Unit = { val paths = Files.walk(root)
     try paths.iterator.asScala.toVector.sortBy(_.getNameCount).reverse.foreach(Files.delete(_)) finally paths.close() }
 
@@ -91,7 +92,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
       assert(OperatorLibrary.resolve(c,"native@1",docker).command==resolved.command)
     } finally {server.stop(0);cleanup(root)}
   }
-  test("local definitions win; distinct remote operators share runtime/code downloads and work offline without fetching review evidence") {
+  test("remote servers ignore local manifests; published operators share runtime/code downloads and work offline") {
     val root = Files.createTempDirectory("operator-shared-")
     var requests = Vector.empty[String]; var loads = 0; var installed = false
     val inspect = proxy(classOf[com.github.dockerjava.api.command.InspectImageCmd]) { _ =>
@@ -113,10 +114,10 @@ class OperatorLibrarySpec extends AnyFunSuite {
     val c = config(root,s"http://127.0.0.1:${server.getAddress.getPort}")
     try {
       installed = true
-      val local = c.localOperatorLibrary.resolve("first/1/operator.yaml")
+      val local = root.resolve("local/first/1/operator.yaml")
       Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\nicon: {path: M3 5h18v14H3z, color: '#14866b'}\nparameters: {type: object, properties: {}, required: [], additionalProperties: false}\nprovenance: {source_archive: missing-sources.zip, license: MIT}\ninputs: {source: {representations: [bytes], formats: []}}\n")
-      assert(OperatorLibrary.resolve(c,"first@1",docker).image == image && requests.isEmpty)
-      Files.delete(local); installed = false
+      assert(!c.allowLocalOperatorManifests)
+      installed = false
       val first = OperatorLibrary.resolve(c,"first@1",docker)
       val second = OperatorLibrary.resolve(c,"second@1",docker)
       assert(first.artifact == second.artifact)

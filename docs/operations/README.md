@@ -51,7 +51,7 @@ sbt 'run ../examples/server.yaml'
 
 Declare Dataset providers and their parameters in node configuration. Built-in and external providers share the same plugin contracts. See the [technical reference](../reference.md), [Dataset providers](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers.md), and [SQL example](../../examples/sql/README.md) for directory and SQL configuration. Restrict data directories and credentials to the service account.
 
-Nodes read local operators through `local_operator_library` and search remote repositories through `remote_operator_library_urls`. Remote configuration order affects lookup order. Publish shared runtimes separately from operator code. See [packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md) and the [executor manual](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-operator-executors/README.md) for execution environments and native commands. Direct source execution on data nodes is available only in DEBUG mode; repository source submissions use their own authenticated review service in ordinary operation; see [source runtimes](https://github.com/rdcn-link/dacp-codex/blob/main/docs/operator-source.md).
+Nodes resolve public operators through `remote_operator_library_urls`. Repository order affects lookup order. Publish shared runtimes separately from operator code. See [packaging](https://github.com/rdcn-link/xstream-codex/blob/main/docs/operator-packaging.md) and the [executor manual](https://github.com/rdcn-link/xstream-codex/blob/main/plugins/xstream-plugin-operator-executors/README.md) for execution environments and native commands. Remote nodes accept public repository operators only; source submission belongs to the operator repository review service.
 
 ## Certificates and authorization
 
@@ -69,7 +69,7 @@ Union builds one Union from configuration, connects independent members using no
 
 The dashboard shows node health, start time, uptime, job DAGs, status, and traffic. Unreachable node status may be unknown. Nodes and Union persist execution metadata, rather than historical result files. See [execution history](../execution-history.md) for storage, queries, and restart behavior. Back up persistent configuration, member identities and credentials, and execution records. Stop services before copying to avoid inconsistency across files.
 
-Use Ctrl+C for foreground processes or send SIGTERM. Restarting does not resume interrupted result streams. Inspect operator images with `docker image ls`; local runtime configuration and repository artifacts are separate resources. DEBUG logging and the DEBUG execution mode that allows source submission are configured separately.
+Use Ctrl+C for foreground processes or send SIGTERM. Restarting does not resume interrupted result streams. Inspect operator images with `docker image ls`; local runtime configuration and repository artifacts are separate resources. Setting the log level to DEBUG does not change remote Job operator admission.
 
 Nodes also start a read-only HTTP dashboard by default on the DACP service port plus 1000. Disable it with `web.enabled: false`. See the [monitoring and dashboard configuration](monitoring.md) for configuration and DAG views.
 

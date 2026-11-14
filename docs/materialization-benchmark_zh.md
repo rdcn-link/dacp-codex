@@ -4,7 +4,7 @@
 
 2026-10-26；50 万条气象记录，输入 18,500,050 bytes，最终 Arrow 载荷 29,094,344 bytes。
 
-四步骤：A read_item → A CSV parser → B quality filter → C temperature filter。三个节点进程位于同一物理机，使用回环 Flight，XFS /dev/vdb 文件系统。两种策略各预热一次，正式交替运行三次。每次完整消费结果并等待任务成功，包含调度、进程启动、处理、传输及提交时间，不执行 schema 推导或重试。
+四步骤：A item_source → A CSV parser → B quality filter → C temperature filter。三个节点进程位于同一物理机，使用回环 Flight，XFS /dev/vdb 文件系统。两种策略各预热一次，正式交替运行三次。每次完整消费结果并等待任务成功，包含调度、进程启动、处理、传输及提交时间，不执行 schema 推导或重试。
 
 | 策略 | 第一次(s) | 第二次(s) | 第三次(s) | 中位数(s) | 每次结果落盘量 |
 |---|---:|---:|---:|---:|---:|

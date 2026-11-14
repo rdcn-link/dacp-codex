@@ -33,7 +33,7 @@ object ItemSource {
     val ticket=ticketBuilder.build()
     val stream=c.add(client.getStream(new Ticket(ticket.toByteArray)))
     if(!Set("records","bytes")(view))return ItemFrameStreams.remote(meta.getFormat,c){out=>
-      try xstream.connector.dacp.wire.ArrowViewWire.consume(stream,view,out,()=>c.active())finally {stream.close();client.close()}
+      try xstream.connector.dacp.wire.ArrowViewWire.consume(stream,view,ItemReferences.qualify(out,uri),()=>c.active())finally {stream.close();client.close()}
     }
     new FrameSource {
       private var began=false;private var ended=false;private var pending=Iterator.empty[Array[Byte]]

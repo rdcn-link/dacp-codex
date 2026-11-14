@@ -57,7 +57,9 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         require(previous.isEmpty || request.getJobYaml.isEmpty,"replay uses original job definition")
         val raw=if(!request.getExecutionPolicyYaml.isEmpty)dacp.union.YamlDocument.parse(request.getExecutionPolicyYaml.toStringUtf8)
           else previous.map(_.path("execution_policy")).getOrElse(dacp.union.Json.obj())
+        _root_.xstream.execution.RemoteJobPolicy.validateYaml(yaml)
         val plan=Jobs.resolveReads(Jobs.parse(yaml),config.uri(""));plan.steps.foreach(t=>Jobs.authorizeSource(config,t));plan.steps.foreach(t=>DatasetPublication.requireTask(config,allocator,t));val policy=ExecutionPolicy.parse(raw,plan)
+        _root_.xstream.engine.RepositoryEndpoints.validate(config,plan,()=>cancel.active())
         val timeout=policy.timeoutSeconds.getOrElse(config.executionTimeoutSeconds)
         require(timeout<=config.executionTimeoutSeconds,"timeout_seconds exceeds server limit")
         require(policy.maxRetries==0 || request.getRetryAware,"automatic retries require a retry-aware client callback")
@@ -102,10 +104,9 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         ports.foreach { p=>val entry=savedInputs.putObject(p);sources.headOption.foreach(entry.put("uri",_)) }
         record.update("running",inputMetadata)
         require(n.path("params").isObject,"params must be a mapping")
-        val inline=if(n.path("operator").isObject)Some(Jobs.source(Data.mapper.convertValue(n.path("operator"),classOf[java.util.LinkedHashMap[String,Object]])))else None
-        require(inline.isEmpty || config.debug,"FORBIDDEN: source submission requires DEBUG mode")
+        require(n.path("operator").isTextual,"FORBIDDEN: remote workers require public versioned operators")
         val task=Task(n.path("id").asText,ports.map(p=>p->sources.headOption.map(u=>InputBinding(uri=Some(u))).getOrElse(InputBinding(task=Some("upstream")))).toMap,n.path("operator").asText,
-          Data.mapper.convertValue(n.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),description=Option(n.get("description")).map(v=>{require(v.isTextual,"description must be a string");v.asText}),source=inline,title=Option(n.get("title")).map(v=>{require(v.isTextual,"title must be a string");v.asText}))
+          Data.mapper.convertValue(n.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),description=Option(n.get("description")).map(v=>{require(v.isTextual,"description must be a string");v.asText}),title=Option(n.get("title")).map(v=>{require(v.isTextual,"title must be a string");v.asText}))
         DatasetPublication.requireTask(config,allocator,task)
         Jobs.validate(task)
         val queues=ports.map(p=>p->new FrameQueue(cancel)).toMap
@@ -151,9 +152,11 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
   }
 
   private def coordinate(yaml:String,emit:OperatorFrame=>Unit,c:StreamCancel,record:ExecutionHistory#Record):Unit={
-    val plan=Jobs.resolveReads(Jobs.parse(yaml),config.uri(""))
+    _root_.xstream.execution.RemoteJobPolicy.validateYaml(yaml)
+        val plan=Jobs.resolveReads(Jobs.parse(yaml),config.uri(""))
+    _root_.xstream.engine.RepositoryEndpoints.validate(config,plan,()=>c.active())
     val details=dacp.union.Json.obj();val steps=details.putArray("steps")
-    plan.steps.foreach { t=>val entry=steps.addObject().put("id",t.id).put("operator",t.source.map(code=>"inline:"+code.runtime).getOrElse(t.operator));t.title.foreach(entry.put("title",_));t.description.foreach(entry.put("description",_)) }
+    plan.steps.foreach { t=>val entry=steps.addObject().put("id",t.id).put("operator",t.operator);t.title.foreach(entry.put("title",_));t.description.foreach(entry.put("description",_)) }
     record.update("running",details)
     plan.steps.foreach(t=>Jobs.authorizeSource(config,t));plan.steps.foreach(t=>DatasetPublication.requireTask(config,allocator,t))
     record.update("running",dacp.union.Json.obj().put("job_yaml",yaml))
@@ -222,9 +225,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
     val n=Data.mapper.createObjectNode().put("id",t.id).put("operator",t.operator).put("parent_execution_id",parentExecutionId)
     t.title.foreach(n.put("title",_));t.description.foreach(n.put("description",_))
     n.set[com.fasterxml.jackson.databind.JsonNode]("params",Data.mapper.valueToTree(t.params))
-    t.source.foreach { code =>
-      val op=n.putObject("operator");op.put("runtime",code.runtime).put("source",code.source).put("entrypoint",code.entrypoint)
-    }
+
     val ports=n.putArray("ports");inputs.keys.toVector.sorted.foreach(ports.add)
     val src=n.putArray("sources");sources.foreach(src.add)
     val request=Metadata.OperatorRequest.newBuilder().setTaskYaml(com.google.protobuf.ByteString.copyFromUtf8(dacp.union.YamlDocument.dump(n))).build()

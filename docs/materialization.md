@@ -81,7 +81,7 @@ Expired, incomplete, corrupt, offline, or unauthorized sources produce errors ra
 
 ## Automatic retry count and overall timeout
 
-Set retry count and timeout using the XStream policy fields. A server enforces its configured timeout limit; Union members may impose smaller local limits.
+Set retry count and timeout using the XStream policy fields. A server enforces its configured timeout limit; Union members may impose smaller local limits. Union pauses the execution budget while members prepare operators and runtime environments. Preparation uses independent `preparation_timeout_seconds` limits; see [environment readiness and timing](union.md#environment-readiness-and-execution-timing).
 
 ```yaml
 max_retries: 2

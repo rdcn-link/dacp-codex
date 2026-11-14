@@ -32,7 +32,7 @@ Matching installed runtime images, dependency environments and executor configur
 
 Edges identify `arrow_in_process_candidate`, same-node `arrow_ipc`, or cross-node `arrow_flight`. Stream transfer can overlap producer computation; the cost model follows dependency critical paths instead of summing all branches. The estimate includes startup, computation, link latency/bandwidth and a queue penalty. It is a heuristic, not a full scheduler simulation. Output size defaults to the sum of upstream output estimates; this does not assert that an arbitrary operator preserves size.
 
-Default costs are deliberately conservative assumptions, not benchmark results: unknown source size 1 MiB, computation 100 ms per non-reader step, startup 500 ms, cross-node throughput 100 MB/s with 2 ms latency, local throughput 1 GB/s with 0.1 ms latency. `read_item` is a host stream source with no operator-process startup cost. Source byte size is only a proxy for output size when SQL, selection or a different representation changes the stream.
+Default costs are deliberately conservative assumptions, not benchmark results: unknown source size 1 MiB, computation 100 ms per non-reader step, startup 500 ms, cross-node throughput 100 MB/s with 2 ms latency, local throughput 1 GB/s with 0.1 ms latency. `item_source` is a host stream source with no operator-process startup cost. Source byte size is only a proxy for output size when SQL, selection or a different representation changes the stream.
 
 ## Configuration
 

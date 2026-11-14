@@ -38,7 +38,7 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
     val decisions=scala.collection.mutable.ArrayBuffer.empty[PlacementDecision]
     val resolved=Jobs.resolveReads(input,origin)
     resolved.steps.foreach { t=>
-      require(t.source.isEmpty && t.localOperator.isEmpty,"Union requires versioned operators")
+      require(t.inlineOperator.isEmpty && t.localOperator.isEmpty,"Union requires versioned operators")
       val sources=Jobs.readBinding(t).toVector.flatMap { b=>b.uri.filter(uri=>DacpUri.origin(uri)==origin).map { uri=>
         val port="result"
         require(DacpUri.origin(uri)==origin,"input must use the Union public URI")
@@ -78,7 +78,7 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
       val requested=t.node.map { name=>candidates.find(m=>logicalNode(m.path("identity").asText)==name).getOrElse(throw new IllegalArgumentException("requested logical node unavailable")).path("identity").asText }
       val metadata=profiles.flatMap{case(node,operators)=>Option(operators.get(t.operator)).map(p=>node->PlanningProfile(p.path("executor").asText,p.path("runtime").asText,Option(p.get("fusion_key")).map(_.asText)))}
       PlanningStep(t.id,Jobs.dependencies(t),sourceLocations.get(t.id).map(s=>s._1->s._3),requested,t.operator,Json.mapper.writeValueAsString(t.params),metadata,
-        disableFusion||(t.operator==Jobs.ReadItem&&input.outputs.values.exists(_._1==t.id)))
+        disableFusion||(t.operator==Jobs.ItemSource&&input.outputs.values.exists(_._1==t.id)))
     }
     val result=GraphPlacement.optimize(PlanningInput(graph,targets,settings.planning.beamWidth),Some(optimizer),settings.planning.settings,check)
     val placements=result.placements

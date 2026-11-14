@@ -22,7 +22,7 @@ window.DacpExecutionInfo=(()=>{
    const state=snapshot.state||'unknown',observed=snapshot.observed_at_ms||job.updated_at_ms||0;
    const stale=snapshot.observation_error||(!fmt.terminal.has(job.state)&&observed&&Date.now()-observed>15000)||(fmt.terminal.has(job.state)&&snapshot.state&&!fmt.terminal.has(snapshot.state));
    const elapsed=snapshot.created_at_ms?Math.max(0,(snapshot.finished_at_ms||observed||snapshot.created_at_ms)-snapshot.created_at_ms):null;
-   card.append(node('p',(fmt.labels[state]||state)+(elapsed!==null?' · Duration: '+window.DacpDuration(elapsed):'')+' · Last observation: '+fmt.time(observed)+(stale?' · Observation unavailable or incomplete; showing last known state':''),stale?'notice':'muted'));
+   card.append(node('p',(fmt.labels[state]||state)+(elapsed!==null?' · Total: '+window.DacpDuration(elapsed):'')+(snapshot.preparation_duration_ms!=null?' · Preparation: '+window.DacpDuration(snapshot.preparation_duration_ms):'')+(snapshot.execution_duration_ms!=null?' · Execution: '+window.DacpDuration(snapshot.execution_duration_ms):'')+' · Last observation: '+fmt.time(observed)+(stale?' · Observation unavailable or incomplete; showing last known state':''),stale?'notice':'muted'));
    if(snapshot.message)card.append(node('p',snapshot.message,'notice'));
    const scroll=node('div',undefined,'table-scroll'),table=node('table'),header=node('tr');
    for(const label of ['Step','Status','Execution unit / runtime','Input payload','Output payload'])header.append(node('th',label));

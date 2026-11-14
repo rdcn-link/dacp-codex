@@ -32,3 +32,18 @@ def resolve_variables(text, variables=None):
             return {k: visit(v, depth+1) for k, v in value.items()}
         return value
     return yaml_document.dump(visit(document))
+
+
+def remote_job(text):
+    """Reject local authoring definitions before submitting or inferring remotely."""
+    document = yaml_document.load(text)
+    message = "Jobs containing inline definitions or local/source operators cannot be submitted to a remote DACP or Union server; publish the operators first"
+    if not isinstance(document, dict):
+        raise ValueError("job must be a mapping")
+    if "operators" in document:
+        raise ValueError(message)
+    for step in document.get("steps", []):
+        operator = step.get("operator") if isinstance(step, dict) else None
+        if not isinstance(operator, str) or not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*@[A-Za-z0-9_-][A-Za-z0-9_.-]*", operator):
+            raise ValueError(message)
+    return text

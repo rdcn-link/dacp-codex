@@ -68,7 +68,7 @@ class SecuritySpec extends AnyFunSuite {
       assert(!dacp.client.Source.capabilities(origin,tls).path("permissions").path("job_submit").asBoolean)
       c.credentials.setRoles("alice",Set("runner"))
       assert(dacp.client.Source.capabilities(origin,tls).path("permissions").path("job_submit").asBoolean)
-      val job="name: Remote source\nsteps:\n- id: read\n  operator: read_item@1.0\n  inputs: {}\n  params: {uri: 'context:/live/ticks', view: bytes}\noutputs: {result: read}\n"
+      val job="name: Remote source\nsteps:\n- id: read\n  operator: item_source@1.0\n  inputs: {}\n  params: {uri: 'context:/live/ticks', view: bytes}\n- id: client_sink\n  operator: client_sink@1.0\n  inputs: {result: read}\n"
       val stream=dacp.client.Job.run(origin,job,tls,30)
       try {
         assert(stream.next().kind=="execution")
@@ -121,10 +121,9 @@ class SecuritySpec extends AnyFunSuite {
       try assert(intercept[FlightRuntimeException](denied.next()).status.code==FlightStatusCode.UNAUTHORIZED)finally denied.close()
     }finally public.close()
   }}
-  test("remote-serving environments reject local operators even in DEBUG mode") {fixture{(c,_,_)=>
-    val task=Jobs.parse("name: Local attempt\nsteps:\n- id: run\n  operator: {local: /tmp/private-operator}\n  inputs: {}\noutputs: {result: run}\n").steps.head
+  test("remote-serving environments reject local operators") {fixture{(c,_,_)=>
+    val task=Jobs.parse("name: Local attempt\nsteps:\n- id: run\n  operator: {local: /tmp/private-operator}\n  inputs: {}\n- id: client_sink\n  operator: client_sink@1.0\n  inputs: {result: run}\n").steps.head
     assert(intercept[IllegalArgumentException](Jobs.authorizeSource(c,task)).getMessage.contains("local engine"))
-    assert(intercept[IllegalArgumentException](Jobs.authorizeSource(c.copy(debug=true),task)).getMessage.contains("local engine"))
     intercept[IllegalArgumentException](WorkflowInference.taskJson(task,Map.empty))
   }}
   test("ordinary revocation rejects subsequent RPCs on the same connection and preserves an admitted stream") {fixture{(c,_,a)=>
@@ -215,7 +214,7 @@ class SecuritySpec extends AnyFunSuite {
     }finally {store.close();other.close();Data.deleteTree(dir)}
   }
 
-  test("dataset publication controls anonymous DACP, S3 and read_item while discovery remains public") {
+  test("dataset publication controls anonymous DACP, S3 and item_source while discovery remains public") {
     for((policy,allowed)<-Seq("""{"policy":"public"}"""->true,"""{"policy":"private"}"""->false,"""{"policy":"embargoed","public_at":"2999-01-01T00:00:00Z"}"""->false,"""{"policy":"embargoed","public_at":"2000-01-01T00:00:00Z"}"""->true))fixturePolicy(policy){(c,_,a)=>
       val anonymous=client(c,a,()=>None)
       val s3=new S3Service(c.copy(s3=S3Settings(port=Some(0))),c.port,a);s3.start()
@@ -231,7 +230,7 @@ class SecuritySpec extends AnyFunSuite {
         val request=java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"https://localhost:${s3.port}/live/ticks")).header("Range","bytes=0-0").build()
         val response=SecurityTestSupport.client().send(request,java.net.http.HttpResponse.BodyHandlers.ofString());assert(response.statusCode==(if(allowed)206 else 403));if(allowed)assert(response.body=="0")
         val params=new java.util.LinkedHashMap[String,Object]();params.put("uri","context:/live/ticks");params.put("view","bytes")
-        val task=_root_.xstream.engine.Task("read",Map.empty,"read_item@1.0",params)
+        val task=_root_.xstream.engine.Task("read",Map.empty,"item_source@1.0",params)
         if(allowed)DatasetPublication.requireTask(c,a,task,trusted=false)else intercept[FlightRuntimeException](DatasetPublication.requireTask(c,a,task,trusted=false))
         DatasetPublication.requireTask(c,a,task,trusted=true)
       }finally {s3.close();anonymous.close()}

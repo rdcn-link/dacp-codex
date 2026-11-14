@@ -17,7 +17,6 @@ with tempfile.TemporaryDirectory(prefix='dacp-repository-example-check-') as tem
  (base/'table.csv').write_text('id,amount\n1,12.5\n2,30.0\n')
  config=dict(host='127.0.0.1',public_host='localhost',port=port,
   datasets=dict(data=dict(provider='mixed',items={'/input':dict(file=str(base/'input.txt')),'/table':dict(file=str(base/'table.csv'))})),
-  local_operator_library=str(base/'no-local-operators'),
   remote_operator_library_urls=['http://localhost:8820'],operator_cache=str(base/'cache'),
   tls_cert=str(ROOT/'examples/certs/server.crt'),tls_key=str(ROOT/'examples/certs/server.key'),tls_ca=str(ROOT/'examples/certs/ca.crt'))
  creds['token']=authorize(config,base)
@@ -33,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix='dacp-repository-example-check-') as tem
     except Exception: time.sleep(.1)
    else: raise RuntimeError('server readiness timeout')
    def run(operator,item='input',view='bytes',params=None):
-    job=dict(name='repository-example-check',steps=[dict(id='read',operator='read_item@1.0',inputs={},params=dict(uri=node+'/data/'+item,view=view)),dict(id='check',operator=operator,inputs=dict(source='read'),params=params or {})],outputs={'result':'check'})
+    job=dict(name='repository-example-check',steps=[dict(id='read',operator='item_source@1.0',inputs={},params=dict(uri=node+'/data/'+item,view=view)),dict(id='check',operator=operator,inputs=dict(source='read'),params=params or {})],outputs={'result':'check'})
     with Job.run(node,yaml.safe_dump(job,sort_keys=False),timeout=60,**creds) as stream: events=list(stream)
     assert events[-1]['type']=='complete'
     return events

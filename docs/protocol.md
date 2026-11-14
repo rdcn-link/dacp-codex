@@ -8,7 +8,7 @@ DACP (Data Access and Collaboration Protocol) defines data access and computatio
 
 Servers organize data into Datasets and describe accessible objects as Items. Clients inspect metadata and advertised capabilities before selecting a view. `bytes` exposes byte content; `records` exposes batches with an Arrow schema. Format and view describe storage representation and access capability separately; clients must not infer supported reads solely from filename extensions. Plugins should explicitly describe scientific groups, tables, and multidimensional variables rather than silently flattening them into records.
 
-A job contains steps. A step's `id` identifies dependency references; its `title` describes its purpose to users. Operators consume and produce streams through named ports. Inputs reference only upstream outputs; read_item source operators read external Items. Results are not automatically published as Datasets. Nodes and Union both accept standard Job submission. Union uses its public URIs and optional logical node IDs, and retains dedicated management APIs; see [Union proxy service](union-proxy.md).
+A job contains steps. A step's `id` identifies dependency references; its `title` describes its purpose to users. Operators consume and produce streams through named ports. Inputs reference only upstream outputs; item_source source operators read external Items. Results are not automatically published as Datasets. Nodes and Union both accept standard Job submission. Union uses its public URIs and optional logical node IDs, and retains dedicated management APIs; see [Union proxy service](union-proxy.md).
 
 ## Transport responsibilities
 

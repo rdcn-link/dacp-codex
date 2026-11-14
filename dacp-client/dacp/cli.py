@@ -409,8 +409,6 @@ class Browser(cmd.Cmd):
         """Run an operator on selected inputs and print its output streams as they arrive.
 
         Usage: run OP [--input PORT=ITEM] [--params JSON]
-        run --runtime NAME@VERSION [--entrypoint CLASS] [--input PORT=ITEM] <<END
-        Source follows until END on its own line. Source requires server DEBUG mode.
         Results print incrementally; Ctrl-C cancels entry or execution.
         --preview-rows N or --preview-bytes N cancels the entire job at the first per-port limit.
 
@@ -421,36 +419,16 @@ class Browser(cmd.Cmd):
           run piflow_filter@1.0 --input source=/reports/orders --view records --params '{"condition":"amount >= 20"}'
           run native_uppercase@1.0 --input source=/reports/orders --preview-bytes 128
 
-        DEBUG source example (requires a configured python@1.0 runtime):
-          run --runtime python@1.0 --input source=/reports/orders <<END
-          def process(inputs, params):
-              for chunk in inputs['source']:
-                  yield chunk.upper()
-          END
-
         Omit --input for zero-input source operators. Use --input for each named port. ITEM is a path, latest ls number, or full Item URI.
         Output defaults to result. Use --output PORT repeatedly for named outputs, or --no-output for a sink.
         Optional: --params-file FILE, --timeout SECONDS, --policy policy.yaml.
-        Installed operator IDs work in NORMAL mode; native_uppercase requires publishing the native example.
+        Operators must be publicly published; native_uppercase requires publishing the native example.
         No preview limit applies by default. Job results are streams, with no saved Dataset.
         Execution time is printed after completion, failure or cancellation.
         """
         tokens = shlex.split(arg)
-        delimiter = None
-        if tokens:
-            last = tokens[-1]
-            if last.startswith('<<'):
-                delimiter = last[2:]
-                tokens.pop()
-            elif len(tokens) >= 2 and tokens[-2] == '<<':
-                delimiter = tokens.pop()
-                tokens.pop()
-        if delimiter is not None and not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', delimiter):
-            raise ValueError('heredoc delimiter must be an identifier')
         parser = argparse.ArgumentParser(prog='run', exit_on_error=False)
-        parser.add_argument('operator', nargs='?')
-        parser.add_argument('--runtime')
-        parser.add_argument('--entrypoint')
+        parser.add_argument('operator')
         parser.add_argument('--input', action='append', default=[])
         parser.add_argument('--output', action='append', help='output port to receive; repeat for multiple ports')
         parser.add_argument('--no-output', action='store_true', help='run a sink without result streams')
@@ -464,16 +442,7 @@ class Browser(cmd.Cmd):
         # argparse's missing/unknown arguments otherwise exit the interactive shell.
         parser.error = lambda message: (_ for _ in ()).throw(ValueError(message))
         options = parser.parse_args(tokens)
-        if delimiter is None:
-            if not options.operator or options.runtime or options.entrypoint:
-                raise ValueError('use an operator ID, or --runtime with a heredoc')
-            operator = options.operator
-        else:
-            if options.operator or not options.runtime:
-                raise ValueError('source requires --runtime and a heredoc, without an operator ID')
-            operator = {'runtime': options.runtime}
-            if options.entrypoint:
-                operator['entrypoint'] = options.entrypoint
+        operator = options.operator
         params = json.loads(Path(options.params_file).read_text() if options.params_file else options.params)
         if not isinstance(params, dict):
             raise ValueError('params must be a JSON object')
@@ -491,15 +460,9 @@ class Browser(cmd.Cmd):
                     raise ValueError('input must name an item path or ls number')
                 uri = self.uri.rstrip('/') + quote(path, safe='/')
             reader = 'read_' + str(len(readers) + 1)
-            readers.append({'id': reader, 'operator': 'read_item@1.0', 'inputs': {},
+            readers.append({'id': reader, 'operator': 'item_source@1.0', 'inputs': {},
                             'params': {'uri': uri, 'view': options.view}})
             inputs[port] = reader
-        if delimiter is not None:
-            try:
-                operator['source'] = self.heredoc(delimiter)
-            except (KeyboardInterrupt, EOFError):
-                self.write('Source entry cancelled; nothing submitted.')
-                return
         if options.no_output and options.output:
             raise ValueError('--no-output and --output cannot be combined')
         ports = [] if options.no_output else (options.output or ['result'])
@@ -548,13 +511,14 @@ class Browser(cmd.Cmd):
           name: demo
           steps:
             - id: copy
-              operator: read_item@1.0
+              operator: item_source@1.0
               inputs: {}
               params:
                 uri: dacp://localhost:8815/data1/reports/orders
                 view: bytes
-          outputs:
-            result: copy
+            - id: client_sink
+              operator: client_sink@1.0
+              inputs: {result: copy}
           END
 
         --vars replaces complete $NAME values using a JSON object, preserving types.

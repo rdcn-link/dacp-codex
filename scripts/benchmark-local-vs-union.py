@@ -29,7 +29,7 @@ def main():
     variables = {'CONDITION': "quality = '0' AND CAST(temperature AS REAL) >= 30", 'HEADER': True}
     def workflow(distributed):
         steps = [
-            dict(id='read', title='Read weather observations', operator='read_item@1.0', inputs={},
+            dict(id='read', title='Read weather observations', operator='item_source@1.0', inputs={},
                  params=dict(uri=a.union_uri if distributed else a.local_uri, view='bytes')),
             dict(id='parse', title='Parse weather CSV', operator='piflow_csv_parser@1.0', inputs=dict(source='read:result')),
             dict(id='filter', title='Select valid high temperatures', operator='piflow_filter@1.0', inputs=dict(source='parse:result'), params=dict(condition='$CONDITION')),

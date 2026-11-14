@@ -33,7 +33,6 @@ Ordinary and collaboration clients share transport and certificate implementatio
 | Publish an application catalog | [Embedding API](../embedded-server.md), [server configuration](../reference.md) |
 | Load existing backend and runtime plugins | [Plugin deployment](../plugins.md), [plugin example](../../examples/plugins/README.md) |
 | Configure service-side execution history | [History API and administration](../execution-history.md) |
-| Use temporary source operators in DEBUG deployments | [DEBUG source operators](../operator-source.md) |
 
 Implement Dataset backends, format readers, operators, stream contracts and execution-storage plugins using the [XStream Development guide](http://xstream.conoai.cn/manual/xstream-codex/docs/development.html). Use DACP configuration to load them into a service.
 
