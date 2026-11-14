@@ -2,7 +2,101 @@
 
 [中文](faq_zh.md)
 
-## 1. How does a node join a Union?
+- [1. How do CONET, DACP and XStream relate to each other?](#1-how-do-conet-dacp-and-xstream-relate-to-each-other)
+- [2. What is `/etc/dacp/ca.crt`?](#2-what-is-etcdacpcacrt)
+- [3. How do I configure certificates for a public DACP service?](#3-how-do-i-configure-certificates-for-a-public-dacp-service)
+- [4. What must the server configure to allow domain-name connections?](#4-what-must-the-server-configure-to-allow-domain-name-connections)
+- [5. How does a node join a Union?](#5-how-does-a-node-join-a-union)
+- [6. Can one node belong to multiple Unions?](#6-can-one-node-belong-to-multiple-unions)
+- [7. Which permissions and roles are available?](#7-which-permissions-and-roles-are-available)
+- [8. What operations does DACP support, and what are their business names and permissions?](#8-what-operations-does-dacp-support-and-what-are-their-business-names-and-permissions)
+- [9. How can I restrict DACP services to an internal network?](#9-how-can-i-restrict-dacp-services-to-an-internal-network)
+- [10. How do I disable the dashboard Web service?](#10-how-do-i-disable-the-dashboard-web-service)
+- [11. Do dashboards refresh automatically?](#11-do-dashboards-refresh-automatically)
+- [12. Do steps and cross-node Jobs have time limits?](#12-do-steps-and-cross-node-jobs-have-time-limits)
+- [13. Does a 30-second deadline error mean the Job ran for too long?](#13-does-a-30-second-deadline-error-mean-the-job-ran-for-too-long)
+- [14. Where are request logs and complete exception stacks?](#14-where-are-request-logs-and-complete-exception-stacks)
+- [15. How can DACP dynamically publish Datasets and Items from an existing Java application?](#15-how-can-dacp-dynamically-publish-datasets-and-items-from-an-existing-java-application)
+- [16. How can I tune or extend physical plan optimization?](#16-how-can-i-tune-or-extend-physical-plan-optimization)
+
+## 1. How do CONET, DACP and XStream relate to each other?
+
+**XStream supplies data management and local computation, DACP exposes those capabilities over the network, and CONET turns the network capabilities into user-facing applications.**
+
+| Project | Role | Main responsibilities |
+|---|---|---|
+| XStream | Dataset management and local dataflow execution engine | DataCatalog—Dataset—Item, format parsing, DataViews, operators, local Job execution and Designer |
+| DACP | Data publication and remote computation service | Network access to datasets and Job execution, authentication and read authorization; Union supplies cross-node collaboration |
+| CONET | Data collaboration network and application platform | Data-center organization, a combined catalog, App Builder, analysis history, data-product publication and sharing, and network visualization |
+
+```mermaid
+flowchart TB
+    U[User] --> C[CONET: applications and data products]
+    C --> D[DACP / Union: remote access and collaboration]
+    D --> X[XStream: dataset management and local execution]
+    X --> F[Files, databases and other data sources]
+```
+
+For a cross-center analysis:
+
+1. The user selects a region, uploads a file or supplies parameters in a CONET application.
+2. CONET binds those parameters to a fixed Job and submits it to a DACP Union.
+3. Union plans and splits the Job according to data locations and dispatches sub-jobs to DACP nodes.
+4. Each node executes its local steps with its embedded XStream engine.
+5. CONET presents progress and results, and can publish the resulting data as a DACP Dataset.
+
+XStream executes steps locally: reading a remote Item does not automatically push subsequent computation to that server. DACP provides remote invocation and Union provides cross-node planning. CONET supplies application forms, presentation, history and products rather than reimplementing parsing, stream execution or cross-node planning. Its application admission queue complements execution-node resource protection; it does not replace it.
+
+XStream can run independently on a local machine. DACP can be used without CONET through clients, SDKs or Shell. CONET provides an application-oriented entry point to a DACP network. The diagram shows this application stack, not a requirement that all XStream data access pass through DACP.
+
+## 2. What is `/etc/dacp/ca.crt`?
+
+It is an example path to a public CA certificate used to validate the remote service's TLS certificate. Use the actual CA certificate path for your deployment. The certificate is not an access token or a private key, and it grants no data-read or Job-execution permissions.
+
+All connections verify the server certificate and hostname. Omit an explicit CA only if the platform trusts the server certificate; configure `ca` for private or self-signed CAs. In Designer connection settings, this path is on the Designer server, not the visitor's computer. Account tokens are configured separately through `token_file`. See [authentication and access control](security.md).
+
+## 3. How do I configure certificates for a public DACP service?
+
+Use a server certificate issued by a publicly trusted CA. Obtain it with an ACME client such as Certbot or acme.sh after proving control of the service domain through an HTTP or DNS challenge. Configure the DACP TLS listener with the server certificate and intermediate certificate chain (commonly `fullchain.pem`) and its private key (commonly `privkey.pem`). Keep the private key on the server, automate renewal, and reload or restart the service after renewal so it serves the new certificate.
+
+Clients validate the certificate chain, validity period and hostname. When the issuing CA is trusted by the client runtime's default trust store, no explicit `ca` file is needed. For a private CA, distribute its root certificate through a trusted channel and configure `ca`, or install it in the client's managed trust store. Do not disable server verification, including for anonymous catalog access. Keep client trust stores up to date.
+
+Certificate verification establishes server identity; an access token authorizes operations. Public catalog browsing still verifies the server, while protected operations additionally require appropriate credentials. Ordinary clients do not need a client certificate. See [authentication and access control](security.md) and [ACME certificate issuance](https://letsencrypt.org/getting-started/).
+
+## 4. What must the server configure to allow domain-name connections?
+
+For a service named `node.example.com`:
+
+1. Create a DNS A record pointing to its public IPv4 address; add an AAAA record only when IPv6 is configured and reachable.
+2. Bind the DACP listener to a reachable local interface, or `0.0.0.0` for all IPv4 interfaces. The listener address remains a local interface address; it need not be the domain name. A listener bound to `127.0.0.1` is local-only.
+3. Install a TLS certificate whose Subject Alternative Name includes `node.example.com`, with its intermediate chain and private key.
+4. Allow the configured TCP port through the firewall, cloud security group and any necessary NAT mapping.
+5. Set DACP Server's `public_host` to `node.example.com`, or Union's `public_url` to `dacp://node.example.com:19860`, using the actual port. Update client, Designer and Union member connection addresses as appropriate.
+
+Clients can then connect using a URI such as `dacp://node.example.com:19860/dataset/item`. A certificate issued only for a domain does not validate a connection made directly to its IP address. DNS changes alone do not make an existing IP-only certificate valid for the domain.
+
+DACP can terminate TLS directly; a reverse proxy is optional. If one is used, it must support Arrow Flight's gRPC/HTTP/2 traffic and preserve the required security boundaries. Configure separately exposed dashboard and S3 endpoints independently.
+
+#### Connection setup at a glance
+
+```mermaid
+sequenceDiagram
+    participant Admin as Service administrator
+    participant CA as Public certificate authority
+    participant Server as DACP service
+    participant Client as Client
+    Admin->>CA: Prove domain control and request certificate
+    CA-->>Admin: Server certificate and intermediate chain
+    Admin->>Server: Configure certificate chain and private key
+    Client->>Server: Connect using certificate domain
+    Server-->>Client: Present certificate chain
+    Client->>Client: Check trust chain, validity and hostname
+    Client->>Server: Request public metadata, or use token for protected operations
+```
+
+The private key stays on the server. Client trust comes from its default trust store or an explicitly trusted private CA, not simply from accepting whatever certificate the server sends. See questions 3 and 4 for deployment details.
+
+## 5. How does a node join a Union?
 
 The Union connects to a configured node using a service credential issued by that node. Nodes do not register themselves or send invitations.
 
@@ -45,13 +139,13 @@ The Union connects to a configured node using a service credential issued by tha
 
 See [Union deployment](../dacp-union-server/README.md) and [credentials and roles](security.md).
 
-## 2. Can one node belong to multiple Unions?
+## 6. Can one node belong to multiple Unions?
 
 Yes. Issue a separate service credential for each Union, bound to its Union ID and certificate identity. Add the same node to each Union's member configuration, using the corresponding credential. Each Union manages its own public dataset names and Jobs. Revoking one Union's credential does not revoke another's.
 
 The node shares its execution capacity across local Jobs and all Unions. There are no separate per-Union resource reservations or fairness guarantees. A node's membership in two Unions does not make the other members of those Unions automatically trust each other. Accepted Union credentials authorize the Union's service operations; there is no per-Union dataset allowlist.
 
-## 3. Which permissions and roles are available?
+## 7. Which permissions and roles are available?
 
 | Role | Permissions |
 |---|---|
@@ -60,54 +154,7 @@ The node shares its execution capacity across local Jobs and all Unions. There a
 
 Dataset discovery, Item listings and Item metadata are public. Content follows dataset publication policies: public, private or embargoed. Public contents are anonymously readable; ordinary roles do not override private or active embargoes. Job execution requires runner permission. Union service credentials use a separate certificate-bound trust mechanism. Administrators assign the predefined roles to accounts; individual log operation names are not configurable role permissions. See [security](security.md).
 
-## 4. Do steps and cross-node Jobs have time limits?
-
-There is no separate inter-step idle timeout. A downstream step can wait for upstream data, and upstream steps wait when downstream buffers are full. These waits consume execution time.
-
-The default execution limit is 1,800 seconds. Configure `execution_timeout_seconds` on the service; a submitted execution policy can shorten it with `timeout_seconds`. Union passes the remaining allowance to sub-jobs, which are also limited by the node's Union execution settings. Control requests usually have a separate 30-second deadline; data stream calls also have deadlines. Continuous data arrival does not extend a call's deadline. See [execution policies](materialization.md).
-
-## 5. Does a 30-second deadline error mean the Job ran for too long?
-
-Not necessarily. `CallOptions deadline exceeded after 29.99…s` indicates a particular remote call exceeded its deadline, rather than the overall Job reaching its execution limit. Check the business operation, request ID and Job/execution ID in the Union and node runtime logs. Increasing `execution_timeout_seconds` alone does not change the control-call deadline.
-
-The node acknowledges an accepted start request before resolving operators and preparing execution units in the background. Acceptance does not mean initialization succeeded. Inspect subsequent Job status. An already cancelled, expired or completed sub-job cannot start again. “No step snapshots were recorded” means the dashboard has no step observations; it does not prove the node never started work.
-
-## 6. Where are request logs and complete exception stacks?
-
-Node access logs use JSON Lines in `access_log.directory`, or `.dacp-access/<port>/` relative to the working directory by default. They record completed requests asynchronously, including request ID, available Job ID, operation, status and duration. A start timestamp is not an independently emitted request-arrival record.
-
-Operations use business names such as `catalog.list`, `item.describe`, `item.read`, `job.submit`, `job.prepare`, `job.start`, `job.status` and `job.cancel`. These differ from authorization permissions such as `data:read`. The separate transport authentication audit still records RPC methods.
-
-Server runtime logs contain full exception stacks and cause chains with correlation identifiers. Before a Job exists, its Job ID is unavailable. Clients receive concise errors; access logs do not contain stacks. See [access logs](access-logs.md).
-
-## 7. Do dashboards refresh automatically?
-
-Node and Union dashboards load when opened and update on manual **Refresh** or **Reload**. Changing a page, filter or expanded dataset can load the requested information. The service's background member polling continues independently of browser refresh. The CONET large-screen display retains its automatic updates. See [dashboards](node-web.md).
-
-## 8. How do I disable the dashboard Web service?
-
-**DACP node:** set the following in the node startup configuration and restart the node:
-
-```yaml
-web:
-  enabled: false
-```
-
-The node dashboard is enabled by default, so removing the node's `web` section does not disable it.
-
-**Union Server:** remove the entire top-level `web` section from its startup configuration, then restart the Union. For example, remove this section:
-
-```yaml
-web:
-  host: 127.0.0.1
-  port: 19880
-```
-
-Union starts its dashboard only when that section is present. Its configuration does not accept `web.enabled: false`, `web: false`, or `web: null`.
-
-Disabling the dashboard closes its HTTP listener and read-only HTTP endpoints. It does not disable the DACP data service, Job execution, Union coordination, execution history, or a separately configured S3 service. The node/Union process must be restarted to apply the change. See [dashboards](node-web.md) and [Union deployment](../dacp-union-server/README.md).
-
-## 9. What operations does DACP support, and what are their business names and permissions?
+## 8. What operations does DACP support, and what are their business names and permissions?
 
 | Operation | Business operation name | Access requirements |
 | --- | --- | --- |
@@ -138,13 +185,7 @@ Catalogs, listings and metadata are always public. Item content reads and explic
 
 Filtering, projection, limits and scientific slicing are `item.read` parameters. Business names identify logs, not remote methods or permission identifiers. Dashboards are read-only; configure listeners and firewalls for internal access. Local administration uses `dacp-admin` and `union-admin`. See [access logs](access-logs.md), [authentication and access control](security.md) and [dataset publication policies](dataset-publication.md).
 
-## 10. What is `/etc/dacp/ca.crt`?
-
-It is an example path to a public CA certificate used to validate the remote service's TLS certificate. Use the actual CA certificate path for your deployment. The certificate is not an access token or a private key, and it grants no data-read or Job-execution permissions.
-
-All connections verify the server certificate and hostname. Omit an explicit CA only if the platform trusts the server certificate; configure `ca` for private or self-signed CAs. In Designer connection settings, this path is on the Designer server, not the visitor's computer. Account tokens are configured separately through `token_file`. See [authentication and access control](security.md).
-
-## 11. How can I restrict DACP services to an internal network?
+## 9. How can I restrict DACP services to an internal network?
 
 Configure the DACP, dashboard and S3 listeners separately. For a host with private address `10.0.82.103`:
 
@@ -165,57 +206,52 @@ This is DACP Server configuration. Union declares its advertised address with `p
 
 Binding a private address limits listening interfaces, but does not check request sources. Also restrict the actual DACP, dashboard and S3 ports to approved private source subnets using host firewalls, cloud security groups and network boundary rules. Prevent public port forwarding and proxy exposure, and check IPv6 ingress rules. Restart after configuration changes and verify reachability from both permitted and prohibited networks. `public_host` / `public_url` advertise addresses; they are not access controls. Network restrictions do not replace TLS server identity verification or operation authorization.
 
-## 12. How do CONET, DACP and XStream relate to each other?
+## 10. How do I disable the dashboard Web service?
 
-**XStream supplies data management and local computation, DACP exposes those capabilities over the network, and CONET turns the network capabilities into user-facing applications.**
+**DACP node:** set the following in the node startup configuration and restart the node:
 
-| Project | Role | Main responsibilities |
-|---|---|---|
-| XStream | Dataset management and local dataflow execution engine | DataCatalog—Dataset—Item, format parsing, DataViews, operators, local Job execution and Designer |
-| DACP | Data publication and remote computation service | Network access to datasets and Job execution, authentication and read authorization; Union supplies cross-node collaboration |
-| CONET | Data collaboration network and application platform | Data-center organization, a combined catalog, App Builder, analysis history, data-product publication and sharing, and network visualization |
-
-```mermaid
-flowchart TB
-    U[User] --> C[CONET: applications and data products]
-    C --> D[DACP / Union: remote access and collaboration]
-    D --> X[XStream: dataset management and local execution]
-    X --> F[Files, databases and other data sources]
+```yaml
+web:
+  enabled: false
 ```
 
-For a cross-center analysis:
+The node dashboard is enabled by default, so removing the node's `web` section does not disable it.
 
-1. The user selects a region, uploads a file or supplies parameters in a CONET application.
-2. CONET binds those parameters to a fixed Job and submits it to a DACP Union.
-3. Union plans and splits the Job according to data locations and dispatches sub-jobs to DACP nodes.
-4. Each node executes its local steps with its embedded XStream engine.
-5. CONET presents progress and results, and can publish the resulting data as a DACP Dataset.
+**Union Server:** remove the entire top-level `web` section from its startup configuration, then restart the Union. For example, remove this section:
 
-XStream executes steps locally: reading a remote Item does not automatically push subsequent computation to that server. DACP provides remote invocation and Union provides cross-node planning. CONET supplies application forms, presentation, history and products rather than reimplementing parsing, stream execution or cross-node planning. Its application admission queue complements execution-node resource protection; it does not replace it.
+```yaml
+web:
+  host: 127.0.0.1
+  port: 19880
+```
 
-XStream can run independently on a local machine. DACP can be used without CONET through clients, SDKs or Shell. CONET provides an application-oriented entry point to a DACP network. The diagram shows this application stack, not a requirement that all XStream data access pass through DACP.
+Union starts its dashboard only when that section is present. Its configuration does not accept `web.enabled: false`, `web: false`, or `web: null`.
 
-## 13. How do I configure certificates for a public DACP service?
+Disabling the dashboard closes its HTTP listener and read-only HTTP endpoints. It does not disable the DACP data service, Job execution, Union coordination, execution history, or a separately configured S3 service. The node/Union process must be restarted to apply the change. See [dashboards](node-web.md) and [Union deployment](../dacp-union-server/README.md).
 
-Use a server certificate issued by a publicly trusted CA. Obtain it with an ACME client such as Certbot or acme.sh after proving control of the service domain through an HTTP or DNS challenge. Configure the DACP TLS listener with the server certificate and intermediate certificate chain (commonly `fullchain.pem`) and its private key (commonly `privkey.pem`). Keep the private key on the server, automate renewal, and reload or restart the service after renewal so it serves the new certificate.
+## 11. Do dashboards refresh automatically?
 
-Clients validate the certificate chain, validity period and hostname. When the issuing CA is trusted by the client runtime's default trust store, no explicit `ca` file is needed. For a private CA, distribute its root certificate through a trusted channel and configure `ca`, or install it in the client's managed trust store. Do not disable server verification, including for anonymous catalog access. Keep client trust stores up to date.
+Node and Union dashboards load when opened and update on manual **Refresh** or **Reload**. Changing a page, filter or expanded dataset can load the requested information. The service's background member polling continues independently of browser refresh. The CONET large-screen display retains its automatic updates. See [dashboards](node-web.md).
 
-Certificate verification establishes server identity; an access token authorizes operations. Public catalog browsing still verifies the server, while protected operations additionally require appropriate credentials. Ordinary clients do not need a client certificate. See [authentication and access control](security.md) and [ACME certificate issuance](https://letsencrypt.org/getting-started/).
+## 12. Do steps and cross-node Jobs have time limits?
 
-## 14. What must the server configure to allow domain-name connections?
+There is no separate inter-step idle timeout. A downstream step can wait for upstream data, and upstream steps wait when downstream buffers are full. These waits consume execution time.
 
-For a service named `node.example.com`:
+The default execution limit is 1,800 seconds. Configure `execution_timeout_seconds` on the service; a submitted execution policy can shorten it with `timeout_seconds`. Union passes the remaining allowance to sub-jobs, which are also limited by the node's Union execution settings. Control requests usually have a separate 30-second deadline; data stream calls also have deadlines. Continuous data arrival does not extend a call's deadline. See [execution policies](materialization.md).
 
-1. Create a DNS A record pointing to its public IPv4 address; add an AAAA record only when IPv6 is configured and reachable.
-2. Bind the DACP listener to a reachable local interface, or `0.0.0.0` for all IPv4 interfaces. The listener address remains a local interface address; it need not be the domain name. A listener bound to `127.0.0.1` is local-only.
-3. Install a TLS certificate whose Subject Alternative Name includes `node.example.com`, with its intermediate chain and private key.
-4. Allow the configured TCP port through the firewall, cloud security group and any necessary NAT mapping.
-5. Set DACP Server's `public_host` to `node.example.com`, or Union's `public_url` to `dacp://node.example.com:19860`, using the actual port. Update client, Designer and Union member connection addresses as appropriate.
+## 13. Does a 30-second deadline error mean the Job ran for too long?
 
-Clients can then connect using a URI such as `dacp://node.example.com:19860/dataset/item`. A certificate issued only for a domain does not validate a connection made directly to its IP address. DNS changes alone do not make an existing IP-only certificate valid for the domain.
+Not necessarily. `CallOptions deadline exceeded after 29.99…s` indicates a particular remote call exceeded its deadline, rather than the overall Job reaching its execution limit. Check the business operation, request ID and Job/execution ID in the Union and node runtime logs. Increasing `execution_timeout_seconds` alone does not change the control-call deadline.
 
-DACP can terminate TLS directly; a reverse proxy is optional. If one is used, it must support Arrow Flight's gRPC/HTTP/2 traffic and preserve the required security boundaries. Configure separately exposed dashboard and S3 endpoints independently.
+The node acknowledges an accepted start request before resolving operators and preparing execution units in the background. Acceptance does not mean initialization succeeded. Inspect subsequent Job status. An already cancelled, expired or completed sub-job cannot start again. “No step snapshots were recorded” means the dashboard has no step observations; it does not prove the node never started work.
+
+## 14. Where are request logs and complete exception stacks?
+
+Node access logs use JSON Lines in `access_log.directory`, or `.dacp-access/<port>/` relative to the working directory by default. They record completed requests asynchronously, including request ID, available Job ID, operation, status and duration. A start timestamp is not an independently emitted request-arrival record.
+
+Operations use business names such as `catalog.list`, `item.describe`, `item.read`, `job.submit`, `job.prepare`, `job.start`, `job.status` and `job.cancel`. These differ from authorization permissions such as `data:read`. The separate transport authentication audit still records RPC methods.
+
+Server runtime logs contain full exception stacks and cause chains with correlation identifiers. Before a Job exists, its Job ID is unavailable. Clients receive concise errors; access logs do not contain stacks. See [access logs](access-logs.md).
 
 ## 15. How can DACP dynamically publish Datasets and Items from an existing Java application?
 
@@ -244,25 +280,6 @@ data_catalog:
 `business-catalog` and `source.endpoint` are illustrative settings owned and validated by your plugin, not a built-in HTTP catalog connector. Do not combine `data_catalog` with a nonempty static `datasets` configuration. The adapter owns its refresh/cache policy, backend timeouts, cancellation checks, concurrent access and resource cleanup. Backend discovery failures must not be reported as an empty catalog. Dataset descriptions require public `title` and `description` fields; backend credentials and private storage settings must not appear in public metadata.
 
 See [DACP plugin installation](plugins.md), [dynamic catalogs](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-catalogs.md), [Dataset providers](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-providers.md) and [Item/stream access](https://github.com/rdcn-link/xstream-codex/blob/main/docs/dataset-access.md). The existing complete provider examples use Scala; a complete pure-Java integration example is not currently provided.
-
-## Connection setup at a glance
-
-```mermaid
-sequenceDiagram
-    participant Admin as Service administrator
-    participant CA as Public certificate authority
-    participant Server as DACP service
-    participant Client as Client
-    Admin->>CA: Prove domain control and request certificate
-    CA-->>Admin: Server certificate and intermediate chain
-    Admin->>Server: Configure certificate chain and private key
-    Client->>Server: Connect using certificate domain
-    Server-->>Client: Present certificate chain
-    Client->>Client: Check trust chain, validity and hostname
-    Client->>Server: Request public metadata, or use token for protected operations
-```
-
-The private key stays on the server. Client trust comes from its default trust store or an explicitly trusted private CA, not simply from accepting whatever certificate the server sends. See questions 13 and 14 for deployment details.
 
 ## 16. How can I tune or extend physical plan optimization?
 
