@@ -3,7 +3,7 @@ package dacp
 import _root_.xstream.connector.dacp.wire.{ArrowViewWire}
 
 import _root_.xstream.engine.{EngineEnvironment,ExecutionHistory,InputBinding,Jobs,Task}
-import _root_.xstream.execution.{ExecutionStoreDefinition,ExecutionStoreProvider,FrameSource,InferenceResult,MaterializationStore,MaterializationStoreDefinition,MaterializationStoreProvider,OperatorExecutor,StreamCancel,StreamDescriptor,StructureInference}
+import _root_.xstream.execution.{ExecutionStoreDefinition,ExecutionStoreProvider,FrameSource,InferenceResult,OperatorExecutor,StreamCancel,StreamDescriptor,StructureInference}
 
 import _root_.xstream.operator.inference._
 
@@ -29,8 +29,9 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
                   remoteOperatorLibraryUrls: Seq[String] = Seq.empty, operatorCache: Path = Path.of(".operator-cache"),
                   operatorMaxBytes: Long = 8L * 1024 * 1024 * 1024,
                   sources: Map[String, SourceDefinition] = Map.empty, countFileRecordsOnStartup: Boolean = false, union: Option[NodeUnionSettings] = None, executionStore: Option[ExecutionStoreDefinition] = None,
-                  dataCatalog: Option[DataCatalogDefinition] = None, catalogOverride: Option[DataCatalog] = None, pluginEnvironment: Option[PluginEnvironment] = None, pluginDirectory: Option[Path] = None, ownsPluginEnvironment:Boolean=false, accessLogDirectory:Option[Path]=None, accessLogMaxBytes:Long=64L*1024*1024, operatorFusionEnabled:Boolean=true, web:NodeWebSettings=NodeWebSettings(), materializationStore:Option[MaterializationStoreDefinition]=None, executionTimeoutSeconds:Long=1800, s3:S3Settings=S3Settings(),credentialDirectory:Option[Path]=None,providedCredentials:Option[dacp.union.Credentials]=None,inferenceWorkers:InferenceWorkerSettings=InferenceWorkerSettings(),publicPort:Option[Int]=None,remoteItemCredentials:Map[String,Path]=Map.empty,override val executionResourceLimits:_root_.xstream.engine.ExecutionResourceLimits=_root_.xstream.engine.ExecutionResourceLimits()) extends CatalogContext with EngineEnvironment with AutoCloseable {
+                  dataCatalog: Option[DataCatalogDefinition] = None, catalogOverride: Option[DataCatalog] = None, pluginEnvironment: Option[PluginEnvironment] = None, pluginDirectory: Option[Path] = None, ownsPluginEnvironment:Boolean=false, accessLogDirectory:Option[Path]=None, accessLogMaxBytes:Long=64L*1024*1024, operatorFusion:String="auto", web:NodeWebSettings=NodeWebSettings(), executionTimeoutSeconds:Long=1800, s3:S3Settings=S3Settings(),credentialDirectory:Option[Path]=None,providedCredentials:Option[dacp.union.Credentials]=None,inferenceWorkers:InferenceWorkerSettings=InferenceWorkerSettings(),publicPort:Option[Int]=None,remoteItemCredentials:Map[String,Path]=Map.empty,override val executionResourceLimits:_root_.xstream.engine.ExecutionResourceLimits=_root_.xstream.engine.ExecutionResourceLimits(),checkpointStoreDefinition:Option[_root_.xstream.execution.CheckpointStoreDefinition]=None) extends CatalogContext with EngineEnvironment with AutoCloseable {
   override def allowLocalOperatorManifests:Boolean=false
+  require(_root_.xstream.engine.FusionPolicy.modes(operatorFusion),"operator_fusion must be isolated, fused or auto")
   override def localOperatorLibrary:Path=Path.of(".")
   override def inferenceScope:String = if(dacp.union.Rpc.isAuthenticatedCall){
     val p=dacp.union.Rpc.principal
@@ -64,10 +65,11 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
     if(inferencePool==null)inferencePool=new InferenceWorkerPool(inferenceWorkers)
     inferencePool
   }
-  private val materializationStores=scala.collection.mutable.Map.empty[MaterializationStoreDefinition,MaterializationStore]
-  def openMaterialization(d:MaterializationStoreDefinition):MaterializationStore=synchronized {
+  private var activeCheckpointStore:Option[_root_.xstream.execution.CheckpointStore]=None
+  override def checkpointStore:Option[_root_.xstream.execution.CheckpointStore]=synchronized {
     require(!closed.get(),"configuration is closed")
-    materializationStores.getOrElseUpdate(d,plugins.byId(classOf[MaterializationStoreProvider],d.provider).open(d.settings))
+    if(activeCheckpointStore.isEmpty)activeCheckpointStore=checkpointStoreDefinition.map(d=>plugins.byId(classOf[_root_.xstream.execution.CheckpointStoreProvider],d.provider).open(d.settings))
+    activeCheckpointStore
   }
   private var historyStore:ExecutionHistory=null
   def executionHistory:ExecutionHistory=synchronized {
@@ -89,7 +91,7 @@ case class Config(host: String, port: Int, publicHost: String, datasets: Map[Str
   }
   def close():Unit=if(closed.compareAndSet(false,true)) {
     var failure:Throwable=null
-    val owned=synchronized {Option(inferencePool).toSeq++Option(catalogLease).orElse(Option(activeCatalog)).orElse(suppliedCatalog).toSeq++Option(historyStore).toSeq++materializationStores.values.toSeq++Option(accessLogger).toSeq++(if(ownsPlugins)Option(activePlugins).orElse(suppliedPlugins).toSeq else Seq.empty)}
+    val owned=synchronized {Option(inferencePool).toSeq++Option(catalogLease).orElse(Option(activeCatalog)).orElse(suppliedCatalog).toSeq++Option(historyStore).toSeq++activeCheckpointStore.toSeq++Option(accessLogger).toSeq++(if(ownsPlugins)Option(activePlugins).orElse(suppliedPlugins).toSeq else Seq.empty)}
     owned.foreach(p=>try p.close() catch{case scala.util.control.NonFatal(e)=>if(failure==null)failure=e else failure.addSuppressed(e)})
     if(providedCredentials.isEmpty)credentials.close()
     if(failure!=null)throw failure
@@ -151,8 +153,8 @@ object Config {
     val m = try new Yaml(options).load[java.util.Map[String,Object]](in).asScala finally in.close()
     val settings = Set("host", "port", "public_host", "public_port", "datasets", "sources",
       "tls_cert", "tls_key", "tls_ca", "credential_directory", "batch_size", "byte_chunk", "infer_sample",
-      "execution_resources", "remote_item_credentials", "inference_workers", "operator_fusion_enabled", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
-      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "union", "execution_store", "data_catalog", "access_log", "web", "s3", "materialization_store", "execution_timeout_seconds")
+      "execution_resources", "remote_item_credentials", "inference_workers", "operator_fusion", "task_peers", "task_input_prefixes", "max_concurrent_tasks",
+      "remote_operator_library_urls", "operator_cache", "operator_max_bytes", "count_file_records_on_startup", "plugin_directory", "union", "execution_store", "checkpoint_store", "data_catalog", "access_log", "web", "s3", "execution_timeout_seconds")
     require(m.keySet.subsetOf(settings), "unknown server setting")
     val environment=providedPlugins.getOrElse(new PluginEnvironment(m.get("plugin_directory").map(v=>Path.of(v.toString))))
     try {
@@ -185,11 +187,10 @@ object Config {
       strings("task_peers"), strings("task_input_prefixes"), n("max_concurrent_tasks",2), strings("remote_operator_library_urls"),
       Path.of(m.get("operator_cache").map(_.toString).getOrElse(".operator-cache")),
       m.get("operator_max_bytes").map(_.toString.toLong).getOrElse(8L * 1024 * 1024 * 1024), sources,
-      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), m.get("union").map(v=>NodeUnionSettings.read(Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),m.get("execution_store").map {v=>val raw=v.asInstanceOf[java.util.Map[String,Object]].asScala;require(raw.keySet==Set("provider","settings"),"execution_store requires provider and settings");ExecutionStoreDefinition(raw("provider").toString,raw("settings").asInstanceOf[java.util.Map[String,Object]].asScala.toMap)},catalogDefinition,catalogOverride,Some(environment),ownsPluginEnvironment=providedPlugins.isEmpty || ownsProvidedPlugins,accessLogDirectory=access.get("directory").map(v=>Path.of(v.toString)),accessLogMaxBytes=access.get("max_bytes").map(_.toString.toLong).getOrElse(64L*1024*1024),executionResourceLimits=_root_.xstream.engine.ExecutionResourceLimits.parse(m.get("execution_resources").map(v=>Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v)).getOrElse(Data.mapper.createObjectNode())),operatorFusionEnabled=m.get("operator_fusion_enabled").map { value=>require(value.isInstanceOf[java.lang.Boolean],"operator_fusion_enabled must be a boolean");value.asInstanceOf[java.lang.Boolean].booleanValue }.getOrElse(true),web=web,remoteItemCredentials=m.get("remote_item_credentials").map { value=>require(value.isInstanceOf[java.util.Map[_,_]],"remote_item_credentials must map origins to token files");value.asInstanceOf[java.util.Map[String,Object]].asScala.map{case(origin,file)=>DacpUri.node(origin)->Path.of(file.toString)}.toMap }.getOrElse(Map.empty),publicPort=m.get("public_port").map {v=>require(v.isInstanceOf[java.lang.Integer],"public_port must be an integer");v.asInstanceOf[java.lang.Integer].intValue},inferenceWorkers=InferenceWorkerSettings.read(m.get("inference_workers")),s3=S3Settings.read(m.get("s3")),credentialDirectory=m.get("credential_directory").map(v=>Path.of(v.toString)),executionTimeoutSeconds=m.get("execution_timeout_seconds").map(v=>dacp.union.Json.number(Data.mapper.createObjectNode().set[com.fasterxml.jackson.databind.JsonNode]("timeout",Data.mapper.valueToTree(v)),"timeout",1,86400)).getOrElse(1800L),materializationStore=m.get("materialization_store").map { v=>
-        val n=Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v)
-        dacp.union.Json.fields(n,Set("provider","settings"));require(n.path("settings").isObject,"materialization settings must be object")
-        MaterializationStoreDefinition(dacp.union.Json.text(n,"provider"),Data.mapper.convertValue(n.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap)
-      })
+      m.get("count_file_records_on_startup").exists(_.toString.toBoolean), m.get("union").map(v=>NodeUnionSettings.read(Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),m.get("execution_store").map {v=>val raw=v.asInstanceOf[java.util.Map[String,Object]].asScala;require(raw.keySet==Set("provider","settings"),"execution_store requires provider and settings");ExecutionStoreDefinition(raw("provider").toString,raw("settings").asInstanceOf[java.util.Map[String,Object]].asScala.toMap)},catalogDefinition,catalogOverride,Some(environment),ownsPluginEnvironment=providedPlugins.isEmpty || ownsProvidedPlugins,accessLogDirectory=access.get("directory").map(v=>Path.of(v.toString)),accessLogMaxBytes=access.get("max_bytes").map(_.toString.toLong).getOrElse(64L*1024*1024),executionResourceLimits=_root_.xstream.engine.ExecutionResourceLimits.parse(m.get("execution_resources").map(v=>Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v)).getOrElse(Data.mapper.createObjectNode())),checkpointStoreDefinition=m.get("checkpoint_store").map {v=>
+        val d=Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v);dacp.union.Json.fields(d,Set("provider","settings"));require(d.path("settings").isObject,"checkpoint settings must be an object")
+        _root_.xstream.execution.CheckpointStoreDefinition(dacp.union.Json.text(d,"provider"),Data.mapper.convertValue(d.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap)
+      },operatorFusion=_root_.xstream.engine.FusionPolicy.parse(m.get("operator_fusion").map(v=>Data.mapper.valueToTree[com.fasterxml.jackson.databind.JsonNode](v))),web=web,remoteItemCredentials=m.get("remote_item_credentials").map { value=>require(value.isInstanceOf[java.util.Map[_,_]],"remote_item_credentials must map origins to token files");value.asInstanceOf[java.util.Map[String,Object]].asScala.map{case(origin,file)=>DacpUri.node(origin)->Path.of(file.toString)}.toMap }.getOrElse(Map.empty),publicPort=m.get("public_port").map {v=>require(v.isInstanceOf[java.lang.Integer],"public_port must be an integer");v.asInstanceOf[java.lang.Integer].intValue},inferenceWorkers=InferenceWorkerSettings.read(m.get("inference_workers")),s3=S3Settings.read(m.get("s3")),credentialDirectory=m.get("credential_directory").map(v=>Path.of(v.toString)),executionTimeoutSeconds=m.get("execution_timeout_seconds").map(v=>dacp.union.Json.number(Data.mapper.createObjectNode().set[com.fasterxml.jackson.databind.JsonNode]("timeout",Data.mapper.valueToTree(v)),"timeout",1,86400)).getOrElse(1800L))
     try {config.prepareCatalog();config} catch {case scala.util.control.NonFatal(t)=>try config.close() catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)};throw t}
     }catch{case scala.util.control.NonFatal(t)=>if(providedPlugins.isEmpty || ownsProvidedPlugins)try environment.close()catch{case scala.util.control.NonFatal(e)=>t.addSuppressed(e)};throw t}
   }

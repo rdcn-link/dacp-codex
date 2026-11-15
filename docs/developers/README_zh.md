@@ -19,7 +19,7 @@ flowchart TD
 | 任务 | 示例与参考 |
 |---|---|
 | 发现数据并消费远程流 | [Python 示例](../users/README_zh.md#浏览与读取)、[Scala SDK](../../dacp-client-scala/README_zh.md) |
-| 提交 Job 并消费执行尝试与结果事件 | [Job 提交](../jobs_zh.md)、[执行策略](../materialization_zh.md) |
+| 提交 Job 并消费执行尝试与结果事件 | [Job 提交](../jobs_zh.md)、[执行策略](../execution-policy_zh.md) |
 | 处理认证与能力信息 | [安全与角色检查](../security_zh.md)、[协议](../protocol_zh.md) |
 | 集成成员协作操作 | [Python 协作 SDK](../../dacp-collaboration-client/README_zh.md)、[Scala 协作 SDK](../../dacp-collaboration-client-scala/README_zh.md) |
 

@@ -494,7 +494,7 @@ def test_failed_automatic_selection_preserves_existing_dataset(browser,monkeypat
     assert bad.closed and 'Error:' in out.getvalue()
 
 
-def test_submit_policy_and_replay_use_bound_server(browser, monkeypatch, tmp_path):
+def test_submit_policy_uses_bound_server(browser, monkeypatch, tmp_path):
     import json
     b, ds, out = browser
     job = tmp_path / 'workflow.yaml'
@@ -506,9 +506,6 @@ def test_submit_policy_and_replay_use_bound_server(browser, monkeypatch, tmp_pat
     b.onecmd(f'submit {job} --policy {policy}')
     assert calls[0][0][:2] == ('dacp://localhost', 'name: example')
     assert calls[0][1]['execution_policy'] == {'max_retries': 2, 'timeout_seconds': 120}
-    b.onecmd('replay execution1')
-    assert calls[1][0][:2] == ('dacp://localhost', '')
-    assert calls[1][1]['replay_from'] == 'execution1'
 
 
 def test_union_dataset_names_are_used_directly(browser, monkeypatch):

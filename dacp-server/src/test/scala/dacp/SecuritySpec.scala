@@ -15,7 +15,9 @@ import org.apache.arrow.vector.{VectorSchemaRoot,VarBinaryVector}
 import org.scalatest.funsuite.AnyFunSuite
 import scala.jdk.CollectionConverters._
 
-class SecuritySpec extends AnyFunSuite {
+class SecuritySpec extends AnyFunSuite with org.scalatest.BeforeAndAfterAll {
+  private val endpointRepository=new TestEndpointRepository()
+  override def afterAll():Unit=try endpointRepository.close()finally super.afterAll()
   private def fixture(run:(Config,DacpServer,RootAllocator)=>Unit):Unit=fixturePolicy("""{"policy":"public"}""")(run)
   private def fixturePolicy(policy:String)(run:(Config,DacpServer,RootAllocator)=>Unit):Unit={
     val dir=Files.createTempDirectory("security-contract-");val socket=new java.net.ServerSocket(0);val port=socket.getLocalPort;socket.close()
@@ -36,7 +38,7 @@ class SecuritySpec extends AnyFunSuite {
         }
       }
     }
-    val c=Config("localhost",port,"localhost",Map.empty,SecurityTestSupport.certificate,SecurityTestSupport.key,SecurityTestSupport.certificate,catalogOverride=Some(catalog),credentialDirectory=Some(dir.resolve("credentials")),web=NodeWebSettings(enabled=false),s3=S3Settings(enabled=false),accessLogDirectory=Some(dir.resolve("access")),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->dir.resolve("history").toString))))
+    val c=Config("localhost",port,"localhost",Map.empty,SecurityTestSupport.certificate,SecurityTestSupport.key,SecurityTestSupport.certificate,catalogOverride=Some(catalog),remoteOperatorLibraryUrls=Seq(endpointRepository.url),operatorCache=dir.resolve("operators"),credentialDirectory=Some(dir.resolve("credentials")),web=NodeWebSettings(enabled=false),s3=S3Settings(enabled=false),accessLogDirectory=Some(dir.resolve("access")),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->dir.resolve("history").toString))))
     c.credentials.setRoles("alice",Set("reader"))
     val server=DacpServer.builder().config(c).build().start();val allocator=new RootAllocator()
     try run(c,server,allocator)finally {server.close();allocator.close();Data.deleteTree(dir)}

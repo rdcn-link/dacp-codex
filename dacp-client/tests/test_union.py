@@ -141,20 +141,17 @@ def test_record_results_validate_schema_and_close_flight_reader():
     assert not union.calls
 
 
-def test_submit_policy_and_replay_use_separate_flight_controls():
+def test_submit_policy_uses_flight_controls():
     client = Union.__new__(Union)
     calls = []
     def action(name, body):
         calls.append((name, body))
         return {'job_id': 'execution-2'}
     client._action = action
-    policy = {'materialization': {'allowed': False, 'default': 'stream'}}
+    policy = {'max_retries': 1}
     submitted = client.submit('name: example', execution_policy=policy)
     assert submitted.job_id == 'execution-2'
     assert calls[-1] == ('submit', {'job_yaml': 'name: example', 'execution_policy_yaml': yaml.safe_dump(policy, sort_keys=False)})
-    replayed = submitted.replay(steps=['ta'])
-    assert replayed.job_id == 'execution-2'
-    assert calls[-1] == ('replay_job', {'job_id': 'execution-2', 'steps': ['ta']})
     with pytest.raises(ValueError, match='mapping'):
         client.submit('name: example', execution_policy='{}')
 

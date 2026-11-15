@@ -97,7 +97,7 @@ try result.foreach(println) finally result.close()
 val execution = union.submit(workflow, variables = variables)
 ```
 
-The client reads the variable file; it need not exist on the node filesystem. The server records and executes the resolved workflow, so automatic retries and replays retain the original resolved values. Replays cannot override variables; submit a new workflow to use new values. Resolved values may appear in job history and dashboards, so do not put passwords or other secrets in variables.
+The client reads the variable file; it need not exist on the node filesystem. The server records and executes the resolved workflow, so automatic whole-Job retries retain the original resolved values. Submit a new workflow to use new values. Resolved values may appear in job history and dashboards, so do not put passwords or other secrets in variables.
 
 Workflows, execution policies and variables use YAML and can be submitted together:
 

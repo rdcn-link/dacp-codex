@@ -39,7 +39,6 @@ message OperatorRequest {
   }
   bytes execution_policy_yaml = 3;
   bool retry_aware = 4;
-  string replay_from = 5;
 }
 
 // Public records query; literal values are canonical text with an explicit type.

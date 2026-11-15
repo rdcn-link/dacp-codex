@@ -127,12 +127,9 @@ class Job:
 
     @staticmethod
     def run(node, yaml, *, tls_root_certs=None, cert_chain=None, private_key=None, timeout=3600,
-            execution_policy=None, on_retry=None, replay_from=None, variables=None, token=None):
-        if replay_from is not None and variables is not None:
-            raise ValueError("replay uses the original resolved variables")
+            execution_policy=None, on_retry=None, variables=None, token=None):
         yaml = resolve_variables(yaml, variables)
-        if replay_from is None:
-            remote_job(yaml)
+        remote_job(yaml)
         u = urlsplit(node)
         if (u.scheme != 'dacp' or not u.hostname or u.username or u.password
                 or u.path not in ('', '/') or u.query or u.fragment):
@@ -142,7 +139,6 @@ class Job:
         if on_retry is not None and not callable(on_retry):
             raise TypeError('on_retry must be callable')
         body = pb.OperatorRequest(job_yaml=yaml, retry_aware=on_retry is not None,
-                                  replay_from=replay_from or '',
                                   execution_policy_yaml=(yaml_document.dump(execution_policy).encode()
                                                          if execution_policy is not None else b'')).SerializeToString()
         if len(body) > 1024*1024:
@@ -157,8 +153,3 @@ class Job:
         except BaseException:
             client.close()
             raise
-
-    @staticmethod
-    def replay(node, execution_id, **options):
-        """Replay the original job using its committed materialized boundaries."""
-        return Job.run(node, '', replay_from=execution_id, **options)

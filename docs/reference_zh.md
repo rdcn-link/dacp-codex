@@ -45,6 +45,7 @@ protoc -I proto --python_out=dacp-client/dacp proto/dacp.proto
 | `task_peers` | 允许分发任务的节点 origin；自身始终允许，无中心发现服务 |
 | `task_input_prefixes` | 可选的执行节点输入 URI 前缀限制；省略或为空时不增加前缀限制 |
 | `max_concurrent_tasks` | 本地任务及控制请求并发上限（默认 2）；满载立即返回 UNAVAILABLE |
+| `checkpoint_store` | 可选的检查点存储实现及私有配置；执行策略指定输出检查点时必须配置，参见[执行策略](execution-policy_zh.md) |
 
 节点发布的目录、Item 列表及元信息允许通过 TLS 匿名访问；数据读取需要 reader 或 runner，执行和结构推导需要 runner。Union 协作使用节点签发的服务凭据和双向 TLS；节点间流还须匹配精确执行计划。
 

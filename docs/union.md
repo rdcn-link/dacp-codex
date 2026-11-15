@@ -30,13 +30,13 @@ The Job's `timeout_seconds` budget pauses during each environment-preparation ph
 
 Ordinary clients use TLS and bearer tokens. Union-to-member calls use mutual TLS plus node-issued service credentials bound to the Union ID and certificate fingerprint. Trusting a CA alone grants no collaboration permissions. Members trust all operations authorized through their Union service credential. Peer data streams are limited to exact execution plans. Local credential revocation or expiry stops active collaborative work. See [authentication and access control](security.md) for credential administration and different ordinary-token revocation semantics.
 
-Membership comes only from configuration, without remote invitation or administration APIs. Union identity, member pins, public namespace routes and execution history persist. Unavailable members do not prevent startup and are retried by polling. Restart does not recover running executions; committed materializations support explicit replay.
+Membership comes only from configuration, without remote invitation or administration APIs. Union identity, member pins, public namespace routes and execution history persist. Unavailable members do not prevent startup and are retried by polling. Restart does not recover running executions; rerunning a saved Job starts a complete new execution.
 
 ## Execution and streams
 
 Clients submit standard Jobs with public Union input URIs, optional logical step.node and an explicit `client_sink@1.0` step when results must return to the caller. Asynchronous submission uses the same public namespace. See [Union proxy service](union-proxy.md). X reuses DAG validation and groups steps into node subjobs. Union accepts only public versioned repository operators. Inputs use upstream `step[:port]` references; external Items enter through `item_source@1.0` with `params.uri/view`. Foreign member streams use Flight. Nodes read local Items through DatasetAccess, without downloading through X or Flight. Each output connection has one consumer.
 
-X prepares every subjob before starting any. Nodes check capacity and authorization and reject plans they cannot execute. A's output binds the execution/step/port to B's certificate identity; B pulls it over mTLS. Local connections use bounded queues; cross-node streams use Flight `DoGet` with backpressure. OperatorFrames are reused: start/data/end is followed by complete only after successful execution; failures terminate with a Flight error. After complete, consumers must still verify successful Flight end-of-stream. Outputs create no Dataset and stream directly by default; explicit policy can materialize selected outputs on the producing node for replay.
+X prepares every subjob before starting any. Nodes check capacity and authorization and reject plans they cannot execute. A's output binds the execution/step/port to B's certificate identity; B pulls it over mTLS. Local connections use bounded queues; cross-node streams use Flight `DoGet` with backpressure. OperatorFrames are reused: start/data/end is followed by complete only after successful execution; failures terminate with a Flight error. After complete, consumers must still verify successful Flight end-of-stream. Outputs create no Dataset and stream directly by default; the application controls final result publication through its Sink receiver.
 
 Final results travel from a node through X's bounded queue to the client. Status is independent and does not wait for a slow result reader. Connections, execution, and waiting for results have timeouts. Explicit cancellation, execution failure, or interruption of final result consumption cancels the entire Job. Clients can connect to results after submission but before timeout; disconnecting a status subscription alone does not cancel execution.
 
@@ -67,7 +67,7 @@ steps:
 
 Local inputs use `source: read:result`; `inputs` alone establishes the connection without a local identity digest. Cross-node inputs use location objects containing `origin`, `producer_identity`, `task` and `port`. Object-form local inputs are rejected.
 
-`output_routes` declares only outputs read remotely over Flight, including final outputs returned to U. Omit it when there are no remote outputs. Each value must contain exactly `consumer_identity`. One output port cannot have both local and remote consumers. Nodes derive connected ports from the union of local `inputs` and remote `output_routes` for execution, materialization and replay. Local streams connect only within the node and cannot be read through Flight. Actual representations come from operator stream headers, not routing declarations.
+`output_routes` declares only outputs read remotely over Flight, including final outputs returned to U. Omit it when there are no remote outputs. Each value must contain exactly `consumer_identity`. One output port cannot have both local and remote consumers. Nodes derive connected ports from the union of local `inputs` and remote `output_routes` for execution and checkpoint recovery. Local streams connect only within the node and cannot be read through Flight. Actual representations come from operator stream headers, not routing declarations.
 
 For example, A’s read step has no `output_routes`. Its parse step consumes the reader through `inputs: {source: read:result}` and declares B’s identity for its remote `result` output.
 
@@ -77,17 +77,13 @@ U prepares and starts A, B and C. Read requests connect U→C→B→A, while dat
 
 X periodically polls member capacity and health. During execution it queries subjob status and produces Flight events. Events have monotonically increasing sequence numbers and a bounded in-memory window. A stale cursor receives an explicit gap plus current snapshot; snapshots are also available from the status endpoint. Events include Step states and per-port cumulative payload_bytes, records where applicable, remote_payload_bytes, and last_activity_ms. Byte counters measure data frame payloads, excluding TLS/gRPC overhead. Sending and receiving are counted separately and must not be summed as unique traffic. Unknown totals do not produce percentages; rates can be calculated from successive counters.
 
-The implementation does not promise automatic running-job recovery, internal checkpoints, fan-out, arbitrary scheduling optimization, scientific array representations, or cross-node snapshot consistency.
+The implementation does not promise automatic running-job recovery, fan-out, arbitrary scheduling optimization, scientific array representations, or cross-node snapshot consistency.
 
-## Execution policy, output materialization, and replay
+## Retry, output checkpoints and Sink commit
 
-Union accepts a separate `execution_policy` JSON alongside `job_yaml`. Streaming remains the default. Selected connected outputs are saved on their producing node through `MaterializationStoreProvider`; all selected ports commit together after the step succeeds and inputs are verified. `materialization.allowed: false` prohibits engine output materialization and rejects conflicting defaults or step overrides.
+Union uses a separate execution policy for retries, output checkpoints, timeout and resources. Failed attempts stop every member and confirm staged Sink cleanup. Valid explicit checkpoints replace covered upstream work; other branches rerun. Automatic retries stop once commit begins. See [execution policies and client examples](execution-policy.md).
 
-The owner can explicitly request `replay_job` after the source execution terminates. This creates a new execution, reuses complete, unexpired selected outputs, prunes unnecessary upstream work, and reruns downstream steps. Final outputs can also be replayed. Original and effective policies, source links, and replay state are retained in history. Nodes must enable a storage plugin and revalidate authorization. Read [execution policy, storage configuration, client examples, and plugin contracts](materialization.md).
-
-This is step-boundary replay, not internal operator checkpoints, byte-offset resume, or restoration of running processes. Expired, incomplete, or corrupt artifacts cannot successfully replay. Standard `Job.run` is also supported at Union, sharing its scheduling and execution policy engine.
-
-Top-level `max_retries` (0–10, default 0) bounds execution retries. Results remain incremental; consumers must provide a retry callback to discard prior partial output. Materialization is optional. `timeout_seconds` covers resource waits and all attempts and cannot exceed the server limit. See [execution policy](materialization.md).
+Top-level `max_retries` (0–10, default 0) bounds execution retries. Results remain incremental; consumers must provide a retry callback to discard prior partial output. Materialization is optional. `timeout_seconds` covers resource waits and all attempts and cannot exceed the server limit. See [execution policy](execution-policy.md).
 
 ## Administration website
 

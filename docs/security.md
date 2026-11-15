@@ -19,7 +19,7 @@ Authorization takes place on the server. Ordinary and collaboration SDKs are sep
 
 Catalogs, Dataset Item lists, Folder child lists and Item metadata (Views, Schema, size, creation and modification times and already available record counts) are anonymous over TLS. Metadata access never requests an explicit count scan. Data streams, queries and computed counts follow dataset publication policies; Job operations require a token. Individual client certificates are not required. All connections, including anonymous access, verify the server certificate and hostname. Without an explicit CA, platform trust roots are used; private or self-signed CAs must be provided explicitly. Anonymous connections never bypass verification. Union mutual TLS and certificate bindings remain enforced.
 
-Tokens belong to a stable subject, which can hold multiple tokens. Jobs, status, results, cancellation and replay are authorized by job ownership. Token replacement or rotation must preserve the subject and historical job ownership.
+Tokens belong to a stable subject, which can hold multiple tokens. Jobs, status, results, cancellation are authorized by job ownership. Token replacement or rotation must preserve the subject and historical job ownership.
 
 Administrators create, list, revoke and rotate credentials using local server tooling. Tokens contain at least 256 bits of randomness, are shown only when created, and are stored as digests. Changes reload automatically. The server checks credentials in memory at the start of each RPC. Revoking or expiring an ordinary token leaves admitted RPCs and result streams running; subsequent RPCs on the same connection must pass authentication again.
 

@@ -21,7 +21,9 @@ datasets:
 
 `DacpServer.builder().plugins(environment, owned = false)` 注入应用持有的 `PluginEnvironment`，该环境不会随服务器关闭。请求结束时释放访问句柄，服务器关闭时释放自身拥有的资源。
 
-执行历史可配置 `execution_store: {provider: file, settings: {directory: /var/lib/dacp/executions}}`。file 实现位于 XStream 的 `plugins/xstream-plugin-execution-file`。接口、原子性与物化规则由 XStream 定义。
+执行历史可配置 `execution_store: {provider: file, settings: {directory: /var/lib/dacp/executions}}`。file 实现位于 XStream 的 `plugins/xstream-plugin-execution-file`。执行历史存储契约和 Sink 生命周期由 XStream 定义。
+
+产生检查点的节点通过 `checkpoint_store` 指定插件实现和管理员控制的目录。同一文件插件提供 `CheckpointStoreProvider`；配额、生命周期和配置参见[执行策略与检查点](execution-policy_zh.md)。
 
 ## 服务适配
 

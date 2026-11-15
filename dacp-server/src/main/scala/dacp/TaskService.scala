@@ -40,23 +40,14 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
       val bytes=reader.getDescriptor.getCommand
       require(bytes.length<=1024*1024,"request exceeds 1 MiB")
       val request=Metadata.OperatorRequest.parseFrom(bytes)
-      require(request.hasJobYaml || (request.getExecutionPolicyYaml.isEmpty && !request.getRetryAware && request.getReplayFrom.isEmpty),"worker requests cannot contain job policy")
+      require(request.hasJobYaml || (request.getExecutionPolicyYaml.isEmpty && !request.getRetryAware),"worker requests cannot contain job policy")
       writer.start(root)
       def emit(f:OperatorFrame):Unit={metric("outputs",f);FlightFrames.send(writer,root,f,cancel)}
       if(request.hasJobYaml) {
         require(jobs.tryAcquire(),"job capacity reached");acquired=jobs
         record.update("running",dacp.union.Json.obj().put("request_type","job"))
-        val replay=Option(request.getReplayFrom).filter(_.nonEmpty)
-        val previous=replay.map { id=>
-          val h=config.executionHistory.get(id).getOrElse(throw new IllegalArgumentException("unknown execution"))
-          require(h.path("owner").asText==owner,"FORBIDDEN: execution owner differs")
-          require(Set("succeeded","failed","cancelled","expired","interrupted")(h.path("state").asText),"execution is still active")
-          require(h.path("request_type").asText=="job","only jobs can be replayed");h
-        }
-        val yaml=previous.map(_.path("job_yaml").asText).getOrElse(request.getJobYaml)
-        require(previous.isEmpty || request.getJobYaml.isEmpty,"replay uses original job definition")
-        val raw=if(!request.getExecutionPolicyYaml.isEmpty)dacp.union.YamlDocument.parse(request.getExecutionPolicyYaml.toStringUtf8)
-          else previous.map(_.path("execution_policy")).getOrElse(dacp.union.Json.obj())
+        val yaml=request.getJobYaml
+        val raw=if(!request.getExecutionPolicyYaml.isEmpty)dacp.union.YamlDocument.parse(request.getExecutionPolicyYaml.toStringUtf8)else dacp.union.Json.obj()
         _root_.xstream.execution.RemoteJobPolicy.validateYaml(yaml)
         val plan=Jobs.resolveReads(Jobs.parse(yaml),config.uri(""));plan.steps.foreach(t=>Jobs.authorizeSource(config,t));plan.steps.foreach(t=>DatasetPublication.requireTask(config,allocator,t));val policy=ExecutionPolicy.parse(raw,plan)
         _root_.xstream.engine.RepositoryEndpoints.validate(config,plan,()=>cancel.active())
@@ -68,18 +59,18 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
         detail.put("execution_policy_yaml",dacp.union.YamlDocument.dump(policy.submitted))
         detail.set[com.fasterxml.jackson.databind.JsonNode]("execution_policy",policy.submitted)
         val effective=policy.effective.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();effective.put("timeout_seconds",timeout)
-        detail.set[com.fasterxml.jackson.databind.JsonNode]("effective_execution_policy",effective);replay.foreach(detail.put("replay_of",_));record.update("running",detail)
+        detail.set[com.fasterxml.jackson.databind.JsonNode]("effective_execution_policy",effective);record.update("running",detail)
         def result(f:OperatorFrame):Unit={val h=StreamProtocol.header(f).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();h.put("execution_id",record.id);emit(OperatorFrame(Data.mapper.writeValueAsBytes(h),f.data))}
         val accepted=dacp.union.Json.obj().put("type","execution").put("port","").put("execution_id",record.id)
         emit(OperatorFrame(Data.mapper.writeValueAsBytes(accepted)))
-        if(raw.size()>0 || replay.nonEmpty){
+        if(raw.size()>0){
           plan.steps.foreach { t=>
             Jobs.authorizeSource(config,t)
             require(t.node.forall(DacpUri.node(_)==DacpUri.origin(config.uri(""))),"execution policy on DACP Server requires local steps; use Union for cross-node execution")
             t.inputs.values.flatMap(_.uri).foreach(uri=>require(config.taskInputPrefixes.isEmpty || config.taskInputPrefixes.exists(DacpUri.within(uri,_)),"FORBIDDEN: task input URI prefix denied"))
           }
           val steps=detail.putArray("steps");plan.steps.foreach(t=>{val entry=steps.addObject().put("id",t.id).put("operator",t.operator);t.title.foreach(entry.put("title",_));t.description.foreach(entry.put("description",_))});record.update("running",detail)
-          embedded.getOrElse(new JobEngine(config,allocator,Some(source),Some(executor))).execute(plan,policy,owner,record,replay,result,scoped)
+          embedded.getOrElse(new JobEngine(config,allocator,Some(source),Some(executor))).execute(plan,policy,record,result,scoped)
         }else coordinate(yaml,result,scoped,record)
       } else if(request.hasTaskYaml) {
         require(permits.tryAcquire(),"node task capacity reached");acquired=permits
@@ -179,7 +170,7 @@ class TaskService(config: Config,allocator: BufferAllocator,executor: TaskExecut
       peerJob(targets.values.head,yaml,emit,c);return
     }
     if(targets.values.toSet==Set(local)) {
-      embedded.getOrElse(new JobEngine(config,allocator,Some(source),Some(executor))).execute(plan,ExecutionPolicy.parse(dacp.union.Json.obj(),plan),"local",record,None,emit,c)
+      embedded.getOrElse(new JobEngine(config,allocator,Some(source),Some(executor))).execute(plan,ExecutionPolicy.parse(dacp.union.Json.obj(),plan),record,emit,c)
       return
     }else record.update("running",dacp.union.Json.obj().put("execution_mode","isolated_steps").put("fusion_reason","different_nodes"))
     require(targets.values.count(_==local)<=config.maxConcurrentTasks,"pipeline needs more local task slots; increase max_concurrent_tasks")

@@ -20,7 +20,7 @@ class PlanningMetadataSpec extends AnyFunSuite {
       assert(!Files.exists(home.resolve("missing.jar")))
       intercept[IllegalArgumentException](PlanningMetadata.profiles(c,Vector("../bad@1")))
       intercept[IllegalArgumentException](PlanningMetadata.profiles(c,Vector("example@1","example@1")))
-      val disabled=PlanningMetadata.profiles(c.copy(operatorFusionEnabled=false),Vector("example@1"))
+      val disabled=PlanningMetadata.profiles(c.copy(operatorFusion="isolated"),Vector("example@1"))
       assert(!disabled.path("example@1").has("fusion_key"))
     }finally {c.close();val paths=Files.walk(root);try paths.iterator.asScala.toVector.reverse.foreach(Files.deleteIfExists)finally paths.close()}
   }

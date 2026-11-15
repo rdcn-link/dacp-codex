@@ -28,7 +28,7 @@ Hard checks include approved membership, source ownership, explicit placement, p
 
 ## Execution units and transport
 
-Matching installed runtime images, dependency environments and executor configuration can identify a **fusion candidate**. The estimate only groups a whole member partition when graph contraction is acyclic and no materialization/replay or selected read-output boundary prevents fusion. The executor must accept the group at member preparation. The dashboard distinguishes these candidates from actual shared processes; preparation can produce separate units instead.
+Matching installed runtime images, dependency environments and executor configuration can identify a **fusion candidate**. The estimate only groups a whole member partition when graph contraction is acyclic and no whole-Job recovery or selected read-output boundary prevents fusion. The executor must accept the group at member preparation. The dashboard distinguishes these candidates from actual shared processes; preparation can produce separate units instead.
 
 Edges identify `arrow_in_process_candidate`, same-node `arrow_ipc`, or cross-node `arrow_flight`. Stream transfer can overlap producer computation; the cost model follows dependency critical paths instead of summing all branches. The estimate includes startup, computation, link latency/bandwidth and a queue penalty. It is a heuristic, not a full scheduler simulation. Output size defaults to the sum of upstream output estimates; this does not assert that an arbitrary operator preserves size.
 
@@ -54,7 +54,7 @@ planning:
 
 The beam width is 1–256. Cost values must be finite and nonnegative; bandwidths must be positive. Unknown settings are rejected. A larger beam considers more alternatives at greater planning cost. Plugin configuration is controlled by the administrator; Jobs cannot load optimization code.
 
-The `planning` field in the Job dashboard/history records provider, search width, candidate evaluations, selected score, estimated completion time, cross-node bytes, process count, per-step estimates, execution-unit candidates, edges and warnings. Estimates are explicitly labeled and remain distinct from actual traffic and execution units. Historical replay retains its saved placements and materialization boundaries; it does not silently substitute a newly optimized plan.
+The `planning` field in the Job dashboard/history records provider, search width, candidate evaluations, selected score, estimated completion time, cross-node bytes, process count, per-step estimates, execution-unit candidates, edges and warnings. Estimates are explicitly labeled and remain distinct from actual traffic and execution units. A fresh submission is planned and executed as a new whole Job.
 
 ## Implemented scope
 

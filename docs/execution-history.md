@@ -1,6 +1,6 @@
 # Step execution records
 
-DACP Server and Union Server persist execution metadata by default; configuration cannot disable it. Execution records do not store result-stream payloads; output materialization is controlled by separate execution policies and materialization storage. Nodes retain ordinary Job scripts and complete Union subjob step definitions, including parameters, input locations and output routes. Union retains global Job scripts. Scripts may contain parameters or submitted source code, and dashboards publicly display these records.
+DACP Server and Union Server persist execution metadata by default; configuration cannot disable it. Execution records do not store result-stream payloads; final output staging and publication belong to Sink receivers. Nodes retain ordinary Job scripts and complete Union subjob step definitions, including parameters, input locations and output routes. Union retains global Job scripts. Scripts may contain parameters or submitted source code, and dashboards publicly display these records.
 
 ## Users and operations
 

@@ -41,7 +41,7 @@ window.DacpExecutionInfo=(()=>{
  }
  function effectivePolicyYaml(value,fromUnion=false){
   if(typeof value==='string'&&value.trim()&&!/^(?:null|~)(?:\s*\.\.\.)?$/.test(value.trim()))return value;
-  return fromUnion?'Execution policy is managed by Union. See the Union job for the complete policy; local materialization and replay settings are included in the sub-job definition.':'Effective execution policy was not recorded for this execution.';
+  return fromUnion?'Execution policy is managed by Union. See the Union job for the complete policy; local whole-Job recovery settings are included in the sub-job definition.':'Effective execution policy was not recorded for this execution.';
  }
  return {render,tabKeys,effectivePolicyYaml};
 })();

@@ -31,7 +31,7 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
       }
     };n
   }
-  def plan(input:JobPlan,check:()=>Unit,disableFusion:Boolean=false):UnionPlan={
+  def plan(input:JobPlan,check:()=>Unit):UnionPlan={
     val candidates=members.all.map(m=>members.inspect(m)).filter(_.path("state").asText=="approved")
     val warnings=scala.collection.mutable.ArrayBuffer.empty[String]
     val sourceLocations=scala.collection.mutable.Map.empty[String,(String,String,Option[Long])]
@@ -78,7 +78,7 @@ private[unionserver] final class PublicPlanner(members:Members,settings:Settings
       val requested=t.node.map { name=>candidates.find(m=>logicalNode(m.path("identity").asText)==name).getOrElse(throw new IllegalArgumentException("requested logical node unavailable")).path("identity").asText }
       val metadata=profiles.flatMap{case(node,operators)=>Option(operators.get(t.operator)).map(p=>node->PlanningProfile(p.path("executor").asText,p.path("runtime").asText,Option(p.get("fusion_key")).map(_.asText)))}
       PlanningStep(t.id,Jobs.dependencies(t),sourceLocations.get(t.id).map(s=>s._1->s._3),requested,t.operator,Json.mapper.writeValueAsString(t.params),metadata,
-        disableFusion||(t.operator==Jobs.ItemSource&&input.outputs.values.exists(_._1==t.id)))
+        (t.operator==Jobs.ItemSource&&input.outputs.values.exists(_._1==t.id)))
     }
     val result=GraphPlacement.optimize(PlanningInput(graph,targets,settings.planning.beamWidth),Some(optimizer),settings.planning.settings,check)
     val placements=result.placements

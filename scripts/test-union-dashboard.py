@@ -50,6 +50,7 @@ class Site(BaseHTTPRequestHandler):
             assets = {'/assets/' + name: ROOT / 'assets' / name for name in ['dacp-mark.svg', 'dacp-logo.png', 'dacp-favicon.png']}
             assets['/favicon.ico'] = ROOT / 'assets/dacp-favicon.ico'
             assets['/datasets'] = WEB / 'datasets.html'
+            assets['/job'] = WEB / 'job.html'
             assets['/nodes'] = WEB / 'nodes.html'
             local = assets.get(path, WEB / ('index.html' if path == '/' else path.lstrip('/')))
             if (not local.resolve().is_relative_to(WEB.resolve()) and path not in assets) or not local.is_file():
@@ -98,13 +99,17 @@ def main():
             assert page.locator('#members .member-datasets-link').count() == 0
             assert page.locator('nav a[href="/datasets"]').count() == 1
             page.locator('#jobs .job-link').first.click()
-            page.wait_for_function('() => dagViewer.ready')
+            page.wait_for_url('**/job?id=*')
+            page.wait_for_function('() => typeof dagViewer !== \"undefined\" && dagViewer.ready')
             page.evaluate('dagViewer.pending')
+            page.locator('[data-plan=execution]').click()
             assert page.locator('#job-attempts details').count() == 2
             page.locator('#job-attempts details').first.locator('summary').click()
             assert page.locator('#job-attempts details').first.get_attribute('open') is not None
-            assert 'attempts' not in page.locator('#job-policy').inner_text()
+            assert 'attempts' not in page.locator('#job-policy').text_content()
             assert page.locator('#job-attempts script').count() == 0
+            page.locator('[data-plan=physical]').click()
+            page.evaluate('dagViewer.pending')
             assert page.locator('#dag canvas').count() >= 1
             assert page.locator('#dag-error').is_hidden()
             assert page.evaluate('dagViewer.graph.getComboData().length') == 4
@@ -129,7 +134,7 @@ def main():
             assert 'sum_east' in page.locator('#dag-inspect').inner_text()
             page.evaluate('dagViewer.pending')
             assert page.evaluate("dagViewer.graph.getElementState('task:sum_east')") == ['selected']
-            assert page.evaluate("dagViewer.graph.getElementRenderStyle('task:sum_east').lineWidth") == 3.5
+            assert page.evaluate("dagViewer.graph.getElementRenderStyle('task:sum_east').lineWidth") == 2
             zoom = page.evaluate('dagViewer.graph.getZoom()')
             page.locator('#dag-zoom-in').click()
             page.evaluate('dagViewer.pending')
@@ -145,25 +150,25 @@ def main():
             updated['nodes']['a']['ports']['sum_east/outputs/result']['payload_bytes'] = 4096
             updated['nodes']['a']['observed_at_ms'] += 1000
             Site.job = updated
-            page.evaluate('refresh()')
+            page.evaluate('refreshDetail()')
             page.evaluate('dagViewer.pending')
             after = page.evaluate('''() => ({zoom:dagViewer.graph.getZoom(),position:dagViewer.graph.getPosition(),nodes:dagViewer.graph.getNodeData().map(n=>[n.id,n.style.x,n.style.y])})''')
             assert page.locator('#job-attempts details').first.get_attribute('open') is not None
             assert before == after
             assert page.evaluate('originalGraph === dagViewer.graph')
             assert page.evaluate("dagViewer.graph.getNodeData('task:sum_east').data.outgoing") == '4 KiB'
-            assert page.evaluate("dagViewer.graph.getNodeData('task:revenue_east').data.dash.length") > 0
+            assert 'Not started' in page.evaluate("dagViewer.graph.getNodeData('task:revenue_east').data.stateLabel")
             assert page.evaluate("dagViewer.graph.getNodeData('task:sum_west').data.stateLabel") == '? Unknown status'
             assert 'Running' in page.locator('#dag-inspect').inner_text()
             assert page.evaluate("dagViewer.graph.getElementState('task:sum_east')") == ['selected']
-            assert page.evaluate("dagViewer.graph.getElementRenderStyle('task:sum_east').lineWidth") == 3.5
+            assert page.evaluate("dagViewer.graph.getElementRenderStyle('task:sum_east').lineWidth") == 2
             # Edge selection replaces node selection and survives counter refreshes.
             edge_id = page.evaluate("dagViewer.graph.getEdgeData().find(e=>e.id.startsWith('flow:')).id")
             page.evaluate("id=>dagViewer.graph.emit('edge:click',{target:{id}})", edge_id)
             page.evaluate('dagViewer.pending')
             assert page.evaluate("dagViewer.graph.getElementState('task:sum_east')") == []
             assert page.evaluate('id=>dagViewer.graph.getElementRenderStyle(id).lineWidth', edge_id) == 4
-            page.evaluate('refresh()')
+            page.evaluate('refreshDetail()')
             page.evaluate('dagViewer.pending')
             assert page.evaluate('id=>dagViewer.graph.getElementState(id)', edge_id) == ['selected']
             assert page.evaluate('id=>dagViewer.graph.getElementRenderStyle(id).lineWidth', edge_id) == 4
@@ -184,7 +189,7 @@ def main():
             box = page.locator('#dag').bounding_box()
             page.mouse.dblclick(box['x']+header[0], box['y']+header[1])
             page.wait_for_function("() => dagViewer.graph.getComboData('server:0').style.collapsed === true")
-            page.evaluate('refresh()')
+            page.evaluate('refreshDetail()')
             assert page.evaluate("dagViewer.graph.getComboData('server:0').style.collapsed")
             page.locator('#dag-expand').click()
             page.evaluate('dagViewer.pending')
@@ -193,7 +198,7 @@ def main():
             updated = deepcopy(Site.job)
             updated['steps'][0]['title'] = '<img src=x onerror="window.injected=true">'
             Site.job = updated
-            page.evaluate('refresh()')
+            page.evaluate('refreshDetail()')
             page.evaluate("dagViewer.inspect('task:sum_east')")
             assert page.locator('#dag-inspect img').count() == 0
             assert page.evaluate('window.injected === undefined')
@@ -278,9 +283,15 @@ def main():
             assert not errors, errors
             catalog_reads=[]
             def catalog_response(route):
-                catalog_reads.append(route.request.url)
-                route.fulfill(content_type='application/json',body=json.dumps(dict(complete=False,unavailable_sources=1,observed_at_ms=1,datasets=[dict(name='ds-abcd-2345',description='{"summary":"<script>test</script>"}',uri='dacp://union/ds-abcd-2345')])))
-            page.route('**/datasets/entries',catalog_response)
+                if route.request.url.endswith('/datasets/sources'):
+                    route.fulfill(content_type='application/json',body=json.dumps(dict(sources=[dict(identity='good',url='dacp://node-good'),dict(identity='unavailable',url='dacp://node-unavailable')])))
+                elif route.request.url.endswith('/unavailable'):
+                    route.fulfill(status=503,content_type='application/json',body='{}')
+                else:
+                    catalog_reads.append(route.request.url)
+                    route.fulfill(content_type='application/json',body=json.dumps(dict(datasets=[dict(name='ds-abcd-2345',description='{"summary":"<script>test</script>"}',uri='dacp://union/ds-abcd-2345')])))
+            page.route('**/datasets/sources',catalog_response)
+            page.route('**/datasets/sources/*',catalog_response)
             page.goto(origin+'/datasets')
             page.wait_for_selector('#catalog-rows pre')
             assert page.locator('.directory-heading').count() == 0

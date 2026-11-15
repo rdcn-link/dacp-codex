@@ -4,7 +4,7 @@ import _root_.xstream.connector.dacp.wire.{ArrowViewWire,ClientTransport,Tls}
 
 import _root_.xstream.data.files.{FileDatasets,PublishedItem}
 import _root_.xstream.engine.{Jobs,Task}
-import _root_.xstream.execution.{ExecutionStoreDefinition,FrameSource,InferenceResult,MaterializationStoreDefinition,OperatorFrame,OperatorFrames,StreamCancel,StreamDescriptor,StreamProtocol}
+import _root_.xstream.execution.{ExecutionStoreDefinition,FrameSource,InferenceResult,OperatorFrame,OperatorFrames,StreamCancel,StreamDescriptor,StreamProtocol}
 
 import _root_.xstream.data._
 
@@ -21,6 +21,7 @@ import scala.sys.process._
 import scala.jdk.CollectionConverters._
 
 class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
+  private val endpointRepository=new TestEndpointRepository()
   private val root=Files.createTempDirectory("dacp-union-contract-")
   private def run(args:String*):Unit=assert(Process(args,root.toFile).!(ProcessLogger(_=>(),_=>()))==0)
   override def beforeAll():Unit={
@@ -31,7 +32,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       run("openssl","x509","-req","-in",s"$name.csr","-CA","ca.crt","-CAkey","ca.key","-CAcreateserial","-out",s"$name.crt","-days","1","-extfile","leaf.ext")
     }
   }
-  override def afterAll():Unit={val files=Files.walk(root);try files.iterator.asScala.toVector.reverse.foreach(Files.deleteIfExists)finally files.close()}
+  override def afterAll():Unit={endpointRepository.close();val files=Files.walk(root);try files.iterator.asScala.toVector.reverse.foreach(Files.deleteIfExists)finally files.close()}
   private def tls(name:String)=new Tls(root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"))
   private val assignedPorts=scala.collection.mutable.Set.empty[Int]
   private def port():Int=synchronized {
@@ -40,7 +41,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     assignedPorts+=chosen;chosen
   }
   private def eventually(check: => Boolean,clue: => String="condition"):Unit={val end=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(15);while(!check && System.nanoTime()<end)Thread.sleep(50);assert(check,clue)}
-  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=60,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false,materialize:Boolean=false,withRecords:Boolean=false,scientific:Boolean=false,trustedSources:Boolean=false,preparationDelayMs:Long=0,preparationFailure:Boolean=false,preparationTimeoutSeconds:Long=1800) {
+  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=60,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false,withRecords:Boolean=false,scientific:Boolean=false,trustedSources:Boolean=false,preparationDelayMs:Long=0,preparationFailure:Boolean=false,preparationTimeoutSeconds:Long=1800) {
     @volatile var catalogVisible=true
     @volatile var catalogFailure=false
     val allocator=new RootAllocator()
@@ -49,16 +50,19 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     Files.write(dir.resolve("a.bin"),inputA);Files.write(dir.resolve("b.bin"),inputB)
     Files.writeString(dir.resolve("observations.csv"),"station,temperature\nA,18\nB,21\nC,24\n")
     if(scientific)Files.writeString(dir.resolve("genome.fa"),">chr1\nACGTACGT\n")
-    def store(name:String)=if(materialize)Some(MaterializationStoreDefinition("file",Map("directory"->dir.resolve(name+"-outputs").toString)))else None
-    val as=NodeUnionSettings(dir.resolve("a-state"),30,30,store("a"),preparationTimeoutSeconds)
-    val bs=NodeUnionSettings(dir.resolve("b-state"),30,30,store("b"),preparationTimeoutSeconds)
+    val as=NodeUnionSettings(dir.resolve("a-state"),30,30,preparationTimeoutSeconds)
+    val bs=NodeUnionSettings(dir.resolve("b-state"),30,30,preparationTimeoutSeconds)
     val invocations=new java.util.concurrent.ConcurrentHashMap[String,java.util.concurrent.atomic.AtomicInteger]()
     @volatile var failDownstreamOnce=false
+    @volatile var failSinkCommit=false
+    @volatile var failSinkDiscard=false
+    val sinkCommits=new java.util.concurrent.atomic.AtomicInteger()
+    val sinkDiscards=new java.util.concurrent.atomic.AtomicInteger()
     @volatile var controlFinished=false
     def count(task:String):Int=Option(invocations.get(task)).map(_.get).getOrElse(0)
     def config(name:String):Config={
       val definition=FileDatasets.mixed(Seq(PublishedItem("/input",file=Some(dir.resolve(s"$name.bin"))))++(if(withRecords)Seq(PublishedItem("/observations",file=Some(dir.resolve("observations.csv"))))else Seq.empty)++(if(scientific)Seq(PublishedItem("/genome",file=Some(dir.resolve("genome.fa"))))else Seq.empty)).copy(description=""" { "title": "公开数据", "description": "公开数据说明", "html": "<script>alert(1)</script>", "publication": {"policy":"public"} } """)
-      val c=Config("localhost",port(),"localhost",if(dynamicCatalog)Map.empty else Map("data"->definition),root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,accessLogDirectory=Some(dir.resolve(name+"-access")),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve(s"$name-executions")).toString))))
+      val c=Config("localhost",port(),"localhost",if(dynamicCatalog)Map.empty else Map("data"->definition),root.resolve(s"$name.crt"),root.resolve(s"$name.key"),root.resolve("ca.crt"),maxConcurrentTasks=4,checkpointStoreDefinition=Some(_root_.xstream.execution.CheckpointStoreDefinition("file",Map("directory"->dir.resolve(name+"-checkpoints").toString))),remoteOperatorLibraryUrls=Seq(endpointRepository.url),operatorCache=dir.resolve(name+"-operators"),accessLogDirectory=Some(dir.resolve(name+"-access")),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve(s"$name-executions")).toString))))
       if(dynamicCatalog)c.installCatalog(new DataCatalog {
         def list():Seq[DatasetInfo]={if(catalogFailure)throw new IllegalStateException("catalog unavailable");if(catalogVisible)Seq(DatasetInfo("data",definition.description))else Seq.empty}
         def open(name:String):PublishedDataset={require(name=="data");c.createDataset(definition)}
@@ -66,8 +70,16 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       c
     }
     val ca=config("a");val cb=config("b")
-    val runner:(Task,Map[String,FrameSource],OperatorFrame=>Unit,StreamCancel)=>Unit=(task,inputs,emit,cancel)=>{
+    val runner:(Task,Map[String,FrameSource],OperatorFrame=>Unit,StreamCancel,_root_.xstream.execution.SinkTransactions)=>Unit=(task,inputs,emit,cancel,sinks)=>{
       invocations.computeIfAbsent(task.id,_=>new java.util.concurrent.atomic.AtomicInteger()).incrementAndGet()
+      if(task.params.containsKey("staged_sink")){
+        val abort=sinks.register(new _root_.xstream.execution.SinkParticipant {
+          val id=task.id
+          def onComplete():Unit={sinkCommits.incrementAndGet();if(failSinkCommit)throw new RuntimeException("uncertain Sink commit")}
+          def onDiscard(cause:Throwable):Unit={sinkDiscards.incrementAndGet();if(failSinkDiscard)throw new RuntimeException("Sink cleanup failed")}
+          def close():Unit=()
+        });cancel.add(abort)
+      }
       if(task.params.containsKey("fail"))throw new IllegalArgumentException("test failure")
       if(task.params.containsKey("wait")){while(true){cancel.active();Thread.sleep(20)}}
       if(task.params.containsKey("control")){Thread.sleep(100);controlFinished=true}
@@ -162,10 +174,6 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     |""".stripMargin
     def submit(text:String=yaml):String=client.action(settings.publicUrl,"submit",Json.obj().put("job_yaml",publicYaml(text))).path("job_id").asText
     def submitPolicy(policy:JsonNode):String=client.action(settings.publicUrl,"submit",Json.obj().put("job_yaml",publicYaml(yaml)).put("execution_policy_yaml",dacp.union.YamlDocument.dump(policy))).path("job_id").asText
-    def replay(id:String,steps:Option[Seq[String]]=None):String={
-      val n=Json.obj().put("job_id",id);steps.foreach(ts=>{val a=n.putArray("steps");ts.foreach(a.add)})
-      client.action(settings.publicUrl,"replay_job",n).path("job_id").asText
-    }
     var retryNotices=0
     def bytes(id:String,retryAware:Boolean=true):Array[Byte]={
       val ticket=Json.obj().put("job_id",id);if(retryAware && status(id).path("max_retries").asInt>0)ticket.put("retry_aware",true)
@@ -175,7 +183,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     def status(id:String)=client.action(settings.publicUrl,"job_status",Json.obj().put("job_id",id))
     def close():Unit={x.close();a.close();b.close();af.close();bf.close();client.close();stranger.close();Thread.sleep(100);ca.close();cb.close();allocator.close()}
   }
-  private def policy(all:Boolean=false):JsonNode=if(all)Json.parse("""{"materialization":{"default":"materialize"}}""")else Json.parse("""{"materialization":{"steps":{"ta":{"outputs":{"result":"materialize"}}}}}""")
+  private def policy(all:Boolean=false):JsonNode=Json.obj()
   test("trusted service can read hidden inputs only from its approved source member") {
     val f=new Fixture(allowStranger=true,dynamicCatalog=true,trustedSources=true)
     try {
@@ -389,50 +397,85 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       val id=f.submit(script);assert(f.bytes(id).isEmpty);eventually(f.status(id).path("state").asText=="succeeded")
     }finally f.close()
   }
-  test("execution policy is strict and forbid wins before any job starts") {
-    val f=new Fixture(materialize=true)
+  test("execution policy rejects unknown intermediate storage settings before any job starts") {
+    val f=new Fixture()
     try {
       f.approved()
       Seq("""{"unexpected":true}""","""{"materialization":{"allowed":false,"default":"materialize"}}""","""{"materialization":{"allowed":false,"steps":{"ta":{"outputs":{"result":"materialize"}}}}}""","""{"materialization":{"steps":{"absent":{"outputs":{"result":"materialize"}}}}}""","""{"materialization":{"steps":{"ta":{"outputs":{"absent":"stream"}}}}}""","""{"materialization":{"default":"auto"}}""","""{"materialization":{"allowed":"false"}}""").foreach(p=>assert(intercept[UnionFailure](f.submitPolicy(Json.parse(p))).code==INVALID_ARGUMENT))
       assert(f.count("ta")==0 && f.x.history.list(0,100).isEmpty)
-      val id=f.submitPolicy(Json.parse("""{"materialization":{"allowed":false,"default":"stream"}}"""));assert(f.bytes(id).sameElements(f.inputA++f.inputB));eventually(f.status(id).path("state").asText=="succeeded")
-      assert(intercept[UnionFailure](f.replay(id)).code==INVALID_ARGUMENT)
+      val id=f.submitPolicy(Json.obj());assert(f.bytes(id).sameElements(f.inputA++f.inputB));eventually(f.status(id).path("state").asText=="succeeded")
     }finally f.close()
   }
-  test("unsupported storage rejects every subjob before any operator starts") {
+  test("a fresh submission recomputes every step after a downstream failure") {
     val f=new Fixture()
-    try {f.approved();val id=f.submitPolicy(policy());eventually(f.status(id).path("state").asText=="failed");assert(f.count("ta")==0 && f.count("tb")==0)}finally f.close()
-  }
-  test("downstream failure replays committed upstream without rerunning it") {
-    val f=new Fixture(materialize=true,allowStranger=true)
     try {
-      f.approved();f.failDownstreamOnce=true;val original=f.submitPolicy(policy())
+      f.approved();f.failDownstreamOnce=true;val original=f.submit()
       intercept[FlightRuntimeException](f.bytes(original));eventually(f.status(original).path("state").asText=="failed")
-      assert(f.count("ta")==1 && f.count("tb")==1)
-      assert(intercept[UnionFailure](f.stranger.action(f.settings.publicUrl,"replay_job",Json.obj().put("job_id",original))).code==UNAUTHORIZED)
-      val replay=f.replay(original,Some(Seq("ta")));assert(replay!=original)
-      assert(f.bytes(replay).sameElements(f.inputA++f.inputB));eventually(f.status(replay).path("state").asText=="succeeded")
-      assert(f.count("ta")==1 && f.count("tb")==2)
-      val record=f.x.jobSnapshot(replay).get
-      assert(record.path("replay_of").asText==original && record.path("execution_policy")==policy())
-      assert(record.path("effective_execution_policy").path("materialization").path("steps").path("tb").path("outputs").path("result").asText=="stream")
-      val again=f.replay(replay);assert(f.bytes(again).sameElements(f.inputA++f.inputB));assert(f.count("ta")==1 && f.count("tb")==3)
+      val again=f.submit();assert(f.bytes(again).sameElements(f.inputA++f.inputB));eventually(f.status(again).path("state").asText=="succeeded")
+      assert(f.count("ta")==2 && f.count("tb")==2)
     }finally f.close()
   }
-  test("automatic retry reuses upstream and callback discards partial result") {
-    val f=new Fixture(materialize=true)
+  test("automatic retry recomputes all upstream steps and callback discards partial result") {
+    val f=new Fixture()
     try {
       f.approved();f.failDownstreamOnce=true
       val p=policy(all=true).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]().put("max_retries",2)
       val id=f.submitPolicy(p);assert(f.bytes(id).sameElements(f.inputA++f.inputB));eventually(f.status(id).path("state").asText=="succeeded")
-      assert(f.count("ta")==1 && f.count("tb")==2 && f.retryNotices==1)
+      assert(f.count("ta")==2 && f.count("tb")==2 && f.retryNotices==1)
       val status=f.status(id);assert(status.path("retry_count").asInt==1 && status.path("max_retries").asInt==2 && status.path("attempts").size()==2)
       assert(status.path("attempts").get(0).path("state").asText=="failed" && status.path("attempts").get(1).path("state").asText=="succeeded")
-      val replay=f.replay(id);assert(f.bytes(replay).sameElements(f.inputA++f.inputB));assert(f.count("ta")==1 && f.count("tb")==2)
     }finally f.close()
   }
+  test("Union checkpoint retry reuses the producer on its node and recomputes the uncovered input branch") {
+    val f=new Fixture()
+    try {
+      f.approved();f.failDownstreamOnce=true
+      val p=Json.obj().put("max_retries",2);p.putObject("checkpoints").putArray("ta").add("result")
+      val id=f.submitPolicy(p)
+      assert(f.bytes(id).sameElements(f.inputA++f.inputB))
+      eventually(f.status(id).path("state").asText=="succeeded")
+      assert(f.count("ta")==1 && f.count("tb")==2 && f.retryNotices==1)
+      val files=Files.list(f.dir.resolve("a-checkpoints"))
+      try assert(files.iterator.asScala.map(_.getFileName.toString).toVector==Vector(".writer.lock"))finally files.close()
+      val again=f.submitPolicy(p)
+      assert(f.bytes(again).sameElements(f.inputA++f.inputB));eventually(f.status(again).path("state").asText=="succeeded")
+      assert(f.count("ta")==2 && f.count("tb")==3,"a new Job must not reuse an earlier execution")
+    }finally f.close()
+  }
+  test("Union commits staged sinks only after every member succeeds") {
+    val f=new Fixture()
+    try {
+      f.approved()
+      val script=f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {staged_sink: true}")
+      val id=f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",f.publicYaml(script))).path("job_id").asText
+      assert(f.bytes(id).sameElements(f.inputA++f.inputB));eventually(f.status(id).path("state").asText=="succeeded")
+      assert(f.sinkCommits.get==2 && f.sinkDiscards.get==0)
+    }finally f.close()
+  }
+  test("Union discards staged sinks before a complete retry") {
+    val f=new Fixture()
+    try {
+      f.approved();f.failDownstreamOnce=true
+      val script=f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {staged_sink: true}")
+      val id=f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",f.publicYaml(script)).put("execution_policy_yaml","max_retries: 1")).path("job_id").asText
+      assert(f.bytes(id).sameElements(f.inputA++f.inputB));eventually(f.status(id).path("state").asText=="succeeded")
+      assert(f.sinkCommits.get==2 && f.sinkDiscards.get==2 && f.count("ta")==2 && f.count("tb")==2)
+    }finally f.close()
+  }
+  test("Union never retries after Sink commit or discard failure") {
+    for(commitFailure<-Seq(false,true)){
+      val f=new Fixture()
+      try {
+        f.approved();f.failSinkCommit=commitFailure;f.failSinkDiscard= !commitFailure;f.failDownstreamOnce= !commitFailure
+        val script=f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {staged_sink: true}")
+        val id=f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",f.publicYaml(script)).put("execution_policy_yaml","max_retries: 2")).path("job_id").asText
+        intercept[FlightRuntimeException](f.bytes(id));eventually(f.status(id).path("state").asText=="failed")
+        assert(f.status(id).path("retry_count").asInt==0 && f.count("ta")==1 && f.count("tb")==1)
+      }finally f.close()
+    }
+  }
   test("retry count and timeout fields validate types and server limits") {
-    val f=new Fixture(materialize=true,timeoutSeconds=20)
+    val f=new Fixture(timeoutSeconds=20)
     try {
       f.approved()
       Seq(-1,11).foreach(n=>assert(intercept[UnionFailure](f.submitPolicy(policy(all=true).deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]().put("max_retries",n))).code==INVALID_ARGUMENT))
@@ -441,7 +484,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     }finally f.close()
   }
   test("automatic retry stops at the configured bound") {
-    val f=new Fixture(materialize=true)
+    val f=new Fixture()
     try {
       f.approved()
       val script=f.yaml.replace(" - id: tb"," - id: tb").replace("  title: 融合跨节点数据","  params: {fail: true}\n  title: 融合跨节点数据")
@@ -451,7 +494,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     }finally f.close()
   }
   test("automatic retry never overrides explicit cancellation or revoked authorization") {
-    val f=new Fixture(materialize=true)
+    val f=new Fixture()
     try {
       f.approved()
       val script=f.yaml.replace("operator: identity@1.3","operator: identity@1.3\n  params: {wait: true}")
@@ -463,11 +506,11 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       eventually(Set("failed","cancelled")(f.status(revoked).path("state").asText));assert(f.status(revoked).path("retry_count").asInt==0)
     }finally f.close()
   }
-  test("retry works with all-streaming forbid policy and rejects unaware consumers") {
+  test("whole Job retry rejects unaware result consumers") {
     val f=new Fixture()
     try {
       f.approved();f.failDownstreamOnce=true
-      val id=f.submitPolicy(Json.parse("""{"max_retries":1,"materialization":{"allowed":false}}"""))
+      val id=f.submitPolicy(Json.parse("""{"max_retries":1}"""))
       intercept[FlightRuntimeException](f.bytes(id,retryAware=false))
       assert(f.bytes(id).sameElements(f.inputA++f.inputB));eventually(f.status(id).path("state").asText=="succeeded")
       assert(f.retryNotices==1 && f.count("ta")==2 && f.count("tb")==2)
@@ -522,35 +565,16 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       eventually(f.ca.taskSlots.availablePermits()==4 && f.cb.taskSlots.availablePermits()==4)
     }finally f.close()
   }
-  test("multi-output replay serves ports concurrently despite opposite input consumption order") {
-    val f=new Fixture(materialize=true)
+  test("multi-output fresh submissions serve ports concurrently despite opposite input consumption order") {
+    val f=new Fixture()
     try {
       f.approved()
       val script=f.yaml.replace("  title: 汇总本地数据","  params: {multi: true}\n  title: 汇总本地数据").replace("left: ta","left: ta:z").replace("right: read_tb_right","right: ta:a")
       val original=f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",f.publicYaml(script)).put("execution_policy_yaml",dacp.union.YamlDocument.dump(policy(all=true)))).path("job_id").asText
       assert(f.bytes(original).sameElements(f.inputA++f.inputA));eventually(f.status(original).path("state").asText=="succeeded")
-      val replay=f.replay(original,Some(Seq("ta")));assert(f.bytes(replay).sameElements(f.inputA++f.inputA));eventually(f.status(replay).path("state").asText=="succeeded")
-      assert(f.count("ta")==1 && f.count("tb")==2)
+      val replay=f.client.action(f.settings.publicUrl,"submit",Json.obj().put("job_yaml",f.publicYaml(script))).path("job_id").asText;assert(f.bytes(replay).sameElements(f.inputA++f.inputA));eventually(f.status(replay).path("state").asText=="succeeded")
+      assert(f.count("ta")==2 && f.count("tb")==2)
     }finally f.close()
-  }
-  test("materialized final results replay after Union and worker restart without operators or raw inputs") {
-    val f=new Fixture(materialize=true)
-    var restored:Coordinator=null
-    var nextA:UnionWorker=null;var nextB:UnionWorker=null;var nextAF:Endpoint=null;var nextBF:Endpoint=null
-    try {
-      f.approved();val original=f.submitPolicy(policy(all=true));assert(f.bytes(original).sameElements(f.inputA++f.inputB));eventually(f.status(original).path("state").asText=="succeeded")
-      Files.delete(f.dir.resolve("a.bin"));Files.delete(f.dir.resolve("b.bin"))
-      f.x.close();f.a.close();f.b.close();f.af.close();f.bf.close()
-      nextA=new UnionWorker(f.ca,f.as,f.allocator,Some(f.runner));nextB=new UnionWorker(f.cb,f.bs,f.allocator,Some(f.runner))
-      nextAF=new Endpoint("localhost",f.ca.port,tls("a"),f.allocator,f.producer(f.ca,nextA),Some(f.ca.credentials))
-      nextBF=new Endpoint("localhost",f.cb.port,tls("b"),f.allocator,f.producer(f.cb,nextB),Some(f.cb.credentials))
-      nextAF.start();nextBF.start();nextA.start();nextB.start()
-      restored=new Coordinator(f.settings);restored.start()
-      val replay=f.replay(original);assert(f.bytes(replay).sameElements(f.inputA++f.inputB));eventually(f.status(replay).path("state").asText=="succeeded")
-      assert(f.count("ta")==1 && f.count("tb")==1)
-      val record=restored.jobSnapshot(replay).get
-      assert(record.path("steps").elements.asScala.find(_.path("id").asText=="ta").get.path("state").asText=="skipped")
-    }finally {if(restored!=null)restored.close();if(nextA!=null)nextA.close();if(nextB!=null)nextB.close();if(nextAF!=null)nextAF.close();if(nextBF!=null)nextBF.close();f.close()}
   }
   private def http(port:Int,path:String,method:String="GET"):java.net.http.HttpResponse[String]={
     val builder=java.net.http.HttpRequest.newBuilder(java.net.URI.create(s"http://127.0.0.1:$port$path")).timeout(java.time.Duration.ofSeconds(5))

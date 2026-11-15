@@ -4,7 +4,7 @@
 
 ## Powered by XStream
 
-DACP Server embeds the XStream streaming execution engine and shares its JVM DataCatalog. DataCatalog → Dataset → Item exposes typed data views; Job steps connect through streams. The engine provides local execution, cancellation, execution policies, optional materialization/replay and eligible same-process operator fusion. XStream also provides a standalone Runner, so the engine is reusable outside a DACP server.
+DACP Server embeds the XStream streaming execution engine and shares its JVM DataCatalog. DataCatalog → Dataset → Item exposes typed data views; Job steps connect through streams. The engine provides local execution, cancellation, execution policies, optional whole-Job recovery and eligible same-process operator fusion. XStream also provides a standalone Runner, so the engine is reusable outside a DACP server.
 
 DACP adds authenticated data publication and access, client SDKs and Shell, independent S3 access, execution history and service dashboards. Union provides member management, health polling, automatic placement, subjob dispatch and direct member-to-member stream routing. A client submits a logical Job to a service without needing to know whether it is a node or Union.
 

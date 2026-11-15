@@ -23,7 +23,7 @@
 
 - [向 DACP 提交流式作业](jobs_zh.md)
 - [物理计划生成与优化](physical-planning_zh.md)
-- [提交执行策略与请求重放](materialization_zh.md)
+- [提交执行策略与整 Job 重试](execution-policy_zh.md)
 - [看板与执行计划](node-web_zh.md)
 - [淤地坝协作分析与 FTP 集中处理对比](check-dams-benchmark_zh.md)
 - [本地与跨节点流式作业执行对比](local-vs-union-benchmark_zh.md)

@@ -3,7 +3,7 @@ package dacp
 import _root_.xstream.connector.dacp.wire.{ArrowViewWire}
 
 import _root_.xstream.engine.{ExecutionPolicy,InputBinding,JobPlan,Jobs,OperatorGroups,PreparedOperatorGroup,Task,TaskExecutor,PortMetrics}
-import _root_.xstream.execution.{FrameQueue,FrameSource,ItemFrameStreams,ItemSql,MaterializedTask,OperatorExecutor,OperatorFrame,OperatorFrames,StreamCancel,StreamProtocol}
+import _root_.xstream.execution.{FrameQueue,FrameSource,ItemFrameStreams,ItemSql,OperatorExecutor,OperatorFrame,OperatorFrames,StreamCancel,StreamProtocol,SinkTransactions}
 
 import _root_.xstream.data._
 
@@ -27,13 +27,19 @@ import scala.jdk.CollectionConverters._
 
 /** Optional execution transport. Local data never traverses the coordinator. */
 final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:BufferAllocator,
-  runner:Option[(Task,Map[String,FrameSource],OperatorFrame=>Unit,StreamCancel)=>Unit]=None,
+  runner:Option[(Task,Map[String,FrameSource],OperatorFrame=>Unit,StreamCancel,SinkTransactions)=>Unit]=None,
   prepareEnvironment:Option[StreamCancel=>Unit]=None) extends AutoCloseable {
   private val tls=new Tls(config.cert,config.key,config.ca)
   private val remote=new dacp.collaboration.CollaborationClient(tls)
   private val membership=new UnionMembership(config.credentials,config.maxConcurrentTasks)
   private val sessions=new ConcurrentHashMap[String,Session]()
-  private val materialization=settings.materializationStore.map(d=>config.openMaterialization(d))
+  private final class CheckpointRun(val union:String,val owner:String,val job:String) {
+    val data=new _root_.xstream.engine.JobCheckpoints(config.checkpointStore.getOrElse(throw new IllegalArgumentException("checkpoints require checkpoint_store")))
+    @volatile var touched=Json.now
+  }
+  private val checkpointRuns=scala.collection.mutable.Map.empty[String,CheckpointRun]
+  private def checkpointKey(union:String,owner:String,job:String)=union+"/"+owner+"/"+job
+
   private val executor=new TaskExecutor(config,allocator)
   private val monitor=Executors.newSingleThreadScheduledExecutor()
   private val stopped=new AtomicBoolean()
@@ -75,9 +81,9 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     n
   }
   private def connectedPorts(steps:Vector[JsonNode],task:JsonNode):Set[String]=
-    task.path("output_routes").fieldNames.asScala.toSet ++ steps.filterNot(_.has("replay_from")).flatMap(_.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin") && b.path("task").asText==task.path("id").asText).map(_.path("port").asText))
+    task.path("output_routes").fieldNames.asScala.toSet ++ steps.flatMap(_.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin") && b.path("task").asText==task.path("id").asText).map(_.path("port").asText))
   private def prepare(body:JsonNode,who:String,jobYaml:String,requestId:String=Json.uuid()):Session=synchronized {
-    Json.fields(body,Set("name","union_id","execution_id","steps"),Set("allow_fusion","timeout_seconds","resources","required_operators"))
+    Json.fields(body,Set("name","union_id","execution_id","steps"),Set("allow_fusion","timeout_seconds","resources","required_operators","checkpoints","checkpoint_run_id","reuse_steps"))
     if(body.has("required_operators")){
       val required=Json.strings(body,"required_operators")
       require(required.distinct.size==required.size && required.forall(_==Jobs.ClientSink),"invalid required endpoint operators")
@@ -92,22 +98,9 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     require(steps.map(t=>Json.text(t,"id")).distinct.size==steps.size,"duplicate task")
     require(steps.map(t=>t.path("inputs").size()+connectedPorts(steps,t).size).sum<=1024,"subjob exceeds 1024 connected ports")
     steps.foreach { t=>
-      Json.fields(t,Set("id","operator","params","inputs"),Set("title","description","materialize","replay_from","read_source","output_routes"));Json.id(Json.text(t,"id"))
+      Json.fields(t,Set("id","operator","params","inputs"),Set("title","description","read_source","output_routes"));Json.id(Json.text(t,"id"))
       if(t.has("title"))require(t.path("title").isTextual && t.path("title").asText.trim.nonEmpty && t.path("title").asText.length<=256 && !t.path("title").asText.exists(_.isControl),"invalid task title")
       if(t.has("description"))require(t.path("description").isTextual && t.path("description").asText.length<=8192 && !t.path("description").asText.exists(c=>c.isControl && c!='\n' && c!='\r' && c!='\t'),"invalid task description")
-      val selected=if(t.has("materialize"))Json.strings(t,"materialize")else Vector.empty
-      require(selected.distinct.size==selected.size && selected.forall(connectedPorts(steps,t)),"invalid materialization ports")
-      if(selected.nonEmpty || t.has("replay_from"))require(materialization.nonEmpty,"node materialization_store is not configured")
-      if(t.has("replay_from")){
-        val previous=Json.id(Json.text(t,"replay_from"))
-        val artifact=materialization.get.get(ExecutionPolicy.key(previous,Json.text(t,"id"))).getOrElse(throw UnionFailure(NOT_FOUND,"materialized task missing or expired"))
-        try {
-          val m=artifact.metadata
-          if(m.path("owner").asText!=who || m.path("union_id").asText!=union)denied("materialized task owner denied")
-          require(m.path("signature")==ExecutionPolicy.signature(t),"replay task definition differs from materialized task")
-          require(connectedPorts(steps,t).forall(m.path("stored_ports").has),"replay needs all connected outputs materialized")
-        }finally artifact.close()
-      }
       val op=Json.text(t,"operator")
       if(op==Jobs.ItemSource){
         _root_.xstream.engine.RepositoryEndpoints.source(config,op)
@@ -127,23 +120,40 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         Json.id(e.getKey);Json.fields(e.getValue,Set("consumer_identity"));Json.identity(Json.text(e.getValue,"consumer_identity"))
       }
     }
-    steps.filterNot(_.has("replay_from")).foreach(t=>t.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin")).foreach { b=>
+    steps.foreach(t=>t.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin")).foreach { b=>
       val parent=steps.find(_.path("id").asText==b.path("task").asText).getOrElse(throw new IllegalArgumentException("unknown local upstream task"))
       require(!parent.path("output_routes").has(b.path("port").asText),"output cannot have both local and remote consumers")
     })
     var pending=steps;var done=Set.empty[String]
     while(pending.nonEmpty){
-      val ready=pending.filter(t=>(t.has("replay_from") || t.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin")).forall(b=>done(b.path("task").asText))))
+      val ready=pending.filter(t=>(t.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin")).forall(b=>done(b.path("task").asText))))
       require(ready.nonEmpty,"cyclic local task DAG");done++=ready.map(_.path("id").asText);pending=pending.filterNot(ready.contains)
     }
-    val localEdges=steps.filterNot(_.has("replay_from")).flatMap(_.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin")).map(b=>(b.path("task").asText,b.path("port").asText)))
+    val localEdges=steps.flatMap(_.path("inputs").elements.asScala.filter(b=> !b.has("uri") && !b.has("origin")).map(b=>(b.path("task").asText,b.path("port").asText)))
     require(localEdges.distinct.size==localEdges.size,"output fan-out unsupported")
     if(sessions.size>=4096)throw UnionFailure(RESOURCE_EXHAUSTED,"execution retention capacity reached")
     if(sessions.containsKey(id))throw UnionFailure(ALREADY_EXISTS,"execution already exists")
+    val checkpointConfig=Option(body.get("checkpoints")).getOrElse(Json.obj())
+    require(checkpointConfig.isObject,"checkpoints must be an object")
+    val selected=checkpointConfig.fields.asScala.map { e=>
+      val task=steps.find(_.path("id").asText==e.getKey).getOrElse(throw new IllegalArgumentException("unknown checkpoint step"))
+      require(e.getValue.isArray && e.getValue.size()>0,"checkpoint outputs must be a nonempty list")
+      val ports=e.getValue.elements.asScala.toVector;require(ports.forall(p=>p.isTextual && connectedPorts(steps,task)(p.asText)) && ports.map(_.asText).distinct.size==ports.size,"invalid checkpoint outputs")
+      e.getKey->ports.map(_.asText).toSet
+    }.toMap
+    val reused=if(body.has("reuse_steps"))Json.strings(body,"reuse_steps").toSet else Set.empty[String]
+    require(reused.subsetOf(selected.keySet),"reused step requires checkpoints")
+    val run=if(selected.nonEmpty){
+      val job=Json.id(Json.text(body,"checkpoint_run_id"));val key=checkpointKey(union,who,job)
+      val value=checkpointRuns.getOrElseUpdate(key,new CheckpointRun(union,who,job));value.touched=Json.now
+      require(reused.subsetOf(value.data.available),"checkpoint unavailable")
+      reused.foreach { id=>require(connectedPorts(steps,steps.find(_.path("id").asText==id).get).subsetOf(selected(id)),"all connected outputs are required to reuse a step") }
+      Some(value)
+    }else {require(reused.isEmpty && !body.has("checkpoint_run_id"),"unexpected checkpoint run");None}
     val own=sessions.values.asScala.filter(s=> !s.terminal && s.owner==who && s.union==union).map(_.size).sum
     if(reserved+steps.size>config.maxConcurrentTasks || own+steps.size>policy.path("max_concurrent_tasks").asInt)throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
     if(!config.taskSlots.tryAcquire(steps.size))throw UnionFailure(RESOURCE_EXHAUSTED,"node capacity unavailable")
-    try {val s=new Session(id,union,who,jobName,jobYaml,submitted,body.path("allow_fusion").asBoolean(false),timeout,requestId,resources);sessions.put(id,s);s.prepareEnvironmentAsync();s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(steps.size);throw t}
+    try {val s=new Session(id,union,who,jobName,jobYaml,submitted,body.path("allow_fusion").asBoolean(false),timeout,requestId,resources,run,selected,reused);sessions.put(id,s);s.prepareEnvironmentAsync();s}catch{case scala.util.control.NonFatal(t)=>config.taskSlots.release(steps.size);throw t}
   }
   private def find(id:String,who:String,owner:Boolean=true):Session={
     val s=Option(sessions.get(Json.id(id))).getOrElse(throw UnionFailure(NOT_FOUND,"execution unavailable"))
@@ -172,23 +182,25 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       case "planning_profile"=>
         Json.fields(n,Set("union_id","operators"));grant(Json.text(n,"union_id"),who)
         val references=Json.strings(n,"operators");PlanningMetadata.profiles(config,references,()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException())
-      case "materialized_status"=>
-        Json.fields(n,Set("union_id","execution_id","task"));val union=Json.id(Json.text(n,"union_id"));grant(union,who)
-        val result=Json.obj().put("committed",false)
-        materialization.flatMap(_.get(ExecutionPolicy.key(Json.text(n,"execution_id"),Json.text(n,"task")))).foreach { a=>
-          try {val m=a.metadata;if(m.path("owner").asText!=who || m.path("union_id").asText!=union)denied("materialized task owner denied")
-            result.put("committed",true).put("expires_at_ms",m.path("expires_at_ms").asLong);result.set[JsonNode]("ports",m.path("stored_ports"))
-          }finally a.close()
-        };result
+      case "release_checkpoints"=>
+        Json.fields(n,Set("union_id","checkpoint_run_id"));val union=Json.id(Json.text(n,"union_id"));val job=Json.id(Json.text(n,"checkpoint_run_id"))
+        synchronized {
+          val key=checkpointKey(union,who,job)
+          checkpointRuns.get(key).foreach { run=>
+            val related=sessions.values.asScala.filter(_.checkpointRun.contains(run)).toVector
+            require(related.forall(_.terminal),"checkpoint execution still active")
+            related.foreach(_.awaitStopped());run.data.close();checkpointRuns-=key
+          }
+        };Json.obj().put("released",true)
       case "prepare"=>
         Json.fields(n,Set("job_yaml"));val text=Json.text(n,"job_yaml");{val definition=dacp.union.YamlDocument.parse(text);audit.foreach(_.job(definition.path("execution_id").asText));prepare(definition,who,text,audit.map(_.requestId).getOrElse(Json.uuid())).snapshot}
-      case "start"|"execution_status"|"cancel_execution"=>
+      case "start"|"execution_status"|"cancel_execution"|"complete_execution"=>
         Json.fields(n,Set("execution_id"));val id=Json.text(n,"execution_id")
         val session=if(op=="cancel_execution"){
           val s=Option(sessions.get(Json.id(id))).getOrElse(throw UnionFailure(NOT_FOUND,"execution unavailable"))
           if(s.owner!=who)denied("execution owner denied");s
         }else find(id,who)
-        if(op=="start")session.start() else if(op=="cancel_execution")session.stop("cancelled")
+        if(op=="start")session.start() else if(op=="cancel_execution"){session.stop("cancelled");session.awaitStopped()} else if(op=="complete_execution")session.commit()
         session.snapshot
       case _=>throw UnionFailure(UNIMPLEMENTED,"unknown Union action")
     }
@@ -213,7 +225,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     def claimLocal():Unit={require(consumer.isEmpty,"not a local output");claim("")}
     def claim(who:String):Unit={if(who!=consumer)denied("output consumer denied");if(!claimed.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"output already consumed")}
   }
-  private final class Session(val id:String,val union:String,val owner:String,jobName:String,jobYaml:String,submitted:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long,requestId:String,resources:_root_.xstream.engine.ExecutionResources) {
+  private final class Session(val id:String,val union:String,val owner:String,jobName:String,jobYaml:String,submitted:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long,requestId:String,resources:_root_.xstream.engine.ExecutionResources,val checkpointRun:Option[CheckpointRun],selectedCheckpoints:Map[String,Set[String]],reusedSteps:Set[String]) {
     private def logFailure(t:Throwable):Unit=org.slf4j.LoggerFactory.getLogger(getClass).error(
       s"Execution failed: operation=job.execute request_id=$requestId job_id=$id",t)
     private val definitions=submitted.map(normalizeTask)
@@ -222,14 +234,33 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     val size=definitions.size
     val created=Json.now
     val cancel=new StreamCancel(timeoutSeconds=settings.preparationTimeoutSeconds)
+    private val sinks=new SinkTransactions
+    private val workers=new java.util.concurrent.ConcurrentLinkedQueue[Thread]()
+    @volatile private var cleanupError:Option[String]=None
+    @volatile private var cleanupComplete=false
+    @volatile private var checkpointCleanupError:Option[Throwable]=None
+    def awaitStopped():Unit={
+      val interrupted=Thread.interrupted()
+      try {
+        val deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(30)
+        workers.asScala.filter(_!=Thread.currentThread()).foreach { t=>while(t.isAlive && System.nanoTime()<deadline)t.join(50) }
+        require(!workers.asScala.exists(t=>t!=Thread.currentThread() && t.isAlive),"previous execution workers did not stop")
+        sinks.onDiscard(new java.util.concurrent.CancellationException("attempt discarded"))
+        checkpointCleanupError.foreach(throw _)
+        cleanupComplete=true
+      }catch{case scala.util.control.NonFatal(t)=>cleanupError=Some(Option(t.getMessage).getOrElse("Sink cleanup failed"));throw t}
+      finally if(interrupted)Thread.currentThread().interrupt()
+    }
+    def commit():Unit={
+      synchronized {if(state=="succeeded")return;require(state=="ready_to_commit","execution is not ready to commit");state="committing";historyRecord.update(state,snapshot)}
+      try {
+        sinks.onComplete(()=>cancel.active())
+        synchronized {state="succeeded";finished=Json.now;historyRecord.update(state,snapshot);releaseSlots()}
+      }catch{case scala.util.control.NonFatal(t)=>logFailure(t);stop("failed",Some("Sink commit failed; automatic retry is forbidden"));throw t}
+    }
     @volatile private var state="preparing"
     private val historyRecord=config.executionHistory.begin("union_execution",metadata=Json.obj().put("name",jobName).put("execution_id",id).put("union_id",union).put("owner",owner).put("node",DacpUri.origin(config.uri(""))),state="preparing")
     historyRecord.update("preparing",{val n=Json.obj().put("job_yaml",jobYaml);n.set[JsonNode]("task_definitions",Json.mapper.valueToTree[JsonNode](submitted.asJava));n})
-    private val replayArtifacts=scala.collection.mutable.Map.empty[String,MaterializedTask]
-    try definitions.filter(_.has("replay_from")).foreach { t=>
-      val artifact=materialization.get.get(ExecutionPolicy.key(t.path("replay_from").asText,t.path("id").asText)).getOrElse(throw UnionFailure(NOT_FOUND,"materialized task expired during prepare"))
-      replayArtifacts(t.path("id").asText)=cancel.add(artifact)
-    }catch{case t:Throwable=>cancel.close();throw t}
     private val taskRecords=definitions.map { t=>
       val metadata=Json.obj().put("execution_id",id).put("parent_record_id",historyRecord.id).put("union_id",union).put("owner",owner).put("node",DacpUri.origin(config.uri(""))).put("task_id",t.path("id").asText).put("operator",t.path("operator").asText)
       if(t.has("title"))metadata.put("title",t.path("title").asText)
@@ -247,10 +278,12 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     definitions.foreach(t=>states.put(t.path("id").asText,"preparing"))
     def terminal:Boolean=Set("succeeded","failed","cancelled","expired")(state)
     def output(task:String,port:String):Output=outputs.getOrElse((task,port),throw UnionFailure(NOT_FOUND,"output unavailable"))
-    def stop(reason:String,message:Option[String]=None):Unit=synchronized {
+    def stop(reason:String,message:Option[String]=None):Unit={
+      synchronized {
       try {
         if(!terminal){state=reason;finished=Json.now;states.keySet.asScala.foreach(k=>if(states.get(k)!="succeeded")states.put(k,reason));historyRecord.update(reason,snapshot,message);taskRecords.foreach{case(k,r)=>r.update(states.get(k),snapshot,if(states.get(k)=="succeeded")None else message)}}
       }finally {cancel.fail(new java.util.concurrent.CancellationException(reason));releaseSlots()}
+      }
     }
     private def observed(task:String,direction:String,port:String,f:OperatorFrame,remote:Boolean):Unit=
       metrics.computeIfAbsent(s"$task/$direction/$port",_=>new PortMetrics(allocator)).observe(f,remote)
@@ -334,8 +367,9 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     @volatile private var runtimePid=0L
     @volatile private var executionMode="isolated_steps"
     @volatile private var fusionReason="not_planned"
+    @volatile private var fusionSelection:Option[JsonNode]=None
     private def grouped():Option[(PreparedOperatorGroup,Map[String,(String,String,JsonNode)],Map[String,(String,String)])]={
-      if(definitions.exists(t=>t.has("replay_from") || t.path("materialize").size()>0)){fusionReason="materialization_boundary";return None}
+      if(selectedCheckpoints.nonEmpty){fusionReason="checkpoint_boundary";return None}
       if(!allowFusion){fusionReason="node_partition_not_fusible";return None}
       if(runner.nonEmpty || definitions.size<2){fusionReason="single_step_or_test_runner";return None}
       val readers=definitions.filter(_.path("operator").asText==Jobs.ItemSource).map(t=>t.path("id").asText->t).toMap
@@ -362,19 +396,18 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         Task(id,bindings,t.path("operator").asText,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]),description=Option(t.get("description")).map(_.asText),title=Option(t.get("title")).map(_.asText))
       }
       val connected=definitions.filterNot(t=>readers.contains(t.path("id").asText)).flatMap(t=>t.path("output_routes").fields.asScala.filter(_.getValue.path("consumer_identity").asText.nonEmpty).map(e=>(t.path("id").asText,e.getKey))).zipWithIndex.map{case(pair,i)=>s"p$i"->pair}.toMap
-      if(!config.operatorFusionEnabled){fusionReason="disabled_by_configuration";return None}
+      if(config.operatorFusion=="isolated"){fusionReason="isolated_by_policy";return None}
       if(connected.isEmpty){fusionReason="no_selected_outputs";return None}
       if(steps.size<2){fusionReason="single_step";return None}
       val contracts=steps.map { task=>
         cancel.active()
         val op=Option(preparedOperators.get(task.id)).getOrElse(throw new IllegalStateException("operator environment was not prepared"))
-        val ports=steps.flatMap(_.inputs.values.collect{case b if b.task.contains(task.id)=>b.port}).toSet ++ connected.values.collect{case(id,p) if id==task.id=>p}
-        val outputs=ports.map(_->_root_.xstream.execution.PortContract(Set("bytes","records"),Set.empty,None)).toMap
-        task.id->op.copy(outputs=outputs,program=op.program.map(_.copy(outputs=outputs.view.mapValues(_.representations).toMap)))
+        task.id->op
       }.toMap
-      OperatorGroups.prepareResolved(config,JobPlan(steps,connected),contracts) match {
+      fusionSelection=Some(_root_.xstream.engine.FusionPolicy.decide(config.operatorFusion,JobPlan(steps,connected)).json)
+      OperatorGroups.prepareResolved(config,JobPlan(steps,connected),OperatorGroups.resolveDeclared(JobPlan(steps,connected),contracts)) match {
         case Left(reason)=>fusionReason=reason;None
-        case Right(group)=>executionMode="shared_process";unitRuntimes.put("shared",_root_.xstream.operator.inference.OperatorLibrary.runtimeDescriptor(group.operator));runtimeImage=group.operator.image;fusionReason="compatible";Some((group,external.toMap,connected))
+        case Right(group)=>executionMode="shared_process";unitRuntimes.put("shared",_root_.xstream.operator.inference.OperatorLibrary.runtimeDescriptor(group.operator));runtimeImage=group.operator.image;fusionReason=_root_.xstream.engine.FusionPolicy.decide(config.operatorFusion,JobPlan(steps,connected)).reason;Some((group,external.toMap,connected))
       }
     }
     private val preparedOperators=new ConcurrentHashMap[String,_root_.xstream.operator.inference.ResolvedOperator]()
@@ -386,7 +419,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         try {
           prepareEnvironment.foreach(_(cancel))
           if(runner.isEmpty){
-            definitions.filterNot(t=>t.has("replay_from") || t.path("operator").asText==Jobs.ItemSource).foreach { t=>
+            definitions.filterNot(t=>t.path("operator").asText==Jobs.ItemSource || reusedSteps(t.path("id").asText)).foreach { t=>
               cancel.active()
               val task=Task(t.path("id").asText,Map.empty,t.path("operator").asText,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]))
               preparedOperators.put(task.id,executor.prepare(task,cancel))
@@ -433,7 +466,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
             },cancel,Some(group.operator),Some(event),resources=resources)
             inputs.values.foreach(_.finish())
             outputs.values.foreach(_.queue.end())
-            synchronized{if(!terminal){state="succeeded";finished=Json.now;historyRecord.update(state,snapshot);releaseSlots()}}
+            synchronized{if(!terminal){state="ready_to_commit";historyRecord.update(state,snapshot)}}
           }finally inputs.values.foreach(_.close())
         }catch{case t:Throwable=>logFailure(t);stop("failed",Some("Job execution failed; request_id="+requestId));throw t}
       }
@@ -465,40 +498,8 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       val threads=definitions.map { t=>StreamProtocol.thread(cancel){
         val taskId=t.path("id").asText
         try {
-          if(t.has("replay_from")){
-            states.put(taskId,"replaying");taskRecords(taskId).update("replaying")
-            val artifact=replayArtifacts(taskId)
-            val replayThreads=connectedPorts(definitions,t).toVector.sorted.map { port=>StreamProtocol.thread(cancel){
-              val source=cancel.add(artifact.open(port));val out=output(taskId,port)
-              try {
-                var phase=0;var end=Option.empty[OperatorFrame];var chunk=source.next()
-                while(chunk.nonEmpty){
-                  cancel.active();val f=chunk.get;val h=StreamProtocol.header(f)
-                  require(h.path("port").asText==port,"replay port mismatch")
-                  h.path("type").asText match {
-                    case "start"=>require(phase==0,"invalid replay start");phase=1
-                    case "data"=>require(phase==1,"invalid replay data")
-                    case "end"=>require(phase==1,"invalid replay end");phase=2
-                    case _=>throw new IllegalArgumentException("invalid replay frame")
-                  }
-                  observed(taskId,"outputs",port,f,out.consumer.nonEmpty);if(h.path("type").asText=="end")end=Some(f)else out.queue.put(f);chunk=source.next()
-                }
-                require(phase==2,"incomplete replay output");end.foreach(out.queue.put);out.queue.end()
-              }finally source.close()
-            }}
-            replayThreads.foreach(thread=>while(thread.isAlive){cancel.active();thread.join(100)})
-            cancel.active()
-            states.put(taskId,"succeeded");taskRecords(taskId).update("succeeded",snapshot)
-          }else {
-          if(t.has("description"))require(t.path("description").isTextual && t.path("description").asText.length<=8192 && !t.path("description").asText.exists(c=>c.isControl && c!='\n' && c!='\r' && c!='\t'),"invalid task description")
-      val selected=if(t.has("materialize"))Json.strings(t,"materialize").toSet else Set.empty[String]
-          val writer=if(selected.nonEmpty){
-            val metadata=Json.obj().put("execution_id",id).put("task",taskId).put("union_id",union).put("owner",owner)
-            metadata.set[JsonNode]("signature",ExecutionPolicy.signature(t))
-            Some(cancel.add(materialization.get.begin(ExecutionPolicy.key(id,taskId),metadata,selected)))
-          }else None
-          try {
           states.put(taskId,"waiting_inputs");taskRecords(taskId).update("waiting_inputs")
+          var checkpointWriter:Option[_root_.xstream.execution.CheckpointWriter]=None
           val inputs=t.path("inputs").fields.asScala.map { e=>
             val b=e.getValue
             val src=if(b.has("uri"))localInput(b)else if(b.has("origin"))remoteInput(b)else {val out=output(b.path("task").asText,b.path("port").asText);out.claimLocal();out.queue}
@@ -510,18 +511,14 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
           var seen=Set.empty[String];val phases=scala.collection.mutable.Map.empty[String,Int]
           val emit:OperatorFrame=>Unit=f=>{
             val h=StreamProtocol.header(f);val port=h.path("port").asText;seen+=port
-            if(selected(port)){
-              h.path("type").asText match {
-                case "start"=>require(!phases.contains(port),"duplicate materialized start");phases(port)=1
-                case "data"=>require(phases.get(port).contains(1),"invalid materialized data")
-                case "end"=>require(phases.get(port).contains(1),"invalid materialized end");phases(port)=2
-                case _=>throw new IllegalArgumentException("invalid materialized frame")
-              }
-              writer.get.append(port,f)
-            }
-            outputs.get((taskId,port)).foreach(out=>{observed(taskId,"outputs",port,f,out.consumer.nonEmpty);out.queue.put(f)})
+            outputs.get((taskId,port)).foreach(out=>{observed(taskId,"outputs",port,f,out.consumer.nonEmpty);if(selectedCheckpoints.getOrElse(taskId,Set.empty)(port))checkpointWriter.get.append(port,f)else out.queue.put(f)})
           }
           try {
+            if(reusedSteps(taskId)){
+              checkpointRun.get.data.replay(taskId,selectedCheckpoints(taskId),cancel)(f=>outputs(taskId->StreamProtocol.header(f).path("port").asText).queue.put(f))
+              seen++=selectedCheckpoints(taskId)
+            }else {
+            selectedCheckpoints.get(taskId).foreach(ports=>checkpointWriter=Some(checkpointRun.get.data.begin(taskId,ports,()=>cancel.active())))
             Jobs.readBinding(task) match {
               case Some(binding)=>
                 val descriptor=Json.obj().put("uri",binding.uri.get).put("view",binding.view)
@@ -532,7 +529,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
                   datasetInput(descriptor)
                 }else if(DacpUri.origin(binding.uri.get)!=DacpUri.origin(config.uri("")))ItemSource.open(config,allocator,binding,cancel)else localInput(descriptor)
                 try {var f=source.next();while(f.nonEmpty){emit(StreamProtocol.rename(f.get,"result"));f=source.next()}}finally source.close()
-              case None=>runner match {case Some(run)=>run(task,inputs,emit,cancel);case None=>executor.execute(task,inputs,emit,cancel,resolved=Some(Option(preparedOperators.get(taskId)).getOrElse(throw new IllegalStateException("operator environment was not prepared"))),onRuntime=Some(runtime=>unitRuntimes.put(taskId,runtime)),resources=resources)}
+              case None=>runner match {case Some(run)=>run(task,inputs,emit,cancel,sinks);case None=>executor.execute(task,inputs,emit,cancel,resolved=Some(Option(preparedOperators.get(taskId)).getOrElse(throw new IllegalStateException("operator environment was not prepared"))),onRuntime=Some(runtime=>unitRuntimes.put(taskId,runtime)),resources=resources,sinks=Some(sinks),attemptId=id,jobId=id)}
             }
             // Worker transports must validate upstream success, not only an end frame.
             inputs.values.foreach { s=>
@@ -540,22 +537,29 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
               s.finish()
             }
             require(connectedPorts(definitions,t).subsetOf(seen),"declared connection port not produced")
-            require(selected.forall(p=>phases.get(p).contains(2)),"incomplete materialized outputs")
-            cancel.active();writer.foreach(_.commit())
+            cancel.active();checkpointWriter.foreach(_.commit())
+            selectedCheckpoints.get(taskId).foreach { ports=>
+              checkpointRun.get.data.replay(taskId,ports,cancel)(f=>outputs(taskId->StreamProtocol.header(f).path("port").asText).queue.put(f))
+            }
+            }
+            cancel.active()
             outputs.filter(_._1._1==taskId).values.foreach(_.queue.end())
             states.put(taskId,"succeeded");taskRecords(taskId).update("succeeded",snapshot)
-          } finally inputs.values.foreach(_.close())
-          }finally writer.foreach(_.close())
-          }
+          } finally {try inputs.values.foreach(_.close())finally checkpointWriter.foreach(w=>try w.close()catch{case scala.util.control.NonFatal(t)=>checkpointCleanupError=Some(t);throw new _root_.xstream.execution.SinkDiscardException("Checkpoint cleanup failed",t)})}
         } catch {case t:Throwable=>logFailure(t);stop("failed",Some("Job execution failed; request_id="+requestId));throw t}
       }}
+      threads.foreach(workers.add)
       StreamProtocol.thread(cancel){
         threads.foreach(t=>while(t.isAlive){cancel.active();t.join(100)})
-        synchronized {if(!terminal){state="succeeded";finished=Json.now;historyRecord.update(state,snapshot);releaseSlots()}}
+        synchronized {if(!terminal){state="ready_to_commit";historyRecord.update(state,snapshot)}}
       }
     }
     def snapshot:JsonNode={
-      val n=Json.obj().put("history_record_id",historyRecord.id).put("execution_id",id).put("name",jobName).put("union_id",union).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished).put("execution_mode",executionMode).put("fusion_reason",fusionReason).put("runtime_pid",runtimePid)
+      val n=Json.obj().put("sink_cleanup_complete",cleanupComplete).put("commit_started",sinks.commitStarted)
+      checkpointRun.foreach { run=>n.set[JsonNode]("checkpoints",run.data.snapshot) }
+      cleanupError.foreach(n.put("sink_cleanup_error",_));val ss=n.putObject("sinks");sinks.states.foreach{case(k,v)=>ss.put(k,v)}
+      n.put("history_record_id",historyRecord.id).put("execution_id",id).put("name",jobName).put("union_id",union).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished).put("execution_mode",executionMode).put("fusion_reason",fusionReason).put("runtime_pid",runtimePid)
+      n.put("operator_fusion",config.operatorFusion);fusionSelection.foreach(s=>n.set[JsonNode]("fusion_selection",s))
       n.put("prepared_at_ms",preparedAt).put("execution_started_at_ms",executionStartedAt).put("preparation_duration_ms",(if(preparedAt>0)preparedAt else if(finished>0)finished else Json.now)-created).put("execution_duration_ms",if(executionStartedAt==0)0L else (if(finished>0)finished else Json.now)-executionStartedAt)
       n.set[JsonNode]("resources",resources.json)
       val units=n.putArray("execution_units")
@@ -570,11 +574,6 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
       }
       units.elements.asScala.foreach { u=>Option(unitRuntimes.get(u.path("id").asText)).foreach(r=>r.fields.asScala.foreach(e=>u.asInstanceOf[com.fasterxml.jackson.databind.node.ObjectNode].set[JsonNode](e.getKey,e.getValue))) }
       val ts=n.putObject("steps");states.asScala.toSeq.sortBy(_._1).foreach{case(k,v)=>ts.put(k,v)}
-      val artifacts=n.putObject("materialized_tasks")
-      definitions.filter(t=>t.has("replay_from") || t.path("materialize").size()>0).foreach { t=>
-        val task=t.path("id").asText;val entry=artifacts.putObject(task).put("source_execution_id",t.path("replay_from").asText(id)).put("replayed",t.has("replay_from"))
-        entry.put("committed",states.get(task)=="succeeded")
-      }
       val ms=n.putObject("ports");metrics.asScala.toSeq.sortBy(_._1).foreach{case(k,v)=>ms.set[JsonNode](k,v.snapshot)};n
     }
     def check():Unit={
@@ -583,15 +582,23 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
         case scala.util.control.NonFatal(_)=>stop("failed")
       }}
     }
-    def close():Unit=cancel.close()
+    def close():Unit={cancel.close();try awaitStopped()catch{case scala.util.control.NonFatal(t)=>logFailure(t)}}
   }
   private[dacp] def executionSnapshots:Vector[JsonNode]=sessions.values.asScala.toVector.map(_.snapshot)
   def start():Unit={
     monitor.scheduleWithFixedDelay(new Runnable{def run():Unit=try {
       sessions.values.asScala.foreach{s=>s.check();if(s.terminal && Json.now-s.finished>settings.retentionSeconds*1000){sessions.remove(s.id,s);s.close()}}
-      materialization.foreach(_.cleanup())
+      synchronized {
+        val limit=(settings.executionTimeoutSeconds+settings.preparationTimeoutSeconds+settings.retentionSeconds)*1000
+        checkpointRuns.toVector.foreach { case(key,run)=>
+          if(Json.now-run.touched>limit && !sessions.values.asScala.exists(s=>s.checkpointRun.contains(run) && !s.terminal)){
+            sessions.values.asScala.filter(_.checkpointRun.contains(run)).foreach(_.awaitStopped())
+            run.data.close();checkpointRuns-=key
+          }
+        }
+      }
     }catch{case scala.util.control.NonFatal(t)=>org.slf4j.LoggerFactory.getLogger(getClass).error("Background request failed: operation=execution.cleanup request_id="+Json.uuid()+" job_id=unavailable",t)}},1,1,TimeUnit.SECONDS)
     println(s"union worker listening on ${config.uri("")}; identity ${tls.identity}")
   }
-  def close():Unit=if(stopped.compareAndSet(false,true)){monitor.shutdownNow();sessions.values.asScala.foreach(_.stop("cancelled"));sessions.values.asScala.foreach(_.close());remote.close();()}
+  def close():Unit=if(stopped.compareAndSet(false,true)){monitor.shutdownNow();sessions.values.asScala.foreach(_.stop("cancelled"));sessions.values.asScala.foreach(_.close());synchronized {checkpointRuns.values.foreach(_.data.close());checkpointRuns.clear()};remote.close();()}
 }

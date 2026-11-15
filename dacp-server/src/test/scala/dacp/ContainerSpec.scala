@@ -49,7 +49,7 @@ class ContainerSpec extends AnyFunSuite {
         assert(Formats.detect(ByteSource.local(file)).id == format)
         val c = config(dir,file); val ns = new NamespaceAdapter(DatasetPublication.mixedBindings(c.datasets("public")),c)
         val root = ns.list("/").head
-        assert(root.kind == "folder" && root.format == format && plugins.views(root) == Seq("bytes"))
+        assert(root.kind == "folder" && root.format == format && plugins.views(root) == Seq("bytes","items"))
         assert(root.totalSizeBytes.isEmpty && root.recordCount.isEmpty && root.lastModifiedTimeMs.isDefined && root.creationTimeMs.isDefined)
         assert(ns.list("/archive").map(_.path) == Seq("/archive/empty","/archive/nested.tar","/archive/reports"))
         assert(ns.list("/archive/reports").head.format == "csv")
@@ -133,7 +133,7 @@ class ContainerSpec extends AnyFunSuite {
         for ((alias,physical) <- Seq("/archive" -> file,"/orders.csv.gz" -> gz)) {
           val info = client.getInfo(FlightDescriptor.path("datasets","public",alias))
           val metadata = Metadata.Item.parseFrom(info.getAppMetadata)
-          assert(metadata.getKind == "folder" && metadata.getViewsList.asScala == Seq("bytes"))
+          assert(metadata.getKind == "folder" && metadata.getViewsList.asScala == Seq("bytes","items"))
           val out = new ByteArrayOutputStream(); val stream = client.getStream(info.getEndpoints.get(0).getTicket)
           try while (stream.next()) {
             val root = stream.getRoot

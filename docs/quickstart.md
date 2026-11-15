@@ -69,7 +69,7 @@ A runner account can submit an existing Job using the same node or Union connect
 submit job.yaml --vars variables.yaml --policy policy.yaml
 ```
 
-Omit `--vars` or `--policy` when unnecessary. Job, variable and policy file paths are local to the Shell process. Input Item references resolve on the receiving service. Consume the result as it arrives; Ctrl+C cancels the running operation. See [remote submission examples](jobs.md) and [execution policies](materialization.md).
+Omit `--vars` or `--policy` when unnecessary. Job, variable and policy file paths are local to the Shell process. Input Item references resolve on the receiving service. Consume the result as it arrives; Ctrl+C cancels the running operation. See [remote submission examples](jobs.md) and [execution policies](execution-policy.md).
 
 ## Next steps
 

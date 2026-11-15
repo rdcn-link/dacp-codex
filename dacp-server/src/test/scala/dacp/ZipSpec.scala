@@ -34,14 +34,14 @@ class ZipSpec extends AnyFunSuite {
       val client = FlightClient.builder(allocator,server.getLocation).build()
       try {
         val info = client.getInfo(FlightDescriptor.path("datasets","public","/archive"))
-        assert(Metadata.Item.parseFrom(info.getAppMetadata).getViewsList.asScala == Seq("bytes"))
+        assert(Metadata.Item.parseFrom(info.getAppMetadata).getViewsList.asScala == Seq("bytes","items"))
         val bytes = new java.io.ByteArrayOutputStream(); val stream = client.getStream(info.getEndpoints.get(0).getTicket)
         try while(stream.next()) { val root = stream.getRoot; (0 until root.getRowCount).foreach(i => bytes.write(root.getVector(0).asInstanceOf[VarBinaryVector].get(i))) } finally stream.close()
         assert(bytes.toByteArray.sameElements(Files.readAllBytes(file)))
         val records = client.getInfo(FlightDescriptor.path("datasets","public","/archive/reports/orders.csv"))
         val rows = client.getStream(records.getEndpoints.get(0).getTicket)
         try { var n = 0; while(rows.next()) n += rows.getRoot.getRowCount; assert(n == 2) } finally rows.close()
-        intercept[FlightRuntimeException](client.getInfo(FlightDescriptor.path("datasets","public","/archive/empty")))
+        intercept[FlightRuntimeException](client.getInfo(FlightDescriptor.path("datasets","public","/archive/empty","bytes")))
       } finally { client.close(); server.close() }
     } finally { allocator.close(); Data.deleteTree(dir) }
   }

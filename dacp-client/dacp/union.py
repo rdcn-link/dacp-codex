@@ -50,13 +50,6 @@ class Union(FlightControl):
         result = self._action('submit', body)
         return UnionExecution(self, result['job_id'])
 
-    def replay(self, job_id, *, steps=None):
-        body = {'job_id': job_id}
-        if steps is not None:
-            body['steps'] = list(steps)
-        result = self._action('replay_job', body)
-        return UnionExecution(self, result['job_id'])
-
 
 def _values(reader, name):
     expected = pa.schema([(name, pa.binary())])
@@ -88,8 +81,6 @@ class UnionExecution:
     def __exit__(self, *args):
         self.close()
 
-    def replay(self, *, steps=None):
-        return self.union.replay(self.job_id, steps=steps)
 
     def status(self):
         return self.union._action('job_status', {'job_id': self.job_id})

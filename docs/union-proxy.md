@@ -58,7 +58,7 @@ steps:
 
 The example operator must be installed or available from a repository on the execution member. Ordinary steps may omit `node`. Union filters configured locations by service credential and capacity, preferring input or upstream locations. When all raw input sizes are known, it chooses the location minimizing transferred bytes; otherwise it follows input declaration order. A multi-input operator executes at one member and reads other members' inputs as data streams. Explicit placement uses `node: nd-xxxx-xxxx`; public steps cannot specify internal addresses.
 
-Execution policy JSON, output streams, failed-attempt notifications, cancellation, timeout, member-side materialization and replay use the existing engine. Results stream through Union to the client by default. Union participates as an upstream member through the ordinary worker contract, delegating computation to its own members. Inputs use temporary, single-consumer, certificate-bound streams without disk staging. Proxy paths detect cycles and enforce an eight-level limit; cancellation and remaining execution time propagate downstream.
+Execution policy JSON, output streams, failed-attempt notifications, cancellation, timeout, member-side whole-Job recovery use the existing engine. Results stream through Union to the client by default. Union participates as an upstream member through the ordinary worker contract, delegating computation to its own members. Inputs use temporary, single-consumer, certificate-bound streams without disk staging. Proxy paths detect cycles and enforce an eight-level limit; cancellation and remaining execution time propagate downstream.
 
 ## Management boundaries
 
@@ -77,11 +77,4 @@ PYTHONPATH=dacp-client .venv/bin/python -m pytest dacp-client/tests
 
 Contract tests cover name encoding/decoding and restart, complete/partial catalogs, public URIs, Item streams, S3, placement, raw cross-member inputs, worker composition, authorization and cycle detection.
 
-To materialize outputs when Union acts as an upstream member, configure top-level `materialization_store` using the same storage plugin contract. Storage resides at that Union layer; its downstream members need not materialize:
-
-```yaml
-materialization_store:
-  provider: file
-  settings:
-    directory: .union-state/materializations
-```
+Union retries stop all members and discard staged Sink results, then reuse valid explicit checkpoints or recompute uncovered work. Nested Unions defer publication until the parent authorizes completion. See [execution policy](execution-policy.md).

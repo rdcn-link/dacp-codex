@@ -19,7 +19,7 @@ class GraphPlacementSpec extends AnyFunSuite {
     assert(result.placements("join").target=="west")
     assert(result.estimate.edges.exists(e=>e.from=="join"&&e.to=="sink"&&e.mode=="arrow_ipc"))
   }
-  test("compatible whole partitions estimate fusion while runtime and materialization boundaries stay isolated") {
+  test("compatible whole partitions estimate fusion while runtime and explicit execution boundaries stay isolated") {
     val profile=PlanningProfile("jvm","sha256:runtime",Some("locked-env"))
     val nodes=Vector(PlanningTarget("east",8,Set("jvm")))
     def graph(boundary:Boolean)=Vector(PlanningStep("a",Vector.empty,operator="a@1",profiles=Map("east"->profile)),

@@ -22,8 +22,7 @@ class CollaborationClient(FlightControl):
     def cancel(self, execution_id): return self._action('cancel_execution', {'execution_id': execution_id})
     def output(self, execution_id, task, port):
         return self._stream('output', {'execution_id': execution_id, 'task': task, 'port': port})
-    def materialized_status(self, union_id, execution_id, task):
-        return self._action('materialized_status', {'union_id': union_id, 'execution_id': execution_id, 'task': task})
+
     def close(self): self.client.close()
     def __enter__(self): return self
     def __exit__(self, *args): self.close()

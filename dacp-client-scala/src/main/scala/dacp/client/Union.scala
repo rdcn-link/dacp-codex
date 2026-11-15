@@ -36,10 +36,6 @@ final class Union(url:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=1800)
     val n=remote.action(origin,"submit",body)
     new UnionExecution(this,Json.id(Json.text(n,"job_id")))
   }
-  def replay(id:String,steps:Option[Seq[String]]=None):UnionExecution={
-    val body=Json.obj().put("job_id",Json.id(id));steps.foreach(ts=>{val a=body.putArray("steps");ts.foreach(a.add)})
-    val n=remote.action(origin,"replay_job",body);new UnionExecution(this,Json.id(Json.text(n,"job_id")))
-  }
   def execution(id:String):UnionExecution=new UnionExecution(this,Json.id(id))
   def close():Unit=remote.close()
 }
@@ -48,7 +44,6 @@ final class UnionExecution private[client](union:Union,val id:String) extends Au
   @volatile private var complete=false
   private var closed=false
   private val streams=mutable.ArrayBuffer.empty[AutoCloseable]
-  def replay(steps:Option[Seq[String]]=None):UnionExecution=union.replay(id,steps)
   def status():JsonNode=union.remote.action(union.origin,"job_status",body)
   def cancel():JsonNode=union.remote.action(union.origin,"cancel_job",body)
   def events(after:Long=0):UnionEvents=synchronized {

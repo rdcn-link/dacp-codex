@@ -2,7 +2,7 @@ package dacp.unionserver
 
 import _root_.xstream.connector.dacp.wire.{FlightTraffic,Tls}
 
-import _root_.xstream.execution.{ExecutionStoreDefinition,MaterializationStoreDefinition}
+import _root_.xstream.execution.{ExecutionStoreDefinition}
 
 
 import dacp.union._
@@ -14,7 +14,7 @@ import scala.jdk.CollectionConverters._
 final case class WebSettings(host:String="127.0.0.1",port:Int=19880) {
   require(host.nonEmpty && port>0 && port<=65535,"invalid web listener")
 }
-final case class Settings(host:String,port:Int,publicUrl:String,cert:Path,key:Path,ca:Path,state:Path,pollMs:Long=1000,timeout:Long=1800,retention:Long=300,web:Option[WebSettings]=None,executionStore:Option[xstream.execution.ExecutionStoreDefinition]=None,pluginDirectory:Option[Path]=None,memberSettings:Vector[MemberSettings]=Vector.empty,credentialDirectory:Option[Path]=None,s3:dacp.S3Settings=dacp.S3Settings(),materializationStore:Option[xstream.execution.MaterializationStoreDefinition]=None,trustedJobSources:Map[String,Set[String]]=Map.empty,planning:PlanningSettings=PlanningSettings(),preparationTimeout:Long=1800) {
+final case class Settings(host:String,port:Int,publicUrl:String,cert:Path,key:Path,ca:Path,state:Path,pollMs:Long=1000,timeout:Long=1800,retention:Long=300,web:Option[WebSettings]=None,executionStore:Option[xstream.execution.ExecutionStoreDefinition]=None,pluginDirectory:Option[Path]=None,memberSettings:Vector[MemberSettings]=Vector.empty,credentialDirectory:Option[Path]=None,s3:dacp.S3Settings=dacp.S3Settings(),trustedJobSources:Map[String,Set[String]]=Map.empty,planning:PlanningSettings=PlanningSettings(),preparationTimeout:Long=1800,checkpointStore:Option[xstream.execution.CheckpointStoreDefinition]=None) {
   require(port>0 && port<=65535 && pollMs>=100 && timeout>0 && retention>0 && preparationTimeout>0)
   Json.origin(publicUrl)
   require(memberSettings.map(_.url).distinct.size==memberSettings.size,"duplicate configured member")
@@ -28,7 +28,7 @@ final case class Settings(host:String,port:Int,publicUrl:String,cert:Path,key:Pa
 object Settings {
   def load(path:Path):Settings={
     val n=Json.yaml(path)
-    Json.fields(n,Set("host","port","public_url","tls_cert","tls_key","tls_ca","state_directory"),Set("poll_interval_ms","execution_timeout_seconds","retention_seconds","web","execution_store","plugin_directory","members","credential_directory","s3","materialization_store","trusted_job_sources","planning","preparation_timeout_seconds"))
+    Json.fields(n,Set("host","port","public_url","tls_cert","tls_key","tls_ca","state_directory"),Set("poll_interval_ms","execution_timeout_seconds","retention_seconds","web","execution_store","plugin_directory","members","credential_directory","s3","trusted_job_sources","planning","preparation_timeout_seconds","checkpoint_store"))
     def num(k:String,d:Long,min:Long,max:Long)=if(n.has(k))Json.number(n,k,min,max)else d
     Settings(Json.text(n,"host"),Json.number(n,"port",1,65535).toInt,Json.origin(Json.text(n,"public_url")),Path.of(Json.text(n,"tls_cert")),Path.of(Json.text(n,"tls_key")),Path.of(Json.text(n,"tls_ca")),Path.of(Json.text(n,"state_directory")),num("poll_interval_ms",1000,100,60000),num("execution_timeout_seconds",1800,1,86400),num("retention_seconds",300,1,86400),if(n.has("web")){
       val w=n.path("web");Json.fields(w,Set("host","port"))
@@ -39,12 +39,13 @@ object Settings {
     }else None,if(n.has("plugin_directory"))Some(Path.of(Json.text(n,"plugin_directory")))else None,Option(n.get("members")).map { values=>
       require(values.isArray,"members must be a list")
       values.elements.asScala.map { v=>Json.fields(v,Set("url","credential_file"));MemberSettings(Json.origin(Json.text(v,"url")),Path.of(Json.text(v,"credential_file"))) }.toVector
-    }.getOrElse(Vector.empty),Option(n.get("credential_directory")).map(v=>Path.of(v.asText)),dacp.S3Settings.read(Option(n.get("s3")).map(v=>Json.mapper.convertValue(v,classOf[java.util.LinkedHashMap[String,Object]]))),Option(n.get("materialization_store")).map { m=>
-      Json.fields(m,Set("provider","settings"));xstream.execution.MaterializationStoreDefinition(Json.text(m,"provider"),Json.mapper.convertValue(m.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap)
-    },Option(n.get("trusted_job_sources")).map{entries=>
+    }.getOrElse(Vector.empty),Option(n.get("credential_directory")).map(v=>Path.of(v.asText)),dacp.S3Settings.read(Option(n.get("s3")).map(v=>Json.mapper.convertValue(v,classOf[java.util.LinkedHashMap[String,Object]]))),Option(n.get("trusted_job_sources")).map{entries=>
       require(entries.isObject,"trusted_job_sources must be a subject-to-origins mapping")
       entries.fields.asScala.map{e=>require(e.getValue.isArray&&e.getValue.size>0&&e.getValue.elements.asScala.forall(_.isTextual),"trusted job sources must be nonempty origin lists");e.getKey->e.getValue.elements.asScala.map(v=>Json.origin(v.asText)).toSet}.toMap
-    }.getOrElse(Map.empty),PlanningSettings.read(n.path("planning")),num("preparation_timeout_seconds",1800,1,86400))
+    }.getOrElse(Map.empty),PlanningSettings.read(n.path("planning")),num("preparation_timeout_seconds",1800,1,86400),Option(n.get("checkpoint_store")).map {d=>
+      Json.fields(d,Set("provider","settings"));require(d.path("settings").isObject,"checkpoint settings must be an object")
+      xstream.execution.CheckpointStoreDefinition(Json.text(d,"provider"),Json.mapper.convertValue(d.path("settings"),classOf[java.util.LinkedHashMap[String,Object]]).asScala.toMap)
+    })
   }
 }
 final case class MemberSettings(url:String,credentialFile:Path) {Json.origin(url)}

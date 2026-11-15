@@ -168,7 +168,6 @@ Union 使用节点签发的服务凭据连接配置中的节点。节点不主�
 | 推导步骤输出 | `step.infer` | `job:execute` |
 | 推导 Job 输出 | `job.infer` | `job:execute` |
 | 提交 Job | `job.submit` | `job:execute` |
-| 重放 Job | `job.replay` | `job:execute` |
 | 查询 Job 状态 | `job.status` | `job:manage:self`，并校验归属 |
 | 取消 Job | `job.cancel` | `job:manage:self`，并校验归属 |
 | 读取 Job 结果 | `job.result.read` | `job:manage:self`，并校验归属 |
@@ -179,7 +178,6 @@ Union 使用节点签发的服务凭据连接配置中的节点。节点不主�
 | 准备子 Job | `job.prepare` | 可信服务身份及执行计划授权 |
 | 启动子 Job | `job.start` | 可信服务身份及执行计划授权 |
 | 读取步骤输出 | `step.output.read` | 可信服务身份及执行计划授权 |
-| 查询步骤物化状态 | `step.materialization.status` | 可信服务身份及执行计划授权 |
 
 目录、列表和元数据始终公开；Item 内容读取及实际扫描遵循数据集发布策略。Job 提交权限不绕过数据集内容限制。S3 列表和对象元数据匿名公开，GET 内容同样遵循数据集策略；提供的签名仍须有效。
 
@@ -237,7 +235,7 @@ Union 仅在存在该配置段时启动看板。Union 配置不接受 `web.enabl
 
 目前没有独立的步骤间空闲超时。下游可以等待上游数据，下游缓冲区满时上游也会等待；这些等待会消耗执行时间。
 
-默认执行时限为 1,800 秒。服务通过 `execution_timeout_seconds` 配置，提交的执行策略可以用 `timeout_seconds` 缩短。Union 向子 Job 下发剩余时间，子 Job 同时受节点 Union 执行配置的时限约束。控制请求通常另有 30 秒的截止时间，数据流调用也有截止时间。持续收到数据不会延长调用截止时间。参见[执行策略](materialization_zh.md)。
+默认执行时限为 1,800 秒。服务通过 `execution_timeout_seconds` 配置，提交的执行策略可以用 `timeout_seconds` 缩短。Union 向子 Job 下发剩余时间，子 Job 同时受节点 Union 执行配置的时限约束。控制请求通常另有 30 秒的截止时间，数据流调用也有截止时间。持续收到数据不会延长调用截止时间。参见[执行策略](execution-policy_zh.md)。
 
 ## 13. 30 秒 deadline 错误表示 Job 执行太久了吗？
 

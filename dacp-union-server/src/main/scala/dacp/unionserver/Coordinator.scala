@@ -51,12 +51,12 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   private val planner=new PublicPlanner(members,settings,proxyCatalog,routes,plugins)
   private val publicConfig=Config(settings.host,settings.port,java.net.URI.create(settings.publicUrl).getHost,Map.empty,settings.cert,settings.key,settings.ca,
     catalogOverride=Some(proxyCatalog),pluginEnvironment=Some(plugins),maxConcurrentTasks=64,
-    union=Some(NodeUnionSettings(settings.state.resolve("upstream"),settings.timeout,settings.retention,settings.materializationStore,settings.preparationTimeout)),
+    union=Some(NodeUnionSettings(settings.state.resolve("upstream"),settings.timeout,settings.retention,settings.preparationTimeout)),
     executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->settings.state.resolve("incoming-executions").toString))),
-    accessLogDirectory=Some(settings.state.resolve("access")),s3=settings.s3,credentialDirectory=Some(settings.credentials.directory),providedCredentials=Some(settings.credentials))
-  private val worker=new UnionWorker(publicConfig,publicConfig.union.get,allocator,Some((task,inputs,emit,cancel)=>nested(task,inputs,emit,cancel)))
+    checkpointStoreDefinition=settings.checkpointStore,accessLogDirectory=Some(settings.state.resolve("access")),s3=settings.s3,credentialDirectory=Some(settings.credentials.directory),providedCredentials=Some(settings.credentials))
+  private val worker=new UnionWorker(publicConfig,publicConfig.union.get,allocator,Some((task,inputs,emit,cancel,sinks)=>nested(task,inputs,emit,cancel,sinks)))
   private val standard=new Producer(publicConfig,allocator,union=Some(worker))
-  private val workerActions=Set("membership","node_status","planning_profile","materialized_status","prepare","start","execution_status","cancel_execution")
+  private val workerActions=Set("membership","node_status","planning_profile","prepare","start","execution_status","cancel_execution","complete_execution","release_checkpoints")
   private val producer=new NoOpFlightProducer {
     override def listFlights(ctx:CallContext,c:Criteria,out:StreamListener[FlightInfo]):Unit=standard.listFlights(ctx,c,out)
     override def getFlightInfo(ctx:CallContext,d:FlightDescriptor):FlightInfo=standard.getFlightInfo(ctx,d)
@@ -166,16 +166,11 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       require(request.hasJobYaml,"submit a job definition")
       val body=Json.obj().put("job_yaml",request.getJobYaml)
       if(!request.getExecutionPolicyYaml.isEmpty)body.set[JsonNode]("execution_policy",dacp.union.YamlDocument.parse(request.getExecutionPolicyYaml.toStringUtf8))
-      val result=if(request.getReplayFrom.nonEmpty){
-        require(request.getJobYaml.isEmpty,"replay uses original job definition")
-        val replay=Json.obj().put("job_id",request.getReplayFrom)
-        Option(body.get("execution_policy")).foreach(p=>replay.put("execution_policy_yaml",dacp.union.YamlDocument.dump(p)))
-        action("replay_job",replay,owner)
-      }else {
+      val result={
         _root_.xstream.execution.RemoteJobPolicy.validateYaml(request.getJobYaml)
         val preliminary=Jobs.parse(request.getJobYaml)
         val submittedPolicy=ExecutionPolicy.parse(Option(body.get("execution_policy")).getOrElse(Json.obj()),preliminary)
-        val planned=planner.plan(preliminary,()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException(),submittedPolicy.materialized.nonEmpty)
+        val planned=planner.plan(preliminary,()=>if(ctx.isCancelled)throw new java.util.concurrent.CancellationException())
         val plan=planned.job
         val policy=ExecutionPolicy.parse(Option(body.get("execution_policy")).getOrElse(Json.obj()),plan)
         require(policy.maxRetries==0 || request.getRetryAware,"automatic retries require a retry-aware client")
@@ -227,7 +222,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     dacp.union.YamlDocument.dump(n)
   }
 
-  private def nested(task:Task,inputs:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel):Unit={
+  private def nested(task:Task,inputs:Map[String,FrameSource],emit:OperatorFrame=>Unit,cancel:StreamCancel,sinks:xstream.execution.SinkTransactions):Unit={
     val candidates=members.all.map(m=>members.inspect(m)).filter(m=>m.path("state").asText=="approved")
     require(candidates.nonEmpty,"no execution node for delegated task")
     val member=candidates.sortBy(_.path("identity").asText).head
@@ -241,12 +236,12 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       }
       val t=task.copy(node=Some(member.path("data_origin").asText),inputs=inputs.keys.toVector.sorted.zip(readers).map{case(p,r)=>p->InputBinding(task=Some(r.id))}.toMap)
       val plan=JobPlan(readers:+t,ports.map(p=>p->(t.id,p)).toMap)
-      j=submit(plan,members.tls.identity,render(plan),ExecutionPolicy.parse(Json.obj().put("timeout_seconds",math.min(settings.timeout,cancel.remainingSeconds)),plan),path=task.proxyPath)
+      j=submit(plan,members.tls.identity,render(plan),ExecutionPolicy.parse(Json.obj().put("timeout_seconds",math.min(settings.timeout,cancel.remainingSeconds)),plan),path=task.proxyPath,deferred=Some(sinks))
       val current=j
       val scope=new AutoCloseable{def close():Unit=if(!current.terminal)current.stop("cancelled")};cancel.add(scope)
       var f=j.output.next()
       while(f.nonEmpty){cancel.active();if(StreamProtocol.header(f.get).path("type").asText!="complete")emit(f.get);f=j.output.next()}
-    }finally {if(j!=null && !j.terminal)j.stop("cancelled");uploads.remove(upload)}
+    }finally {if(j!=null && !j.terminal && !j.staged)j.stop("cancelled");uploads.remove(upload)}
   }
   private def inferTask(task:Task,inputs:Map[String,StreamDescriptor]):InferenceResult={
     val node=task.node.getOrElse(throw new IllegalArgumentException("inference requires placement"))
@@ -268,32 +263,14 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       case "submit"=>
         Json.fields(n,Set("job_yaml"),Set("execution_policy_yaml"));val script=Json.text(n,"job_yaml");_root_.xstream.execution.RemoteJobPolicy.validateYaml(script);val plan=Jobs.parse(script)
         val rawPolicy=Option(n.get("execution_policy_yaml")).map(v=>{require(v.isTextual,"execution_policy_yaml must be text");dacp.union.YamlDocument.parse(v.asText)}).getOrElse(Json.obj())
-        val planned=planner.plan(plan,()=>(),ExecutionPolicy.parse(rawPolicy,plan).materialized.nonEmpty);val executionPlan=planned.job
+        val planned=planner.plan(plan,()=>());val executionPlan=planned.job
         submit(executionPlan,who,render(executionPlan),ExecutionPolicy.parse(Option(n.get("execution_policy_yaml")).map(v=>{require(v.isTextual,"execution_policy_yaml must be text");dacp.union.YamlDocument.parse(v.asText)}).getOrElse(Json.obj()),executionPlan),path=Rpc.proxyHops,submittedScript=Some(script),decisions=planned.decisions,optimization=planned.optimization).snapshot
-      case "replay_job"=>
-        Json.fields(n,Set("job_id"),Set("steps","execution_policy_yaml"));val source=history.get(Json.id(Json.text(n,"job_id"))).getOrElse(throw UnionFailure(NOT_FOUND,"source execution unavailable"))
-        if(source.path("owner").asText!=who)denied()
-        require(Set("succeeded","failed","cancelled","expired","interrupted")(source.path("state").asText),"source execution is still active")
-        val script=Json.text(source,"job_yaml");val plan=Jobs.parse(script)
-        val policy=ExecutionPolicy.parse(Option(n.get("execution_policy_yaml")).map(v=>{require(v.isTextual,"execution_policy_yaml must be text");dacp.union.YamlDocument.parse(v.asText)}).orElse(Option(source.get("execution_policy"))).getOrElse(Json.obj()),plan)
-        val ports=ExecutionPolicy.connected(plan)
-        val eligible=plan.steps.map(_.id).filter(t=>ports.exists(_._1==t) && ports.filter(_._1==t).subsetOf(policy.materialized)).toSet
-        def sourceId(task:String):String=source.path("materialized_sources").path(task).asText(source.path("job_id").asText)
-        val available=eligible.filter { task=>
-          val origin=plan.steps.find(_.id==task).get.node.get
-          val member=members.all.find(_.path("data_origin").asText==DacpUri.node(origin)).getOrElse(throw new IllegalArgumentException("replay node is no longer configured"))
-          remote.action(member.path("url").asText,"materialized_status",Json.obj().put("union_id",members.unionId).put("execution_id",sourceId(task)).put("task",task),Some(member.path("identity").asText)).path("committed").asBoolean
-        }
-        val selected=if(n.has("steps")){val values=Json.strings(n,"steps");require(values.distinct.size==values.size,"duplicate replay task");values.toSet}else available
-        require(selected.nonEmpty && selected.subsetOf(available),"replay steps need all connected outputs committed and unexpired")
-        val sources=selected.map(t=>t->source.path("materialized_sources").path(t).asText(source.path("job_id").asText)).toMap
-        submit(plan,who,script,policy,sources,Some(source.path("job_id").asText)).snapshot
       case "job_status"|"cancel_job"=>
         Json.fields(n,Set("job_id"));val j=owned(Json.text(n,"job_id"),who)
         if(op=="cancel_job")j.stop("cancelled");j.snapshot
       case _=>throw UnionFailure(UNIMPLEMENTED,"unknown Union action")
     }
-    if(Set("submit","replay_job","job_status","cancel_job")(op))publicStatus(result)else result
+    if(Set("submit","job_status","cancel_job")(op))publicStatus(result)else result
   }
   private def publicStatus(value:JsonNode):JsonNode={
     val n=value.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
@@ -335,13 +312,13 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       case _=>throw UnionFailure(UNIMPLEMENTED,"unknown Union ticket")
     }
   }
-  private def submit(plan:JobPlan,owner:String,script:String,policy:ExecutionPolicy,replaySources:Map[String,String]=Map.empty,replayOf:Option[String]=None,path:Vector[String]=Vector.empty,submittedScript:Option[String]=None,decisions:Vector[PlacementDecision]=Vector.empty,optimization:JsonNode=Json.obj()):Execution=synchronized {
+  private def submit(plan:JobPlan,owner:String,script:String,policy:ExecutionPolicy,path:Vector[String]=Vector.empty,submittedScript:Option[String]=None,decisions:Vector[PlacementDecision]=Vector.empty,optimization:JsonNode=Json.obj(),deferred:Option[xstream.execution.SinkTransactions]=None):Execution=synchronized {
     val required=mutable.Set.empty[String]
-    def visit(id:String):Unit=if(required.add(id) && !replaySources.contains(id))Jobs.dependencies(plan.steps.find(_.id==id).get).foreach(visit)
+    def visit(id:String):Unit=if(required.add(id))Jobs.dependencies(plan.steps.find(_.id==id).get).foreach(visit)
     Jobs.roots(plan).foreach(visit)
     val sourceTrust=if(Rpc.isAuthenticatedCall&&Rpc.principal.kind=="token"&&Rpc.principal.active())settings.trustedJobSources.getOrElse(Rpc.principal.subject,Set.empty[String])else Set.empty[String]
     val approvedOrigins=if(sourceTrust.nonEmpty)members.all.map(members.inspect).filter(_.path("state").asText=="approved").map(_.path("data_origin").asText).toSet else Set.empty[String]
-    plan.steps.filter(t=>required(t.id) && !replaySources.contains(t.id)).foreach{t=>
+    plan.steps.filter(t=>required(t.id)).foreach{t=>
       if(sourceTrust.isEmpty)DatasetPublication.requireTask(publicConfig,allocator,t)
       else {
         val resolved=Jobs.resolveReads(JobPlan(Vector(t),Map.empty),settings.publicUrl).steps.head
@@ -353,25 +330,26 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     require(timeout<=settings.timeout,"timeout_seconds exceeds Union server limit")
     val effective=policy.effective.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]().put("timeout_seconds",timeout)
-    val j=new Execution(Json.uuid(),owner,plan,script,policy.copy(effective=effective),replaySources,replayOf,path,submittedScript,decisions,optimization)
+    val j=new Execution(Json.uuid(),owner,plan,script,policy.copy(effective=effective),path,submittedScript,decisions,optimization,deferred)
     jobs.put(j.id,j);j.start();j
   }
-  private[unionserver] final class Execution(val id:String,val owner:String,plan:JobPlan,script:String,policy:ExecutionPolicy,initialReplaySources:Map[String,String],replayOf:Option[String],incomingPath:Vector[String],submittedScript:Option[String],placementDecisions:Vector[PlacementDecision],optimization:JsonNode) {
+  private[unionserver] final class Execution(val id:String,val owner:String,plan:JobPlan,script:String,policy:ExecutionPolicy,incomingPath:Vector[String],submittedScript:Option[String],placementDecisions:Vector[PlacementDecision],optimization:JsonNode,deferred:Option[xstream.execution.SinkTransactions]) {
     private val proxyPath={require(!incomingPath.contains(members.unionId) && incomingPath.size<8,"proxy cycle or depth limit");incomingPath:+members.unionId}
     private val timeout=policy.timeoutSeconds.getOrElse(settings.timeout)
     def requiresRetryAwareness:Boolean=policy.maxRetries>0
     require(!plan.hasInlineDefinitions,"remote execution rejects inline definitions")
     require(plan.steps.forall(t=>t.inlineOperator.isEmpty && t.node.nonEmpty && t.localOperator.isEmpty),"union steps require explicit node and versioned operator")
-    @volatile private var replaySources=initialReplaySources
     @volatile private var attemptId=id
     @volatile private var retryCount=0
     @volatile private var attemptStarted=false
     @volatile private var attemptStartedAt=0L
     private val attempts=mutable.ArrayBuffer.empty[JsonNode]
-    private def needed:Set[String]={
-      val result=mutable.Set.empty[String]
-      def visit(task:String):Unit=if(result.add(task) && !replaySources.contains(task))Jobs.dependencies(plan.steps.find(_.id==task).get).foreach(visit)
-      Jobs.roots(plan).foreach(visit);result.toSet
+    private var committedCheckpoints=Set.empty[String]
+    private val checkpointNodes=new ConcurrentHashMap[String,JsonNode]()
+    private def needed:Set[String]=_root_.xstream.engine.CheckpointRecovery.needed(plan,policy.checkpoints,committedCheckpoints)
+    private def reused:Set[String]=committedCheckpoints.filter { id=>
+      val connected=ExecutionPolicy.connected(plan).filter(_._1==id)
+      connected.nonEmpty && connected.subsetOf(policy.checkpoints)
     }
     private def activeTasks=plan.steps.filter(t=>needed(t.id))
     private val known=members.all.map(n=>n.path("data_origin").asText->n).toMap
@@ -387,7 +365,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     private def consumers:Map[(String,String),String]={
       val result=mutable.Map.empty[(String,String),String]
       def connect(key:(String,String),who:String):Unit={require(!result.contains(key),"output fan-out unsupported");result(key)=who}
-      activeTasks.filterNot(t=>replaySources.contains(t.id)).foreach { t=>t.inputs.values.foreach { b=>
+      activeTasks.filterNot(t=>reused(t.id)).foreach { t=>t.inputs.values.foreach { b=>
         b.task.foreach(parent=>connect((parent,b.port),identity(placements(t.id))))
         b.uri.foreach(u=>require(DacpUri.origin(u)==settings.publicUrl || known.contains(DacpUri.origin(u)),"unknown input node"))
       }}
@@ -426,7 +404,6 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     def snapshot:JsonNode={
       val n=Json.obj().put("job_id",id).put("name",plan.name).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished)
       n.set[JsonNode]("execution_policy",policy.submitted);n.set[JsonNode]("effective_execution_policy",policy.effective)
-      replayOf.foreach(n.put("replay_of",_))
       n.put("preparation_duration_ms",preparationDuration+ (if(preparationCancel.nonEmpty)Json.now-preparationStartedAt else 0L)).put("execution_started_at_ms",executionStartedAt).put("execution_duration_ms",executionDuration+(if(runningSince==0L)0L else (if(finished>0)finished else Json.now)-runningSince))
       n.put("attempt_id",attemptId).put("attempt_started_at_ms",attemptStartedAt).put("retry_count",retryCount).put("max_retries",policy.maxRetries)
       val history=n.putArray("attempts");synchronized{attempts.foreach(history.add)}
@@ -456,19 +433,21 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       }
       n.put("execution_policy_yaml",dacp.union.YamlDocument.dump(policy.submitted)).put("effective_execution_policy_yaml",dacp.union.YamlDocument.dump(policy.effective))
       n.set[JsonNode]("execution_policy",policy.submitted);n.set[JsonNode]("effective_execution_policy",policy.effective)
-      replayOf.foreach(n.put("replay_of",_))
-      val sources=n.putObject("materialized_sources");plan.steps.filter(t=>policy.materialized.exists(_._1==t.id)).foreach(t=>sources.put(t.id,replaySources.getOrElse(t.id,attemptId)))
-      n.put("owner",owner).put("elapsed_ms",math.max(0L,(if(finished>0)finished else Json.now)-created))
+      n.put("commit_started",sinkCommitStarted).put("owner",owner).put("elapsed_ms",math.max(0L,(if(finished>0)finished else Json.now)-created))
       val ts=n.putArray("steps")
       plan.steps.foreach { t=>
         val node=placements(t.id);val task=ts.addObject().put("id",t.id).put("node",url(node)).put("node_identity",identity(node)).put("operator",t.operator)
         t.title.foreach(task.put("title",_));t.description.foreach(task.put("description",_))
-        task.put("replayed",replaySources.contains(t.id));task.put("state",if(!needed(t.id))"skipped"else Option(nodeStates.get(identity(node))).map(_.path("steps").path(t.id).asText("unknown")).getOrElse(if(state=="queued" || state=="waiting_resources")"waiting"else state))
+        task.put("state",if(!needed(t.id))"skipped"else Option(nodeStates.get(identity(node))).map(_.path("steps").path(t.id).asText("unknown")).getOrElse(if(state=="queued" || state=="waiting_resources")"waiting"else state))
         val inputs=task.putArray("inputs")
         t.inputs.toVector.sortBy(_._1).foreach {case(port,b)=>
           val input=inputs.addObject().put("port",port)
           b.task match {case Some(parent)=>input.put("task",parent).put("output_port",b.port);case None=>input.put("uri",b.uri.get).put("view",b.view)}
         }
+      }
+      val checkpoints=n.putObject("checkpoints");policy.checkpoints.toVector.sorted.groupBy(_._1).foreach{case(task,ps)=>
+        val entry=checkpoints.putObject(task).put("state",if(committedCheckpoints(task))"committed"else"planned")
+        val ports=entry.putArray("outputs");ps.foreach(p=>ports.add(p._2))
       }
       val outputs=n.putObject("outputs");plan.outputs.foreach{case(label,(task,port))=>outputs.putObject(label).put("task",task).put("port",port)}
       n
@@ -482,26 +461,50 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       }
     private def executionBody:JsonNode=Json.obj().put("execution_id",attemptId)
     private def unionBody:JsonNode=Json.obj().put("union_id",members.unionId)
-    private def rollback():Unit=prepared.values.asScala.foreach { n=>
-      try remote.action(url(n),"cancel_execution",executionBody,Some(identity(n)),hops=proxyPath,timeout=5)catch{case scala.util.control.NonFatal(_)=>()}
+    private def rollback():Unit={
+      var failure:Throwable=null
+      prepared.values.asScala.foreach { n=>
+        try {
+          val result=remote.action(url(n),"cancel_execution",executionBody,Some(identity(n)),hops=proxyPath,timeout=40)
+          require(result.path("sink_cleanup_complete").asBoolean(false),"node did not confirm attempt cleanup")
+          nodeStates.put(identity(n),result)
+          val checkpoints=result.path("checkpoints")
+          if(checkpoints.isObject)checkpoints.fields.asScala.foreach { e=>
+            val ports=e.getValue.path("outputs").elements.asScala.map(_.asText).toSet
+            val required=ExecutionPolicy.connected(plan).collect{case(id,p)if id==e.getKey=>p}
+            if(e.getValue.path("state").asText=="committed" && required.nonEmpty && required.subsetOf(ports) && required.forall(p=>policy.checkpoints(e.getKey->p)) && placements.get(e.getKey).exists(x=>identity(x)==identity(n)))committedCheckpoints+=e.getKey
+          }
+        }catch{case scala.util.control.NonFatal(t)=>if(failure==null)failure=t else failure.addSuppressed(t)}
+      }
+      if(failure!=null)throw new xstream.execution.SinkDiscardException("Remote attempt cleanup failed; automatic retry is forbidden",failure)
+    }
+    private def releaseCheckpoints():Unit={
+      checkpointNodes.values.asScala.foreach { n=>
+        remote.action(url(n),"release_checkpoints",Json.obj().put("union_id",members.unionId).put("checkpoint_run_id",id),Some(identity(n)),hops=proxyPath,timeout=40)
+      }
     }
     def stop(reason:String,message:Option[String]=None):Unit={
       var changed=false
       try synchronized {if(!terminal){changed=true;state=reason;finished=Json.now;historyRecord.update(reason,dashboardSnapshot,message);event("state")}}
       finally if(changed){
         // Cleanup must also run when persistence fails or interrupts execution.
-        cleanup.execute(new Runnable{def run():Unit=rollback()})
+        cleanup.execute(new Runnable{def run():Unit=try {rollback();releaseCheckpoints()}catch{case scala.util.control.NonFatal(t)=>org.slf4j.LoggerFactory.getLogger(getClass).error("Attempt cleanup failed: job_id="+id,t)}})
         cancel.fail(new java.util.concurrent.CancellationException(reason))
       }
     }
     private def definition(n:JsonNode):JsonNode={
-      val body=Json.obj().put("name",plan.name).put("union_id",members.unionId).put("execution_id",attemptId).put("timeout_seconds",cancel.remainingSeconds).put("allow_fusion",policy.materialized.isEmpty && replaySources.isEmpty && Jobs.canGroupByNode(plan,placements.map{case(task,node)=>task->identity(node)}));body.set[JsonNode]("resources",policy.resources.json);val steps=body.putArray("steps")
+      val body=Json.obj().put("name",plan.name).put("union_id",members.unionId).put("execution_id",attemptId).put("timeout_seconds",cancel.remainingSeconds).put("allow_fusion",policy.checkpoints.isEmpty && Jobs.canGroupByNode(plan,placements.map{case(task,node)=>task->identity(node)}));body.set[JsonNode]("resources",policy.resources.json);val steps=body.putArray("steps")
       val required=body.putArray("required_operators");plan.requiredOperators.toVector.sorted.foreach(required.add)
+      val localCheckpoints=policy.checkpoints.filter{case(task,_)=>activeTasks.exists(t=>t.id==task) && identity(placements(task))==identity(n)}
+      if(localCheckpoints.nonEmpty){
+        checkpointNodes.put(identity(n),n)
+        body.put("checkpoint_run_id",id)
+        val cp=body.putObject("checkpoints");localCheckpoints.toVector.sorted.groupBy(_._1).foreach{case(task,ps)=>val ports=cp.putArray(task);ps.foreach(p=>ports.add(p._2))}
+        val reuse=body.putArray("reuse_steps");activeTasks.filter(t=>identity(placements(t.id))==identity(n) && reused(t.id)).foreach(t=>reuse.add(t.id))
+      }
       activeTasks.filter(t=>identity(placements(t.id))==identity(n)).foreach { t=>
         val j=steps.addObject().put("id",t.id).put("operator",t.operator)
         t.title.foreach(j.put("title",_));t.description.foreach(j.put("description",_))
-        val materialize=j.putArray("materialize");policy.materialized.toVector.sorted.filter(p=>p._1==t.id && consumers.contains(p)).foreach(p=>materialize.add(p._2))
-        replaySources.get(t.id).foreach(j.put("replay_from",_))
         Jobs.readBinding(t).foreach { b=>
           val uri=b.uri.get
           if(DacpUri.origin(uri)==settings.publicUrl){
@@ -509,7 +512,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
           }
         }
         j.set[JsonNode]("params",Json.mapper.valueToTree[JsonNode](t.params));val inputs=j.putObject("inputs")
-        t.inputs.foreach {case(port,b)=>
+        (if(reused(t.id))Map.empty[String,InputBinding]else t.inputs).foreach {case(port,b)=>
           if(b.task.exists(parent=>identity(placements(parent))==identity(n)))inputs.put(port,b.task.get+":"+b.port)
           else {
             val v=inputs.putObject(port)
@@ -619,10 +622,32 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         }
         val pulls=plan.outputs.toVector.map{case(label,(task,port))=>StreamProtocol.thread(token){pull(label,task,port,true,token)}}
         pulls.foreach(t=>while(t.isAlive){token.active();cancel.checkState();t.join(100)})
-        while(!nodes.forall(n=>Option(nodeStates.get(identity(n))).exists(_.path("state").asText=="succeeded"))){token.active();cancel.checkState();Thread.sleep(100)}
+        while(!nodes.forall(n=>Option(nodeStates.get(identity(n))).exists(v=>Set("ready_to_commit","succeeded")(v.path("state").asText)))){token.active();cancel.checkState();Thread.sleep(100)}
         token.active();cancel.checkState()
+        deferred match {
+          case Some(parent)=>
+            parent.register(new xstream.execution.SinkParticipant {
+              val id="nested-"+Execution.this.id
+              def onComplete():Unit=commitNodes()
+              def onDiscard(cause:Throwable):Unit={stop("cancelled");rollback()}
+              def close():Unit=()
+            })
+            change("ready_to_commit")
+          case None=>commitNodes()
+        }
       }catch{case scala.util.control.NonFatal(t)=>throw token.cause(t)}
       finally {if(runningSince>0L){executionDuration+=Json.now-runningSince;runningSince=0L};polling.set(false);token.close();if(poll!=null && poll!=Thread.currentThread())poll.join(10000)}
+    }
+    def staged:Boolean=state=="ready_to_commit"
+    private def commitNodes():Unit={
+      cancel.checkState();sinkCommitStarted=true;change("committing")
+      nodes.sortBy(identity).foreach { n=>
+        cancel.checkState()
+        val committed=request(n,"complete_execution",executionBody)
+        require(committed.path("state").asText=="succeeded","node did not confirm Sink commit")
+        nodeStates.put(identity(n),committed)
+      }
+      if(deferred.nonEmpty){releaseCheckpoints();synchronized {if(!terminal){state="succeeded";finished=Json.now;event("state")}}}
     }
     private def recordAttempt(result:String,error:Option[Throwable]=None):Unit=synchronized {
       val n=Json.obj().put("attempt_id",attemptId).put("retry_index",retryCount).put("state",result).put("started_at_ms",attemptStartedAt).put("finished_at_ms",Json.now)
@@ -632,16 +657,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       };attempts+=n
       event("attempt")
     }
-    private def reusableSources:Map[String,String]={
-      val connected=ExecutionPolicy.connected(plan)
-      plan.steps.filter(t=>connected.exists(_._1==t.id) && connected.filter(_._1==t.id).subsetOf(policy.materialized)).flatMap { t=>
-        val source=replaySources.getOrElse(t.id,attemptId)
-        try {
-          val value=request(placements(t.id),"materialized_status",Json.obj().put("union_id",members.unionId).put("execution_id",source).put("task",t.id))
-          if(value.path("committed").asBoolean)Some(t.id->source)else None
-        }catch{case scala.util.control.NonFatal(_)=>None}
-      }.toMap
-    }
+    @volatile private var sinkCommitStarted=false
     private def retryable(t:Throwable):Boolean={
       val allowed=t match {
         case _:java.util.concurrent.CancellationException|_:java.util.concurrent.TimeoutException=>false
@@ -649,7 +665,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         case f:FlightRuntimeException=> !Set(UNAUTHORIZED,UNAUTHENTICATED,INVALID_ARGUMENT,NOT_FOUND,UNIMPLEMENTED,TIMED_OUT)(f.status.code)
         case _=>true
       }
-      allowed && attemptStarted && !terminal && retryCount<policy.maxRetries
+      allowed && !sinkCommitStarted && !t.isInstanceOf[xstream.execution.SinkDiscardException] && !t.isInstanceOf[xstream.execution.SinkCommitException] && attemptStarted && !terminal && retryCount<policy.maxRetries
     }
     def start():Unit={
       event("submitted")
@@ -657,7 +673,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
         try {
           var done=false
           while(!done){
-            try {attempt();recordAttempt("succeeded");done=true}
+            try {attempt();recordAttempt(if(deferred.nonEmpty)"staged"else"succeeded");done=true}
             catch{case scala.util.control.NonFatal(t)=>
               recordAttempt("failed",Some(t));cancel.checkState()
               if(!retryable(t))throw t
@@ -666,16 +682,18 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
                 case f:UnionFailure if Set(UNAUTHORIZED,UNAUTHENTICATED)(f.code)=>throw f
                 case scala.util.control.NonFatal(_)=>()
               }}
-              rollback();cancel.checkState();val sources=reusableSources
+              rollback();cancel.checkState()
               val previousAttempt=attemptId;val nextAttempt=Json.uuid()
               val notice=Json.obj().put("type","attempt_failed").put("port","").put("attempt_id",previousAttempt).put("next_attempt_id",nextAttempt).put("retry_count",retryCount+1).put("message",Option(t.getMessage).getOrElse("execution failed").take(2048))
               output.put(OperatorFrame(Json.mapper.writeValueAsBytes(notice)))
-              prepared.clear();dispatchedDefinitions.clear();nodeStates.clear();replaySources=sources;retryCount+=1;attemptId=nextAttempt
+              prepared.clear();dispatchedDefinitions.clear();nodeStates.clear();retryCount+=1;attemptId=nextAttempt
               change("retrying");Thread.sleep(settings.pollMs)
             }
           }
-          cancel.checkState();output.put(StreamProtocol.frame("complete"));output.end()
-          synchronized {if(!terminal){state="succeeded";finished=Json.now;event("state")}}
+          cancel.checkState()
+          if(deferred.isEmpty)releaseCheckpoints()
+          output.put(StreamProtocol.frame("complete"));output.end()
+          synchronized {if(!terminal && deferred.isEmpty){state="succeeded";finished=Json.now;event("state")}}
         }catch{case scala.util.control.NonFatal(t)=>
           org.slf4j.LoggerFactory.getLogger(getClass).error(s"Job failed: operation=job.execute request_id=$id job_id=$id execution_id=$attemptId",t)
           stop(if(cancel.cause(t).isInstanceOf[java.util.concurrent.TimeoutException])"expired"else "failed",Some("Job execution failed; request_id="+id))}

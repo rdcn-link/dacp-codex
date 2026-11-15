@@ -177,8 +177,7 @@ window.DacpDag=(()=>{
     const text=(key,value,x,y,size,fill,weight=400,align='left')=>this.upsert(key,'text',{x,y,text:value,fontFamily:'system-ui, sans-serif',fontSize:size,fill,fontWeight:weight,textBaseline:'middle',textAlign:align,pointerEvents:'none'},container);
     this.upsert('accent','rect',{x:left+1,y:top+1,width:width-2,height:3,radius:[9,9,0,0],fill:d.color,pointerEvents:'none'},container);
     const symbol=task?'M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M9 15v6':d.kind==='output'?'M5 5h14v14H5zM9 12h10M15 8l4 4-4 4':'M6 3h8l4 4v14H6zM14 3v5h5M9 12h6M9 16h6';
-    const svg='<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="'+symbol+'" fill="none" stroke="'+d.color+'" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    this.upsert('operator-icon','image',{x:width/2-38,y:top+15,width:23,height:23,src:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg),pointerEvents:'none'},container);
+    this.upsert('operator-icon','path',{path:symbol,transform:`translate(${width/2-38}, ${top+15})`,fill:'none',stroke:d.color,lineWidth:1.7,lineCap:'round',lineJoin:'round',pointerEvents:'none'},container);
     text('title',compact(d.title,task?23:21),left+14,top+25,12,'#21324c',600);
     text('subtitle',compact(d.subtitle,task?35:29),left+14,top+46,10,'#77869b');
     if(task){

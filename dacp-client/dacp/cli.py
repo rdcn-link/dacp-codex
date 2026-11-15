@@ -548,21 +548,7 @@ class Browser(cmd.Cmd):
                        variables=variables,
                        **({"execution_policy":yaml_document.mapping(Path(options.policy).read_text())} if options.policy else {}))
 
-    def do_replay(self, arg):
-        """Replay a job using its committed materialized outputs.
-
-        Usage: replay EXECUTION_ID
-
-        Example: replay 1a2b3c
-        Ctrl-C cancels execution. Original job policy and retry budget apply.
-        """
-        tokens = shlex.split(arg)
-        if len(tokens) != 1:
-            raise ValueError('usage: replay EXECUTION_ID')
-        u = urlsplit(self.uri)
-        self.print_job(urlunsplit((u.scheme,u.netloc,'','','')), '', 3600, replay_from=tokens[0])
-
-    def print_job(self, node, text, timeout, *, preview_rows=None, preview_bytes=None, execution_policy=None, replay_from=None, variables=None):
+    def print_job(self, node, text, timeout, *, preview_rows=None, preview_bytes=None, execution_policy=None, variables=None):
         started = time.perf_counter()
         decoders, counts, offsets = {}, {}, {}
         text_port, line_start = None, True
@@ -596,8 +582,6 @@ class Browser(cmd.Cmd):
         if execution_policy is not None:
             options['execution_policy'] = execution_policy
             options['on_retry'] = on_retry
-        if replay_from is not None:
-            options['replay_from'] = replay_from
             options['on_retry'] = on_retry
         if variables is not None:
             options['variables'] = variables

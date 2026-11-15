@@ -37,7 +37,7 @@ DACP 与其可选 XStream 连接器共用 `xstream-dacp-protocol` 中的 Flight 
 
 例如，A 上的任务产生 `oa`，B 基于 `oa` 和本地数据计算 `ob`：Union 调度 A、B，A 到 B 的中间流直接在节点间传输，最终 `ob` 由 Union 转发给客户端。客户端不必直接连接 B；参与节点仍须满足证书验证及相应业务授权。
 
-当前支持显式声明的协作 DAG、可配置物化边界与重放；自动恢复需要执行策略和支持重试的客户端，不提供任意通用流水线优化。状态、流量和任务标题可在看板及执行记录中查看。
+协作 DAG 按执行策略进行重试，并可复用显式输出检查点，客户端必须支持丢弃失败尝试的暂存结果。Sink 在所有成员完成处理后统一进入提交阶段，提交开始后禁止自动重试。状态、流量和任务标题可在看板及执行记录中查看。
 
 ## 流与持久化
 
@@ -51,7 +51,7 @@ DACP 与其可选 XStream 连接器共用 `xstream-dacp-protocol` 中的 Flight 
 
 ### 单机任务的执行策略
 
-Flight `DoExchange` 的 `OperatorRequest` 在任务 YAML 之外接收 `execution_policy_yaml`（YAML 字节）、`retry_aware`（布尔值）和 `replay_from`（原执行 ID）。重放时 `job_yaml` 置空，服务器恢复原任务与策略，校验原提交者及有效物化输出。工作步骤请求不接受这些作业级字段。结果流先发 `execution` 元数据帧公布执行 ID；重试前发送 `attempt_failed`，客户端回调清空暂定结果后接收新一轮 `start/data/end`。`complete` 后仍须确认 Flight 成功结束。断开或关闭流即取消执行。详见[执行策略](materialization_zh.md)。
+Flight `DoExchange` 的 `OperatorRequest` 在 Job YAML 之外接收 `execution_policy_yaml` 和 `retry_aware`。Worker 请求拒绝这些 Job 级字段。结果从携带 execution ID 的 `execution` 消息开始；重试前的 `attempt_failed` 要求接收方清除暂定结果和端口状态。`complete` 后仍须验证 Flight 正常结束。断开或关闭结果流会取消执行。参见[执行策略](execution-policy_zh.md)。
 
 ## 当前调用身份的能力查询
 

@@ -29,7 +29,6 @@ access_log:
 | `item.count` | 记录数 |
 | `item.read` | 读取 Item 视图 |
 | `node.list` | 列出可用节点 |
-| `job.replay` | 重放 Job |
 | `job.events.read` | 读取 Job 事件 |
 | `job.result.read` | 读取 Job 结果 |
 | `job.submit` | 提交并执行 |
@@ -42,7 +41,8 @@ access_log:
 | `job.start` | 启动子 Job |
 | `job.status` | 执行状态 |
 | `job.cancel` | 取消执行 |
-| `step.materialization.status` | 物化输出状态 |
+| `job.commit` | Job 结果提交 |
+| `job.checkpoints.release` | 释放本次执行的检查点 |
 | `step.output.read` | 读取跨节点步骤输出 |
 | `request.unsupported` | 不支持的控制请求 |
 

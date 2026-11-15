@@ -168,7 +168,6 @@ Dataset discovery, Item listings and Item metadata are public. Content follows d
 | Infer step outputs | `step.infer` | `job:execute` |
 | Infer Job outputs | `job.infer` | `job:execute` |
 | Submit a Job | `job.submit` | `job:execute` |
-| Replay a Job | `job.replay` | `job:execute` |
 | Query Job status | `job.status` | `job:manage:self` and ownership |
 | Cancel a Job | `job.cancel` | `job:manage:self` and ownership |
 | Read Job results | `job.result.read` | `job:manage:self` and ownership |
@@ -179,7 +178,6 @@ Dataset discovery, Item listings and Item metadata are public. Content follows d
 | Prepare a sub-job | `job.prepare` | Trusted service identity and execution-plan authorization |
 | Start a sub-job | `job.start` | Trusted service identity and execution-plan authorization |
 | Read step output | `step.output.read` | Trusted service identity and execution-plan authorization |
-| Query step materialization status | `step.materialization.status` | Trusted service identity and execution-plan authorization |
 
 Catalogs, listings and metadata are always public. Item content reads and explicit scans follow the dataset publication policy; Job submission privileges do not bypass it. S3 listings and object metadata are anonymous; GET content follows the same dataset policy. Supplied signatures must still be valid.
 
@@ -237,7 +235,7 @@ Node and Union dashboards load when opened and update on manual **Refresh** or *
 
 There is no separate inter-step idle timeout. A downstream step can wait for upstream data, and upstream steps wait when downstream buffers are full. These waits consume execution time.
 
-The default execution limit is 1,800 seconds. Configure `execution_timeout_seconds` on the service; a submitted execution policy can shorten it with `timeout_seconds`. Union passes the remaining allowance to sub-jobs, which are also limited by the node's Union execution settings. Control requests usually have a separate 30-second deadline; data stream calls also have deadlines. Continuous data arrival does not extend a call's deadline. See [execution policies](materialization.md).
+The default execution limit is 1,800 seconds. Configure `execution_timeout_seconds` on the service; a submitted execution policy can shorten it with `timeout_seconds`. Union passes the remaining allowance to sub-jobs, which are also limited by the node's Union execution settings. Control requests usually have a separate 30-second deadline; data stream calls also have deadlines. Continuous data arrival does not extend a call's deadline. See [execution policies](execution-policy.md).
 
 ## 13. Does a 30-second deadline error mean the Job ran for too long?
 

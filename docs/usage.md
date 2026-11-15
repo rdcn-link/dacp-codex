@@ -27,7 +27,7 @@ flowchart LR
 | Task | Tutorial and reference |
 |---|---|
 | Submit with variables and receive live results | [Remote Job submission](jobs.md) |
-| Set retries, timeout, materialization and replay | [Execution policies](materialization.md) |
+| Set retries, timeout, whole-Job recovery | [Execution policies](execution-policy.md) |
 | Inspect submitted Job, logical and physical plans, and execution details | [Dashboard guide](node-web.md) |
 | Inspect execution records | [Execution history](execution-history.md) |
 | Run through a Union public namespace | [Union data and Jobs](union-proxy.md), [weather collaboration example](../examples/union/README.md) |

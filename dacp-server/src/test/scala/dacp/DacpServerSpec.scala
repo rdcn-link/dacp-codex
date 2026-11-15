@@ -17,7 +17,9 @@ import org.scalatest.funsuite.AnyFunSuite
 import scala.sys.process._
 import scala.jdk.CollectionConverters._
 
-class DacpServerSpec extends AnyFunSuite {
+class DacpServerSpec extends AnyFunSuite with org.scalatest.BeforeAndAfterAll {
+  private val endpointRepository=new TestEndpointRepository()
+  override def afterAll():Unit=try endpointRepository.close()finally super.afterAll()
   private def fixture(run:(Path,Path,Path)=>Unit):Unit={
     val dir=Files.createTempDirectory("embedded-dacp-");val cert=dir.resolve("cert.pem");val key=dir.resolve("key.pem")
     try {
@@ -27,7 +29,7 @@ class DacpServerSpec extends AnyFunSuite {
   }
   private def config(dir:Path,cert:Path,key:Path):Config={
     val socket=new ServerSocket(0);val port=try socket.getLocalPort finally socket.close()
-    Config("localhost",port,"localhost",Map.empty,cert,key,cert,s3=S3Settings(port=Some(0)),web=NodeWebSettings(port=Some(0)),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve("history")).toString))))
+    Config("localhost",port,"localhost",Map.empty,cert,key,cert,remoteOperatorLibraryUrls=Seq(endpointRepository.url),operatorCache=dir.resolve("operators"),s3=S3Settings(port=Some(0)),web=NodeWebSettings(port=Some(0)),executionStore=Some(ExecutionStoreDefinition("file",Map("directory"->(dir.resolve("history")).toString))))
   }
   private def catalog(counter:AtomicInteger)=new DataCatalog {
     def list():Seq[DatasetInfo]=Seq(DatasetInfo("public",SecurityTestSupport.publicDescription))

@@ -69,7 +69,7 @@ runner 账号可以在同一个节点或 Union 连接上提交已有 Job：
 submit job.yaml --vars variables.yaml --policy policy.yaml
 ```
 
-不需要变量或策略时省略对应选项。Job、变量与策略文件的路径相对于 Shell 进程；输入 Item 在接收服务的上下文中解析。结果到达时即可读取，Ctrl+C 取消当前操作。详见[远程提交示例](jobs_zh.md)与[执行策略](materialization_zh.md)。
+不需要变量或策略时省略对应选项。Job、变量与策略文件的路径相对于 Shell 进程；输入 Item 在接收服务的上下文中解析。结果到达时即可读取，Ctrl+C 取消当前操作。详见[远程提交示例](jobs_zh.md)与[执行策略](execution-policy_zh.md)。
 
 ## 下一步
 

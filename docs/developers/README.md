@@ -19,7 +19,7 @@ flowchart TD
 | Task | Example and reference |
 |---|---|
 | Discover data and consume remote streams | [Python examples](../users/README.md#browsing-and-reading), [Scala SDK](../../dacp-client-scala/README.md) |
-| Submit Jobs and consume attempt/result events | [Job submission](../jobs.md), [execution policies](../materialization.md) |
+| Submit Jobs and consume attempt/result events | [Job submission](../jobs.md), [execution policies](../execution-policy.md) |
 | Handle authentication and capabilities | [Security and role checks](../security.md), [protocol](../protocol.md) |
 | Integrate member collaboration operations | [Python collaboration SDK](../../dacp-collaboration-client/README.md), [Scala collaboration SDK](../../dacp-collaboration-client-scala/README.md) |
 

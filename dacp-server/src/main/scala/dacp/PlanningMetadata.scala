@@ -33,7 +33,7 @@ object PlanningMetadata {
           entry.put("executor",executor).put("runtime",image).put("metadata","installed")
           // Exact environment identity is only an estimate of fusion eligibility. The
           // executor must still accept the whole group during member preparation.
-          if(config.operatorFusionEnabled&&image.matches("sha256:[a-f0-9]{64}")){
+          if(config.operatorFusion!="isolated" &&image.matches("sha256:[a-f0-9]{64}")){
             val environment=m.path("execution").path("config")
             val key=image+":"+executor+":"+m.path("environment").path("fingerprint").asText+":"+environment.toString
             entry.put("fusion_key",dacp.union.Credentials.hash(key))

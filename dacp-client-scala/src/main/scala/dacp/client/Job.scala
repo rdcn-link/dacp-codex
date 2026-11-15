@@ -56,10 +56,9 @@ object Job {
   }
 
   def run(node:String, yaml:String, tls:TlsConfig=TlsConfig(), timeoutSeconds:Long=3600, executionPolicy:com.fasterxml.jackson.databind.JsonNode=JobStream.mapper.createObjectNode(),
-    onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None, replayFrom:Option[String]=None, variables:com.fasterxml.jackson.databind.JsonNode=null):JobStream = {
-    require(replayFrom.isEmpty || variables==null,"replay uses the original resolved variables")
+    onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None, variables:com.fasterxml.jackson.databind.JsonNode=null):JobStream = {
     val resolved=WorkflowVariables.resolve(yaml,variables)
-    if(replayFrom.isEmpty)_root_.xstream.execution.RemoteJobPolicy.validateYaml(resolved)
+    _root_.xstream.execution.RemoteJobPolicy.validateYaml(resolved)
     val u=new URI(node)
     require(u.getScheme=="dacp" && u.getHost!=null && u.getUserInfo==null && u.getQuery==null && u.getFragment==null &&
       Set("", "/")(Option(u.getPath).getOrElse("")) && (u.getPort == -1 || u.getPort>0 && u.getPort<=65535),"expected node origin dacp://host[:port]")
@@ -67,8 +66,7 @@ object Job {
     require(executionPolicy.isObject,"executionPolicy must be an object")
     val builder=Metadata.OperatorRequest.newBuilder().setJobYaml(resolved).setRetryAware(onRetry.nonEmpty)
 
-    if(replayFrom.isEmpty || executionPolicy.size()>0)builder.setExecutionPolicyYaml(com.google.protobuf.ByteString.copyFromUtf8(dacp.union.YamlDocument.dump(executionPolicy)))
-    replayFrom.foreach(builder.setReplayFrom)
+    builder.setExecutionPolicyYaml(com.google.protobuf.ByteString.copyFromUtf8(dacp.union.YamlDocument.dump(executionPolicy)))
     val request=builder.build().toByteArray
     require(request.length<=1024*1024,"control request exceeds 1 MiB")
     val (client,allocator)=Source.connection(u,tls)
@@ -76,9 +74,6 @@ object Job {
       open(client,allocator,request,timeoutSeconds,onRetry)
     } catch {case t:Throwable=>try client.close()catch{case _:Throwable=>()};allocator.close();throw DacpErrors.translate(t)}
   }
-  def replay(node:String,executionId:String,tls:TlsConfig=TlsConfig(),timeoutSeconds:Long=3600,
-    onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None):JobStream =
-    run(node,"",tls,timeoutSeconds,onRetry=onRetry,replayFrom=Some(executionId))
   private[client] def open(client:FlightClient, allocator:RootAllocator,request:Array[Byte],timeout:Long,onRetry:Option[com.fasterxml.jackson.databind.JsonNode=>Unit]=None):JobStream = {
     val exchange=client.doExchange(FlightDescriptor.command(request),CallOptions.timeout(timeout,TimeUnit.SECONDS))
     val root=VectorSchemaRoot.create(JobStream.envelope,allocator)

@@ -117,8 +117,8 @@ libraryDependencies += "io.github.rdcn-link" %% "dacp-client-scala" % "0.1.0"
 ## 执行与运维
 
 - [提交 Job、变量与结果消费](../jobs_zh.md)
-- [重试、超时、取消、物化与重放](../materialization_zh.md)
+- [重试、超时、取消、整 Job 重跑与结果提交](../execution-policy_zh.md)
 - [角色、凭据与访问失败](../security_zh.md)
 - [发布和部署服务](../operations/README_zh.md)
 
-读取失败后需重新打开流。Job 的执行尝试与普通 Item 读取是不同操作；自动重试和物化的行为以执行策略为准。
+读取失败后需重新打开流。Job 的执行尝试与普通 Item 读取是不同操作；整 Job 重试和 Sink 发布的行为以执行策略为准。

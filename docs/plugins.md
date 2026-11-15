@@ -21,7 +21,9 @@ Plugins run in the server JVM as administrator-installed trusted code. They are 
 
 `DacpServer.builder().plugins(environment, owned = false)` injects an application-owned `PluginEnvironment` that survives server shutdown. Request access handles close after each request; the server releases resources it owns on shutdown.
 
-Execution history can use `execution_store: {provider: file, settings: {directory: /var/lib/dacp/executions}}`. The file implementation lives in XStream's `plugins/xstream-plugin-execution-file`. XStream defines the interfaces, atomicity and materialization behavior.
+Execution history can use `execution_store: {provider: file, settings: {directory: /var/lib/dacp/executions}}`. The file implementation lives in XStream's `plugins/xstream-plugin-execution-file`. XStream defines the execution-history storage contracts and Sink lifecycle.
+
+A node producing checkpoints configures `checkpoint_store` with a plugin provider and administrator-controlled directory. The same file plugin provides `CheckpointStoreProvider`; see [execution policies and checkpoints](execution-policy.md) for quotas, lifecycle and configuration.
 
 ## Service adaptation
 

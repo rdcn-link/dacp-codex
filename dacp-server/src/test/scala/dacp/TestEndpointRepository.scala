@@ -14,8 +14,9 @@ final class TestEndpointRepository extends AutoCloseable {
     blobs(hash)=bytes
     val n=Data.mapper.createObjectNode().put("api_version",2).put("name",name).put("version","1.0").put("role",if(name=="item_source")"source"else"sink").put("type","sdk")
     n.putObject("icon").put("path","M3 5h18v14H3z").put("color","#287da2")
+    val outputs=n.putObject("outputs");if(name=="item_source")outputs.putObject("result").put("view","variable")
     val inputs=n.putObject("inputs")
-    if(name=="client_sink"){val p=inputs.putObject("result");val a=p.putArray("representations");Seq("bytes","records","items","array","sequence").foreach(a.add);p.putArray("formats")}
+    if(name=="client_sink"){val p=inputs.putObject("result");val a=p.putArray("representations");a.add("variable");p.putArray("formats")}
     val params=n.putObject("parameters").put("type","object").put("additionalProperties",true);params.putObject("properties");params.putArray("required")
     n.putObject("runtime").put("image","sha256:"+"a"*64)
     n.putObject("artifact").put("sha256",hash).put("size",bytes.length).put("filename",name+".json")

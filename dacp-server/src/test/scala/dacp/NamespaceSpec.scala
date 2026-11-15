@@ -53,11 +53,11 @@ class NamespaceSpec extends AnyFunSuite {
     assert(root.map(i => i.getPath -> i.getKind) == Seq("/empty"->"folder","/events"->"data","/nested"->"folder"))
     assert(list(p,"datasets","public","list","/nested").map(_.getPath) == Seq("/nested/archive","/nested/orders"))
     assert(list(p,"datasets","public","list","/empty").isEmpty)
-    assert(all.find(_.getKind == "folder").get.getViewsCount == 0)
-    assert(all.find(_.getKind == "data").get.getViewsList.asScala == Seq("records","bytes"))
+    assert(all.find(_.getKind == "folder").get.getViewsList.asScala == Seq("items"))
+    assert(all.find(_.getKind == "data").get.getViewsList.asScala == Seq("records","bytes","items"))
   }}
-  test("folder streams, data listings, relative paths and traversal are rejected") { fixture { (_,p) =>
-    for (parts <- Seq(Seq("datasets","public","/"), Seq("datasets","public","/nested"), Seq("datasets","public","list","/events"),
+  test("unsupported folder Views, data listings, relative paths and traversal are rejected") { fixture { (_,p) =>
+    for (parts <- Seq(Seq("datasets","public","/","bytes"), Seq("datasets","public","/nested","records"), Seq("datasets","public","list","/events"),
       Seq("datasets","public","list","/missing"), Seq("datasets","public","events"),
       Seq("datasets","public","/../events"), Seq("datasets","public","/nested//orders"))) {
       intercept[FlightRuntimeException](p.getFlightInfo(TestCalls.context,FlightDescriptor.path(parts:_*)))

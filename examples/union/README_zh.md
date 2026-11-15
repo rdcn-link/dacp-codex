@@ -33,4 +33,4 @@ PYTHONPATH=dacp-client .venv/bin/python examples/union/client.py
 
 客户端在线读取目录，解析公开数据集名称，将 Item URI 作为工作流变量提交。源步骤输入为空，处理步骤输入仅引用上游输出流。所有算子都需实现结构推导。中间流在节点间传递，最终流经 Union 返回；此例没有显式物化策略。
 
-内网只读看板为 `http://localhost:19880/`。通过 Ctrl-C 或 SIGTERM 关闭服务。状态和执行历史保留，运行中的任务不会在重启后自动恢复。另见[安全说明](../../docs/security_zh.md)、[工作流变量](../../docs/jobs_zh.md)、[策略与重放](../../docs/materialization_zh.md)、[Union 配置](../../dacp-union-server/README_zh.md)。
+内网只读看板为 `http://localhost:19880/`。通过 Ctrl-C 或 SIGTERM 关闭服务。状态和执行历史保留，运行中的任务不会在重启后自动恢复。另见[安全说明](../../docs/security_zh.md)、[工作流变量](../../docs/jobs_zh.md)、[策略与重放](../../docs/execution-policy_zh.md)、[Union 配置](../../dacp-union-server/README_zh.md)。

@@ -25,7 +25,7 @@ def main():
     if a.trials < 1 or a.warmups < 0:
         p.error('trials must be positive and warmups nonnegative')
     directory = Path(a.output); directory.mkdir(parents=True, exist_ok=True)
-    policy = {'materialization': {'allowed': False, 'default': 'stream'}}
+    policy = {}
     variables = {'CONDITION': "quality = '0' AND CAST(temperature AS REAL) >= 30", 'HEADER': True}
     def workflow(distributed):
         steps = [
@@ -37,7 +37,8 @@ def main():
         if distributed:
             for task, node in zip(steps, [a.node_a, a.node_a, a.node_b, a.node_c]):
                 task['node'] = node
-        return yaml_document.dump(dict(name=('Cross-node' if distributed else 'Local') + ' weather streaming benchmark', steps=steps, outputs=dict(result='export:result')))
+        steps.append(dict(id='receive', operator='client_sink@1.0', inputs=dict(result='export:result')))
+        return yaml_document.dump(dict(name=('Cross-node' if distributed else 'Local') + ' weather streaming benchmark', steps=steps))
     scripts = {'local': workflow(False), 'cross_node': workflow(True)}
     for name, value in scripts.items():
         (directory / (name + '.yaml')).write_text(value)

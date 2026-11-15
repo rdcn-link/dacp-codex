@@ -29,7 +29,6 @@ The configured directory must be writable. Startup initializes logging; orderly 
 | `item.count` | Record count |
 | `item.read` | Read an Item view |
 | `node.list` | List available nodes |
-| `job.replay` | Replay a Job |
 | `job.events.read` | Read Job events |
 | `job.result.read` | Read Job results |
 | `job.submit` | Submit and execute |
@@ -42,7 +41,8 @@ The configured directory must be writable. Startup initializes logging; orderly 
 | `job.start` | Start sub-job |
 | `job.status` | Execution status |
 | `job.cancel` | Cancel execution |
-| `step.materialization.status` | Persisted output status |
+| `job.commit` | Job result commit |
+| `job.checkpoints.release` | Release execution-scoped checkpoints |
 | `step.output.read` | Read cross-node step output |
 | `request.unsupported` | Unsupported control request |
 

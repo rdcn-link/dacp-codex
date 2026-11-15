@@ -4,7 +4,7 @@
 
 ## 基于 XStream 引擎
 
-DACP Server 内嵌 XStream 流式执行引擎，并共享 JVM 内的 DataCatalog。DataCatalog → Dataset → Item 提供类型化数据视图，Job 步骤通过流连接。引擎负责本地执行、取消、执行策略、可选物化/重放，以及符合条件的同进程算子合并。XStream 另有独立 Runner，因此引擎可在 DACP 服务之外复用。
+DACP Server 内嵌 XStream 流式执行引擎，并共享 JVM 内的 DataCatalog。DataCatalog → Dataset → Item 提供类型化数据视图，Job 步骤通过流连接。引擎负责本地执行、取消、执行策略、整 Job 重试和 Sink 生命周期，以及符合条件的同进程算子合并。XStream 另有独立 Runner，因此引擎可在 DACP 服务之外复用。
 
 DACP 提供认证数据发布与访问、客户端 SDK 和 Shell、独立 S3 访问、执行历史及服务看板。Union 负责成员管理、健康轮询、自动放置、子作业分发，以及成员间直接流传输。客户端向服务提交逻辑 Job，无需知道对方是普通节点还是 Union。
 

@@ -33,7 +33,7 @@ def main():
     print(f'Authenticated catalog: {len(datasets)} datasets', flush=True)
     with Union(args.url, token=token, ca=args.ca, timeout=300) as union:
         with union.submit(args.job.read_text(), variables=variables,
-                          execution_policy={'materialization': {'allowed': False}}) as run:
+                          execution_policy={}) as run:
             print('Submitted:', run.job_id, flush=True)
             total = 0
             # Retain data only when an explicit byte-for-byte comparison was requested.

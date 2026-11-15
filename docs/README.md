@@ -23,7 +23,7 @@ Use the User guide for connections, data access and Jobs; the Operations guide f
 
 - [Remote Job submission](jobs.md)
 - [Physical plan generation and optimization](physical-planning.md)
-- [Execution policies and replay](materialization.md)
+- [Execution policies and whole-Job retries](execution-policy.md)
 - [Dashboards and plans](node-web.md)
 - [Check-dam collaboration versus FTP download-first analysis](check-dams-benchmark.md)
 - [Local and cross-node measurements](local-vs-union-benchmark.md)

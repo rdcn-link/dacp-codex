@@ -48,6 +48,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
 
     node.set[com.fasterxml.jackson.databind.JsonNode]("icon",Data.mapper.readTree("""{"path":"M3 5h18v14H3z","color":"#14866b"}"""))
     node.set[com.fasterxml.jackson.databind.JsonNode]("parameters",Data.mapper.readTree("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""))
+    node.putObject("outputs").putObject("result").put("view","bytes")
     Seq("inputs"->"source").foreach {case(key,port)=>
       val p=node.putObject(key).putObject(port);p.putArray("representations").add("bytes");p.putArray("formats")
     }
@@ -87,7 +88,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
       val payload=Data.mapper.readTree(resolved.command.entrypoint.get.last)
       assert(payload.path("argv").get(2).asText=="$(false)")
       assert(payload.path("artifact").asBoolean)
-      assert(resolved.inputs.keySet==Set("source") && resolved.outputs.isEmpty)
+      assert(resolved.inputs.keySet==Set("source") && resolved.outputs("result").representations==Set("bytes"))
       server.stop(0)
       assert(OperatorLibrary.resolve(c,"native@1",docker).command==resolved.command)
     } finally {server.stop(0);cleanup(root)}

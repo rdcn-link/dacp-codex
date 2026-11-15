@@ -105,28 +105,21 @@ def test_retry_callback_error_cancels_stream(monkeypatch):
     assert client.reader.cancelled and client.closed
 
 
-def test_policy_and_replay_are_separate_flight_fields(monkeypatch):
+def test_policy_is_sent_in_separate_flight_field(monkeypatch):
     client = setup(monkeypatch, [chunk(dict(type='execution', port='', execution_id='job1')), chunk(dict(type='complete'))])
     with Job.run('dacp://node-a', 'name: demo', execution_policy={'max_retries': 2, 'timeout_seconds': 120}, on_retry=lambda e: None) as stream:
         list(stream)
         assert stream.execution_id == 'job1'
     assert yaml.safe_load(client.request.execution_policy_yaml) == {'max_retries': 2, 'timeout_seconds': 120}
     assert client.request.retry_aware
-    client = setup(monkeypatch, [chunk(dict(type='complete'))])
-    client.expected_yaml = ''
-    with Job.replay('dacp://node-a', 'job1', on_retry=lambda e: None) as stream:
-        list(stream)
-    assert client.request.replay_from == 'job1' and not client.request.execution_policy_yaml
 
 
-def test_job_resolves_variables_before_flight_and_replay_cannot_override(monkeypatch):
+def test_job_resolves_variables_before_flight(monkeypatch):
     client = setup(monkeypatch, [])
     client.expected_yaml = yaml.safe_dump({'name': 'demo', 'steps': [{'id': 'run', 'operator': 'example@1.0', 'inputs': {}, 'params': {'limit': 123}}, {'id': 'client_sink', 'operator': 'client_sink@1.0', 'inputs': {'result': 'run'}}]}, sort_keys=False)
     with Job.run('dacp://node-a', 'name: demo\nsteps:\n- {id: run, operator: example@1.0, inputs: {}, params: {limit: $LIMIT}}\n- id: client_sink\n  operator: client_sink@1.0\n  inputs: {result: run}', variables={'LIMIT': 123}):
         pass
     assert yaml.safe_load(client.request.job_yaml)['steps'][0]['params']['limit'] == 123
-    with pytest.raises(ValueError, match='original resolved variables'):
-        Job.replay('dacp://node-a', 'previous', variables={'LIMIT': 456})
 
 
 def test_missing_variables_do_not_open_connection(monkeypatch):

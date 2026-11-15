@@ -27,7 +27,7 @@ flowchart LR
 | 任务 | 教程与参考 |
 |---|---|
 | 携带变量提交并接收实时结果 | [远程 Job 提交](jobs_zh.md) |
-| 配置重试、超时、物化与重放 | [执行策略](materialization_zh.md) |
+| 配置重试、超时、整 Job 重跑与结果提交 | [执行策略](execution-policy_zh.md) |
 | 查看提交任务、逻辑计划、物理计划和执行信息 | [看板指南](node-web_zh.md) |
 | 查看执行记录 | [执行历史](execution-history_zh.md) |
 | 使用 Union 公开命名空间执行 | [Union 数据与 Job](union-proxy_zh.md)、[气象协作示例](../examples/union/README_zh.md) |

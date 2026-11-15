@@ -15,15 +15,15 @@ object AccessOperations {
     "dacp.union.membership"->"union.membership.get",
     "dacp.union.node_status"->"node.status",
     "dacp.union.planning_profile"->"job.planning.profile",
-    "dacp.union.materialized_status"->"step.materialization.status",
     "dacp.nodes"->"node.list",
     "dacp.union.submit"->"job.submit",
-    "dacp.union.replay_job"->"job.replay",
     "dacp.union.job_status"->"job.status",
     "dacp.union.cancel_job"->"job.cancel",
     "dacp.union.prepare"->"job.prepare",
     "dacp.union.start"->"job.start",
     "dacp.union.execution_status"->"job.status",
-    "dacp.union.cancel_execution"->"job.cancel"
+    "dacp.union.cancel_execution"->"job.cancel",
+    "dacp.union.complete_execution"->"job.commit",
+    "dacp.union.release_checkpoints"->"job.checkpoints.release"
   ).getOrElse(name,"request.unsupported")
 }

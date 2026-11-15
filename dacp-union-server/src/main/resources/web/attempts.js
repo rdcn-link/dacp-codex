@@ -3,12 +3,11 @@ window.DacpAttempts={render(container,job){
  const open=new Set([...container.querySelectorAll('details[open]')].map(n=>n.dataset.attempt));
  if(container.dataset.job!==(job.job_id||job.record_id))open.clear();container.dataset.job=job.job_id||job.record_id||'';
  const make=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
- const states={running:'Running',preparing:'Preparing',waiting_resources:'Waiting for resources',succeeded:'Succeeded',failed:'Failed',cancelled:'Cancelled',expired:'Timed out',replaying:'Replaying'};
+ const states={running:'Running',preparing:'Preparing',waiting_resources:'Waiting for resources',succeeded:'Succeeded',failed:'Failed',cancelled:'Cancelled',expired:'Timed out'};
  const date=t=>t?new Date(t).toLocaleString('en-US',{hour12:false}):'Not recorded';
  const attempts=[...(job.attempts||[])];
  if(job.attempt_id&&!attempts.some(a=>a.attempt_id===job.attempt_id)&&!['succeeded','failed','cancelled','expired','interrupted'].includes(job.state))attempts.push({attempt_id:job.attempt_id,retry_index:job.retry_count||0,state:job.state,started_at_ms:job.attempt_started_at_ms,nodes:job.nodes});
  container.replaceChildren();
- if(job.replay_of)container.append(make('p','Replayed from: '+job.replay_of,'muted mono'));
  if(!attempts.length){container.append(make('p','No execution attempts recorded.','muted'));return;}
  for(const a of attempts){
   const detail=make('details',undefined,'attempt-card');detail.dataset.attempt=a.attempt_id;detail.open=open.has(a.attempt_id);

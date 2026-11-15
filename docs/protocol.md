@@ -37,7 +37,7 @@ One Union Server maintains one Union. Data nodes run independently. Union connec
 
 For example, a step on A produces `oa`, and B combines `oa` with local data to produce `ob`. Union schedules A and B; the intermediate stream travels directly between nodes, and Union relays the final `ob` stream to the client. The client need not connect directly to B. Participating nodes still require certificate verification and the corresponding business authorization.
 
-The implementation supports explicitly declared collaboration DAGs. It supports configured materialization boundaries and replay; automatic recovery requires an execution policy and retry-aware clients. It does not promise arbitrary general pipeline optimization. The dashboard and execution records expose status, traffic, and step titles.
+The implementation supports explicitly declared collaboration DAGs. It supports execution retries with explicit output checkpoints and staged Sink discard/commit; automatic retries require a policy and retry-aware clients. It does not promise arbitrary general pipeline optimization. The dashboard and execution records expose status, traffic, and step titles.
 
 ## Streaming and persistence
 
@@ -51,7 +51,7 @@ Core owns public contracts, transport, authorization, namespaces, and resource m
 
 ### Single-node job execution policies
 
-Flight `DoExchange` accepts `execution_policy_yaml` (YAML bytes), `retry_aware` (boolean), and `replay_from` (original execution ID) alongside job YAML in `OperatorRequest`. For replay, leave `job_yaml` empty; the server restores the original job and policy and checks the submitting identity and valid materialized outputs. Worker-step requests reject these job-level fields. Result streams begin with `execution` metadata exposing the execution ID. Before retrying, `attempt_failed` lets the client callback clear provisional results before receiving fresh `start/data/end` events. A `complete` event must still be followed by successful Flight end-of-stream. Disconnecting or closing the stream cancels execution. See [execution policies](materialization.md).
+Flight `DoExchange` accepts `execution_policy_yaml` and `retry_aware` alongside Job YAML in `OperatorRequest`. Worker requests reject these Job-level fields. Results begin with `execution` metadata containing the execution ID. Before retry, `attempt_failed` requires the receiver to clear provisional results and port state. `complete` must be followed by successful Flight EOF. Closing or disconnecting the result stream cancels execution. See [execution policies](execution-policy.md).
 
 ## Current-caller capabilities
 

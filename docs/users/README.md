@@ -117,8 +117,8 @@ Use `Source.open`, `Dataset.list`, `Dataset.open`, `asRecords()`, and `asBytes()
 ## Execution and operations
 
 - [Submit Jobs, variables and consume results](../jobs.md)
-- [Retries, timeout, cancellation, materialization and replay](../materialization.md)
+- [Retries, timeout, cancellation, whole-Job recovery](../execution-policy.md)
 - [Roles, credentials and access failures](../security.md)
 - [Publish and deploy a service](../operations/README.md)
 
-Reopen an Item stream after a read failure. Job attempts and ordinary Item reads are distinct operations; execution policy controls automatic retries and materialization.
+Reopen an Item stream after a read failure. Job attempts and ordinary Item reads are distinct operations; execution policy controls whole-Job retries and Sink publication.

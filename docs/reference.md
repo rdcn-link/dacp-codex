@@ -45,6 +45,7 @@ Configuration in `examples/server.yaml`:
 | `task_peers` | Node origins permitted for step dispatch; the local node is always allowed; no central discovery service |
 | `task_input_prefixes` | Optional execution-node input URI prefix restriction; omitted or empty means no additional prefix restriction |
 | `max_concurrent_tasks` | Concurrency limit for local steps and control requests (default 2); returns UNAVAILABLE immediately when full |
+| `checkpoint_store` | Optional checkpoint storage provider and private settings; required when Job policy selects output checkpoints; see [execution policies](execution-policy.md) |
 
 Published node metadata is anonymous over TLS. Reading data requires a reader or runner subject; execution and inference require runner. Union collaboration uses node-issued service credentials and mutual TLS; peer streams must also match exact execution plans.
 
