@@ -63,7 +63,7 @@
 - [单 Union 协作协议](union_zh.md)
 - [Union 传输协议模块](../dacp-union-protocol/README_zh.md)
 
-数据模型、格式、Job 语言与算子开发请阅读 [XStream 文档](http://xstream.conoai.cn/docs.html)。
+数据模型、格式、Job 语言与算子开发请阅读 [XStream 文档](http://xstream.conox.cn/docs.html)。
 
 [数据集发布策略](dataset-publication_zh.md)：公开、不公开、定时公开及 Union 信任边界。
 

@@ -41,7 +41,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     assignedPorts+=chosen;chosen
   }
   private def eventually(check: => Boolean,clue: => String="condition"):Unit={val end=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(15);while(!check && System.nanoTime()<end)Thread.sleep(50);assert(check,clue)}
-  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=60,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false,withRecords:Boolean=false,scientific:Boolean=false,trustedSources:Boolean=false,preparationDelayMs:Long=0,preparationFailure:Boolean=false,preparationTimeoutSeconds:Long=1800) {
+  private final class Fixture(allowStranger:Boolean=false,timeoutSeconds:Long=60,web:Option[WebSettings]=None,dynamicCatalog:Boolean=false,withRecords:Boolean=false,scientific:Boolean=false,trustedSources:Boolean=false,preparationDelayMs:Long=0,preparationFailure:Boolean=false,preparationTimeoutSeconds:Long=1800,preparationMessage:String="environment unavailable") {
     @volatile var catalogVisible=true
     @volatile var catalogFailure=false
     val allocator=new RootAllocator()
@@ -105,7 +105,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
       emit(StreamProtocol.frame("end","result"))
       }
     }
-    val a=new UnionWorker(ca,as,allocator,Some(runner),Some(c=>{val until=System.nanoTime()+preparationDelayMs*1000000L;while(System.nanoTime()<until){c.active();Thread.sleep(10)};if(preparationFailure)throw new IllegalArgumentException("environment unavailable")}));val b=new UnionWorker(cb,bs,allocator,Some(runner),Some(c=>{val until=System.nanoTime()+preparationDelayMs*1000000L;while(System.nanoTime()<until){c.active();Thread.sleep(10)};if(preparationFailure)throw new IllegalArgumentException("environment unavailable")}))
+    val a=new UnionWorker(ca,as,allocator,Some(runner),Some(c=>{val until=System.nanoTime()+preparationDelayMs*1000000L;while(System.nanoTime()<until){c.active();Thread.sleep(10)};if(preparationFailure)throw new IllegalArgumentException(preparationMessage)}));val b=new UnionWorker(cb,bs,allocator,Some(runner),Some(c=>{val until=System.nanoTime()+preparationDelayMs*1000000L;while(System.nanoTime()<until){c.active();Thread.sleep(10)};if(preparationFailure)throw new IllegalArgumentException(preparationMessage)}))
     val xp=port()
     val unionId="test-union"
     Files.createDirectories(dir.resolve("x-state"));Json.write(dir.resolve("x-state/union.json"),Json.obj().put("union_id",unionId))
@@ -411,6 +411,8 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     try {
       f.approved();f.failDownstreamOnce=true;val original=f.submit()
       intercept[FlightRuntimeException](f.bytes(original));eventually(f.status(original).path("state").asText=="failed")
+      assert(f.status(original).path("failure").path("phase").asText=="execution")
+      assert(f.status(original).path("failure").path("step_id").asText=="tb")
       val again=f.submit();assert(f.bytes(again).sameElements(f.inputA++f.inputB));eventually(f.status(again).path("state").asText=="succeeded")
       assert(f.count("ta")==2 && f.count("tb")==2)
     }finally f.close()
@@ -535,8 +537,27 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
     try {
       f.approved();val id=f.submit()
       eventually(f.status(id).path("state").asText=="failed")
+      val status=f.status(id)
+      assert(status.path("failure").path("phase").asText=="preparation")
+      assert(status.path("failure").path("request_id").asText.nonEmpty)
+      assert(status.path("failure").path("node").asText.nonEmpty)
+      assert(status.path("attempts").get(0).path("failure").path("phase").asText=="preparation")
+      assert(!status.has("nodes") && !status.toString.contains("environment unavailable"))
       assert(f.count("ta")==0 && f.count("tb")==0)
       eventually(f.ca.taskSlots.availablePermits()==4 && f.cb.taskSlots.availablePermits()==4)
+    }finally f.close()
+  }
+  test("missing operator preparation diagnostics survive result stream cancellation") {
+    val f=new Fixture(preparationFailure=true,preparationMessage="operator not found locally or in configured libraries: emergency_terrain@1.0")
+    try {
+      f.approved();val id=f.submit()
+      val error=intercept[FlightRuntimeException](f.bytes(id))
+      assert(error.getMessage.contains("emergency_terrain@1.0"))
+      eventually(f.status(id).path("state").asText=="failed")
+      val failure=f.status(id).path("failure")
+      assert(failure.path("code").asText=="OPERATOR_NOT_FOUND")
+      assert(failure.path("operator").asText=="emergency_terrain@1.0")
+      assert(failure.path("phase").asText=="preparation")
     }finally f.close()
   }
   test("preparation expiry and cancellation release reservations without executing steps") {
@@ -547,7 +568,7 @@ class UnionSpec extends AnyFunSuite with BeforeAndAfterAll {
         eventually(f.status(id).path("state").asText=="preparing")
         if(!expire)f.client.action(f.settings.publicUrl,"cancel_job",Json.obj().put("job_id",id))
         eventually(Set("failed","expired","cancelled")(f.status(id).path("state").asText))
-        if(!expire)assert(f.status(id).path("state").asText=="cancelled")
+        if(!expire){assert(f.status(id).path("state").asText=="cancelled");assert(!f.status(id).has("failure"))}
         assert(f.count("ta")==0 && f.count("tb")==0)
         eventually(f.ca.taskSlots.availablePermits()==4 && f.cb.taskSlots.availablePermits()==4)
       }finally f.close()

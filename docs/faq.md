@@ -18,6 +18,13 @@
 - [14. Where are request logs and complete exception stacks?](#14-where-are-request-logs-and-complete-exception-stacks)
 - [15. How can DACP dynamically publish Datasets and Items from an existing Java application?](#15-how-can-dacp-dynamically-publish-datasets-and-items-from-an-existing-java-application)
 - [16. How can I tune or extend physical plan optimization?](#16-how-can-i-tune-or-extend-physical-plan-optimization)
+- [17. Why can I discover a dataset and its Items but cannot read or preview their content?](#17-why-can-i-discover-a-dataset-and-its-items-but-cannot-read-or-preview-their-content)
+- [18. Must I download an entire remote file before analyzing it?](#18-must-i-download-an-entire-remote-file-before-analyzing-it)
+- [19. Does a remote Item URI cause subsequent Job steps to execute on that remote node?](#19-does-a-remote-item-uri-cause-subsequent-job-steps-to-execute-on-that-remote-node)
+- [20. Why does a Job prepare environments first, and does preparation consume its execution budget?](#20-why-does-a-job-prepare-environments-first-and-does-preparation-consume-its-execution-budget)
+- [21. Can I still browse and use other datasets when a Union member is offline?](#21-can-i-still-browse-and-use-other-datasets-when-a-union-member-is-offline)
+- [22. Will a Union Job continue if I close the page or disconnect?](#22-will-a-union-job-continue-if-i-close-the-page-or-disconnect)
+- [23. Does a successful Job automatically publish its result as a shareable dataset?](#23-does-a-successful-job-automatically-publish-its-result-as-a-shareable-dataset)
 
 ## 1. How do CONET, DACP and XStream relate to each other?
 
@@ -288,3 +295,51 @@ For workload-specific optimization, implement `dacp.union.PhysicalPlanOptimizer`
 All candidates retain source ownership, explicit placement, capacity, executor and known memory constraints. Runtime fusion is confirmed on the member; publication checks and credentials are unchanged. Plugins are administrator-installed trusted code, not code uploaded in a Job. Automatic filter/join rewrites, automatic materialization and live replanning are not provided by this interface.
 
 See [physical planning](physical-planning.md), [developer contract](developers/planning-optimizer.md) and [runnable example](../examples/planning-optimizer/README.md).
+
+## 17. Why can I discover a dataset and its Items but cannot read or preview their content?
+
+Discovery and content access are controlled separately. Dataset descriptions, Item listings and metadata are always public; previews, samples, scans and downloads follow the entire dataset's publication policy.
+
+| `publication.policy` | Content access for ordinary remote users |
+|---|---|
+| `public` | Anonymous reads allowed |
+| `private` | Reads not available |
+| `embargoed` | Anonymous reads allowed at and after `public_at` |
+
+Set `publication` in the Dataset description JSON; the default is `private`. The `runner` role allows Job submission but does not bypass publication policy, and neither do presigned links. The policy covers every Item and View in the dataset. Keep passwords and other secrets out of public metadata. See [dataset publication policies](dataset-publication.md).
+
+## 18. Must I download an entire remote file before analyzing it?
+
+No. Request an Item's supported View and, where supported by the server, apply filtering, column selection or limits. Alternatively, submit a Job to the DACP node holding the data and receive its result stream. Union coordinates computation across nodes.
+
+Benefits depend on avoided network transfer and remote computation cost. Fully consuming original `bytes` still transfers all content; formats without efficient pruning may require a full server-side source scan. Remote execution does not automatically accelerate every workload. See [client usage](usage.md) and [Union collaboration](union.md).
+
+## 19. Does a remote Item URI cause subsequent Job steps to execute on that remote node?
+
+No. When a Job is submitted to one DACP node, its embedded XStream executes the steps locally. A remote URI in `item_source` selects where to read data, without changing subsequent step placement.
+
+To execute on node A, connect to A and submit there. For cross-node planning, submit to Union. The Designer Target selects the catalog and inference context during design; exported `designer.target` does not route execution. The submitting application must select the actual execution service. See [Job submission](execution-policy.md) and [Union collaboration](union.md).
+
+## 20. Why does a Job prepare environments first, and does preparation consume its execution budget?
+
+Before starting computation, Union asks every participating member to resolve operators, validate packages, load Runtime and dependency images, and prepare execution units. This phase does not consume input streams or run operator business code. Execution starts only after every participating member is ready.
+
+Preparation has an independent `preparation_timeout_seconds` limit, default 1,800 seconds. The Job execution budget pauses during preparation; resource queueing and retry overhead outside preparation still consume the overall budget. Container creation, data reads and computation belong to execution. Client RPC and result-read deadlines remain independent and must cover the waiting period. Separate preparation and execution durations help distinguish environment downloads from slow computation. See [Union environment preparation](union.md).
+
+## 21. Can I still browse and use other datasets when a Union member is offline?
+
+The Union catalog page reads member catalogs independently. One member's failure or timeout does not hide datasets returned by successful members. The page shows progress and incomplete-directory warnings and supports refresh. An incomplete listing is not evidence that missing datasets were deleted.
+
+Execution depends on the Job's inputs. Jobs using available members must still pass planning, authorization and capacity checks; a Job requiring an offline member cannot read its data from catalog metadata. Inspect member health and Job errors rather than hiding unavailable members and treating the result as complete. See [Union catalogs and dashboards](union.md).
+
+## 22. Will a Union Job continue if I close the page or disconnect?
+
+Distinguish status queries from result consumption. After asynchronous submission, stopping status polling or disconnecting a status subscription does not itself cancel execution. Explicit cancellation, execution failure, or interruption of final result consumption cancels the whole Job. Execution and read deadlines still apply.
+
+A Web application that continues analysis after a browser closes should retain execution and result consumption in its backend and store status and results for later access. A browser directly consuming the result stream does not provide that guarantee. Check the application's implementation for this managed behavior. See [Union results and cancellation](union.md).
+
+## 23. Does a successful Job automatically publish its result as a shareable dataset?
+
+No. Step outputs and `client_sink` expose streams for this execution; they do not automatically create a Dataset. The calling application can consume the result or save, describe and publish it through a separate publication workflow.
+
+When sharing, record source data, resolved parameters, operator versions, processing steps and completion status, then set the new dataset's publication policy. CONET provides an application-level data-product publication interface; applications using the DACP SDK implement this themselves. A port end frame alone does not prove whole-Job success. Accept results only after successful stream consumption and execution completion. See [result reception and Sink coordination](execution-policy.md).

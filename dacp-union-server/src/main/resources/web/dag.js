@@ -50,7 +50,7 @@ window.DacpDag=(()=>{
      }
     }
     const title=binding.upstream_task?binding.upstream_task+'.'+(binding.upstream_port||'result'):binding.uri?.split('/').pop()||binding.port;
-    nodes.push({id:source,combo,data:{kind:'input',title,subtitle:(binding.remote?'External output':'Local input')+' · '+binding.port,color:'#7f93ad',fill:'#fff',dash:[]},style:{size:[216,76]}});
+    nodes.push({id:source,combo,data:{kind:'input',title,subtitle:(binding.remote?'External output':'Local input')+' · '+binding.port,fill:'#fff',dash:[]},style:{size:[216,76]}});
     details.set(source,{title:(binding.remote?'Cross-node input':'Local input')+' · '+binding.port,lines:[binding.uri||'', 'Meaning: '+(binding.view||'bytes'),'Server: '+server]});
    }
    edge(source,'task:'+t.id,binding.task?(binding.output_port||'result')+' → '+binding.port:binding.port,t,'inputs',binding.port,binding.output_port||'result');
@@ -61,7 +61,7 @@ window.DacpDag=(()=>{
   }
   for(const [label,binding]of Object.entries(job.outputs)){
    const id='output:'+label;
-  nodes.push({id,combo:'client',data:{kind:'output',title:label,subtitle:job.output_route||'Union → Client',color:'#6f8ba7',fill:'#fff',dash:[]},style:{size:[216,76]}});
+  nodes.push({id,combo:'client',data:{kind:'output',title:label,subtitle:job.output_route||'Union → Client',fill:'#fff',dash:[]},style:{size:[216,76]}});
    details.set(id,{title:'Output · '+label,lines:[binding.task+'.'+binding.port,job.output_route||'Forwarded through Union to the submitting client']});
    edge('task:'+binding.task,id,binding.port,steps.get(binding.task),'outputs',binding.port,binding.port||'result');
   }

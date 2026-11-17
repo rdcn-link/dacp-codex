@@ -24,7 +24,7 @@ flowchart LR
 - [Operations guide](docs/operations/README.md): deployment, publication, security, monitoring and maintenance
 - [Development guide](docs/developers/README.md): SDK integration, embedded services and protocols
 - [Documentation by topic](docs/README.md)
-- [Official website and downloads](http://dacp.conoai.cn/)
+- [Official website and downloads](http://dacp.conox.cn/)
 
 ## Components
 
@@ -49,4 +49,4 @@ Use JDK 17 and sbt 1.10.x; Python clients require Python 3.10+. Prepare the XStr
 
 Follow [node deployment](docs/operations/README.md) to configure TLS, published data, credentials and execution environments. Use the [weather collaboration example](examples/union/README.md) for a complete Union setup.
 
-Data models, formats, Job authoring and operator development are documented in the [XStream guides](http://xstream.conoai.cn/docs.html). Approved operators and runtimes are available from the independent [operator repository](http://repo.conoai.cn/).
+Data models, formats, Job authoring and operator development are documented in the [XStream guides](http://xstream.conox.cn/docs.html). Approved operators and runtimes are available from the independent [operator repository](http://repo.conox.cn/).

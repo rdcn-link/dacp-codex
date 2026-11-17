@@ -37,4 +37,4 @@ flowchart LR
 
 *The same Job-detail tabs are used by node and Union dashboards. The physical plan identifies execution servers, units and their runtime environments.*
 
-For deployment, publication, security, monitoring and maintenance, use the [Operations guide](operations/README.md). For application integration, use the [Development guide](developers/README.md). Job authoring and operator development are covered by the [XStream guides](http://xstream.conoai.cn/docs.html).
+For deployment, publication, security, monitoring and maintenance, use the [Operations guide](operations/README.md). For application integration, use the [Development guide](developers/README.md). Job authoring and operator development are covered by the [XStream guides](http://xstream.conox.cn/docs.html).

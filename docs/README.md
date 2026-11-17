@@ -63,7 +63,7 @@ Use the User guide for connections, data access and Jobs; the Operations guide f
 - [Union collaboration protocol](union.md)
 - [Union transport API](../dacp-union-protocol/README.md)
 
-For data models, formats, Job authoring and operator development, use the [XStream documentation](http://xstream.conoai.cn/docs.html).
+For data models, formats, Job authoring and operator development, use the [XStream documentation](http://xstream.conox.cn/docs.html).
 
 [Dataset publication policies](dataset-publication.md): public, private and timed publication, including Union trust boundaries.
 

@@ -24,7 +24,7 @@ flowchart LR
 - [运维指南](docs/operations/README_zh.md)：部署、发布、安全、监控与维护
 - [开发指南](docs/developers/README_zh.md)：SDK 集成、嵌入服务与协议
 - [按主题浏览文档](docs/README_zh.md)
-- [官方网站与下载](http://dacp.conoai.cn/)
+- [官方网站与下载](http://dacp.conox.cn/)
 
 ## 组件
 
@@ -49,4 +49,4 @@ flowchart LR
 
 按[节点部署](docs/operations/README_zh.md)配置 TLS、公开数据、凭据和执行环境。完整 Union 部署见[气象协作示例](examples/union/README_zh.md)。
 
-数据模型、格式、Job 编写和算子开发参阅 [XStream 指南](http://xstream.conoai.cn/docs.html)。审核通过的算子与运行环境可从独立的[算子仓库](http://repo.conoai.cn/)获取。
+数据模型、格式、Job 编写和算子开发参阅 [XStream 指南](http://xstream.conox.cn/docs.html)。审核通过的算子与运行环境可从独立的[算子仓库](http://repo.conox.cn/)获取。

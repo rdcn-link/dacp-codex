@@ -226,8 +226,16 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     def claim(who:String):Unit={if(who!=consumer)denied("output consumer denied");if(!claimed.compareAndSet(false,true))throw UnionFailure(ALREADY_EXISTS,"output already consumed")}
   }
   private final class Session(val id:String,val union:String,val owner:String,jobName:String,jobYaml:String,submitted:Vector[JsonNode],allowFusion:Boolean,timeoutSeconds:Long,requestId:String,resources:_root_.xstream.engine.ExecutionResources,val checkpointRun:Option[CheckpointRun],selectedCheckpoints:Map[String,Set[String]],reusedSteps:Set[String]) {
-    private def logFailure(t:Throwable):Unit=org.slf4j.LoggerFactory.getLogger(getClass).error(
-      s"Execution failed: operation=job.execute request_id=$requestId job_id=$id",t)
+    @volatile private var failure:Option[JsonNode]=None
+    @volatile private var preparingStep:Option[JsonNode]=None
+    private def logFailure(t:Throwable,step:Option[JsonNode]=None):Unit={
+      synchronized {if(failure.isEmpty && !terminal){
+        val f=dacp.union.ExecutionFailure.summary(t,if(state=="preparing")"preparation"else if(state=="committing")"commit"else"execution",requestId,id)
+        step.orElse(preparingStep).foreach(step=>{f.put("step_id",step.path("id").asText);f.put("operator",step.path("operator").asText)})
+        failure=Some(f)
+      }}
+      org.slf4j.LoggerFactory.getLogger(getClass).error(s"Execution failed: operation=job.execute request_id=$requestId job_id=$id",t)
+    }
     private val definitions=submitted.map(normalizeTask)
     private val serviceCredential=if(Rpc.isAuthenticatedCall)Rpc.principal.credentialId else None
     private val proxyPath=Rpc.proxyHops
@@ -422,7 +430,9 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
             definitions.filterNot(t=>t.path("operator").asText==Jobs.ItemSource || reusedSteps(t.path("id").asText)).foreach { t=>
               cancel.active()
               val task=Task(t.path("id").asText,Map.empty,t.path("operator").asText,Json.mapper.convertValue(t.path("params"),classOf[java.util.LinkedHashMap[String,Object]]))
+              preparingStep=Some(t)
               preparedOperators.put(task.id,executor.prepare(task,cancel))
+              preparingStep=None
             }
             preparedGroup=grouped()
           }
@@ -546,7 +556,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
             outputs.filter(_._1._1==taskId).values.foreach(_.queue.end())
             states.put(taskId,"succeeded");taskRecords(taskId).update("succeeded",snapshot)
           } finally {try inputs.values.foreach(_.close())finally checkpointWriter.foreach(w=>try w.close()catch{case scala.util.control.NonFatal(t)=>checkpointCleanupError=Some(t);throw new _root_.xstream.execution.SinkDiscardException("Checkpoint cleanup failed",t)})}
-        } catch {case t:Throwable=>logFailure(t);stop("failed",Some("Job execution failed; request_id="+requestId));throw t}
+        } catch {case error:Throwable=>logFailure(error,Some(t));stop("failed",Some("Job execution failed; request_id="+requestId));throw error}
       }}
       threads.foreach(workers.add)
       StreamProtocol.thread(cancel){
@@ -556,6 +566,7 @@ final class UnionWorker(config:Config,settings:NodeUnionSettings,allocator:Buffe
     }
     def snapshot:JsonNode={
       val n=Json.obj().put("sink_cleanup_complete",cleanupComplete).put("commit_started",sinks.commitStarted)
+      failure.foreach(f=>n.set[JsonNode]("failure",dacp.union.ExecutionFailure.publicCopy(f)))
       checkpointRun.foreach { run=>n.set[JsonNode]("checkpoints",run.data.snapshot) }
       cleanupError.foreach(n.put("sink_cleanup_error",_));val ss=n.putObject("sinks");sinks.states.foreach{case(k,v)=>ss.put(k,v)}
       n.put("history_record_id",historyRecord.id).put("execution_id",id).put("name",jobName).put("union_id",union).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished).put("execution_mode",executionMode).put("fusion_reason",fusionReason).put("runtime_pid",runtimePid)

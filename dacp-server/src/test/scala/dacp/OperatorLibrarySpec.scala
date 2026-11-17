@@ -46,7 +46,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
     node.putObject("execution").put("executor",executor).put("entrypoint",if(executor == "container") "" else "example.Main")
     if(executor != "container") node.putObject("artifact").put("size",code.length).put("sha256",hash(code)).put("filename","operators.jar")
 
-    node.set[com.fasterxml.jackson.databind.JsonNode]("icon",Data.mapper.readTree("""{"path":"M3 5h18v14H3z","color":"#14866b"}"""))
+    node.set[com.fasterxml.jackson.databind.JsonNode]("icon",Data.mapper.readTree("""{"path":"M3 5h18v14H3z"}"""))
     node.set[com.fasterxml.jackson.databind.JsonNode]("parameters",Data.mapper.readTree("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""))
     node.putObject("outputs").putObject("result").put("view","bytes")
     Seq("inputs"->"source").foreach {case(key,port)=>
@@ -116,7 +116,7 @@ class OperatorLibrarySpec extends AnyFunSuite {
     try {
       installed = true
       val local = root.resolve("local/first/1/operator.yaml")
-      Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\nicon: {path: M3 5h18v14H3z, color: '#14866b'}\nparameters: {type: object, properties: {}, required: [], additionalProperties: false}\nprovenance: {source_archive: missing-sources.zip, license: MIT}\ninputs: {source: {representations: [bytes], formats: []}}\n")
+      Files.createDirectories(local.getParent); Files.writeString(local,"name: first\nversion: '1'\nimage: local\nicon: {path: M3 5h18v14H3z}\nparameters: {type: object, properties: {}, required: [], additionalProperties: false}\nprovenance: {source_archive: missing-sources.zip, license: MIT}\ninputs: {source: {representations: [bytes], formats: []}}\n")
       assert(!c.allowLocalOperatorManifests)
       installed = false
       val first = OperatorLibrary.resolve(c,"first@1",docker)

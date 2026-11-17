@@ -34,7 +34,7 @@ Ordinary and collaboration clients share transport and certificate implementatio
 | Load existing backend and runtime plugins | [Plugin deployment](../plugins.md), [plugin example](../../examples/plugins/README.md) |
 | Configure service-side execution history | [History API and administration](../execution-history.md) |
 
-Implement Dataset backends, format readers, operators, stream contracts and execution-storage plugins using the [XStream Development guide](http://xstream.conoai.cn/manual/xstream-codex/docs/development.html). Use DACP configuration to load them into a service.
+Implement Dataset backends, format readers, operators, stream contracts and execution-storage plugins using the [XStream Development guide](http://xstream.conox.cn/manual/xstream-codex/docs/development.html). Use DACP configuration to load them into a service.
 
 ## 3. Protocol reference
 

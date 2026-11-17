@@ -34,7 +34,7 @@ flowchart TD
 | 加载已有后端与运行环境插件 | [插件部署](../plugins_zh.md)、[插件示例](../../examples/plugins/README_zh.md) |
 | 配置服务端执行记录存储 | [历史 API 与管理](../execution-history_zh.md) |
 
-数据集后端、格式解析、算子、流契约和执行存储插件的开发请使用 [XStream 开发指南](http://xstream.conoai.cn/manual/xstream-codex/docs/development_zh.html)，通过 DACP 配置将插件加载到服务。
+数据集后端、格式解析、算子、流契约和执行存储插件的开发请使用 [XStream 开发指南](http://xstream.conox.cn/manual/xstream-codex/docs/development_zh.html)，通过 DACP 配置将插件加载到服务。
 
 ## 3. 协议参考
 

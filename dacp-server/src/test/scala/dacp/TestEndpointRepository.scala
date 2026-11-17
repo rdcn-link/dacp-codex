@@ -13,7 +13,7 @@ final class TestEndpointRepository extends AutoCloseable {
     val hash=MessageDigest.getInstance("SHA-256").digest(bytes).map(b=>f"${b&255}%02x").mkString
     blobs(hash)=bytes
     val n=Data.mapper.createObjectNode().put("api_version",2).put("name",name).put("version","1.0").put("role",if(name=="item_source")"source"else"sink").put("type","sdk")
-    n.putObject("icon").put("path","M3 5h18v14H3z").put("color","#287da2")
+    n.putObject("icon").put("path","M3 5h18v14H3z")
     val outputs=n.putObject("outputs");if(name=="item_source")outputs.putObject("result").put("view","variable")
     val inputs=n.putObject("inputs")
     if(name=="client_sink"){val p=inputs.putObject("result");val a=p.putArray("representations");a.add("variable");p.putArray("formats")}

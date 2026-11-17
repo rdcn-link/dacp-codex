@@ -275,10 +275,12 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
   private def publicStatus(value:JsonNode):JsonNode={
     val n=value.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]()
     n.remove("nodes");n.remove("error");n.remove("message");n.remove("job_yaml");n.remove("task_definitions")
+    if(value.path("failure").isObject)n.set[JsonNode]("failure",dacp.union.ExecutionFailure.publicCopy(value.path("failure")))
     val attempts=n.putArray("attempts")
     value.path("attempts").elements.asScala.foreach { attempt=>
       val safe=Json.obj()
       Seq("attempt_id","state","started_at_ms","finished_at_ms","retry_index").foreach(k=>Option(attempt.get(k)).foreach(v=>safe.set[JsonNode](k,v)))
+      if(attempt.path("failure").isObject)safe.set[JsonNode]("failure",dacp.union.ExecutionFailure.publicCopy(attempt.path("failure")))
       attempts.add(safe)
     }
     val states=n.putArray("steps")
@@ -308,6 +310,14 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
             sink.frame(frame);f=j.output.next()
           }
           complete.set(true);sink.completed()
+        }catch{case scala.util.control.NonFatal(error)=>
+          val status=j.snapshot;val failure=status.path("failure")
+          if(Set("failed","expired")(status.path("state").asText) && failure.isObject){
+            val detail=Vector("phase","message","step_id","operator","node","request_id","execution_id")
+              .flatMap(k=>Option(failure.get(k)).map(v=>k+"="+v.asText)).mkString("; ")
+            throw UnionFailure(if(status.path("state").asText=="expired")TIMED_OUT else INTERNAL,detail)
+          }
+          throw error
         }finally {sink.close();if(!complete.get())j.stop("cancelled")}
       case _=>throw UnionFailure(UNIMPLEMENTED,"unknown Union ticket")
     }
@@ -383,6 +393,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     val claimed=new AtomicBoolean()
     val created=Json.now
     @volatile var finished=0L
+    @volatile private var failure:Option[JsonNode]=None
     @volatile private var state="queued"
     private val prepared=new ConcurrentHashMap[String,JsonNode]()
     private val dispatchedDefinitions=new ConcurrentHashMap[String,JsonNode]()
@@ -403,6 +414,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
     def terminal:Boolean=Set("succeeded","failed","cancelled","expired")(state)
     def snapshot:JsonNode={
       val n=Json.obj().put("job_id",id).put("name",plan.name).put("state",state).put("created_at_ms",created).put("finished_at_ms",finished)
+      failure.foreach(f=>n.set[JsonNode]("failure",dacp.union.ExecutionFailure.publicCopy(f)))
       n.set[JsonNode]("execution_policy",policy.submitted);n.set[JsonNode]("effective_execution_policy",policy.effective)
       n.put("preparation_duration_ms",preparationDuration+ (if(preparationCancel.nonEmpty)Json.now-preparationStartedAt else 0L)).put("execution_started_at_ms",executionStartedAt).put("execution_duration_ms",executionDuration+(if(runningSince==0L)0L else (if(finished>0)finished else Json.now)-runningSince))
       n.put("attempt_id",attemptId).put("attempt_started_at_ms",attemptStartedAt).put("retry_count",retryCount).put("max_retries",policy.maxRetries)
@@ -649,9 +661,18 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
       }
       if(deferred.nonEmpty){releaseCheckpoints();synchronized {if(!terminal){state="succeeded";finished=Json.now;event("state")}}}
     }
+    private def captureFailure(t:Throwable):Unit=synchronized {
+      if(state=="cancelled")return
+      val failed=nodeStates.asScala.toVector.sortBy(_._1).find(_._2.path("failure").isObject)
+      if(failure.isEmpty || failed.nonEmpty){
+        val f=failed.map {case(node,status)=>dacp.union.ExecutionFailure.publicCopy(status.path("failure")).put("node",node)}
+          .getOrElse(dacp.union.ExecutionFailure.summary(t,if(!attemptStarted)"preparation"else if(sinkCommitStarted)"commit"else"execution",id,attemptId))
+        failure=Some(f)
+      }
+    }
     private def recordAttempt(result:String,error:Option[Throwable]=None):Unit=synchronized {
       val n=Json.obj().put("attempt_id",attemptId).put("retry_index",retryCount).put("state",result).put("started_at_ms",attemptStartedAt).put("finished_at_ms",Json.now)
-      error.foreach(t=>n.put("message",Option(t.getMessage).getOrElse(t.getClass.getSimpleName).take(2048)))
+      error.foreach { t=>captureFailure(t);n.put("message",Option(t.getMessage).getOrElse(t.getClass.getSimpleName).take(2048));failure.foreach(f=>n.set[JsonNode]("failure",f)) }
       val ns=n.putObject("nodes");nodeStates.asScala.foreach{case(k,v)=>
         val summary=v.deepCopy[com.fasterxml.jackson.databind.node.ObjectNode]();summary.remove("ports");ns.set[JsonNode](k,summary)
       };attempts+=n
@@ -675,6 +696,11 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
           while(!done){
             try {attempt();recordAttempt(if(deferred.nonEmpty)"staged"else"succeeded");done=true}
             catch{case scala.util.control.NonFatal(t)=>
+              // Result-stream cancellation may arrive before the next control-status poll.
+              nodes.iterator.takeWhile(_=> !nodeStates.values.asScala.exists(_.path("failure").isObject)).foreach { n=>try {
+                val latest=remote.action(url(n),"execution_status",executionBody,Some(identity(n)),hops=proxyPath,timeout=2)
+                nodeStates.put(identity(n),latest)
+              }catch{case scala.util.control.NonFatal(_)=>()} }
               recordAttempt("failed",Some(t));cancel.checkState()
               if(!retryable(t))throw t
               // A revoked grant may surface first as a cancelled data stream. Recheck control authorization.
@@ -686,7 +712,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
               val previousAttempt=attemptId;val nextAttempt=Json.uuid()
               val notice=Json.obj().put("type","attempt_failed").put("port","").put("attempt_id",previousAttempt).put("next_attempt_id",nextAttempt).put("retry_count",retryCount+1).put("message",Option(t.getMessage).getOrElse("execution failed").take(2048))
               output.put(OperatorFrame(Json.mapper.writeValueAsBytes(notice)))
-              prepared.clear();dispatchedDefinitions.clear();nodeStates.clear();retryCount+=1;attemptId=nextAttempt
+              failure=None;prepared.clear();dispatchedDefinitions.clear();nodeStates.clear();retryCount+=1;attemptId=nextAttempt
               change("retrying");Thread.sleep(settings.pollMs)
             }
           }
@@ -696,6 +722,7 @@ final class Coordinator(val settings:Settings,providedPlugins:Option[PluginEnvir
           synchronized {if(!terminal && deferred.isEmpty){state="succeeded";finished=Json.now;event("state")}}
         }catch{case scala.util.control.NonFatal(t)=>
           org.slf4j.LoggerFactory.getLogger(getClass).error(s"Job failed: operation=job.execute request_id=$id job_id=$id execution_id=$attemptId",t)
+          captureFailure(t)
           stop(if(cancel.cause(t).isInstanceOf[java.util.concurrent.TimeoutException])"expired"else "failed",Some("Job execution failed; request_id="+id))}
       }
     }

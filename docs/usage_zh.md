@@ -37,4 +37,4 @@ flowchart LR
 
 *节点与 Union 看板使用相同的 Job 详情标签页；物理计划标明执行服务器、执行单元与运行环境。*
 
-部署、发布、安全、监控和维护见[运维指南](operations/README_zh.md)，应用集成见[开发指南](developers/README_zh.md)。Job 编写和算子开发见 [XStream 指南](http://xstream.conoai.cn/docs.html)。
+部署、发布、安全、监控和维护见[运维指南](operations/README_zh.md)，应用集成见[开发指南](developers/README_zh.md)。Job 编写和算子开发见 [XStream 指南](http://xstream.conox.cn/docs.html)。

@@ -31,3 +31,9 @@ web:
 启动成功后，节点状态通过 `web_enabled` 与 `web_url` 提供看板地址，供 Union 展示链接。界面采用英文；数据集名称、描述、步骤标签和脚本保留原始内容，静态资源在本地提供。
 
 看板跨提交者展示执行元信息与已保存参数，应绑定预期的内网。数据读取和执行权限由 DACP 服务调用检查。Union 看板配置见 [Union 手册](../../dacp-union-server/README_zh.md)。
+
+## 排查 Union Job 失败
+
+提交任务的客户端可以从 Job 状态读取结构化的 `failure`。其中包含安全的 `message`、`code`、`phase`（`preparation` 环境准备、`execution` 执行或 `commit` 结果提交）、关联字段 `request_id` 和 `execution_id`，以及已知时提供的 `step_id`、`operator` 和 `node`。失败尝试各自保留失败摘要。缺少算子时返回 `OPERATOR_NOT_FOUND` 及算子引用。结果流被取消只是传输层表现；客户端应先查询 Job 状态，再向用户展示失败原因。
+
+取消和清理过程中保留首先记录的失败。用户主动取消仍表示取消。公开诊断不包含任意异常文本、文件系统路径、凭据或异常栈。其他失败可通过请求 ID 和执行 ID 在服务端日志中查找完整异常栈。失败状态同样遵循任务所有者权限检查。
