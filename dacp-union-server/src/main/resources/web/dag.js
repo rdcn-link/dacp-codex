@@ -170,6 +170,24 @@ window.DacpDag=(()=>{
   }
  }
  function registerCard(){
+  class DataFlow extends G6.Polyline {
+   getKeyPath(attributes){
+    const [start,end]=this.getEndpoints(attributes),vertical=attributes.vertical;
+    const middle=(start[vertical?1:0]+end[vertical?1:0])/2;
+    const a=vertical?[start[0],middle]:[middle,start[1]],b=vertical?[end[0],middle]:[middle,end[1]];
+    const obstacles=this.context.element.getNodes().filter(n=>n&&n!==this.sourceNode&&n!==this.targetNode&&n.isVisible()&&n.getShape('key')).map(n=>n.getShape('key').getBounds());
+    const samples=Math.max(24,Math.ceil((Math.abs(end[0]-start[0])+Math.abs(end[1]-start[1]))/8));
+    for(let i=1;i<samples;i++){
+     const t=i/samples,u=1-t,point=[0,1].map(k=>u*u*u*start[k]+3*u*u*t*a[k]+3*u*t*t*b[k]+t*t*t*end[k]);
+     if(obstacles.some(box=>point[0]>box.min[0]-8&&point[0]<box.max[0]+8&&point[1]>box.min[1]-8&&point[1]<box.max[1]+8)){
+      // Retain the simple curve when clear. Only obstructed edges need a
+      // rounded route around cards, keeping named ports and arrow direction.
+      return super.getKeyPath({...attributes,radius:16,router:{type:'shortest-path',enableObstacleAvoidance:true,offset:16,gridSize:10,maximumLoops:10000,startDirections:[vertical?'bottom':'right'],endDirections:[vertical?'top':'left']}});
+     }
+    }
+    return [['M',...start],['C',...a,...b,...end]];
+   }
+  }
   class TaskCard extends G6.Rect {
    render(attributes=this.parsedAttributes,container){
     super.render(attributes,container);
@@ -226,6 +244,7 @@ window.DacpDag=(()=>{
   }
   G6.register(G6.ExtensionCategory.COMBO,'dacp-execution-region',ExecutionRegion);
   G6.register(G6.ExtensionCategory.NODE,'dacp-task-card',TaskCard);
+  G6.register(G6.ExtensionCategory.EDGE,'dacp-data-flow',DataFlow);
  }
  let registered=false;
  class Viewer {
@@ -302,7 +321,7 @@ window.DacpDag=(()=>{
        const size=d.style.size;
        return ['input','output'].flatMap(side=>(d.data[side==='input'?'inputs':'outputs']||[]).map((port,i)=>({key:side+':'+port,placement:vertical?[(i+1)/((d.data[side==='input'?'inputs':'outputs']||[]).length+1),side==='input'?0:1]:[side==='input'?0:1,((d.data.logical?80:104)+i*22)/size[1]]})));
       },portR:3.5,portFill:'#fff',portStroke:'#7192c3',portLineWidth:1.5}},
-      edge:{type:vertical?'cubic-vertical':'cubic-horizontal',state:{selected:{stroke:'#2563eb',lineWidth:4,shadowColor:'#2563eb55',shadowBlur:10,labelFill:'#1d4ed8',labelFontWeight:700,labelBackgroundFill:'#dbeafe'}},style:{sourcePort:d=>d.style?.sourcePort||'out',targetPort:d=>d.style?.targetPort||'in',endArrow:true,endArrowSize:6,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#5b718c',labelBackground:true,labelBackgroundFill:'#ffffffed',labelBackgroundRadius:5,labelPadding:[2,5],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
+      edge:{type:'dacp-data-flow',state:{selected:{stroke:'#2563eb',lineWidth:4,shadowColor:'#2563eb55',shadowBlur:10,labelFill:'#1d4ed8',labelFontWeight:700,labelBackgroundFill:'#dbeafe'}},style:{vertical,sourcePort:d=>d.style?.sourcePort||'out',targetPort:d=>d.style?.targetPort||'in',endArrow:true,endArrowSize:6,labelFontFamily:'system-ui, sans-serif',labelFontSize:10,labelFill:'#5b718c',labelBackground:true,labelBackgroundFill:'#ffffffed',labelBackgroundRadius:5,labelPadding:[2,5],labelLineHeight:15,labelAutoRotate:false,labelPlacement:'center'}},
       combo:{type:d=>d.data?.kind?'dacp-execution-region':'rect',state:{selected:{stroke:'#2563eb',lineWidth:3.5,shadowColor:'#2563eb44',shadowBlur:16}},style:{region:d=>d.data,label:d=>!d.data?.kind,radius:18,padding:d=>d.style?.padding||[64,24,24,24],lineWidth:1.2,fillOpacity:1,labelPlacement:'top-left',labelTextAlign:'left',labelTextBaseline:'top',labelOffsetX:16,labelOffsetY:14,labelFontSize:12,labelFontWeight:600,labelFill:'#526b88',collapsedSize:[252,76]}},
       behaviors:[{type:'drag-canvas',onFinish:()=>{this.mode='manual';}},{type:'zoom-canvas',enable:()=>this.mouseZoom,preventDefault:false,sensitivity:.5,onFinish:()=>{this.mode='manual';this.zoomLabel();}},{type:'collapse-expand',enable:event=>layout!=='swimlane'&&event.targetType==='combo',animation:false,onCollapse:()=>this.action(()=>this.normalizeRegions()),onExpand:()=>this.action(()=>this.normalizeRegions())}],
      });
@@ -321,43 +340,74 @@ window.DacpDag=(()=>{
    });
    this.pending=work;return work;
   }
-  async alignRegions(kind){
-   const data=this.graph.getData(),vertical=this.direction==='vertical',groups=new Map();
-   const byId=new Map(data.combos.map(c=>[c.id,c]));
-   const visible=c=>{for(let p=c;p;p=byId.get(p.combo))if(p.style?.collapsed)return false;return true;};
+  async moveRegion(id,dx,dy){
+   if(Math.abs(dx)<.01&&Math.abs(dy)<.01)return;
+   const data=this.graph.getData(),parents=new Map(data.combos.map(c=>[c.id,c.combo]));
+   const inside=parent=>{for(let p=parent;p;p=parents.get(p))if(p===id)return true;return false;};
+   // Move leaf coordinates explicitly, so nested frames are remeasured from
+   // their children instead of retaining bounds from before group translation.
+   const node=data.nodes.find(n=>n.id===id);
+   this.graph.updateNodeData((node?[node]:data.nodes.filter(n=>inside(n.combo))).map(n=>({id:n.id,style:{x:n.style.x+dx,y:n.style.y+dy}})));
+   const collapsed=data.combos.filter(c=>c.style?.collapsed&&(c.id===id||inside(c.combo)));
+   if(collapsed.length)this.graph.updateComboData(collapsed.map(c=>{const pos=this.graph.getElementPosition(c.id);return {id:c.id,style:{x:pos[0]+dx,y:pos[1]+dy}};}));
+   await this.graph.draw();
+  }
+  async packRegions(roots){
+   const data=this.graph.getData(),vertical=this.direction==='vertical',along=vertical?1:0,cross=1-along;
+   const parents=new Map(data.combos.map(c=>[c.id,c]));
+   const visible=c=>{for(let p=parents.get(c.combo);p;p=parents.get(p.combo))if(p.style?.collapsed)return false;return true;};
+   const box=id=>this.graph.getElementRenderBounds(id),groups=new Map();
    for(const c of data.combos){
-    if(!visible(c))continue;
-    if(kind==='process'?c.data?.kind!=='process':!!c.combo)continue;
-    const key=c.combo||'',group=groups.get(key)||[];group.push(c);groups.set(key,group);
+    if(!visible(c)||(roots?!!c.combo:c.data?.kind!=='process'))continue;
+    const key=c.combo||'',items=groups.get(key)||[];items.push(c.id);groups.set(key,items);
    }
-   for(const [parent,combos] of groups){
-    const blocks=[...combos,...(kind==='process'?data.nodes.filter(n=>n.combo===parent):[])].map(c=>{const b=this.graph.getElementRenderBounds(c.id);return {id:c.id,start:b.min[vertical?1:0],end:b.max[vertical?1:0],cross:b.min[vertical?0:1]};});
-    if(blocks.length<2)continue;
-    blocks.sort((a,b)=>a.start-b.start||a.cross-b.cross||a.id.localeCompare(b.id));
-    const baseline=Math.min(...blocks.map(b=>b.cross));let cursor=Math.min(...blocks.map(b=>b.start));
-    const translations={};
-    for(const b of blocks){const along=Math.max(cursor,b.start)-b.start,across=baseline-b.cross;if(Math.abs(along)>.5||Math.abs(across)>.5)translations[b.id]=vertical?[across,along]:[along,across];cursor=b.end+along+(kind==='process'?70:90);}
-    if(Object.keys(translations).length)await this.graph.translateElementBy(translations,false);
+   if(!roots)for(const [parent,items] of groups)for(const n of data.nodes)if(n.combo===parent)items.push(n.id);
+   for(const items of groups.values()){
+    if(roots){
+     // Equal-size servers share a cross-axis origin. The client result remains
+     // aligned to its producer, rather than being pushed into a server header.
+     const servers=items.filter(id=>parents.get(id)?.data?.kind==='server');
+     const baseline=Math.min(...servers.map(id=>box(id).min[cross]));
+     let cursor=Math.min(...items.map(id=>box(id).min[along]));
+     for(const id of items.sort((a,b)=>box(a).min[along]-box(b).min[along]||a.localeCompare(b))){
+      const current=box(id),delta=[0,0];delta[along]=Math.max(0,cursor-current.min[along]);
+      if(servers.includes(id))delta[cross]=baseline-current.min[cross];
+      else {
+       const target=data.nodes.find(n=>n.combo===id),edge=data.edges.find(e=>e.target===target?.id);
+       if(edge){
+        let source=edge.source;
+        for(let p=parents.get(data.nodes.find(n=>n.id===source)?.combo);p;p=parents.get(p.combo))if(p.style?.collapsed)source=p.id;
+        delta[cross]=box(source).center[cross]-current.center[cross];
+       }
+      }
+      await this.moveRegion(id,...delta);cursor=box(id).max[along]+90;
+     }
+    }else{
+     // Only separate intersecting siblings on the cross axis. Their flow-axis
+     // coordinates (and hence dependency layers) are never flattened.
+     const placed=[];
+     for(const id of items.sort((a,b)=>box(a).min[cross]-box(b).min[cross]||box(a).min[along]-box(b).min[along]||a.localeCompare(b))){
+      const current=box(id);let start=current.min[cross];
+      for(const other of placed.sort((a,b)=>box(a).min[cross]-box(b).min[cross])){const b=box(other);if(current.min[along]<b.max[along]+16&&current.max[along]+16>b.min[along]&&start<b.max[cross]+36&&start+current.max[cross]-current.min[cross]>b.min[cross]-36)start=b.max[cross]+36;}
+      const delta=[0,0];delta[cross]=start-current.min[cross];await this.moveRegion(id,...delta);placed.push(id);
+     }
+    }
    }
   }
   async normalizeRegions(){
    if(!this.graph||this.layoutMode==='swimlane')return;
    const vertical=this.direction==='vertical';
-   // Inner frames affect outer frames; remeasure after each layout settles.
-   for(let pass=0;pass<3;pass++){
-    let changed=false;
-    for(const kind of ['process','server']){
-     const data=this.graph.getData(),bounds=id=>{const b=this.graph.getElementRenderBounds(id);return {left:b.min[0],top:b.min[1],right:b.max[0],bottom:b.max[1]};};
-     const changes=equalizeRegions(data,bounds,vertical,kind);
-     if(changes.length){changed=true;this.graph.updateComboData(changes);await this.graph.draw();await this.graph.layout();}
-    }
-    if(!changed)break;
+   // Previous equalization is presentation padding, not intrinsic content.
+   const reset=this.graph.getComboData().filter(c=>['process','server'].includes(c.data?.kind)).map(c=>({id:c.id,style:{padding:c.data.kind==='process'?[80,24,24,24]:[64,24,24,24]}}));
+   if(reset.length){this.graph.updateComboData(reset);await this.graph.draw();await this.graph.layout();}
+   // Measure inside out. Do not run the automatic layout again after resizing:
+   // it can pack siblings using their former extents. Pack actual bounds instead.
+   for(const kind of ['process','server']){
+    const data=this.graph.getData(),bounds=id=>{const b=this.graph.getElementRenderBounds(id);return {left:b.min[0],top:b.min[1],right:b.max[0],bottom:b.max[1]};};
+    const changes=equalizeRegions(data,bounds,vertical,kind);
+    if(changes.length){this.graph.updateComboData(changes);await this.graph.draw();}
+    await this.packRegions(kind==='server');
    }
-   await this.alignRegions('process');
-   const data=this.graph.getData(),bounds=id=>{const b=this.graph.getElementRenderBounds(id);return {left:b.min[0],top:b.min[1],right:b.max[0],bottom:b.max[1]};};
-   const outer=equalizeRegions(data,bounds,vertical,'server');
-   if(outer.length){this.graph.updateComboData(outer);await this.graph.draw();}
-   await this.alignRegions('server');
   }
   destroyGraph(){this.ready=false;if(this.graph){this.graph.destroy();this.graph=null;}}
   destroy(){this.resize.disconnect();this.destroyGraph();}

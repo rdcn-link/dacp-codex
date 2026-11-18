@@ -35,6 +35,8 @@ A Union-assigned subjob is the plan dispatched to that node. Its external inputs
 
 Switch between dependency and swimlane layouts and choose horizontal or vertical direction. Select a step or edge to highlight it. Toolbar controls offer zoom, fit, reset and expand. Mouse-wheel zoom is locked by default; the wheel scrolls the page while locked. Unlock **Mouse zoom** to zoom with the wheel. Horizontal layouts align server and unit heights; vertical layouts align widths.
 
+Dependency layouts preserve parallel branches and upstream-to-downstream layers inside each server. Execution-unit frames are sized before server frames; sibling frames are separated using their actual bounds. Equal dimensions do not force all execution units into a single row or column. Expanding groups recalculates spacing from their contents, so presentation padding does not accumulate. Connections use smooth curves where clear and rounded obstacle-avoiding routes when another step card obstructs the curve.
+
 ## Execution sources and internal routing
 
 The list distinguishes `Direct client` / `Union` sources and `User job` / `Union sub-job` types. Source filtering applies before pagination. Only top-level Jobs occupy list rows; associated step records appear in details and retain attempt numbers.
