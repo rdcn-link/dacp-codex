@@ -2,7 +2,7 @@
 
 <img src="assets/dacp-logo.png" alt="DACP" width="160">
 
-[English](README.md)
+[English](README.md) · [官方网站](https://dacp.conox.cn/)
 
 DACP（Data Access and Collaboration Protocol，数据访问与协作协议）发布数据，通过一致的流式接口提供远程访问。单节点可以发布文件、数据库和科学数据，并接收远程 Job；Union 将独立节点组合起来完成跨中心分析。客户端在两种情况下都使用相同接口浏览和读取数据。
 
@@ -24,7 +24,7 @@ flowchart LR
 - [运维指南](docs/operations/README_zh.md)：部署、发布、安全、监控与维护
 - [开发指南](docs/developers/README_zh.md)：SDK 集成、嵌入服务与协议
 - [按主题浏览文档](docs/README_zh.md)
-- [官方网站与下载](http://dacp.conox.cn/)
+- [软件下载](https://dacp.conox.cn/downloads)
 
 ## 组件
 
@@ -49,4 +49,4 @@ flowchart LR
 
 按[节点部署](docs/operations/README_zh.md)配置 TLS、公开数据、凭据和执行环境。完整 Union 部署见[气象协作示例](examples/union/README_zh.md)。
 
-数据模型、格式、Job 编写和算子开发参阅 [XStream 指南](http://xstream.conox.cn/docs.html)。审核通过的算子与运行环境可从独立的[算子仓库](http://repo.conox.cn/)获取。
+数据模型、格式、Job 编写和算子开发参阅 [XStream 指南](https://xstream.conox.cn/docs.html)。审核通过的算子与运行环境可从独立的[算子仓库](https://repo.conox.cn/)获取。

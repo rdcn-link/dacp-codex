@@ -2,7 +2,7 @@
 
 <img src="assets/dacp-logo.png" alt="DACP" width="160">
 
-[中文](README_zh.md)
+[中文](README_zh.md) · [Official website](https://dacp.conox.cn/)
 
 DACP (Data Access and Collaboration Protocol) publishes data and makes it accessible remotely through consistent streaming interfaces. A single node serves files, databases and scientific data and accepts remote Jobs. Union combines independent nodes for cross-center analysis. Clients browse and read data using the same interface in either case.
 
@@ -24,7 +24,7 @@ flowchart LR
 - [Operations guide](docs/operations/README.md): deployment, publication, security, monitoring and maintenance
 - [Development guide](docs/developers/README.md): SDK integration, embedded services and protocols
 - [Documentation by topic](docs/README.md)
-- [Official website and downloads](http://dacp.conox.cn/)
+- [Software downloads](https://dacp.conox.cn/downloads)
 
 ## Components
 
@@ -49,4 +49,4 @@ Use JDK 17 and sbt 1.10.x; Python clients require Python 3.10+. Prepare the XStr
 
 Follow [node deployment](docs/operations/README.md) to configure TLS, published data, credentials and execution environments. Use the [weather collaboration example](examples/union/README.md) for a complete Union setup.
 
-Data models, formats, Job authoring and operator development are documented in the [XStream guides](http://xstream.conox.cn/docs.html). Approved operators and runtimes are available from the independent [operator repository](http://repo.conox.cn/).
+Data models, formats, Job authoring and operator development are documented in the [XStream guides](https://xstream.conox.cn/docs.html). Approved operators and runtimes are available from the independent [operator repository](https://repo.conox.cn/).
